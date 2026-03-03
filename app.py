@@ -35,10 +35,10 @@ def save_events(events):
         json.dump(events, f, indent=4)
 
 # --- Logic Generators ---
-def generate_unique_code(existing_events):
+def generate_unique_code(program_code, existing_events):
     while True:
-        suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
-        code = f"DR{suffix}"
+        suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=3))
+        code = f"#{program_code}{suffix}"
         if not any(e['unique_code'] == code for e in existing_events):
             return code
 
@@ -218,7 +218,7 @@ def index():
         description = request.form['description']
         creator_name = request.form['your_name']
         
-        unique_code = generate_unique_code(events)
+        unique_code = generate_unique_code(program_code, events)
         sequence_id = generate_sequence_id(program_code, date_str, events)
         
         new_event = {
