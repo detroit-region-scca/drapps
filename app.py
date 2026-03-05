@@ -7,7 +7,8 @@ from datetime import datetime
 from collections import defaultdict
 
 app = Flask(__name__)
-DATA_FILE = "events.json"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_FILE = os.path.join(BASE_DIR, "events.json")
 
 PROGRAMS = {
     "AX": "Autocross",
@@ -38,7 +39,8 @@ def save_events(events):
 def generate_unique_code(program_code, existing_events):
     while True:
         suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=3))
-        code = f"#{program_code}{suffix}"
+        # code = f"#{program_code}{suffix}"
+        code = f"#DR{suffix}"
         if not any(e['unique_code'] == code for e in existing_events):
             return code
 
