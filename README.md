@@ -1,6 +1,6 @@
-# DRSCCA Event Registration
+# SCCA Event Registration
 
-A simple web application for DRSCCA program directors to register and track events.
+A simple web application for SCCA program directors to register and track events.
 
 ## Features
 
@@ -11,11 +11,24 @@ A simple web application for DRSCCA program directors to register and track even
 *   Delete events with a confirmation modal.
 *   Dark mode interface.
 
+## Configuration
+
+This application is configured via a `.env` file.  Create a `.env` file in the root of the project with the following variables:
+
+```
+SCCA_REGION_ACRONYM="YOUR_REGION_ACRONYM"
+SCCA_REGION_NAME="Your Region SCCA Name"
+EVENT_CODE_PREFIX="YR"
+PROGRAM_DIRECTORS_TEXT="For use by YOUR_REGION_ACRONYM program directors"
+FLASK_SECRET_KEY="a_super_secret_key"
+APP_PASSWORD="your_password"
+```
+
 ## Running the Application
 
 1.  Install the required dependencies:
     ```bash
-    pip install Flask
+    pip install Flask python-dotenv python-dotenv
     ```
 2.  Run the application:
     ```bash

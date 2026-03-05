@@ -44,10 +44,10 @@ def save_events(events):
 
 # --- Logic Generators ---
 def generate_unique_code(program_code, existing_events):
+    event_code_prefix = os.environ.get("EVENT_CODE_PREFIX", "SCCA")
     while True:
         suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=3))
-        # code = f"#{program_code}{suffix}"
-        code = f"#DR{suffix}"
+        code = f"#{event_code_prefix}{suffix}"
         if not any(e['unique_code'] == code for e in existing_events):
             return code
 
@@ -70,7 +70,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DRSCCA Event Registration</title>
+    <title>{{ scca_region_name }} Event Registration</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background-color: #212529; padding-top: 2rem; }
@@ -122,9 +122,9 @@ HTML_TEMPLATE = """
     </div>
     {% else %}
     <div class="container">
-        <h1 class="mb-0 text-center text-primary">DRSCCA Event Registration</h1>
+        <h1 class="mb-0 text-center text-primary">{{ scca_region_name }} Event Registration</h1>
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <p class="text-muted mb-0 mx-auto" style="padding-left: 56px;">For use by DRSCCA program directors</p>
+            <p class="text-muted mb-0 mx-auto" style="padding-left: 56px;">{{ program_directors_text }}</p>
             <form action="/logout" method="POST" class="m-0"><button type="submit" class="btn btn-outline-secondary btn-sm">Logout</button></form>
         </div>
 
@@ -306,10 +306,17 @@ def index():
     # Sort grouped events by program name for consistent display
     sorted_grouped_events = dict(sorted(grouped_events.items()))
 
-    return render_template_string(HTML_TEMPLATE, events=events, programs=PROGRAMS, 
-                                  recommended_msr_name=recommended_msr_name, 
+    scca_region_acronym = os.environ.get("SCCA_REGION_ACRONYM", "SCCA")
+    scca_region_name = os.environ.get("SCCA_REGION_NAME", "SCCA")
+    program_directors_text = os.environ.get("PROGRAM_DIRECTORS_TEXT", "For use by SCCA program directors")
+
+    return render_template_string(HTML_TEMPLATE, events=events, programs=PROGRAMS,
+                                  recommended_msr_name=recommended_msr_name,
                                   grouped_events=sorted_grouped_events,
-                                  error=request.args.get('error'))
+                                  error=request.args.get('error'),
+                                  scca_region_acronym=scca_region_acronym,
+                                  scca_region_name=scca_region_name,
+                                  program_directors_text=program_directors_text)
 
 @app.route('/delete/<event_id>', methods=['POST'])
 def delete_event(event_id):
