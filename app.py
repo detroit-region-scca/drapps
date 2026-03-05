@@ -1,12 +1,19 @@
-from flask import Flask, request, redirect, render_template_string, url_for
+from flask import Flask, request, redirect, render_template_string, url_for, session
 import json
 import os
 import random
 import string
 from datetime import datetime
 from collections import defaultdict
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
+
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "cleanshop")
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "events.json")
 
@@ -89,9 +96,37 @@ HTML_TEMPLATE = """
     </style>
 </head>
 <body>
+    {% if not session.get('authenticated') %}
+    <div class="modal fade show" tabindex="-1" aria-labelledby="loginModalLabel" aria-modal="true" role="dialog" style="display: block; background: rgba(0,0,0,0.8);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="loginModalLabel">Login Required</h5>
+                </div>
+                <form action="/login" method="POST">
+                    <div class="modal-body">
+                        {% if error %}
+                        <div class="alert alert-danger">{{ error }}</div>
+                        {% endif %}
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="password" name="password" required autofocus>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary">Login</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% else %}
     <div class="container">
         <h1 class="mb-0 text-center text-primary">DRSCCA Event Registration</h1>
-        <p class="text-center text-muted mb-4">For use by DRSCCA program directors</p>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <p class="text-muted mb-0 mx-auto" style="padding-left: 56px;">For use by DRSCCA program directors</p>
+            <form action="/logout" method="POST" class="m-0"><button type="submit" class="btn btn-outline-secondary btn-sm">Logout</button></form>
+        </div>
 
         {% if recommended_msr_name %}
         <div class="alert alert-success" role="alert">
@@ -190,31 +225,50 @@ HTML_TEMPLATE = """
         }
 
         const deleteModal = document.getElementById('deleteModal');
-        deleteModal.addEventListener('show.bs.modal', function (event) {
-            const button = event.relatedTarget;
-            const deleteUrl = button.getAttribute('data-delete-url');
-            const eventDescription = button.getAttribute('data-event-description');
-            
-            deleteModal.querySelector('#deleteForm').action = deleteUrl;
-            deleteModal.querySelector('#descriptionToMatch').textContent = eventDescription;
-            const confirmInput = deleteModal.querySelector('#deleteConfirmInput');
-            const confirmBtn = deleteModal.querySelector('#confirmDeleteBtn');
-            
-            confirmInput.value = '';
-            confirmBtn.disabled = true;
-            confirmInput.oninput = () => { confirmBtn.disabled = confirmInput.value !== eventDescription; };
-        });
+        if (deleteModal) {
+            deleteModal.addEventListener('show.bs.modal', function (event) {
+                const button = event.relatedTarget;
+                const deleteUrl = button.getAttribute('data-delete-url');
+                const eventDescription = button.getAttribute('data-event-description');
+                
+                deleteModal.querySelector('#deleteForm').action = deleteUrl;
+                deleteModal.querySelector('#descriptionToMatch').textContent = eventDescription;
+                const confirmInput = deleteModal.querySelector('#deleteConfirmInput');
+                const confirmBtn = deleteModal.querySelector('#confirmDeleteBtn');
+                
+                confirmInput.value = '';
+                confirmBtn.disabled = true;
+                confirmInput.oninput = () => { confirmBtn.disabled = confirmInput.value !== eventDescription; };
+            });
+        }
     </script>
+    {% endif %}
 </body>
 </html>
 """
 
 # --- Routes ---
+@app.route('/login', methods=['POST'])
+def login():
+    password = request.form.get('password')
+    if password == APP_PASSWORD:
+        session['authenticated'] = True
+        return redirect(url_for('index'))
+    return redirect(url_for('index', error='Invalid password'))
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.pop('authenticated', None)
+    return redirect(url_for('index'))
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     events = load_events()
     
     if request.method == 'POST':
+        if not session.get('authenticated'):
+            return redirect(url_for('index'))
+
         program_code = request.form['program']
         date_str = request.form['date']
         description = request.form['description']
@@ -254,10 +308,14 @@ def index():
 
     return render_template_string(HTML_TEMPLATE, events=events, programs=PROGRAMS, 
                                   recommended_msr_name=recommended_msr_name, 
-                                  grouped_events=sorted_grouped_events)
+                                  grouped_events=sorted_grouped_events,
+                                  error=request.args.get('error'))
 
 @app.route('/delete/<event_id>', methods=['POST'])
 def delete_event(event_id):
+    if not session.get('authenticated'):
+        return redirect(url_for('index'))
+
     events = load_events()
     events = [e for e in events if e.get('id') != event_id]
     save_events(events)
