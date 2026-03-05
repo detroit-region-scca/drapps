@@ -16,16 +16,18 @@ APP_PASSWORD = os.environ.get("APP_PASSWORD", "cleanshop")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "events.json")
+PROGRAMS_FILE = os.path.join(BASE_DIR, "programs.json")
 
-PROGRAMS = {
-    "AX": "Autocross",
-    "RR": "Road Racing",
-    "RY": "Road Rally",
-    "RX": "Rallycross",
-    "SS": "Street Survival",
-    "SIM": "SIM Racing",
-    "DR": "General Events"
-}
+def load_programs():
+    if not os.path.exists(PROGRAMS_FILE):
+        return {}
+    try:
+        with open(PROGRAMS_FILE, 'r') as f:
+            return json.load(f)
+    except (json.JSONDecodeError, FileNotFoundError):
+        return {}
+
+PROGRAMS = load_programs()
 
 # --- Data Persistence ---
 def load_events():

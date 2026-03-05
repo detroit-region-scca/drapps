@@ -24,11 +24,15 @@ FLASK_SECRET_KEY="a_super_secret_key"
 APP_PASSWORD="your_password"
 ```
 
+## Program Definitions
+
+The available event programs (e.g., Autocross, Road Racing) are defined in the `programs.json` file. You can customize the programs by editing this file. The format is a simple JSON object where the key is the program code (e.g., "AX") and the value is the full name (e.g., "Autocross").
+
 ## Running the Application
 
 1.  Install the required dependencies:
     ```bash
-    pip install Flask python-dotenv python-dotenv
+    pip install Flask python-dotenv
     ```
 2.  Run the application:
     ```bash
