@@ -177,6 +177,26 @@ HTML_TEMPLATE = """
 
         {% if audit_logs is defined %}
         <!-- Audit Log View -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="m-0">Recent Activity</h4>
+            <form action="{{ url_for('audit_log') }}" method="GET" class="m-0 d-flex gap-2">
+                <select name="action" class="form-select form-select-sm border-secondary bg-dark text-light" onchange="this.form.submit()">
+                    <option value="">All Actions</option>
+                    <option value="EVENT_CREATED" {% if request.args.get('action') == 'EVENT_CREATED' %}selected{% endif %}>Created</option>
+                    <option value="EVENT_EDITED" {% if request.args.get('action') == 'EVENT_EDITED' %}selected{% endif %}>Edited</option>
+                    <option value="EVENT_DELETED" {% if request.args.get('action') == 'EVENT_DELETED' %}selected{% endif %}>Deleted</option>
+                    <option value="LOGIN_SUCCESS" {% if request.args.get('action') == 'LOGIN_SUCCESS' %}selected{% endif %}>Login Success</option>
+                    <option value="LOGIN_FAILURE" {% if request.args.get('action') == 'LOGIN_FAILURE' %}selected{% endif %}>Login Failure</option>
+                </select>
+                <select name="limit" class="form-select form-select-sm border-secondary bg-dark text-light" onchange="this.form.submit()">
+                    <option value="100" {% if request.args.get('limit', '100') == '100' %}selected{% endif %}>Last 100</option>
+                    <option value="250" {% if request.args.get('limit') == '250' %}selected{% endif %}>Last 250</option>
+                    <option value="500" {% if request.args.get('limit') == '500' %}selected{% endif %}>Last 500</option>
+                    <option value="all" {% if request.args.get('limit') == 'all' %}selected{% endif %}>All</option>
+                </select>
+            </form>
+        </div>
+
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -193,22 +213,26 @@ HTML_TEMPLATE = """
                 <table class="table table-hover mb-0" style="table-layout: fixed;">
                     <thead class="table-dark">
                         <tr>
-                            <th style="width: 25%;" class="ps-3">Time (EST)</th>
-                            <th style="width: 15%;">Action</th>
-                            <th style="width: 15%;">User</th>
-                            <th style="width: 45%;" class="pe-3">Details</th>
+                            <th style="width: 20%;" class="ps-3">Time (EST)</th>
+                            <th style="width: 20%;">Action</th>
+                            <th style="width: 60%;" class="pe-3">Details</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for log in audit_logs %}
                         <tr>
-                            <td class="ps-3 text-nowrap"><small>{{ log.timestamp }}</small></td>
-                            <td><span class="badge bg-secondary">{{ log.action }}</span></td>
-                            <td>{{ log.user }}</td>
-                            <td class="pe-3"><pre class="mb-0 text-light" style="font-size: 0.8rem;">{{ log.details | tojson(indent=2) }}</pre></td>
+                            <td class="ps-3 text-nowrap"><small>{{ log.display_time }}</small></td>
+                            <td><span class="badge {{ log.color }}">{{ log.action }}</span></td>
+                            <td class="pe-3">
+                                <div class="mb-1">{{ log.diff_text | safe }}</div>
+                                <button class="btn btn-sm btn-link p-0 text-decoration-none" type="button" data-bs-toggle="collapse" data-bs-target="#details-{{ loop.index }}">Show Full Details</button>
+                                <div class="collapse mt-2" id="details-{{ loop.index }}">
+                                    <pre class="mb-0 text-light bg-dark p-2 rounded border border-secondary" style="font-size: 0.8rem; overflow-x: auto;">{{ log.details | tojson(indent=2) }}</pre>
+                                </div>
+                            </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="4" class="text-center py-4 text-muted">No audit logs found.</td></tr>
+                        <tr><td colspan="3" class="text-center py-4 text-muted">No audit logs found.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -350,6 +374,10 @@ HTML_TEMPLATE = """
                     </div>
                     <form id="deleteForm" action="" method="POST">
                         <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">Your Name</label>
+                                <input type="text" class="form-control" name="delete_user_name" placeholder="e.g. John Doe" required>
+                            </div>
                             <p>Type event description to confirm:<br><strong id="delDesc" class="text-danger"></strong></p>
                             <input type="text" class="form-control" id="delInput" autocomplete="off" placeholder="Event Description...">
                         </div>
@@ -542,6 +570,63 @@ def audit_log():
     logs = load_audit_logs()
     scca_region_name = os.environ.get("SCCA_REGION_NAME", "SCCA")
     
+    # Handle simple filtering via query parameters
+    action_filter = request.args.get('action')
+    if action_filter:
+        logs = [log for log in logs if log.get('action') == action_filter]
+        
+    # Handle dynamic limit
+    limit_param = request.args.get('limit', '100')
+    if limit_param != 'all':
+        try:
+            limit = int(limit_param)
+            logs = logs[:limit]
+        except ValueError:
+            logs = logs[:100] # fallback to 100 on bad input
+    
+    for log in logs:
+        # Format Timestamp
+        try:
+            dt = datetime.fromisoformat(log.get('timestamp', ''))
+            log['display_time'] = dt.strftime('%m-%d %H:%M')
+        except ValueError:
+            log['display_time'] = log.get('timestamp', '')
+            
+        # Generate Diff Text with Actor included
+        action = log.get('action', '')
+        user = log.get('user', 'Unknown')
+        details = log.get('details', {})
+        diff_text = ''
+        
+        if action == 'EVENT_EDITED' and isinstance(details, dict):
+            orig = details.get('original', {})
+            upd = details.get('updated', {})
+            diffs = []
+            for k in ['program_code', 'date', 'description', 'creator_name']:
+                if orig.get(k) != upd.get(k):
+                    diffs.append(f"{k}: '{orig.get(k)}' -> '{upd.get(k)}'")
+            diff_text = f"<b>{user}</b> changed: " + (', '.join(diffs) if diffs else 'No changes')
+        elif action == 'EVENT_CREATED' and isinstance(details, dict):
+            diff_text = f"<b>{user}</b> created: {details.get('description', '')} ({details.get('program_code', '')})"
+        elif action == 'EVENT_DELETED' and isinstance(details, dict):
+            diff_text = f"<b>{user}</b> deleted: {details.get('description', '')} ({details.get('program_code', '')})"
+        elif action in ('LOGIN_SUCCESS', 'LOGIN_FAILURE') and isinstance(details, dict):
+            diff_text = f"IP: {details.get('remote_addr', 'Unknown')}"
+        else:
+            diff_text = f"<b>{user}</b> performed an action. See details."
+            
+        log['diff_text'] = diff_text
+        
+        # Determine Bootstrap Color Class
+        if action == 'EVENT_CREATED':
+            log['color'] = 'bg-success'
+        elif action == 'EVENT_EDITED':
+            log['color'] = 'bg-warning text-dark'
+        elif action in ('EVENT_DELETED', 'LOGIN_FAILURE'):
+            log['color'] = 'bg-danger'
+        else:
+            log['color'] = 'bg-secondary'
+    
     return render_template_string(HTML_TEMPLATE, 
                                   title=f"{scca_region_name} Audit Log",
                                   audit_logs=logs,
@@ -552,6 +637,8 @@ def delete_event(event_id):
     if not session.get('authenticated'):
         return redirect(url_for('index'))
 
+    delete_user_name = request.form.get('delete_user_name', 'Unknown')
+
     lock = FileLock(DATA_LOCK_FILE)
     with lock:
         events = load_events()
@@ -559,7 +646,7 @@ def delete_event(event_id):
         if event_to_delete:
             events = [e for e in events if e.get('id') != event_id]
             save_events(events)
-            log_audit_event('EVENT_DELETED', 'SYSTEM', event_to_delete) # Assuming a system user for deletion for now
+            log_audit_event('EVENT_DELETED', delete_user_name, event_to_delete)
             flash('Event deleted successfully.', 'danger')
         else:
             flash('Event not found.', 'warning')
