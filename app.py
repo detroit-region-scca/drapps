@@ -488,9 +488,7 @@ def login():
     password = request.form.get('password')
     if APP_PASSWORD and password == APP_PASSWORD:
         session['authenticated'] = True
-        log_audit_event("LOGIN_SUCCESS", "SYSTEM", {"remote_addr": request.remote_addr})
         return redirect(url_for('index'))
-    log_audit_event("LOGIN_FAILURE", "SYSTEM", {"remote_addr": request.remote_addr})
     flash('Invalid password', 'danger')
     return redirect(url_for('index'))
 
@@ -588,7 +586,7 @@ def audit_log():
         # Format Timestamp
         try:
             dt = datetime.fromisoformat(log.get('timestamp', ''))
-            log['display_time'] = dt.strftime('%m-%d %H:%M')
+            log['display_time'] = dt.strftime('%m-%d %I:%M %p')
         except ValueError:
             log['display_time'] = log.get('timestamp', '')
             
