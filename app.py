@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, render_template_string, url_for, session
+from flask import Flask, request, redirect, render_template_string, url_for, session, flash
 import json
 import os
 import random
@@ -13,7 +13,7 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 
-APP_PASSWORD = os.environ.get("APP_PASSWORD", "cleanshop")
+APP_PASSWORD = os.environ.get("APP_PASSWORD")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "events.ndjson")
@@ -28,8 +28,6 @@ def load_programs():
             return json.load(f)
     except (json.JSONDecodeError, FileNotFoundError):
         return {}
-
-PROGRAMS = load_programs()
 
 # --- Data Persistence ---
 def load_events():
@@ -98,20 +96,46 @@ HTML_TEMPLATE = """
     <title>{{ scca_region_name }} Event Registration</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background-color: #212529; padding-top: 2rem; }
+        :root {
+            --primary-accent: #2196F3; /* A vibrant, motorsports-appropriate blue */
+            --primary-accent-dark: #1976D2; /* Darker shade for hover states */
+            --card-bg: #2c3034;
+            --border-color: #4a4f54;
+            --text-light: #eceff1;
+            --background-dark: #1f2124;
+            --background-light: #26292c;
+        }
+
+        body {
+            background-color: var(--background-dark);
+            background-image: linear-gradient(to bottom, var(--background-dark), var(--background-light));
+            padding-top: 2rem;
+            color: var(--text-light);
+        }
+
+        /* Component Overrides */
+        .text-primary { color: var(--primary-accent) !important; }
+        .btn-primary { background-color: var(--primary-accent); border-color: var(--primary-accent); }
+        .btn-primary:hover { background-color: var(--primary-accent-dark); border-color: var(--primary-accent-dark); }
+        .btn-outline-primary { color: var(--text-light); border-color: var(--border-color); }
+        .btn-outline-primary:hover { background-color: var(--primary-accent); color: var(--text-light); border-color: var(--border-color); }
+        .form-control:focus, .form-select:focus { border-color: var(--primary-accent); box-shadow: 0 0 0 0.25rem rgba(33, 150, 243, 0.25); }
+        .accordion-button:focus { box-shadow: none; outline: 2px solid var(--border-color); outline-offset: 1px; }
+        .accordion-button:not(.collapsed) { background-color: #373b40; color: var(--text-light); }
+
         .container { max-width: 900px; }
         .card { 
-            box-shadow: 0 4px 8px rgba(0,0,0,0.4); 
-            border: 1px solid #495057; 
-            background-color: #343a40;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5); 
+            border: 1px solid var(--border-color); 
+            background-color: var(--card-bg);
         }
+
         .table-responsive { margin-top: 1rem; }
-        .delete-btn { color: #dc3545; cursor: pointer; font-weight: bold; border: none; background: none; }
-        .delete-btn:hover { color: #f06571; }
-        .accordion-button:not(.collapsed) { background-color: #343a40; color: #f8f9fa; }
+        .delete-btn { color: #ef5350; cursor: pointer; font-weight: bold; border: none; background: none; }
+        .delete-btn:hover { color: #e53935; }
 
         /* Consistent column widths for tables */
-        .event-table th, .event-table td { font-size: 0.85rem; } /* Smaller font for all table fields */
+        .event-table th, .event-table td { font-size: 0.85rem; }
         .event-table th:nth-child(1), .event-table td:nth-child(1) { width: 17%; } /* Sequence ID */
         .event-table th:nth-child(2), .event-table td:nth-child(2) { width: 22%; } /* Description */
         .event-table th:nth-child(3), .event-table td:nth-child(3) { width: 17%; } /* Creator */
@@ -147,6 +171,16 @@ HTML_TEMPLATE = """
     </div>
     {% else %}
     <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
         <h1 class="mb-0 text-center text-primary">{{ scca_region_name }} Event Registration</h1>
         <div class="d-flex justify-content-between align-items-center mb-4">
             <p class="text-muted mb-0 mx-auto" style="padding-left: 56px;">{{ program_directors_text }}</p>
@@ -158,7 +192,7 @@ HTML_TEMPLATE = """
             <h5 class="alert-heading">Recommended MSR Event Name</h5>
             <p id="msr-name" class="mb-0">{{ recommended_msr_name }}</p>
             <hr>
-            <button class="btn btn-outline-success btn-sm" onclick="copyText(document.getElementById('msr-name').innerText, 'Copied MSR Name!')">
+            <button class="btn btn-outline-success btn-sm" onclick="copyText(this, document.getElementById('msr-name').innerText)">
                 Copy to Clipboard
             </button>
         </div>
@@ -206,7 +240,7 @@ HTML_TEMPLATE = """
                                             <td>{{ event.date }}</td>
                                             <td>
                                                 <span class="badge bg-secondary">{{ event.unique_code }}</span>
-                                                <button class="btn btn-outline-secondary btn-sm py-0 px-1 ms-1" onclick="copyText('{{ event.unique_code }}', 'Copied Unique Code!')" title="Copy Code">Copy</button>
+                                                <button class="btn btn-outline-secondary btn-sm py-0 px-1 ms-1" onclick="copyText(this, '{{ event.unique_code }}')" title="Copy Code">Copy</button>
                                             </td>
                                             <td class="text-end">
                                                 <button type="button" class="btn btn-sm btn-outline-primary py-0 px-1 me-1" title="Edit Record"
@@ -284,8 +318,16 @@ HTML_TEMPLATE = """
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function copyText(text, message) {
-            navigator.clipboard.writeText(text).then(() => alert(message)).catch(err => console.error('Failed to copy text: ', err));
+        function copyText(button, text) {
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = button.innerHTML;
+                button.innerHTML = 'Copied!';
+                button.disabled = true;
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                }, 2000);
+            }).catch(err => console.error('Failed to copy text: ', err));
         }
 
         function toggleAllAccordions(expand) {
@@ -350,10 +392,11 @@ HTML_TEMPLATE = """
 @app.route('/login', methods=['POST'])
 def login():
     password = request.form.get('password')
-    if password == APP_PASSWORD:
+    if APP_PASSWORD and password == APP_PASSWORD:
         session['authenticated'] = True
         return redirect(url_for('index'))
-    return redirect(url_for('index', error='Invalid password'))
+    flash('Invalid password', 'danger')
+    return redirect(url_for('index'))
 
 @app.route('/logout', methods=['POST'])
 def logout():
@@ -362,8 +405,6 @@ def logout():
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    events = load_events()
-    
     if request.method == 'POST':
         if not session.get('authenticated'):
             return redirect(url_for('index'))
@@ -375,47 +416,49 @@ def index():
             date_str = request.form['date']
             description = request.form['description']
             creator_name = request.form['your_name']
-            
+
             unique_code = generate_unique_code(program_code, events)
             sequence_id = generate_sequence_id(program_code, date_str, events)
-            
+
             new_event = {
                 'id': ''.join(random.choices(string.ascii_letters + string.digits, k=8)),
                 'program_code': program_code, 'description': description, 'date': date_str,
                 'sequence_id': sequence_id, 'unique_code': unique_code, 'creator_name': creator_name
             }
-            
+
             events.append(new_event)
             save_events(events)
+        flash('Event created successfully!', 'success')
         return redirect(url_for('index', new_event_id=new_event['id']))
 
+    # GET request
+    events = load_events()
+    programs = load_programs()
     recommended_msr_name = None
     new_event_id = request.args.get('new_event_id')
     if new_event_id:
         newly_created_event = next((e for e in events if e.get('id') == new_event_id), None)
         if newly_created_event:
             year = datetime.strptime(newly_created_event['date'], '%Y-%m-%d').year
-            program_name = PROGRAMS.get(newly_created_event['program_code'], "Event")
+            program_name = programs.get(newly_created_event['program_code'], "Event")
             desc = newly_created_event['description']
             tag = newly_created_event['unique_code']
             recommended_msr_name = f"{year} {program_name}: {desc} {tag}"
 
     grouped_events = defaultdict(list)
     for event in events:
-        program_name_key = f"{event['program_code']}: {PROGRAMS.get(event['program_code'])}"
+        program_name_key = f"{event['program_code']}: {programs.get(event['program_code'])}"
         grouped_events[program_name_key].append(event)
-    
-    # Sort grouped events by program name for consistent display
+
     sorted_grouped_events = dict(sorted(grouped_events.items()))
 
     scca_region_acronym = os.environ.get("SCCA_REGION_ACRONYM", "SCCA")
     scca_region_name = os.environ.get("SCCA_REGION_NAME", "SCCA")
     program_directors_text = os.environ.get("PROGRAM_DIRECTORS_TEXT", "For use by SCCA program directors")
 
-    return render_template_string(HTML_TEMPLATE, events=events, programs=PROGRAMS,
+    return render_template_string(HTML_TEMPLATE, events=events, programs=programs,
                                   recommended_msr_name=recommended_msr_name,
                                   grouped_events=sorted_grouped_events,
-                                  error=request.args.get('error'),
                                   scca_region_acronym=scca_region_acronym,
                                   scca_region_name=scca_region_name,
                                   program_directors_text=program_directors_text)
@@ -430,6 +473,7 @@ def delete_event(event_id):
         events = load_events()
         events = [e for e in events if e.get('id') != event_id]
         save_events(events)
+    flash('Event deleted successfully.', 'danger')
     return redirect('/')
 
 @app.route('/edit/<event_id>', methods=['POST'])
@@ -443,7 +487,8 @@ def edit_event(event_id):
         event_to_edit = next((e for e in events if e.get('id') == event_id), None)
 
         if not event_to_edit:
-            return redirect(url_for('index'))  # Event not found
+            flash('Event not found.', 'warning')
+            return redirect(url_for('index'))
 
         event_to_edit['program_code'] = request.form['program']
         event_to_edit['date'] = request.form['date']
@@ -451,6 +496,7 @@ def edit_event(event_id):
         event_to_edit['creator_name'] = request.form['your_name']
         save_events(events)
     
+    flash('Event updated successfully!', 'success')
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
