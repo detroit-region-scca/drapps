@@ -22,6 +22,12 @@ EVENT_CODE_PREFIX="YR"
 PROGRAM_DIRECTORS_TEXT="For use by YOUR_REGION_ACRONYM program directors"
 FLASK_SECRET_KEY="a_super_secret_key"
 APP_PASSWORD="your_password"
+PORT=5858
+HOST=0.0.0.0
+DEBUG=False
+DATA_FILE=events.ndjson
+DATA_LOCK_FILE=events.ndjson.lock
+PROGRAMS_FILE=programs.json
 ```
 
 ## Program Definitions
@@ -38,4 +44,4 @@ The available event programs (e.g., Autocross, Road Racing) are defined in the `
     ```bash
     python app.py
     ```
-3.  Open your web browser and navigate to `http://localhost:5858`.
+3.  Open your web browser and navigate to `http://localhost:<PORT>` (default 5858).

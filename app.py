@@ -14,11 +14,14 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 
 APP_PASSWORD = os.environ.get("APP_PASSWORD")
+PORT = int(os.environ.get("PORT", 5858))
+HOST = os.environ.get("HOST", "0.0.0.0")
+DEBUG = os.environ.get("DEBUG", "False").lower() in ("true", "1", "t")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_FILE = os.path.join(BASE_DIR, "events.ndjson")
-DATA_LOCK_FILE = os.path.join(BASE_DIR, "events.ndjson.lock")
-PROGRAMS_FILE = os.path.join(BASE_DIR, "programs.json")
+DATA_FILE = os.environ.get("DATA_FILE", os.path.join(BASE_DIR, "events.ndjson"))
+DATA_LOCK_FILE = os.environ.get("DATA_LOCK_FILE", f"{DATA_FILE}.lock")
+PROGRAMS_FILE = os.environ.get("PROGRAMS_FILE", os.path.join(BASE_DIR, "programs.json"))
 
 def load_programs():
     if not os.path.exists(PROGRAMS_FILE):
@@ -500,4 +503,4 @@ def edit_event(event_id):
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5858, debug=True)
+    app.run(host=HOST, port=PORT, debug=DEBUG)
