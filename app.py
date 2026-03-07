@@ -6,6 +6,7 @@ import string
 from datetime import datetime
 from collections import defaultdict
 from dotenv import load_dotenv
+from filelock import FileLock
 
 load_dotenv()
 
@@ -15,7 +16,8 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "cleanshop")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_FILE = os.path.join(BASE_DIR, "events.json")
+DATA_FILE = os.path.join(BASE_DIR, "events.ndjson")
+DATA_LOCK_FILE = os.path.join(BASE_DIR, "events.ndjson.lock")
 PROGRAMS_FILE = os.path.join(BASE_DIR, "programs.json")
 
 def load_programs():
@@ -33,16 +35,20 @@ PROGRAMS = load_programs()
 def load_events():
     if not os.path.exists(DATA_FILE):
         return []
-    try:
-        with open(DATA_FILE, 'r') as f:
-            # Sort events by date, newest first
-            return sorted(json.load(f), key=lambda x: x['date'], reverse=False)
-    except (json.JSONDecodeError, FileNotFoundError):
-        return []
+    events = []
+    with open(DATA_FILE, 'r') as f:
+        for line in f:
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue # Skip malformed lines
+    return sorted(events, key=lambda x: x.get('date', ''), reverse=False)
 
 def save_events(events):
     with open(DATA_FILE, 'w') as f:
-        json.dump(events, f, indent=4)
+        for event in events:
+            json.dump(event, f)
+            f.write('\n')
 
 # --- Logic Generators ---
 def generate_unique_code(program_code, existing_events):
@@ -58,10 +64,27 @@ def generate_sequence_id(program_type, date_str, existing_events):
         year = datetime.strptime(date_str, '%Y-%m-%d').year
     except ValueError:
         year = datetime.now().year
-    
-    count = sum(1 for e in existing_events if e.get('program_code') == program_type and e.get('date', '').startswith(str(year)))
-    
-    sequence_num = count + 1
+
+    # Filter events for the same program and year
+    relevant_events = [e for e in existing_events if e.get('program_code') == program_type and e.get('date', '').startswith(str(year))]
+
+    if not relevant_events:
+        sequence_num = 1
+    else:
+        # Find the highest existing sequence number
+        max_seq = 0
+        for e in relevant_events:
+            try:
+                # Sequence ID format is assumed to be "YEAR-NUM-PROGRAM"
+                parts = e.get('sequence_id', '').split('-')
+                if len(parts) == 3 and parts[0] == str(year) and parts[2] == program_type:
+                    num = int(parts[1])
+                    if num > max_seq:
+                        max_seq = num
+            except (ValueError, IndexError):
+                continue # Ignore malformed sequence IDs
+        sequence_num = max_seq + 1
+        
     return f"{year}-{sequence_num:02d}-{program_type}"
 
 
@@ -156,7 +179,10 @@ HTML_TEMPLATE = """
         <div class="card p-4">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h3 class="card-title mb-0">Registered Events</h3>
-                <button class="btn btn-outline-info btn-sm" onclick="toggleAllAccordions(true)">Expand All</button>
+                <div>
+                    <button class="btn btn-outline-info btn-sm me-2" onclick="toggleAllAccordions(true)">Expand All</button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="toggleAllAccordions(false)">Collapse All</button>
+                </div>
             </div>
             <div class="accordion" id="eventAccordion">
                 {% for program_name, event_list in grouped_events.items() %}
@@ -170,7 +196,7 @@ HTML_TEMPLATE = """
                         <div class="accordion-body">
                             <div class="table-responsive">
                                 <table class="table table-hover align-middle event-table">
-                                    <thead><tr><th>Sequence ID</th><th>Description</th><th>Creator</th><th>Date</th><th>Unique Code</th><th class="text-end">Action</th></tr></thead>
+                                <thead><tr><th>Sequence ID</th><th>Description</th><th>Creator</th><th>Date</th><th>Unique Code</th><th class="text-end">Action</th></tr></thead>
                                     <tbody>
                                         {% for event in event_list %}
                                         <tr>
@@ -182,7 +208,19 @@ HTML_TEMPLATE = """
                                                 <span class="badge bg-secondary">{{ event.unique_code }}</span>
                                                 <button class="btn btn-outline-secondary btn-sm py-0 px-1 ms-1" onclick="copyText('{{ event.unique_code }}', 'Copied Unique Code!')" title="Copy Code">Copy</button>
                                             </td>
-                                            <td class="text-end"><button type="button" class="delete-btn" title="Delete Record" data-bs-toggle="modal" data-bs-target="#deleteModal" data-delete-url="{{ url_for('delete_event', event_id=event.id) }}" data-event-description="{{ event.description }}">✕</button></td>
+                                            <td class="text-end">
+                                                <button type="button" class="btn btn-sm btn-outline-primary py-0 px-1 me-1" title="Edit Record"
+                                                    data-bs-toggle="modal" data-bs-target="#editModal"
+                                                    data-event-id="{{ event.id }}"
+                                                    data-event-creator="{{ event.creator_name }}"
+                                                    data-event-program-code="{{ event.program_code }}"
+                                                    data-event-program-name="{{ programs[event.program_code] }}"
+                                                    data-event-date="{{ event.date }}"
+                                                    data-event-description="{{ event.description }}">
+                                                    &#x270E;
+                                                </button>
+                                                <button type="button" class="delete-btn" title="Delete Record" data-bs-toggle="modal" data-bs-target="#deleteModal" data-delete-url="{{ url_for('delete_event', event_id=event.id) }}" data-event-description="{{ event.description }}">✕</button>
+                                            </td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>
@@ -203,6 +241,42 @@ HTML_TEMPLATE = """
             <div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="deleteModalLabel">Confirm Deletion</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
                 <form id="deleteForm" action="" method="POST"><div class="modal-body"><p>To confirm, type the event description: <strong id="descriptionToMatch"></strong></p><input type="text" class="form-control" id="deleteConfirmInput" autocomplete="off" placeholder="Event Description..."></div>
                     <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-danger" id="confirmDeleteBtn" disabled>Delete</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editModalLabel">Edit Event</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="editForm" action="" method="POST">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="edit_your_name" class="form-label">Your Name</label>
+                            <input type="text" class="form-control" id="edit_your_name" name="your_name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_program_display" class="form-label">Program Name</label>
+                            <input type="text" class="form-control" id="edit_program_display" readonly disabled>
+                            <input type="hidden" id="edit_program" name="program">
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_date" class="form-label">Event Date</label>
+                            <input type="date" class="form-control" id="edit_date" name="date" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_description" class="form-label">Event Description</label>
+                            <input type="text" class="form-control" id="edit_description" name="description" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Event</button>
+                    </div>
                 </form>
             </div>
         </div>
@@ -243,6 +317,29 @@ HTML_TEMPLATE = """
                 confirmInput.oninput = () => { confirmBtn.disabled = confirmInput.value !== eventDescription; };
             });
         }
+
+        const editModal = document.getElementById('editModal');
+        if (editModal) {
+            editModal.addEventListener('show.bs.modal', function (event) {
+                const button = event.relatedTarget;
+
+                const eventId = button.getAttribute('data-event-id');
+                const creatorName = button.getAttribute('data-event-creator');
+                const programCode = button.getAttribute('data-event-program-code');
+                const programName = button.getAttribute('data-event-program-name');
+                const eventDate = button.getAttribute('data-event-date');
+                const eventDescription = button.getAttribute('data-event-description');
+
+                const modalForm = editModal.querySelector('#editForm');
+                modalForm.action = `/edit/${eventId}`;
+
+                editModal.querySelector('#edit_your_name').value = creatorName;
+                editModal.querySelector('#edit_program_display').value = `${programCode}: ${programName}`;
+                editModal.querySelector('#edit_program').value = programCode;
+                editModal.querySelector('#edit_date').value = eventDate;
+                editModal.querySelector('#edit_description').value = eventDescription;
+            });
+        }
     </script>
     {% endif %}
 </body>
@@ -271,22 +368,25 @@ def index():
         if not session.get('authenticated'):
             return redirect(url_for('index'))
 
-        program_code = request.form['program']
-        date_str = request.form['date']
-        description = request.form['description']
-        creator_name = request.form['your_name']
-        
-        unique_code = generate_unique_code(program_code, events)
-        sequence_id = generate_sequence_id(program_code, date_str, events)
-        
-        new_event = {
-            'id': ''.join(random.choices(string.ascii_letters + string.digits, k=8)),
-            'program_code': program_code, 'description': description, 'date': date_str,
-            'sequence_id': sequence_id, 'unique_code': unique_code, 'creator_name': creator_name
-        }
-        
-        events.append(new_event)
-        save_events(events)
+        lock = FileLock(DATA_LOCK_FILE)
+        with lock:
+            events = load_events()
+            program_code = request.form['program']
+            date_str = request.form['date']
+            description = request.form['description']
+            creator_name = request.form['your_name']
+            
+            unique_code = generate_unique_code(program_code, events)
+            sequence_id = generate_sequence_id(program_code, date_str, events)
+            
+            new_event = {
+                'id': ''.join(random.choices(string.ascii_letters + string.digits, k=8)),
+                'program_code': program_code, 'description': description, 'date': date_str,
+                'sequence_id': sequence_id, 'unique_code': unique_code, 'creator_name': creator_name
+            }
+            
+            events.append(new_event)
+            save_events(events)
         return redirect(url_for('index', new_event_id=new_event['id']))
 
     recommended_msr_name = None
@@ -325,10 +425,33 @@ def delete_event(event_id):
     if not session.get('authenticated'):
         return redirect(url_for('index'))
 
-    events = load_events()
-    events = [e for e in events if e.get('id') != event_id]
-    save_events(events)
+    lock = FileLock(DATA_LOCK_FILE)
+    with lock:
+        events = load_events()
+        events = [e for e in events if e.get('id') != event_id]
+        save_events(events)
     return redirect('/')
+
+@app.route('/edit/<event_id>', methods=['POST'])
+def edit_event(event_id):
+    if not session.get('authenticated'):
+        return redirect(url_for('index'))
+
+    lock = FileLock(DATA_LOCK_FILE)
+    with lock:
+        events = load_events()
+        event_to_edit = next((e for e in events if e.get('id') == event_id), None)
+
+        if not event_to_edit:
+            return redirect(url_for('index'))  # Event not found
+
+        event_to_edit['program_code'] = request.form['program']
+        event_to_edit['date'] = request.form['date']
+        event_to_edit['description'] = request.form['description']
+        event_to_edit['creator_name'] = request.form['your_name']
+        save_events(events)
+    
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5858, debug=True)
