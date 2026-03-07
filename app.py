@@ -7,6 +7,7 @@ from datetime import datetime
 from collections import defaultdict
 from dotenv import load_dotenv
 from filelock import FileLock
+import pytz
 
 load_dotenv()
 
@@ -20,6 +21,7 @@ DEBUG = os.environ.get("DEBUG", "False").lower() in ("true", "1", "t")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.environ.get("DATA_FILE", os.path.join(BASE_DIR, "events.ndjson"))
+AUDIT_FILE = os.path.join(BASE_DIR, "audit.ndjson")
 DATA_LOCK_FILE = os.environ.get("DATA_LOCK_FILE", f"{DATA_FILE}.lock")
 PROGRAMS_FILE = os.environ.get("PROGRAMS_FILE", os.path.join(BASE_DIR, "programs.json"))
 
@@ -50,6 +52,31 @@ def save_events(events):
         for event in events:
             json.dump(event, f)
             f.write('\n')
+
+def log_audit_event(action, user, details):
+    est = pytz.timezone('US/Eastern')
+    log_entry = {
+        "timestamp": datetime.now(est).isoformat(),
+        "action": action,
+        "user": user,
+        "details": details
+    }
+    with FileLock(f"{AUDIT_FILE}.lock"):
+        with open(AUDIT_FILE, 'a') as f:
+            json.dump(log_entry, f)
+            f.write('\n')
+
+def load_audit_logs():
+    if not os.path.exists(AUDIT_FILE):
+        return []
+    logs = []
+    with open(AUDIT_FILE, 'r') as f:
+        for line in f:
+            try:
+                logs.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return sorted(logs, key=lambda x: x.get('timestamp', ''), reverse=True)
 
 # --- Logic Generators ---
 def generate_unique_code(program_code, existing_events):
@@ -89,91 +116,67 @@ def generate_sequence_id(program_type, date_str, existing_events):
     return f"{year}-{sequence_num:02d}-{program_type}"
 
 
-# --- HTML Template (Bootstrap 5 Dark Mode) ---
+# --- HTML Template ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ scca_region_name }} Event Registration</title>
+    <title>{{ title }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        :root {
-            --primary-accent: #2196F3; /* A vibrant, motorsports-appropriate blue */
-            --primary-accent-dark: #1976D2; /* Darker shade for hover states */
-            --card-bg: #2c3034;
-            --border-color: #4a4f54;
-            --text-light: #eceff1;
-            --background-dark: #1f2124;
-            --background-light: #26292c;
-        }
-
-        body {
-            background-color: var(--background-dark);
-            background-image: linear-gradient(to bottom, var(--background-dark), var(--background-light));
-            padding-top: 2rem;
-            color: var(--text-light);
-        }
-
-        /* Component Overrides */
-        .text-primary { color: var(--primary-accent) !important; }
-        .btn-primary { background-color: var(--primary-accent); border-color: var(--primary-accent); }
-        .btn-primary:hover { background-color: var(--primary-accent-dark); border-color: var(--primary-accent-dark); }
-        .btn-outline-primary { color: var(--text-light); border-color: var(--border-color); }
-        .btn-outline-primary:hover { background-color: var(--primary-accent); color: var(--text-light); border-color: var(--border-color); }
-        .form-control:focus, .form-select:focus { border-color: var(--primary-accent); box-shadow: 0 0 0 0.25rem rgba(33, 150, 243, 0.25); }
-        .accordion-button:focus { box-shadow: none; outline: 2px solid var(--border-color); outline-offset: 1px; }
-        .accordion-button:not(.collapsed) { background-color: #373b40; color: var(--text-light); }
-
-        .container { max-width: 900px; }
-        .card { 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5); 
-            border: 1px solid var(--border-color); 
-            background-color: var(--card-bg);
-        }
-
-        .table-responsive { margin-top: 1rem; }
-        .delete-btn { color: #ef5350; cursor: pointer; font-weight: bold; border: none; background: none; }
-        .delete-btn:hover { color: #e53935; }
-
-        /* Consistent column widths for tables */
-        .event-table th, .event-table td { font-size: 0.85rem; }
-        .event-table th:nth-child(1), .event-table td:nth-child(1) { width: 17%; } /* Sequence ID */
-        .event-table th:nth-child(2), .event-table td:nth-child(2) { width: 22%; } /* Description */
-        .event-table th:nth-child(3), .event-table td:nth-child(3) { width: 17%; } /* Creator */
-        .event-table th:nth-child(4), .event-table td:nth-child(4) { width: 15%; } /* Date */
-        .event-table th:nth-child(5), .event-table td:nth-child(5) { width: 19%; } /* Unique Code */
-        .event-table th:nth-child(6), .event-table td:nth-child(6) { width: 10%; } /* Action */
+        body { background-color: #121212; color: #e0e0e0; overflow-y: scroll; }
+        .card { background-color: #1e1e1e; border-color: #333; }
+        .form-control, .form-select { background-color: #2a2a2a; color: #fff; border-color: #444; }
+        .form-control:focus, .form-select:focus { background-color: #333; color: #fff; border-color: #0d6efd; box-shadow: none; }
+        .table { color: #e0e0e0; }
+        .accordion-button { background-color: #2a2a2a; color: #fff; border-color: #444; }
+        .accordion-button:not(.collapsed) { background-color: #0d6efd; color: #fff; }
+        .accordion-item { border-color: #444; }
+        .modal-content { background-color: #1e1e1e; border-color: #444; }
     </style>
 </head>
-<body>
+<body class="py-4">
     {% if not session.get('authenticated') %}
-    <div class="modal fade show" tabindex="-1" aria-labelledby="loginModalLabel" aria-modal="true" role="dialog" style="display: block; background: rgba(0,0,0,0.8);">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="loginModalLabel">Login Required</h5>
-                </div>
+    <div class="container d-flex justify-content-center align-items-center" style="min-height: 80vh;">
+        <div class="card w-100" style="max-width: 400px;">
+            <div class="card-header text-center border-secondary">
+                <h4 class="mb-0">Login Required</h4>
+            </div>
+            <div class="card-body">
                 <form action="/login" method="POST">
-                    <div class="modal-body">
-                        {% if error %}
-                        <div class="alert alert-danger">{{ error }}</div>
-                        {% endif %}
-                        <div class="mb-3">
-                            <label for="password" class="form-label">Password</label>
-                            <input type="password" class="form-control" id="password" name="password" required autofocus>
-                        </div>
+                    {% if error %}
+                    <div class="alert alert-danger">{{ error }}</div>
+                    {% endif %}
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="password" name="password" required autofocus>
                     </div>
-                    <div class="modal-footer">
-                        <button type="submit" class="btn btn-primary">Login</button>
-                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Login</button>
                 </form>
             </div>
         </div>
     </div>
     {% else %}
-    <div class="container">
+    <div class="container" style="max-width: 900px;">
+        <!-- Header & Nav -->
+        <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
+            <h2 class="m-0 text-primary">{{ title }}</h2>
+            <div class="d-flex gap-2">
+                {% if audit_logs is defined %}
+                <a href="{{ url_for('index') }}" class="btn btn-outline-light btn-sm">Main Page</a>
+                {% else %}
+                <a href="{{ url_for('audit_log') }}" class="btn btn-outline-info btn-sm">Audit Log</a>
+                {% endif %}
+                <form action="/logout" method="POST" class="m-0">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Logout</button>
+                </form>
+            </div>
+        </div>
+
+        {% if audit_logs is defined %}
+        <!-- Audit Log View -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -184,209 +187,269 @@ HTML_TEMPLATE = """
                 {% endfor %}
             {% endif %}
         {% endwith %}
-        <h1 class="mb-0 text-center text-primary">{{ scca_region_name }} Event Registration</h1>
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <p class="text-muted mb-0 mx-auto" style="padding-left: 56px;">{{ program_directors_text }}</p>
-            <form action="/logout" method="POST" class="m-0"><button type="submit" class="btn btn-outline-secondary btn-sm">Logout</button></form>
+
+        <div class="card">
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-hover mb-0" style="table-layout: fixed;">
+                    <thead class="table-dark">
+                        <tr>
+                            <th style="width: 25%;" class="ps-3">Time (EST)</th>
+                            <th style="width: 15%;">Action</th>
+                            <th style="width: 15%;">User</th>
+                            <th style="width: 45%;" class="pe-3">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in audit_logs %}
+                        <tr>
+                            <td class="ps-3 text-nowrap"><small>{{ log.timestamp }}</small></td>
+                            <td><span class="badge bg-secondary">{{ log.action }}</span></td>
+                            <td>{{ log.user }}</td>
+                            <td class="pe-3"><pre class="mb-0 text-light" style="font-size: 0.8rem;">{{ log.details | tojson(indent=2) }}</pre></td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center py-4 text-muted">No audit logs found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
+
+        {% else %}
+        <!-- Main Page View -->
+        <p class="text-muted text-center mb-3">{{ program_directors_text }}</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
 
         {% if recommended_msr_name %}
-        <div class="alert alert-success" role="alert">
-            <h5 class="alert-heading">Recommended MSR Event Name</h5>
-            <p id="msr-name" class="mb-0">{{ recommended_msr_name }}</p>
-            <hr>
-            <button class="btn btn-outline-success btn-sm" onclick="copyText(this, document.getElementById('msr-name').innerText)">
-                Copy to Clipboard
-            </button>
+        <div class="alert alert-success d-flex justify-content-between align-items-center">
+            <div>
+                <strong>Recommended MSR Event Name:</strong><br>
+                <span id="msr-name">{{ recommended_msr_name }}</span>
+            </div>
+            <button class="btn btn-sm btn-success" onclick="copyText(this, document.getElementById('msr-name').innerText)">Copy</button>
         </div>
         {% endif %}
-        
-        <div class="card p-4 mb-5">
-            <form action="/" method="POST">
-                <div class="row g-3">
-                    <div class="col-md-6"><label for="your_name" class="form-label">Your Name</label><input type="text" class="form-control" id="your_name" name="your_name" placeholder="e.g. John Doe" required></div>
-                    <div class="col-md-6"><label for="program" class="form-label">Program Name</label><select class="form-select" id="program" name="program" required><option value="" selected disabled>Select...</option>{% for code, name in programs.items() %}<option value="{{ code }}">{{ code }}: {{ name }}</option>{% endfor %}</select></div>
-                    <div class="col-md-6"><label for="date" class="form-label">Event Date</label><input type="date" class="form-control" id="date" name="date" required></div>
-                    <div class="col-md-6"><label for="description" class="form-label">Event Description</label><input type="text" class="form-control" id="description" name="description" placeholder="e.g. Summer Heat" required></div>
-                </div>
-                <div class="mt-4 text-end"><button type="submit" class="btn btn-primary px-4">Submit Event</button></div>
-            </form>
+
+        <!-- Form Card -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <form action="/" method="POST">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Your Name</label>
+                            <input type="text" class="form-control" name="your_name" placeholder="e.g. John Doe" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Program Name</label>
+                            <select class="form-select" name="program" required>
+                                <option value="" selected disabled>Select...</option>
+                                {% for code, name in programs.items() %}
+                                <option value="{{ code }}">{{ code }}: {{ name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Event Date</label>
+                            <input type="date" class="form-control" name="date" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Event Description</label>
+                            <input type="text" class="form-control" name="description" placeholder="e.g. Summer Heat" required>
+                        </div>
+                        <div class="col-12 text-end mt-4">
+                            <button type="submit" class="btn btn-primary px-4">Submit Event</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
         </div>
 
-        <div class="card p-4">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h3 class="card-title mb-0">Registered Events</h3>
-                <div>
-                    <button class="btn btn-outline-info btn-sm me-2" onclick="toggleAllAccordions(true)">Expand All</button>
-                    <button class="btn btn-outline-secondary btn-sm" onclick="toggleAllAccordions(false)">Collapse All</button>
+        <!-- Events List -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="m-0">Registered Events</h4>
+            <div>
+                <button class="btn btn-sm btn-outline-light me-1" onclick="toggleAccordions(true)">Expand All</button>
+                <button class="btn btn-sm btn-outline-light" onclick="toggleAccordions(false)">Collapse All</button>
+            </div>
+        </div>
+
+        <div class="accordion mb-5" id="eventAccordion">
+            {% for program_name, event_list in grouped_events.items() %}
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ loop.index }}">
+                        {{ program_name }} ({{ event_list|length }})
+                    </button>
+                </h2>
+                <div id="collapse-{{ loop.index }}" class="accordion-collapse collapse">
+                    <div class="accordion-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover m-0" style="table-layout: fixed;">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th style="width: 15%;" class="ps-3">ID</th>
+                                        <th style="width: 25%;">Desc</th>
+                                        <th style="width: 15%;">Creator</th>
+                                        <th style="width: 15%;">Date</th>
+                                        <th style="width: 12%;" class="text-center">Code</th>
+                                        <th style="width: 18%;" class="text-end pe-3">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for event in event_list %}
+                                    <tr>
+                                        <td class="ps-3 text-nowrap fw-bold">{{ event.sequence_id }}</td>
+                                        <td>{{ event.description }}</td>
+                                        <td>{{ event.creator_name }}</td>
+                                        <td class="text-nowrap">{{ event.date }}</td>
+                                        <td class="text-center"><span class="badge bg-secondary">{{ event.unique_code }}</span></td>
+                                        <td class="text-end text-nowrap pe-3 ps-4">
+                                            <button class="btn btn-sm btn-outline-info py-0 px-2" onclick="copyText(this, '{{ event.unique_code }}')">Copy</button>
+                                            <button class="btn btn-sm btn-outline-warning py-0 px-2 mx-1" 
+                                                data-bs-toggle="modal" data-bs-target="#editModal"
+                                                data-id="{{ event.id }}" data-creator="{{ event.creator_name }}"
+                                                data-program="{{ event.program_code }}" data-date="{{ event.date }}"
+                                                data-desc="{{ event.description }}">Edit</button>
+                                            <button class="btn btn-sm btn-outline-danger py-0 px-2" 
+                                                data-bs-toggle="modal" data-bs-target="#deleteModal" 
+                                                data-url="{{ url_for('delete_event', event_id=event.id) }}" 
+                                                data-desc="{{ event.description }}">X</button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="accordion" id="eventAccordion">
-                {% for program_name, event_list in grouped_events.items() %}
-                <div class="accordion-item">
-                    <h2 class="accordion-header" id="heading-{{ loop.index }}">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ loop.index }}" aria-expanded="false" aria-controls="collapse-{{ loop.index }}">
-                            {{ program_name }} ({{ event_list|length }} events)
-                        </button>
-                    </h2>
-                    <div id="collapse-{{ loop.index }}" class="accordion-collapse collapse" aria-labelledby="heading-{{ loop.index }}">
-                        <div class="accordion-body">
-                            <div class="table-responsive">
-                                <table class="table table-hover align-middle event-table">
-                                <thead><tr><th>Sequence ID</th><th>Description</th><th>Creator</th><th>Date</th><th>Unique Code</th><th class="text-end">Action</th></tr></thead>
-                                    <tbody>
-                                        {% for event in event_list %}
-                                        <tr>
-                                            <td class="fw-bold">{{ event.sequence_id }}</td>
-                                            <td>{{ event.description }}</td>
-                                            <td>{{ event.creator_name }}</td>
-                                            <td>{{ event.date }}</td>
-                                            <td>
-                                                <span class="badge bg-secondary">{{ event.unique_code }}</span>
-                                                <button class="btn btn-outline-secondary btn-sm py-0 px-1 ms-1" onclick="copyText(this, '{{ event.unique_code }}')" title="Copy Code">Copy</button>
-                                            </td>
-                                            <td class="text-end">
-                                                <button type="button" class="btn btn-sm btn-outline-primary py-0 px-1 me-1" title="Edit Record"
-                                                    data-bs-toggle="modal" data-bs-target="#editModal"
-                                                    data-event-id="{{ event.id }}"
-                                                    data-event-creator="{{ event.creator_name }}"
-                                                    data-event-program-code="{{ event.program_code }}"
-                                                    data-event-program-name="{{ programs[event.program_code] }}"
-                                                    data-event-date="{{ event.date }}"
-                                                    data-event-description="{{ event.description }}">
-                                                    &#x270E;
-                                                </button>
-                                                <button type="button" class="delete-btn" title="Delete Record" data-bs-toggle="modal" data-bs-target="#deleteModal" data-delete-url="{{ url_for('delete_event', event_id=event.id) }}" data-event-description="{{ event.description }}">✕</button>
-                                            </td>
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
+            {% else %}
+            <div class="text-center py-4 border rounded border-secondary text-muted">
+                No events registered yet.
+            </div>
+            {% endfor %}
+        </div>
+        
+        <!-- Delete Modal -->
+        <div class="modal fade" id="deleteModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header border-secondary">
+                        <h5 class="modal-title">Confirm Deletion</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <form id="deleteForm" action="" method="POST">
+                        <div class="modal-body">
+                            <p>Type event description to confirm:<br><strong id="delDesc" class="text-danger"></strong></p>
+                            <input type="text" class="form-control" id="delInput" autocomplete="off" placeholder="Event Description...">
+                        </div>
+                        <div class="modal-footer border-secondary">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-danger" id="delBtn" disabled>Delete</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Modal -->
+        <div class="modal fade" id="editModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header border-secondary">
+                        <h5 class="modal-title">Edit Event</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <form id="editForm" action="" method="POST">
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">Creator</label>
+                                <input type="text" class="form-control" id="editCreator" name="your_name" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Program</label>
+                                <select class="form-select" id="editProgram" name="program" required>
+                                    {% for code, name in programs.items() %}
+                                    <option value="{{ code }}">{{ code }}: {{ name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Date</label>
+                                <input type="date" class="form-control" id="editDate" name="date" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Description</label>
+                                <input type="text" class="form-control" id="editDesc" name="description" required>
                             </div>
                         </div>
-                    </div>
+                        <div class="modal-footer border-secondary">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Update Event</button>
+                        </div>
+                    </form>
                 </div>
-                {% else %}
-                <p class="text-center text-muted py-3">No events registered yet.</p>
-                {% endfor %}
             </div>
         </div>
-    </div>
 
-    <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="deleteModalLabel">Confirm Deletion</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
-                <form id="deleteForm" action="" method="POST"><div class="modal-body"><p>To confirm, type the event description: <strong id="descriptionToMatch"></strong></p><input type="text" class="form-control" id="deleteConfirmInput" autocomplete="off" placeholder="Event Description..."></div>
-                    <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-danger" id="confirmDeleteBtn" disabled>Delete</button></div>
-                </form>
-            </div>
-        </div>
+        {% endif %} <!-- End of conditional page rendering -->
     </div>
+    {% endif %} <!-- End of authenticated check -->
 
-    <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="editModalLabel">Edit Event</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <form id="editForm" action="" method="POST">
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label for="edit_your_name" class="form-label">Your Name</label>
-                            <input type="text" class="form-control" id="edit_your_name" name="your_name" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="edit_program_display" class="form-label">Program Name</label>
-                            <input type="text" class="form-control" id="edit_program_display" readonly disabled>
-                            <input type="hidden" id="edit_program" name="program">
-                        </div>
-                        <div class="mb-3">
-                            <label for="edit_date" class="form-label">Event Date</label>
-                            <input type="date" class="form-control" id="edit_date" name="date" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="edit_description" class="form-label">Event Description</label>
-                            <input type="text" class="form-control" id="edit_description" name="description" required>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Update Event</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function copyText(button, text) {
-            navigator.clipboard.writeText(text).then(() => {
-                const originalText = button.innerHTML;
-                button.innerHTML = 'Copied!';
-                button.disabled = true;
-                setTimeout(() => {
-                    button.innerHTML = originalText;
-                    button.disabled = false;
-                }, 2000);
-            }).catch(err => console.error('Failed to copy text: ', err));
+        function copyText(btn, text) {
+            navigator.clipboard.writeText(text);
+            let old = btn.innerText;
+            btn.innerText = 'Copied!';
+            btn.disabled = true;
+            setTimeout(() => { btn.innerText = old; btn.disabled = false; }, 1500);
         }
 
-        function toggleAllAccordions(expand) {
-            const accordionItems = document.querySelectorAll('.accordion-collapse');
-            accordionItems.forEach(item => {
-                const bsCollapse = new bootstrap.Collapse(item, { toggle: false });
-                if (expand) {
-                    bsCollapse.show();
-                } else {
-                    bsCollapse.hide();
-                }
+        function toggleAccordions(expand) {
+            document.querySelectorAll('.accordion-collapse').forEach(item => {
+                let bsCollapse = new bootstrap.Collapse(item, { toggle: false });
+                expand ? bsCollapse.show() : bsCollapse.hide();
             });
         }
 
-        const deleteModal = document.getElementById('deleteModal');
-        if (deleteModal) {
-            deleteModal.addEventListener('show.bs.modal', function (event) {
-                const button = event.relatedTarget;
-                const deleteUrl = button.getAttribute('data-delete-url');
-                const eventDescription = button.getAttribute('data-event-description');
-                
-                deleteModal.querySelector('#deleteForm').action = deleteUrl;
-                deleteModal.querySelector('#descriptionToMatch').textContent = eventDescription;
-                const confirmInput = deleteModal.querySelector('#deleteConfirmInput');
-                const confirmBtn = deleteModal.querySelector('#confirmDeleteBtn');
-                
-                confirmInput.value = '';
-                confirmBtn.disabled = true;
-                confirmInput.oninput = () => { confirmBtn.disabled = confirmInput.value !== eventDescription; };
+        const delModal = document.getElementById('deleteModal');
+        if(delModal) {
+            delModal.addEventListener('show.bs.modal', e => {
+                const btn = e.relatedTarget;
+                const desc = btn.getAttribute('data-desc');
+                document.getElementById('deleteForm').action = btn.getAttribute('data-url');
+                document.getElementById('delDesc').innerText = desc;
+                const input = document.getElementById('delInput');
+                const submitBtn = document.getElementById('delBtn');
+                input.value = '';
+                submitBtn.disabled = true;
+                input.oninput = () => submitBtn.disabled = (input.value !== desc);
             });
         }
 
         const editModal = document.getElementById('editModal');
-        if (editModal) {
-            editModal.addEventListener('show.bs.modal', function (event) {
-                const button = event.relatedTarget;
-
-                const eventId = button.getAttribute('data-event-id');
-                const creatorName = button.getAttribute('data-event-creator');
-                const programCode = button.getAttribute('data-event-program-code');
-                const programName = button.getAttribute('data-event-program-name');
-                const eventDate = button.getAttribute('data-event-date');
-                const eventDescription = button.getAttribute('data-event-description');
-
-                const modalForm = editModal.querySelector('#editForm');
-                modalForm.action = `/edit/${eventId}`;
-
-                editModal.querySelector('#edit_your_name').value = creatorName;
-                editModal.querySelector('#edit_program_display').value = `${programCode}: ${programName}`;
-                editModal.querySelector('#edit_program').value = programCode;
-                editModal.querySelector('#edit_date').value = eventDate;
-                editModal.querySelector('#edit_description').value = eventDescription;
+        if(editModal) {
+            editModal.addEventListener('show.bs.modal', e => {
+                const btn = e.relatedTarget;
+                document.getElementById('editForm').action = '/edit/' + btn.getAttribute('data-id');
+                document.getElementById('editCreator').value = btn.getAttribute('data-creator');
+                document.getElementById('editProgram').value = btn.getAttribute('data-program');
+                document.getElementById('editDate').value = btn.getAttribute('data-date');
+                document.getElementById('editDesc').value = btn.getAttribute('data-desc');
             });
         }
     </script>
-    {% endif %}
 </body>
 </html>
 """
@@ -397,7 +460,9 @@ def login():
     password = request.form.get('password')
     if APP_PASSWORD and password == APP_PASSWORD:
         session['authenticated'] = True
+        log_audit_event("LOGIN_SUCCESS", "SYSTEM", {"remote_addr": request.remote_addr})
         return redirect(url_for('index'))
+    log_audit_event("LOGIN_FAILURE", "SYSTEM", {"remote_addr": request.remote_addr})
     flash('Invalid password', 'danger')
     return redirect(url_for('index'))
 
@@ -431,6 +496,7 @@ def index():
 
             events.append(new_event)
             save_events(events)
+            log_audit_event('EVENT_CREATED', creator_name, new_event)
         flash('Event created successfully!', 'success')
         return redirect(url_for('index', new_event_id=new_event['id']))
 
@@ -459,12 +525,27 @@ def index():
     scca_region_name = os.environ.get("SCCA_REGION_NAME", "SCCA")
     program_directors_text = os.environ.get("PROGRAM_DIRECTORS_TEXT", "For use by SCCA program directors")
 
-    return render_template_string(HTML_TEMPLATE, events=events, programs=programs,
+    return render_template_string(HTML_TEMPLATE, 
+                                  title=f"{scca_region_name} Event Registration",
+                                  events=events, programs=programs,
                                   recommended_msr_name=recommended_msr_name,
                                   grouped_events=sorted_grouped_events,
                                   scca_region_acronym=scca_region_acronym,
                                   scca_region_name=scca_region_name,
                                   program_directors_text=program_directors_text)
+
+@app.route('/audit')
+def audit_log():
+    if not session.get('authenticated'):
+        return redirect(url_for('index'))
+    
+    logs = load_audit_logs()
+    scca_region_name = os.environ.get("SCCA_REGION_NAME", "SCCA")
+    
+    return render_template_string(HTML_TEMPLATE, 
+                                  title=f"{scca_region_name} Audit Log",
+                                  audit_logs=logs,
+                                  scca_region_name=scca_region_name)
 
 @app.route('/delete/<event_id>', methods=['POST'])
 def delete_event(event_id):
@@ -474,9 +555,14 @@ def delete_event(event_id):
     lock = FileLock(DATA_LOCK_FILE)
     with lock:
         events = load_events()
-        events = [e for e in events if e.get('id') != event_id]
-        save_events(events)
-    flash('Event deleted successfully.', 'danger')
+        event_to_delete = next((e for e in events if e.get('id') == event_id), None)
+        if event_to_delete:
+            events = [e for e in events if e.get('id') != event_id]
+            save_events(events)
+            log_audit_event('EVENT_DELETED', 'SYSTEM', event_to_delete) # Assuming a system user for deletion for now
+            flash('Event deleted successfully.', 'danger')
+        else:
+            flash('Event not found.', 'warning')
     return redirect('/')
 
 @app.route('/edit/<event_id>', methods=['POST'])
@@ -493,11 +579,20 @@ def edit_event(event_id):
             flash('Event not found.', 'warning')
             return redirect(url_for('index'))
 
+        original_event = event_to_edit.copy()
+
         event_to_edit['program_code'] = request.form['program']
         event_to_edit['date'] = request.form['date']
         event_to_edit['description'] = request.form['description']
         event_to_edit['creator_name'] = request.form['your_name']
+        
         save_events(events)
+        
+        log_audit_event('EVENT_EDITED', request.form['your_name'], {
+            'event_id': event_id,
+            'original': original_event,
+            'updated': event_to_edit
+        })
     
     flash('Event updated successfully!', 'success')
     return redirect(url_for('index'))
