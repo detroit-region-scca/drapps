@@ -159,7 +159,7 @@ HTML_TEMPLATE = """
         </div>
     </div>
     {% else %}
-    <div class="container" style="max-width: 900px;">
+    <div class="container" style="max-width: 1200px;">
         <!-- Header & Nav -->
         <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
             <h2 class="m-0 text-primary">{{ title }}</h2>
@@ -254,16 +254,6 @@ HTML_TEMPLATE = """
             {% endif %}
         {% endwith %}
 
-        {% if recommended_msr_name %}
-        <div class="alert alert-success d-flex justify-content-between align-items-center">
-            <div>
-                <strong>Recommended MSR Event Name:</strong><br>
-                <span id="msr-name">{{ recommended_msr_name }}</span>
-            </div>
-            <button class="btn btn-sm btn-success" onclick="copyText(this, document.getElementById('msr-name').innerText)">Copy</button>
-        </div>
-        {% endif %}
-
         <!-- Form Card -->
         <div class="card mb-4">
             <div class="card-body">
@@ -318,19 +308,19 @@ HTML_TEMPLATE = """
                 <div id="collapse-{{ loop.index }}" class="accordion-collapse collapse">
                     <div class="accordion-body p-0">
                         <div class="table-responsive">
-                            <table class="table table-hover m-0">
+                            <table class="table table-hover m-0" style="table-layout: fixed;">
                                 <thead class="table-dark">
                                     <tr>
-                                        <th>Event Name</th>
-                                        <th>Creator</th>
-                                        <th>Date</th>
-                                        <th class="text-end pe-3">Actions</th>
+                                        <th style="width: 55%;">Event Name</th>
+                                        <th style="width: 15%;">Creator</th>
+                                        <th style="width: 10%;">Date</th>
+                                        <th style="width: 20%;" class="text-end pe-3">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for event in event_list %}
                                     <tr>
-                                        <td>{{ event.event_name }} <span class="badge bg-secondary">{{ event.unique_code }}</span></td>
+                                        <td>{{ event.date[:4] }} {{ programs.get(event.program_code) }}: {{ event.event_name }} <span class="badge bg-secondary">{{ event.unique_code }}</span></td>
                                         <td>{{ event.creator_name }}</td>
                                         <td class="text-nowrap">{{ event.date }}</td>
                                         <td class="text-end text-nowrap pe-3 ps-4">
@@ -526,15 +516,6 @@ def index():
     events = load_events()
     programs = load_programs()
     recommended_msr_name = None
-    new_event_id = request.args.get('new_event_id')
-    if new_event_id:
-        newly_created_event = next((e for e in events if e.get('id') == new_event_id), None)
-        if newly_created_event:
-            year = datetime.strptime(newly_created_event['date'], '%Y-%m-%d').year
-            program_name = programs.get(newly_created_event['program_code'], "Event")
-            desc = newly_created_event['event_name']
-            tag = newly_created_event['unique_code']
-            recommended_msr_name = f"{year} {program_name}: {desc} {tag}"
 
     grouped_events = defaultdict(list)
     for event in events:
