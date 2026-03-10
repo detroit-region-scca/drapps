@@ -288,7 +288,7 @@ HTML_TEMPLATE = """
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Event Description</label>
-                            <input type="text" class="form-control" name="description" placeholder="e.g. Summer Heat" required>
+                            <input type="text" class="form-control" name="event_name" placeholder="e.g. Summer Heat" required>
                         </div>
                         <div class="col-12 text-end mt-4">
                             <button type="submit" class="btn btn-primary px-4">Submit Event</button>
@@ -318,36 +318,32 @@ HTML_TEMPLATE = """
                 <div id="collapse-{{ loop.index }}" class="accordion-collapse collapse">
                     <div class="accordion-body p-0">
                         <div class="table-responsive">
-                            <table class="table table-hover m-0" style="table-layout: fixed;">
+                            <table class="table table-hover m-0">
                                 <thead class="table-dark">
                                     <tr>
-                                        <th style="width: 15%;" class="ps-3">ID</th>
-                                        <th style="width: 25%;">Desc</th>
-                                        <th style="width: 15%;">Creator</th>
-                                        <th style="width: 15%;">Date</th>
-                                        <th style="width: 12%;" class="text-center">Code</th>
-                                        <th style="width: 18%;" class="text-end pe-3">Actions</th>
+                                        <th>Event Name</th>
+                                        <th>Creator</th>
+                                        <th>Date</th>
+                                        <th class="text-end pe-3">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for event in event_list %}
                                     <tr>
-                                        <td class="ps-3 text-nowrap fw-bold">{{ event.sequence_id }}</td>
-                                        <td>{{ event.description }}</td>
+                                        <td>{{ event.event_name }} <span class="badge bg-secondary">{{ event.unique_code }}</span></td>
                                         <td>{{ event.creator_name }}</td>
                                         <td class="text-nowrap">{{ event.date }}</td>
-                                        <td class="text-center"><span class="badge bg-secondary">{{ event.unique_code }}</span></td>
                                         <td class="text-end text-nowrap pe-3 ps-4">
-                                            <button class="btn btn-sm btn-outline-info py-0 px-2" onclick="copyText(this, '{{ event.unique_code }}')">Copy</button>
+                                            <button class="btn btn-sm btn-outline-info py-0 px-2" onclick="copyText(this, '{{ event.event_name ~ ' ' ~ event.unique_code }}')">Copy</button>
                                             <button class="btn btn-sm btn-outline-warning py-0 px-2 mx-1" 
                                                 data-bs-toggle="modal" data-bs-target="#editModal"
                                                 data-id="{{ event.id }}" data-creator="{{ event.creator_name }}"
                                                 data-program="{{ event.program_code }}" data-date="{{ event.date }}"
-                                                data-desc="{{ event.description }}">Edit</button>
+                                                data-event-name="{{ event.event_name }}">Edit</button>
                                             <button class="btn btn-sm btn-outline-danger py-0 px-2" 
                                                 data-bs-toggle="modal" data-bs-target="#deleteModal" 
                                                 data-url="{{ url_for('delete_event', event_id=event.id) }}" 
-                                                data-desc="{{ event.description }}">X</button>
+                                                data-event-name="{{ event.event_name }}">X</button>
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -378,8 +374,8 @@ HTML_TEMPLATE = """
                                 <label class="form-label">Your Name</label>
                                 <input type="text" class="form-control" name="delete_user_name" placeholder="e.g. John Doe" required>
                             </div>
-                            <p>Type event description to confirm:<br><strong id="delDesc" class="text-danger"></strong></p>
-                            <input type="text" class="form-control" id="delInput" autocomplete="off" placeholder="Event Description...">
+                            <p>Type event name to confirm:<br><strong id="delDesc" class="text-danger"></strong></p>
+                            <input type="text" class="form-control" id="delInput" autocomplete="off" placeholder="Event Name...">
                         </div>
                         <div class="modal-footer border-secondary">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -418,7 +414,7 @@ HTML_TEMPLATE = """
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Description</label>
-                                <input type="text" class="form-control" id="editDesc" name="description" required>
+                                <input type="text" class="form-control" id="editEventName" name="event_name" required>
                             </div>
                         </div>
                         <div class="modal-footer border-secondary">
@@ -455,14 +451,14 @@ HTML_TEMPLATE = """
         if(delModal) {
             delModal.addEventListener('show.bs.modal', e => {
                 const btn = e.relatedTarget;
-                const desc = btn.getAttribute('data-desc');
+                const eventName = btn.getAttribute('data-event-name');
                 document.getElementById('deleteForm').action = btn.getAttribute('data-url');
-                document.getElementById('delDesc').innerText = desc;
+                document.getElementById('delDesc').innerText = eventName;
                 const input = document.getElementById('delInput');
                 const submitBtn = document.getElementById('delBtn');
                 input.value = '';
                 submitBtn.disabled = true;
-                input.oninput = () => submitBtn.disabled = (input.value !== desc);
+                input.oninput = () => submitBtn.disabled = (input.value !== eventName);
             });
         }
 
@@ -474,7 +470,7 @@ HTML_TEMPLATE = """
                 document.getElementById('editCreator').value = btn.getAttribute('data-creator');
                 document.getElementById('editProgram').value = btn.getAttribute('data-program');
                 document.getElementById('editDate').value = btn.getAttribute('data-date');
-                document.getElementById('editDesc').value = btn.getAttribute('data-desc');
+                document.getElementById('editEventName').value = btn.getAttribute('data-event-name');
             });
         }
     </script>
@@ -508,7 +504,7 @@ def index():
             events = load_events()
             program_code = request.form['program']
             date_str = request.form['date']
-            description = request.form['description']
+            event_name = request.form['event_name']
             creator_name = request.form['your_name']
 
             unique_code = generate_unique_code(program_code, events)
@@ -516,7 +512,7 @@ def index():
 
             new_event = {
                 'id': ''.join(random.choices(string.ascii_letters + string.digits, k=8)),
-                'program_code': program_code, 'description': description, 'date': date_str,
+                'program_code': program_code, 'event_name': event_name, 'date': date_str,
                 'sequence_id': sequence_id, 'unique_code': unique_code, 'creator_name': creator_name
             }
 
@@ -536,7 +532,7 @@ def index():
         if newly_created_event:
             year = datetime.strptime(newly_created_event['date'], '%Y-%m-%d').year
             program_name = programs.get(newly_created_event['program_code'], "Event")
-            desc = newly_created_event['description']
+            desc = newly_created_event['event_name']
             tag = newly_created_event['unique_code']
             recommended_msr_name = f"{year} {program_name}: {desc} {tag}"
 
@@ -600,14 +596,14 @@ def audit_log():
             orig = details.get('original', {})
             upd = details.get('updated', {})
             diffs = []
-            for k in ['program_code', 'date', 'description', 'creator_name']:
+            for k in ['program_code', 'date', 'event_name', 'creator_name']:
                 if orig.get(k) != upd.get(k):
                     diffs.append(f"{k}: '{orig.get(k)}' -> '{upd.get(k)}'")
             diff_text = f"<b>{user}</b> changed: " + (', '.join(diffs) if diffs else 'No changes')
         elif action == 'EVENT_CREATED' and isinstance(details, dict):
-            diff_text = f"<b>{user}</b> created: {details.get('description', '')} ({details.get('program_code', '')})"
+            diff_text = f"<b>{user}</b> created: {details.get('event_name', '')} ({details.get('program_code', '')})"
         elif action == 'EVENT_DELETED' and isinstance(details, dict):
-            diff_text = f"<b>{user}</b> deleted: {details.get('description', '')} ({details.get('program_code', '')})"
+            diff_text = f"<b>{user}</b> deleted: {details.get('event_name', '')} ({details.get('program_code', '')})"
         elif action in ('LOGIN_SUCCESS', 'LOGIN_FAILURE') and isinstance(details, dict):
             diff_text = f"IP: {details.get('remote_addr', 'Unknown')}"
         else:
@@ -668,7 +664,7 @@ def edit_event(event_id):
 
         event_to_edit['program_code'] = request.form['program']
         event_to_edit['date'] = request.form['date']
-        event_to_edit['description'] = request.form['description']
+        event_to_edit['event_name'] = request.form['event_name']
         event_to_edit['creator_name'] = request.form['your_name']
         
         save_events(events)
