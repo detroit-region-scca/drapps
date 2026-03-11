@@ -324,7 +324,7 @@ HTML_TEMPLATE = """
                                         <td>{{ event.creator_name }}</td>
                                         <td class="text-nowrap">{{ event.date }}</td>
                                         <td class="text-end text-nowrap pe-3 ps-4">
-                                            <button class="btn btn-sm btn-outline-info py-0 px-2" onclick="copyText(this, '{{ event.event_name ~ ' ' ~ event.unique_code }}')">Copy</button>
+                                            <button class="btn btn-sm btn-outline-info py-0 px-2" onclick="copyText(this, '{{ event.date[:4] }} {{ programs.get(event.program_code) }}: {{ event.event_name }} {{ event.unique_code }}')">Copy</button>
                                             <button class="btn btn-sm btn-outline-warning py-0 px-2 mx-1" 
                                                 data-bs-toggle="modal" data-bs-target="#editModal"
                                                 data-id="{{ event.id }}" data-creator="{{ event.creator_name }}"
