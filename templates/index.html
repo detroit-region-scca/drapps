@@ -137,32 +137,32 @@
         <!-- Form Card -->
         <div class="card mb-4">
             <div class="card-body">
-                <form action="/" method="POST">
+                <form action="/" method="POST" id="createEventForm">
                     <div class="row g-3">
                         <div class="col-md-4">
                             <label class="form-label">Your Name</label>
-                            <input type="text" class="form-control" name="your_name" placeholder="e.g. John Doe" required>
+                            <input type="text" class="form-control" name="your_name" placeholder="e.g. John Doe" value="{{ form_data.get('your_name', '') if form_data else '' }}" required>
                         </div>
                         <div class="col-md-5">
                             <label class="form-label">Program Name</label>
                             <select class="form-select" name="program" required>
-                                <option value="" selected disabled>Select...</option>
+                                <option value="" {% if not form_data or not form_data.get('program') %}selected{% endif %} disabled>Select...</option>
                                 {% for code, name in programs.items() %}
-                                <option value="{{ code }}">{{ code }}: {{ name }}</option>
+                                <option value="{{ code }}" {% if form_data and form_data.get('program') == code %}selected{% endif %}>{{ code }}: {{ name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Event Date</label>
-                            <input type="date" class="form-control" name="date" required onkeydown="return false" onclick="this.showPicker()">
+                            <input type="date" class="form-control" name="date" value="{{ form_data.get('date', '') if form_data else '' }}" required onkeydown="return false" onclick="this.showPicker()">
                         </div>
                         <div class="col-md-8">
                             <label class="form-label">Event Description</label>
-                            <input type="text" class="form-control" name="event_name" placeholder="e.g. Summer Heat" required>
+                            <input type="text" class="form-control" name="event_name" placeholder="e.g. Summer Heat" value="{{ form_data.get('event_name', '') if form_data else '' }}" required>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Custom Tag (Optional)</label>
-                            <input type="text" class="form-control" name="custom_tag" placeholder="e.g. #ProSolo">
+                            <input type="text" class="form-control" name="custom_tag" placeholder="e.g. #ProSolo" value="{{ form_data.get('custom_tag', '') if form_data else '' }}">
                         </div>
                         <div class="col-12 text-end mt-4">
                             <button type="submit" class="btn btn-primary px-4">Submit Event</button>
@@ -171,6 +171,21 @@
                 </form>
             </div>
         </div>
+
+        {% if tag_error %}
+        <script>
+            document.addEventListener("DOMContentLoaded", function() {
+                var input = document.querySelector('input[name="custom_tag"]');
+                if (input) {
+                    input.setCustomValidity({{ tag_error | tojson | safe }});
+                    input.reportValidity();
+                    input.addEventListener('input', function() {
+                        input.setCustomValidity('');
+                    });
+                }
+            });
+        </script>
+        {% endif %}
 
         <!-- Events List -->
         <div class="d-flex justify-content-between align-items-center mb-3">

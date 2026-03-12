@@ -91,14 +91,19 @@ def load_audit_logs():
 
 def generate_unique_code(program_code, existing_events):
     event_code_prefix = os.environ.get("EVENT_CODE_PREFIX", "SCCA")
-    existing_codes = {e.get('unique_code') for e in existing_events}
+    existing_tags = set()
+    for e in existing_events:
+        if e.get("unique_code"):
+            existing_tags.add(e.get("unique_code"))
+        if e.get("custom_tag"):
+            existing_tags.add(e.get("custom_tag"))
     
     k = 3
     attempts = 0
     while True:
         suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=k))
         code = f"#{event_code_prefix}{suffix}"
-        if code not in existing_codes:
+        if code not in existing_tags:
             return code
         attempts += 1
         if attempts > 100:

@@ -78,7 +78,20 @@ def index():
             if custom_tag and not custom_tag.startswith('#'):
                 custom_tag = '#' + custom_tag
 
-            unique_code = generate_unique_code(program_code, events)
+            if custom_tag:
+                existing_tags = set()
+                for e in events:
+                    if e.get("unique_code"):
+                        existing_tags.add(e.get("unique_code"))
+                    if e.get("custom_tag"):
+                        existing_tags.add(e.get("custom_tag"))
+                
+                if custom_tag in existing_tags:
+                    session['form_data'] = request.form.to_dict()
+                    session['tag_error'] = f"Tag '{custom_tag}' is already in use. Please choose a different one."
+                    return redirect(url_for('index'))
+
+            unique_code = generate_unique_code(program_code, events + [{'custom_tag': custom_tag}])
             sequence_id = generate_sequence_id(program_code, date_str, events)
 
             new_event = {
@@ -112,6 +125,9 @@ def index():
     scca_region_name = os.environ.get("SCCA_REGION_NAME", "SCCA")
     program_directors_text = os.environ.get("PROGRAM_DIRECTORS_TEXT", "For use by SCCA program directors")
 
+    form_data = session.pop('form_data', {})
+    tag_error = session.pop('tag_error', None)
+
     return render_template('index.html', 
                            title=f"{scca_region_name} Event Registration",
                            events=events, programs=programs,
@@ -119,7 +135,9 @@ def index():
                            grouped_events=sorted_grouped_events,
                            scca_region_acronym=scca_region_acronym,
                            scca_region_name=scca_region_name,
-                           program_directors_text=program_directors_text)
+                           program_directors_text=program_directors_text,
+                           form_data=form_data,
+                           tag_error=tag_error)
 
 @app.route('/audit')
 @login_required
@@ -231,6 +249,24 @@ def edit_event(event_id):
         custom_tag = request.form.get('custom_tag', '').strip().upper()
         if custom_tag and not custom_tag.startswith('#'):
             custom_tag = '#' + custom_tag
+        
+        if custom_tag:
+            other_tags = set()
+            for e in events:
+                if e.get('id') != event_id:
+                    if e.get("unique_code"):
+                        other_tags.add(e.get("unique_code"))
+                    if e.get("custom_tag"):
+                        other_tags.add(e.get("custom_tag"))
+            
+            if custom_tag in other_tags:
+                flash(f"Error: Tag '{custom_tag}' is already in use by another event.", "danger")
+                return redirect(url_for('index'))
+                
+            if custom_tag == event_to_edit.get('unique_code'):
+                flash(f"Error: Tag '{custom_tag}' is already the generated code for this event.", "danger")
+                return redirect(url_for('index'))
+
         event_to_edit['custom_tag'] = custom_tag
         
         if not event_to_edit.get('unique_code') or event_to_edit.get('unique_code') == original_event.get('custom_tag'):
