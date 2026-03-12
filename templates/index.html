@@ -139,11 +139,11 @@
             <div class="card-body">
                 <form action="/" method="POST">
                     <div class="row g-3">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label">Your Name</label>
                             <input type="text" class="form-control" name="your_name" placeholder="e.g. John Doe" required>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-5">
                             <label class="form-label">Program Name</label>
                             <select class="form-select" name="program" required>
                                 <option value="" selected disabled>Select...</option>
@@ -152,13 +152,17 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-3">
                             <label class="form-label">Event Date</label>
-                            <input type="date" class="form-control" name="date" required>
+                            <input type="date" class="form-control" name="date" required onkeydown="return false" onclick="this.showPicker()">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-8">
                             <label class="form-label">Event Description</label>
                             <input type="text" class="form-control" name="event_name" placeholder="e.g. Summer Heat" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Custom Tag (Optional)</label>
+                            <input type="text" class="form-control" name="custom_tag" placeholder="e.g. #ProSolo">
                         </div>
                         <div class="col-12 text-end mt-4">
                             <button type="submit" class="btn btn-primary px-4">Submit Event</button>
@@ -200,7 +204,14 @@
                                 <tbody>
                                     {% for event in event_list %}
                                     <tr>
-                                        <td>{{ event.date[:4] }} {{ programs.get(event.program_code) }}: {{ event.event_name }} <span class="badge bg-secondary">{{ event.unique_code }}</span></td>
+                                        <td>
+                                            {{ event.date[:4] }} {{ programs.get(event.program_code) }}: {{ event.event_name }}
+                                            {% if event.custom_tag %}
+                                            <span class="badge bg-info text-dark">{{ event.unique_code }}</span>
+                                            {% else %}
+                                            <span class="badge bg-secondary">{{ event.unique_code }}</span>
+                                            {% endif %}
+                                        </td>
                                         <td>{{ event.creator_name }}</td>
                                         <td class="text-nowrap">{{ event.date }}</td>
                                         <td class="text-end text-nowrap pe-3 ps-4">
@@ -209,7 +220,8 @@
                                                 data-bs-toggle="modal" data-bs-target="#editModal"
                                                 data-id="{{ event.id }}" data-creator="{{ event.creator_name }}"
                                                 data-program="{{ event.program_code }}" data-date="{{ event.date }}"
-                                                data-event-name="{{ event.event_name }}">Edit</button>
+                                                data-event-name="{{ event.event_name }}"
+                                                data-custom-tag="{{ event.custom_tag or '' }}">Edit</button>
                                             <button class="btn btn-sm btn-outline-danger py-0 px-2" 
                                                 data-bs-toggle="modal" data-bs-target="#deleteModal" 
                                                 data-url="{{ url_for('delete_event', event_id=event.id) }}" 
@@ -280,11 +292,15 @@
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Date</label>
-                                <input type="date" class="form-control" id="editDate" name="date" required>
+                                <input type="date" class="form-control" id="editDate" name="date" required onkeydown="return false" onclick="this.showPicker()">
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Description</label>
                                 <input type="text" class="form-control" id="editEventName" name="event_name" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Custom Tag (Optional)</label>
+                                <input type="text" class="form-control" id="editCustomTag" name="custom_tag">
                             </div>
                         </div>
                         <div class="modal-footer border-secondary">
@@ -341,6 +357,7 @@
                 document.getElementById('editProgram').value = btn.getAttribute('data-program');
                 document.getElementById('editDate').value = btn.getAttribute('data-date');
                 document.getElementById('editEventName').value = btn.getAttribute('data-event-name');
+                document.getElementById('editCustomTag').value = btn.getAttribute('data-custom-tag');
             });
         }
     </script>

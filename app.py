@@ -70,18 +70,22 @@ def index():
         lock = FileLock(DATA_LOCK_FILE)
         with lock:
             events = load_events()
-            program_code = request.form['program']
-            date_str = request.form['date']
-            event_name = request.form['event_name']
-            creator_name = request.form['your_name']
+            program_code = request.form['program'].strip()
+            date_str = request.form['date'].strip()
+            event_name = request.form['event_name'].strip()
+            creator_name = request.form['your_name'].strip()
+            custom_tag = request.form.get('custom_tag', '').strip().upper()
+            if custom_tag and not custom_tag.startswith('#'):
+                custom_tag = '#' + custom_tag
 
-            unique_code = generate_unique_code(program_code, events)
+            unique_code = custom_tag if custom_tag else generate_unique_code(program_code, events)
             sequence_id = generate_sequence_id(program_code, date_str, events)
 
             new_event = {
                 'id': ''.join(random.choices(string.ascii_letters + string.digits, k=8)),
                 'program_code': program_code, 'event_name': event_name, 'date': date_str,
-                'sequence_id': sequence_id, 'unique_code': unique_code, 'creator_name': creator_name
+                'sequence_id': sequence_id, 'unique_code': unique_code, 'creator_name': creator_name,
+                'custom_tag': custom_tag
             }
 
             events.append(new_event)
@@ -157,7 +161,7 @@ def audit_log():
             orig = details.get('original', {})
             upd = details.get('updated', {})
             diffs = []
-            for k in ['program_code', 'date', 'event_name', 'creator_name']:
+            for k in ['program_code', 'date', 'event_name', 'creator_name', 'custom_tag']:
                 if orig.get(k) != upd.get(k):
                     diffs.append(f"{k}: '{orig.get(k)}' -> '{upd.get(k)}'")
             diff_text = f"<b>{user}</b> changed: " + (', '.join(diffs) if diffs else 'No changes')
@@ -190,7 +194,7 @@ def audit_log():
 @app.route('/delete/<event_id>', methods=['POST'])
 @login_required
 def delete_event(event_id):
-    delete_user_name = request.form.get('delete_user_name', 'Unknown')
+    delete_user_name = request.form.get('delete_user_name', 'Unknown').strip()
 
     lock = FileLock(DATA_LOCK_FILE)
     with lock:
@@ -219,10 +223,20 @@ def edit_event(event_id):
 
         original_event = event_to_edit.copy()
 
-        event_to_edit['program_code'] = request.form['program']
-        event_to_edit['date'] = request.form['date']
-        event_to_edit['event_name'] = request.form['event_name']
-        event_to_edit['creator_name'] = request.form['your_name']
+        event_to_edit['program_code'] = request.form['program'].strip()
+        event_to_edit['date'] = request.form['date'].strip()
+        event_to_edit['event_name'] = request.form['event_name'].strip()
+        event_to_edit['creator_name'] = request.form['your_name'].strip()
+        
+        custom_tag = request.form.get('custom_tag', '').strip().upper()
+        if custom_tag and not custom_tag.startswith('#'):
+            custom_tag = '#' + custom_tag
+        event_to_edit['custom_tag'] = custom_tag
+        
+        if custom_tag:
+            event_to_edit['unique_code'] = custom_tag
+        elif not event_to_edit.get('unique_code') or event_to_edit.get('unique_code') == original_event.get('custom_tag'):
+             event_to_edit['unique_code'] = generate_unique_code(event_to_edit['program_code'], events)
         
         save_events(events)
         
