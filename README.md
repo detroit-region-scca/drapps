@@ -27,12 +27,12 @@ HOST=0.0.0.0
 DEBUG=False
 DATA_FILE=events.ndjson
 DATA_LOCK_FILE=events.ndjson.lock
-PROGRAMS_FILE=programs.json
+PROGRAMS_FILE=data/programs.json
 ```
 
 ## Program Definitions
 
-The available event programs (e.g., Autocross, Road Racing) are defined in the `programs.json` file. You can customize the programs by editing this file. The format is a simple JSON object where the key is the program code (e.g., "AX") and the value is the full name (e.g., "Autocross").
+The available event programs (e.g., Autocross, Road Racing) are defined in the `data/programs.json` file. You can customize the programs by editing this file. The format is a simple JSON object where the key is the program code (e.g., "AX") and the value is the full name (e.g., "Autocross").
 
 ## Running the Application
 
