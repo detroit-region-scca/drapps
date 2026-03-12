@@ -1,8 +1,10 @@
-from flask import Flask, request, redirect, render_template, url_for, session, flash
+from flask import Flask, request, redirect, render_template, url_for, session, flash, Response
 import os
 import string
 import random
 import logging
+import csv
+import io
 from collections import defaultdict
 from dotenv import load_dotenv
 from filelock import FileLock
@@ -263,6 +265,35 @@ def edit_event(event_id):
     
     flash('Event updated successfully!', 'success')
     return redirect(url_for('index'))
+
+@app.route('/export')
+@login_required
+def export_events():
+    lock = FileLock(DATA_LOCK_FILE)
+    with lock:
+        events = load_events()
+    programs = load_programs()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Event ID', 'Program Code', 'Program Name', 'Event Name', 'Date', 'Sequence ID', 'Unique Code', 'Custom Tag', 'Creator'])
+
+    for event in events:
+        writer.writerow([
+            event.get('id', ''),
+            event.get('program_code', ''),
+            programs.get(event.get('program_code', ''), ''),
+            event.get('event_name', ''),
+            event.get('date', ''),
+            event.get('sequence_id', ''),
+            event.get('unique_code', ''),
+            event.get('custom_tag', ''),
+            event.get('creator_name', '')
+        ])
+
+    response = Response(output.getvalue(), mimetype='text/csv')
+    response.headers['Content-Disposition'] = 'attachment; filename=events.csv'
+    return response
 
 if __name__ == '__main__':
     app.run(host=HOST, port=PORT, debug=DEBUG)

@@ -188,11 +188,13 @@
         {% endif %}
 
         <!-- Events List -->
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
             <h4 class="m-0">Registered Events</h4>
-            <div>
-                <button class="btn btn-sm btn-outline-light me-1" onclick="toggleAccordions(true)">Expand All</button>
-                <button class="btn btn-sm btn-outline-light" onclick="toggleAccordions(false)">Collapse All</button>
+            <div class="d-flex gap-2 flex-grow-1 justify-content-end align-items-center">
+                <input type="text" id="eventSearch" class="form-control form-control-sm border-secondary bg-dark text-light" style="max-width: 250px;" placeholder="Search events..." onkeyup="filterEvents()">
+                <button class="btn btn-sm btn-outline-light text-nowrap" onclick="toggleAccordions(true)">Expand All</button>
+                <button class="btn btn-sm btn-outline-light text-nowrap" onclick="toggleAccordions(false)">Collapse All</button>
+                <a href="{{ url_for('export_events') }}" class="btn btn-sm btn-success text-nowrap">Export CSV</a>
             </div>
         </div>
 
@@ -333,6 +335,36 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        function filterEvents() {
+            const query = document.getElementById('eventSearch').value.toLowerCase();
+            document.querySelectorAll('.accordion-item').forEach(accordionItem => {
+                let showAccordion = false;
+                const rows = accordionItem.querySelectorAll('tbody tr');
+                
+                rows.forEach(row => {
+                    const text = row.innerText.toLowerCase();
+                    if (text.includes(query)) {
+                        row.style.display = '';
+                        showAccordion = true;
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+
+                if (showAccordion) {
+                    accordionItem.style.display = '';
+                    if (query !== '') {
+                        const collapseEl = accordionItem.querySelector('.accordion-collapse');
+                        if (!collapseEl.classList.contains('show')) {
+                            new bootstrap.Collapse(collapseEl, { toggle: false }).show();
+                        }
+                    }
+                } else {
+                    accordionItem.style.display = 'none';
+                }
+            });
+        }
+
         function copyText(btn, text) {
             navigator.clipboard.writeText(text);
             let old = btn.innerText;
