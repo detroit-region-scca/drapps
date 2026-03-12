@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "7878:5858"
+    volumes:
+      - /opt/event_app:/app
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - PORT=5858
+      - HOST=0.0.0.0
+    command: flask run --host=0.0.0.0 --port=5858 --debug
