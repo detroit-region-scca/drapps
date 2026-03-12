@@ -38,17 +38,20 @@ def load_programs():
         logger.error(f"Error loading programs: {e}")
         return {}
 
-def load_events():
-    if not os.path.exists(DATA_FILE):
+def _load_ndjson(file_path):
+    if not os.path.exists(file_path):
         return []
-    events = []
-    with open(DATA_FILE, 'r') as f:
+    data = []
+    with open(file_path, 'r') as f:
         for line_num, line in enumerate(f, 1):
             try:
-                events.append(json.loads(line))
+                data.append(json.loads(line))
             except json.JSONDecodeError as e:
-                logger.error(f"Malformed JSON in {DATA_FILE} at line {line_num}: {e}")
-                continue
+                logger.error(f"Malformed JSON in {file_path} at line {line_num}: {e}")
+    return data
+
+def load_events():
+    events = _load_ndjson(DATA_FILE)
     return sorted(events, key=lambda x: x.get('date', ''), reverse=False)
 
 def save_events(events):
@@ -77,26 +80,26 @@ def log_audit_event(action, user, details):
             f.write('\n')
 
 def load_audit_logs():
-    if not os.path.exists(AUDIT_FILE):
-        return []
-    logs = []
-    with open(AUDIT_FILE, 'r') as f:
-        for line_num, line in enumerate(f, 1):
-            try:
-                logs.append(json.loads(line))
-            except json.JSONDecodeError as e:
-                logger.error(f"Malformed JSON in {AUDIT_FILE} at line {line_num}: {e}")
-                continue
+    logs = _load_ndjson(AUDIT_FILE)
     return sorted(logs, key=lambda x: x.get('timestamp', ''), reverse=True)
+
+def format_custom_tag(tag):
+    if not tag:
+        return ""
+    tag = tag.strip().upper()
+    return f"#{tag}" if not tag.startswith('#') else tag
+
+def is_tag_unique(tag, existing_events, exclude_event_id=None):
+    if not tag:
+        return True
+    return not any(
+        tag in (e.get("unique_code"), e.get("custom_tag"))
+        for e in existing_events if e.get("id") != exclude_event_id
+    )
 
 def generate_unique_code(program_code, existing_events):
     event_code_prefix = os.environ.get("EVENT_CODE_PREFIX", "SCCA")
-    existing_tags = set()
-    for e in existing_events:
-        if e.get("unique_code"):
-            existing_tags.add(e.get("unique_code"))
-        if e.get("custom_tag"):
-            existing_tags.add(e.get("custom_tag"))
+    existing_tags = {tag for e in existing_events for tag in (e.get("unique_code"), e.get("custom_tag")) if tag}
     
     k = 3
     attempts = 0

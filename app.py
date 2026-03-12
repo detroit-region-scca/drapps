@@ -11,6 +11,7 @@ from datetime import datetime
 from utils import (
     load_programs, load_events, save_events, log_audit_event, load_audit_logs,
     generate_unique_code, generate_sequence_id, login_required,
+    format_custom_tag, is_tag_unique,
     DATA_LOCK_FILE, AUDIT_FILE, DATA_FILE
 )
 
@@ -74,22 +75,12 @@ def index():
             date_str = request.form['date'].strip()
             event_name = request.form['event_name'].strip()
             creator_name = request.form['your_name'].strip()
-            custom_tag = request.form.get('custom_tag', '').strip().upper()
-            if custom_tag and not custom_tag.startswith('#'):
-                custom_tag = '#' + custom_tag
+            custom_tag = format_custom_tag(request.form.get('custom_tag'))
 
-            if custom_tag:
-                existing_tags = set()
-                for e in events:
-                    if e.get("unique_code"):
-                        existing_tags.add(e.get("unique_code"))
-                    if e.get("custom_tag"):
-                        existing_tags.add(e.get("custom_tag"))
-                
-                if custom_tag in existing_tags:
-                    session['form_data'] = request.form.to_dict()
-                    session['tag_error'] = f"Tag '{custom_tag}' is already in use. Please choose a different one."
-                    return redirect(url_for('index'))
+            if not is_tag_unique(custom_tag, events):
+                session['form_data'] = request.form.to_dict()
+                session['tag_error'] = f"Tag '{custom_tag}' is already in use. Please choose a different one."
+                return redirect(url_for('index'))
 
             unique_code = generate_unique_code(program_code, events + [{'custom_tag': custom_tag}])
             sequence_id = generate_sequence_id(program_code, date_str, events)
@@ -246,25 +237,15 @@ def edit_event(event_id):
         event_to_edit['event_name'] = request.form['event_name'].strip()
         event_to_edit['creator_name'] = request.form['your_name'].strip()
         
-        custom_tag = request.form.get('custom_tag', '').strip().upper()
-        if custom_tag and not custom_tag.startswith('#'):
-            custom_tag = '#' + custom_tag
+        custom_tag = format_custom_tag(request.form.get('custom_tag'))
         
         if custom_tag:
-            other_tags = set()
-            for e in events:
-                if e.get('id') != event_id:
-                    if e.get("unique_code"):
-                        other_tags.add(e.get("unique_code"))
-                    if e.get("custom_tag"):
-                        other_tags.add(e.get("custom_tag"))
-            
-            if custom_tag in other_tags:
-                flash(f"Error: Tag '{custom_tag}' is already in use by another event.", "danger")
-                return redirect(url_for('index'))
-                
             if custom_tag == event_to_edit.get('unique_code'):
                 flash(f"Error: Tag '{custom_tag}' is already the generated code for this event.", "danger")
+                return redirect(url_for('index'))
+                
+            if not is_tag_unique(custom_tag, events, exclude_event_id=event_id):
+                flash(f"Error: Tag '{custom_tag}' is already in use by another event.", "danger")
                 return redirect(url_for('index'))
 
         event_to_edit['custom_tag'] = custom_tag
