@@ -1,5 +1,4 @@
 from flask import Flask, request, redirect, render_template, url_for, session, flash
-from flask_sqlalchemy import SQLAlchemy
 from markupsafe import escape
 import json
 import os
@@ -30,49 +29,47 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROGRAMS_FILE = os.environ.get("PROGRAMS_FILE", os.path.join(BASE_DIR, "programs.json"))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
-DB_PATH = os.environ.get("DATABASE_URL", f"sqlite:///{os.path.join(DATA_DIR, 'app.db')}")
-app.config['SQLALCHEMY_DATABASE_URI'] = DB_PATH
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
+EVENTS_FILE = os.path.join(DATA_DIR, 'events.ndjson')
+AUDIT_FILE = os.path.join(DATA_DIR, 'audit.ndjson')
 
-class Event(db.Model):
-    id = db.Column(db.String(8), primary_key=True)
-    program_code = db.Column(db.String(50), nullable=False)
-    event_name = db.Column(db.String(255), nullable=False)
-    date = db.Column(db.String(20), nullable=False)
-    sequence_id = db.Column(db.String(50), nullable=False)
-    unique_code = db.Column(db.String(20), nullable=False)
-    creator_name = db.Column(db.String(255), nullable=False)
+def load_events():
+    events = []
+    if os.path.exists(EVENTS_FILE):
+        with open(EVENTS_FILE, 'r') as f:
+            for line in f:
+                if line.strip():
+                    events.append(json.loads(line))
+    return events
 
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'program_code': self.program_code,
-            'event_name': self.event_name,
-            'date': self.date,
-            'sequence_id': self.sequence_id,
-            'unique_code': self.unique_code,
-            'creator_name': self.creator_name
-        }
+def save_event(event_dict):
+    with open(EVENTS_FILE, 'a') as f:
+        f.write(json.dumps(event_dict) + '\n')
 
-class AuditLog(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    timestamp = db.Column(db.String(50), nullable=False)
-    action = db.Column(db.String(50), nullable=False)
-    user = db.Column(db.String(255), nullable=False)
-    details = db.Column(db.Text, nullable=False)
+def update_event(event_id, new_data):
+    events = load_events()
+    with open(EVENTS_FILE, 'w') as f:
+        for ev in events:
+            if ev['id'] == event_id:
+                ev.update(new_data)
+            f.write(json.dumps(ev) + '\n')
 
-    def to_dict(self):
-        return {
-            'timestamp': self.timestamp,
-            'action': self.action,
-            'user': self.user,
-            'details': json.loads(self.details)
-        }
+def delete_event_by_id(event_id):
+    events = load_events()
+    with open(EVENTS_FILE, 'w') as f:
+        for ev in events:
+            if ev['id'] == event_id:
+                continue
+            f.write(json.dumps(ev) + '\n')
 
-with app.app_context():
-    db.create_all()
+def load_audit_logs():
+    logs = []
+    if os.path.exists(AUDIT_FILE):
+        with open(AUDIT_FILE, 'r') as f:
+            for line in f:
+                if line.strip():
+                    logs.append(json.loads(line))
+    return logs
 
 def load_programs():
     if not os.path.exists(PROGRAMS_FILE):
@@ -85,22 +82,24 @@ def load_programs():
 
 def log_audit_event(action, user, details):
     est = pytz.timezone('US/Eastern')
-    log_entry = AuditLog(
-        timestamp=datetime.now(est).isoformat(),
-        action=action,
-        user=user,
-        details=json.dumps(details)
-    )
-    db.session.add(log_entry)
-    db.session.commit()
+    log_entry = {
+        'timestamp': datetime.now(est).isoformat(),
+        'action': action,
+        'user': user,
+        'details': details
+    }
+    with open(AUDIT_FILE, 'a') as f:
+        f.write(json.dumps(log_entry) + '\n')
 
 # --- Logic Generators ---
 def generate_unique_code(program_code):
     event_code_prefix = os.environ.get("EVENT_CODE_PREFIX", "SCCA")
+    events = load_events()
+    existing_codes = {ev.get('unique_code') for ev in events}
     while True:
         suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=3))
         code = f"#{event_code_prefix}{suffix}"
-        if not Event.query.filter_by(unique_code=code).first():
+        if code not in existing_codes:
             return code
 
 def generate_sequence_id(program_type, date_str):
@@ -109,11 +108,9 @@ def generate_sequence_id(program_type, date_str):
     except ValueError:
         year = datetime.now().year
 
+    events = load_events()
     # Filter events for the same program and year
-    relevant_events = Event.query.filter(
-        Event.program_code == program_type,
-        Event.date.like(f"{year}%")
-    ).all()
+    relevant_events = [e for e in events if e.get('program_code') == program_type and str(e.get('date', '')).startswith(str(year))]
 
     if not relevant_events:
         sequence_num = 1
@@ -121,7 +118,7 @@ def generate_sequence_id(program_type, date_str):
         max_seq = 0
         for e in relevant_events:
             try:
-                parts = e.sequence_id.split('-')
+                parts = e.get('sequence_id', '').split('-')
                 if len(parts) == 3 and parts[0] == str(year) and parts[2] == program_type:
                     num = int(parts[1])
                     if num > max_seq:
@@ -161,31 +158,32 @@ def index():
         unique_code = generate_unique_code(program_code)
         sequence_id = generate_sequence_id(program_code, date_str)
 
-        new_event = Event(
-            id=''.join(random.choices(string.ascii_letters + string.digits, k=8)),
-            program_code=program_code, 
-            event_name=event_name, 
-            date=date_str,
-            sequence_id=sequence_id, 
-            unique_code=unique_code, 
-            creator_name=creator_name
-        )
+        new_event = {
+            'id': ''.join(random.choices(string.ascii_letters + string.digits, k=8)),
+            'program_code': program_code, 
+            'event_name': event_name, 
+            'date': date_str,
+            'sequence_id': sequence_id, 
+            'unique_code': unique_code, 
+            'creator_name': creator_name
+        }
         
-        db.session.add(new_event)
-        db.session.commit()
+        save_event(new_event)
         
-        log_audit_event('EVENT_CREATED', creator_name, new_event.to_dict())
+        log_audit_event('EVENT_CREATED', creator_name, new_event)
         flash('Event created successfully!', 'success')
-        return redirect(url_for('index', new_event_id=new_event.id))
+        return redirect(url_for('index', new_event_id=new_event['id']))
 
     # GET request
-    events = [e.to_dict() for e in Event.query.order_by(Event.date.asc()).all()]
+    events = load_events()
+    events.sort(key=lambda e: e.get('date', ''))
+    
     programs = load_programs()
     recommended_msr_name = None
 
     grouped_events = defaultdict(list)
     for event in events:
-        program_name_key = f"{event['program_code']}: {programs.get(event['program_code'])}"
+        program_name_key = f"{event.get('program_code', '')}: {programs.get(event.get('program_code', ''))}"
         grouped_events[program_name_key].append(event)
 
     sorted_grouped_events = dict(sorted(grouped_events.items()))
@@ -208,23 +206,23 @@ def audit_log():
     if not session.get('authenticated'):
         return redirect(url_for('index'))
     
-    query = AuditLog.query.order_by(AuditLog.timestamp.desc())
+    logs = load_audit_logs()
     
     # Handle simple filtering via query parameters
     action_filter = request.args.get('action')
     if action_filter:
-        query = query.filter_by(action=action_filter)
+        logs = [l for l in logs if l.get('action') == action_filter]
         
     # Handle dynamic limit
+    logs.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
     limit_param = request.args.get('limit', '100')
     if limit_param != 'all':
         try:
             limit = int(limit_param)
-            query = query.limit(limit)
+            logs = logs[:limit]
         except ValueError:
-            query = query.limit(100) # fallback to 100 on bad input
+            logs = logs[:100] # fallback to 100 on bad input
     
-    logs = [l.to_dict() for l in query.all()]
     scca_region_name = os.environ.get("SCCA_REGION_NAME", "SCCA")
     
     for log in logs:
@@ -283,12 +281,12 @@ def delete_event(event_id):
 
     delete_user_name = request.form.get('delete_user_name', 'Unknown')
 
-    event_to_delete = Event.query.get(event_id)
+    events = load_events()
+    event_to_delete = next((e for e in events if e.get('id') == event_id), None)
+    
     if event_to_delete:
-        details = event_to_delete.to_dict()
-        db.session.delete(event_to_delete)
-        db.session.commit()
-        log_audit_event('EVENT_DELETED', delete_user_name, details)
+        delete_event_by_id(event_id)
+        log_audit_event('EVENT_DELETED', delete_user_name, event_to_delete)
         flash('Event deleted successfully.', 'danger')
     else:
         flash('Event not found.', 'warning')
@@ -299,25 +297,30 @@ def edit_event(event_id):
     if not session.get('authenticated'):
         return redirect(url_for('index'))
 
-    event_to_edit = Event.query.get(event_id)
+    events = load_events()
+    event_to_edit = next((e for e in events if e.get('id') == event_id), None)
 
     if not event_to_edit:
         flash('Event not found.', 'warning')
         return redirect(url_for('index'))
 
-    original_event = event_to_edit.to_dict()
+    original_event = event_to_edit.copy()
 
-    event_to_edit.program_code = request.form['program']
-    event_to_edit.date = request.form['date']
-    event_to_edit.event_name = request.form['event_name']
-    event_to_edit.creator_name = request.form['your_name']
+    new_data = {
+        'program_code': request.form['program'],
+        'date': request.form['date'],
+        'event_name': request.form['event_name'],
+        'creator_name': request.form['your_name']
+    }
     
-    db.session.commit()
+    update_event(event_id, new_data)
+    
+    event_to_edit.update(new_data)
     
     log_audit_event('EVENT_EDITED', request.form['your_name'], {
         'event_id': event_id,
         'original': original_event,
-        'updated': event_to_edit.to_dict()
+        'updated': event_to_edit
     })
     
     flash('Event updated successfully!', 'success')

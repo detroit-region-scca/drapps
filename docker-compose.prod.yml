@@ -4,9 +4,11 @@ services:
   web:
     build: .
     ports:
-      - "5959:5858"
+      - "5858:5858"
     volumes:
       - ./data:/app/data
+    env_file:
+      - .env
     environment:
       - FLASK_ENV=production
       - PORT=5858

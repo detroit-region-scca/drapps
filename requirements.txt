@@ -1,5 +1,4 @@
 flask
 python-dotenv
 pytz
-Flask-SQLAlchemy
 markupsafe
