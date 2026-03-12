@@ -207,7 +207,7 @@
                                         <td>
                                             {{ event.date[:4] }} {{ programs.get(event.program_code) }}: {{ event.event_name }}
                                             {% if event.custom_tag %}
-                                            <span class="badge bg-info text-dark">{{ event.unique_code }}</span>
+                                            <span class="badge bg-info text-dark">{{ event.custom_tag }}</span>
                                             {% else %}
                                             <span class="badge bg-secondary">{{ event.unique_code }}</span>
                                             {% endif %}
@@ -215,7 +215,7 @@
                                         <td>{{ event.creator_name }}</td>
                                         <td class="text-nowrap">{{ event.date }}</td>
                                         <td class="text-end text-nowrap pe-3 ps-4">
-                                            <button class="btn btn-sm btn-outline-info py-0 px-2" onclick="copyText(this, '{{ event.date[:4] }} {{ programs.get(event.program_code) }}: {{ event.event_name }} {{ event.unique_code }}')">Copy</button>
+                                            <button class="btn btn-sm btn-outline-info py-0 px-2" onclick="copyText(this, '{{ event.date[:4] }} {{ programs.get(event.program_code) }}: {{ event.event_name }} {% if event.custom_tag %}{{ event.custom_tag }}{% else %}{{ event.unique_code }}{% endif %}')">Copy</button>
                                             <button class="btn btn-sm btn-outline-warning py-0 px-2 mx-1" 
                                                 data-bs-toggle="modal" data-bs-target="#editModal"
                                                 data-id="{{ event.id }}" data-creator="{{ event.creator_name }}"

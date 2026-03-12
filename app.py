@@ -78,7 +78,7 @@ def index():
             if custom_tag and not custom_tag.startswith('#'):
                 custom_tag = '#' + custom_tag
 
-            unique_code = custom_tag if custom_tag else generate_unique_code(program_code, events)
+            unique_code = generate_unique_code(program_code, events)
             sequence_id = generate_sequence_id(program_code, date_str, events)
 
             new_event = {
@@ -233,9 +233,7 @@ def edit_event(event_id):
             custom_tag = '#' + custom_tag
         event_to_edit['custom_tag'] = custom_tag
         
-        if custom_tag:
-            event_to_edit['unique_code'] = custom_tag
-        elif not event_to_edit.get('unique_code') or event_to_edit.get('unique_code') == original_event.get('custom_tag'):
+        if not event_to_edit.get('unique_code') or event_to_edit.get('unique_code') == original_event.get('custom_tag'):
              event_to_edit['unique_code'] = generate_unique_code(event_to_edit['program_code'], events)
         
         save_events(events)
