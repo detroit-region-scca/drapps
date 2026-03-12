@@ -4,9 +4,9 @@ services:
   web:
     build: .
     ports:
-      - "7878:5858"
+      - "5959:5858"
     volumes:
-      - /opt/event_app:/app
+      - /opt/event_demo_app:/app
     environment:
       - FLASK_APP=app.py
       - FLASK_ENV=development
@@ -14,3 +14,4 @@ services:
       - PORT=5858
       - HOST=0.0.0.0
     command: flask run --host=0.0.0.0 --port=5858 --debug
+    restart: unless-stopped

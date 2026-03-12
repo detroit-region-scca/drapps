@@ -1,4 +1,5 @@
 flask
 python-dotenv
-filelock
 pytz
+Flask-SQLAlchemy
+markupsafe
