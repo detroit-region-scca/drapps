@@ -148,7 +148,7 @@
                             <select class="form-select" name="program" required>
                                 <option value="" {% if not form_data or not form_data.get('program') %}selected{% endif %} disabled>Select...</option>
                                 {% for code, name in programs.items() %}
-                                <option value="{{ code }}" {% if form_data and form_data.get('program') == code %}selected{% endif %}>{{ code }}: {{ name }}</option>
+                                <option value="{{ code }}" {% if form_data and form_data.get('program') == code %}selected{% endif %}>{{ code }}</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -222,7 +222,7 @@
                                     {% for event in event_list %}
                                     <tr>
                                         <td>
-                                            {{ event.date[:4] }} {{ programs.get(event.program_code) }}: {{ event.event_name }}
+                                            {{ event.date[:4] }} {{ event.program_code }}: {{ event.event_name }}
                                             {% if event.custom_tag %}
                                             <span class="badge bg-info text-dark">{{ event.custom_tag }}</span>
                                             {% else %}
@@ -232,7 +232,7 @@
                                         <td>{{ event.creator_name }}</td>
                                         <td class="text-nowrap">{{ event.date }}</td>
                                         <td class="text-end text-nowrap pe-3 ps-4">
-                                            <button class="btn btn-sm btn-outline-info py-0 px-2" onclick="copyText(this, '{{ event.date[:4] }} {{ programs.get(event.program_code) }}: {{ event.event_name }} {% if event.custom_tag %}{{ event.custom_tag }}{% else %}{{ event.unique_code }}{% endif %}')">Copy</button>
+                                            <button class="btn btn-sm btn-outline-info py-0 px-2" onclick="copyText(this, '{{ event.date[:4] }} {{ event.program_code }}: {{ event.event_name }} {% if event.custom_tag %}{{ event.custom_tag }}{% else %}{{ event.unique_code }}{% endif %}')">Copy</button>
                                             <button class="btn btn-sm btn-outline-warning py-0 px-2 mx-1" 
                                                 data-bs-toggle="modal" data-bs-target="#editModal"
                                                 data-id="{{ event.id }}" data-creator="{{ event.creator_name }}"
@@ -303,7 +303,7 @@
                                 <label class="form-label">Program</label>
                                 <select class="form-select" id="editProgram" name="program" required>
                                     {% for code, name in programs.items() %}
-                                    <option value="{{ code }}">{{ code }}: {{ name }}</option>
+                                    <option value="{{ code }}">{{ code }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
@@ -366,7 +366,9 @@
         }
 
         function copyText(btn, text) {
-            navigator.clipboard.writeText(text);
+            // Trim whitespace and replace tabs with spaces to prevent paste issues in QuickBooks
+            const cleanText = text.trim().replace(/\t/g, ' ');
+            navigator.clipboard.writeText(cleanText);
             let old = btn.innerText;
             btn.innerText = 'Copied!';
             btn.disabled = true;

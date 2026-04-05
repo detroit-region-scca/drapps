@@ -2,7 +2,7 @@ services:
   web:
     build: .
     ports:
-      - "5959:5858"
+      - "5858:5858"
     volumes:
       - .:/app
     env_file:
