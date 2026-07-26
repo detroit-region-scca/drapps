@@ -1,5 +1,11 @@
 services:
   web:
+    # Per-deployment: this repo is checked out twice on bodhi and run as
+    # two instances. Each sets CONTAINER_NAME in its own gitignored .env,
+    # which compose loads from the project directory regardless of which
+    # -f file is used. Previously each checkout carried an uncommitted
+    # edit here instead, which meant a permanently dirty working tree.
+    container_name: ${CONTAINER_NAME:-drscca-event-tracker}
     build: .
     ports:
       - "5858:5858"
