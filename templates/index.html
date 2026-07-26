@@ -232,7 +232,7 @@
                                         <td>{{ event.creator_name }}</td>
                                         <td class="text-nowrap">{{ event.date }}</td>
                                         <td class="text-end text-nowrap pe-3 ps-4">
-                                            <button class="btn btn-sm btn-outline-info py-0 px-2" onclick="copyText(this, '{{ event.date[:4] }} {{ event.program_code }} {{ event.event_name }} {% if event.custom_tag %}{{ event.custom_tag }}{% else %}{{ event.unique_code }}{% endif %}')">Copy</button>
+                                            <button class="btn btn-sm btn-outline-info py-0 px-2" data-copy="{{ event.date[:4]|e }} {{ event.program_code|e }} {{ event.event_name|e }} {% if event.custom_tag %}{{ event.custom_tag|e }}{% else %}{{ event.unique_code|e }}{% endif %}" onclick="copyText(this)">Copy</button>
                                             <button class="btn btn-sm btn-outline-warning py-0 px-2 mx-1" 
                                                 data-bs-toggle="modal" data-bs-target="#editModal"
                                                 data-id="{{ event.id }}" data-creator="{{ event.creator_name }}"
@@ -365,7 +365,8 @@
             });
         }
 
-        function copyText(btn, text) {
+        function copyText(btn) {
+            const text = btn.getAttribute('data-copy');
             // Trim whitespace and replace tabs with spaces to prevent paste issues in QuickBooks
             const cleanText = text.trim().replace(/\t/g, ' ');
             navigator.clipboard.writeText(cleanText);

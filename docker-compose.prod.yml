@@ -1,5 +1,6 @@
 services:
   web:
+    container_name: event-drscca
     build: .
     ports:
       - "5858:5858"

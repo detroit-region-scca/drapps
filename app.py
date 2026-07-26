@@ -14,7 +14,7 @@ from utils import (
     load_programs, load_events, save_events, log_audit_event, load_audit_logs,
     generate_unique_code, generate_sequence_id, login_required,
     format_custom_tag, is_tag_unique,
-    DATA_LOCK_FILE, AUDIT_FILE, DATA_FILE
+    DATA_LOCK_FILE, AUDIT_FILE, DATA_FILE, send_new_event_email
 )
 
 load_dotenv()
@@ -97,6 +97,7 @@ def index():
             events.append(new_event)
             save_events(events)
             log_audit_event('EVENT_CREATED', creator_name, new_event)
+            send_new_event_email(new_event)
         flash('Event created successfully!', 'success')
         return redirect(url_for('index', new_event_id=new_event['id']))
 

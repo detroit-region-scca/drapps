@@ -132,3 +132,57 @@ def generate_sequence_id(program_type, date_str, existing_events):
                 continue
                 
     return f"{year_prefix}-{max_seq + 1:02d}-{program_type}"
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import threading
+
+def send_new_event_email(event):
+    def send_email_async():
+        smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
+        smtp_port = int(os.environ.get('SMTP_PORT', 587))
+        smtp_user = os.environ.get('SMTP_USER')
+        smtp_password = os.environ.get('SMTP_PASSWORD')
+        recipient = os.environ.get('NOTIFICATION_EMAIL', 'treasurer@drscca.org')
+
+        if not smtp_user or not smtp_password:
+            logger.error("SMTP credentials not configured. Email not sent.")
+            return
+
+        smtp_password = smtp_password.replace(" ", "")
+
+        year = event.get('date', '')[:4]
+        tag = event.get('custom_tag') or event.get('unique_code')
+        full_event_string = f"{year} {event.get('program_code')} {event.get('event_name')} {tag}"
+
+        subject = f"New Event Registered: {event.get('event_name')}"
+        body = f"""A new event has been registered in the DRSCCA system.
+
+Full Event String: {full_event_string}
+
+Event Details:
+- Name: {event.get('event_name')}
+- Date: {event.get('date')}
+- Program: {event.get('program_code')}
+- Unique Code: {tag}
+- Created By: {event.get('creator_name')}
+
+Please review this entry if needed.
+"""
+        msg = MIMEMultipart()
+        msg['From'] = smtp_user
+        msg['To'] = recipient
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+
+        try:
+            server = smtplib.SMTP(smtp_server, smtp_port)
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+            server.quit()
+            logger.info(f"Notification email sent to {recipient} for event {event.get('unique_code')}")
+        except Exception as e:
+            logger.error(f"Failed to send notification email: {e}")
+
+    threading.Thread(target=send_email_async).start()
