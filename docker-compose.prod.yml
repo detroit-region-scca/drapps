@@ -8,7 +8,11 @@ services:
     container_name: ${CONTAINER_NAME:-drscca-event-tracker}
     build: .
     ports:
-      - "5858:5858"
+      # Host port is per-deployment for the same reason as container_name:
+      # two instances of this repo run on one box and cannot share a port.
+      # drscca keeps the 5858 default; the demo sets HOST_PORT=5959 in its
+      # .env, which is what Caddy sends eventdemo.cosmoslab.duckdns.org to.
+      - "${HOST_PORT:-5858}:5858"
     volumes:
       - ./data:/app/data
     env_file:
