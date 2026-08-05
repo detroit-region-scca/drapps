@@ -1,3 +1,22 @@
 .env
-.log
+
+# Was ".log", which matches only a file named exactly that -- the actual log
+# files were never ignored.
+*.log
+nohup.out
+
+# Runtime event/audit data, plus the lock file the writer leaves behind.
 *.ndjson
+*.ndjson.lock
+
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Local copies taken before editing a compose file on the host.
+*.bak
+
+# curl cookie jar from manual API poking. May hold a live session cookie --
+# must never be committed.
+cookies.txt
