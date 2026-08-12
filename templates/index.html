@@ -365,13 +365,57 @@
             });
         }
 
-        function copyText(btn) {
-            const text = btn.getAttribute('data-copy');
+        // Fallback for when navigator.clipboard is unavailable. Selecting a
+        // detached textarea and running execCommand is deprecated but is still
+        // the only copy path that works outside a secure context.
+        function legacyCopy(text) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            // Keep it off screen so the page doesn't jump when it gets focus.
+            ta.style.position = 'fixed';
+            ta.style.top = '-1000px';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            ta.setSelectionRange(0, text.length);
+            let ok = false;
+            try {
+                ok = document.execCommand('copy');
+            } catch (e) {
+                ok = false;
+            }
+            document.body.removeChild(ta);
+            return ok;
+        }
+
+        async function copyText(btn) {
+            const text = btn.getAttribute('data-copy') || '';
             // Trim whitespace and replace tabs with spaces to prevent paste issues in QuickBooks
             const cleanText = text.trim().replace(/\t/g, ' ');
-            navigator.clipboard.writeText(cleanText);
+
+            // navigator.clipboard only exists in a secure context, so it is
+            // undefined when this app is opened over plain http on the LAN
+            // (http://bodhi.lab:5858). Reading .writeText off it there threw
+            // and the handler died before it could report anything.
+            let ok = false;
+            if (window.isSecureContext && navigator.clipboard) {
+                try {
+                    await navigator.clipboard.writeText(cleanText);
+                    ok = true;
+                } catch (e) {
+                    // Rejects if the document isn't focused or permission is
+                    // denied; fall through to the legacy path rather than
+                    // claiming a copy that never happened.
+                    ok = false;
+                }
+            }
+            if (!ok) {
+                ok = legacyCopy(cleanText);
+            }
+
             let old = btn.innerText;
-            btn.innerText = 'Copied!';
+            btn.innerText = ok ? 'Copied!' : 'Copy failed';
             btn.disabled = true;
             setTimeout(() => { btn.innerText = old; btn.disabled = false; }, 1500);
         }
