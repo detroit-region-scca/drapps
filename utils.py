@@ -145,11 +145,16 @@ def send_new_event_email(event):
         smtp_password = os.environ.get('SMTP_PASSWORD')
         recipient = os.environ.get('NOTIFICATION_EMAIL', 'treasurer@drscca.org')
 
-        if not smtp_user or not smtp_password:
-            logger.error("SMTP credentials not configured. Email not sent.")
+        # SMTP_USER/SMTP_PASSWORD are optional. The lab relay on 192.168.4.114:25
+        # takes no credentials at all: it accepts this host by IP via postfix
+        # `mynetworks` and does the authenticated hop to Purelymail itself, so the
+        # provider password lives in exactly one place instead of in every app.
+        if not smtp_server:
+            logger.error("SMTP_SERVER is not set. Email not sent.")
             return
 
-        smtp_password = smtp_password.replace(" ", "")
+        if smtp_password:
+            smtp_password = smtp_password.replace(" ", "")
 
         year = event.get('date', '')[:4]
         tag = event.get('custom_tag') or event.get('unique_code')
@@ -169,16 +174,28 @@ Event Details:
 
 Please review this entry if needed.
 """
+        # From used to be smtp_user, which is empty when relaying without
+        # credentials. SMTP_FROM is the explicit knob; the relay rewrites every
+        # sender to service@cosmoslab.dev anyway, so this only affects the header.
+        from_email = os.environ.get('SMTP_FROM') or smtp_user or 'service@cosmoslab.dev'
+
         msg = MIMEMultipart()
-        msg['From'] = smtp_user
+        msg['From'] = from_email
         msg['To'] = recipient
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'plain'))
 
         try:
             server = smtplib.SMTP(smtp_server, smtp_port)
-            server.starttls()
-            server.login(smtp_user, smtp_password)
+            # Only negotiate TLS and authenticate when a credential is actually
+            # configured, so pointing SMTP_SERVER straight at an authenticating
+            # provider keeps working exactly as before. Against the lab relay both
+            # steps must be skipped: it presents the stock self-signed snakeoil
+            # certificate, which starttls() rejects on modern Python, and it has no
+            # SASL backend, so AUTH returns 503.
+            if smtp_user and smtp_password:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
             server.send_message(msg)
             server.quit()
             logger.info(f"Notification email sent to {recipient} for event {event.get('unique_code')}")
