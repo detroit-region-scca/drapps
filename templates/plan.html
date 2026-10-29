@@ -37,23 +37,31 @@
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">{{ year }} profit so far</div><div class="value">{{ money(tot.actual) }}</div><div class="small text-muted">plan for the year {{ money(tot.plan) }}</div></div></div>
     </div>
     {% endif %}
+    <div class="d-flex justify-content-end mb-2 no-print"><button class="btn btn-sm btn-outline-secondary" data-toggle-all="planTable">Expand or collapse all</button></div>
     <div class="card"><div class="card-body p-0 table-responsive">
-        <table class="table table-hover mb-0">
-            <thead><tr><th class="ps-3">Program</th><th>Director</th><th class="num">Plan</th><th class="num">{{ 'Actual so far' if not future else '' }}</th><th class="num pe-3">{{ 'Ahead (behind)' if not future else '' }}</th></tr></thead>
-            <tbody>{% for r in rows %}
-                <tr class="ev-row" onclick="location.href='{{ url_for('plan.detail', year=year, program=r.code) }}'">
-                    <td class="ps-3"><a href="{{ url_for('plan.detail', year=year, program=r.code) }}">{{ r.name }}</a> <span class="small text-muted">{{ r.code }}</span></td>
-                    <td class="small">{{ r.info.director or '' }}{% if future %}{% if r.info.updated %} <span class="badge rounded-pill text-bg-success">In {{ r.info.updated }}</span>{% else %} <span class="badge rounded-pill text-bg-warning">Waiting</span>{% endif %}{% endif %}</td>
+        <table class="table mb-0 rollup" id="planTable">
+            <thead><tr><th class="ps-3" data-sort="name">Program</th><th>Director</th><th class="num" data-sort="plan">Plan</th>
+                {% if not future %}<th class="num" data-sort="actual">Actual so far</th><th class="num pe-3" data-sort="diff">Ahead (behind)</th>{% endif %}</tr></thead>
+            {% for r in rows %}
+            <tbody class="grp" data-grp="{{ r.code }}">
+                <tr class="grp-row" data-name="{{ r.name }}" data-plan="{{ r.plan if r.plan is not none else '' }}" data-actual="{{ r.actual if r.actual is not none else '' }}" data-diff="{{ r.diff if r.diff is not none else '' }}">
+                    <td class="ps-3"><span class="chev">{{ '▸' if r.kids else '' }}</span> <a href="{{ url_for('plan.detail', year=year, program=r.code) }}">{{ r.name }}</a> <span class="small text-muted">{{ r.code }}</span></td>
+                    <td class="small fw-normal">{{ r.info.director or '' }}{% if future %}{% if r.info.updated %} <span class="badge rounded-pill text-bg-success">In {{ r.info.updated }}</span>{% else %} <span class="badge rounded-pill text-bg-warning">Waiting</span>{% endif %}{% endif %}</td>
                     <td class="num">{{ money(r.plan) }}</td>
-                    <td class="num">{{ money(r.actual) if not future else '' }}</td>
-                    <td class="num pe-3">{{ money(r.diff) if not future else '' }}</td>
+                    {% if not future %}<td class="num">{{ money(r.actual) }}</td><td class="num pe-3">{{ money(r.diff) }}</td>{% endif %}
+                </tr>
+                {% for k in r.kids %}<tr class="kid{{ ' fixed text-muted' if k.other }}" data-name="{{ k.name }}" data-date="{{ k.date }}" data-plan="{{ k.plan if k.plan is not none else '' }}" data-actual="{{ k.actual if k.actual is not none else '' }}" data-diff="{{ k.diff if k.diff is not none else '' }}">
+                    <td class="ps-5">{% if k.code %}<a href="{{ url_for('bud.detail', code=k.code) }}">{{ k.name }}</a>{% elif k.other %}<a class="text-muted" href="{{ url_for('plan.detail', year=year, program=r.code) }}">{{ k.name }}</a>{% else %}{{ k.name }}{% endif %}</td>
+                    <td class="small text-muted text-nowrap">{{ k.date }}</td>
+                    <td class="num">{{ money(k.plan) }}</td>
+                    {% if not future %}<td class="num">{{ money(k.actual) }}</td><td class="num pe-3">{{ money(k.diff) }}</td>{% endif %}
                 </tr>{% endfor %}
-                <tr class="total-row"><td class="ps-3" colspan="2">Region total</td><td class="num">{{ money(tot.plan) }}</td><td class="num">{{ money(tot.actual) if not future else '' }}</td>
-                    <td class="num pe-3">{{ money(tot.actual - tot.plan) if not future else '' }}</td></tr>
-            </tbody>
+            </tbody>{% endfor %}
+            <tfoot><tr class="total-row"><td class="ps-3" colspan="2">Region total</td><td class="num">{{ money(tot.plan) }}</td>
+                {% if not future %}<td class="num">{{ money(tot.actual) }}</td><td class="num pe-3">{{ money(tot.actual - tot.plan) }}</td>{% endif %}</tr></tfoot>
         </table>
     </div></div>
-    <p class="form-text mt-3">Plan amounts are expected profit, with costs and losses negative. Actuals are QuickBooks income minus expenses by program{% if as_of %}, as of {{ as_of }}{% endif %}; Operations includes membership, storage, insurance and investment income. Street Survival and SIM Racing are booked under other programs in QuickBooks, so they have no actuals of their own.
+    <p class="form-text mt-3">Plan amounts are expected profit, with costs and losses negative. Actuals are QuickBooks income minus expenses by program{% if as_of %}, as of {{ as_of }}{% endif %}. Click a program to see its events; "Other, not in an event project" is program money in QuickBooks that is not tagged to an event, such as season trophies or last season's fees. Operations includes membership, storage, insurance and investment income. Street Survival and SIM Racing are booked under other programs in QuickBooks, so they have no actuals of their own.
         {% if s.as_of %}Balances as of {{ s.as_of }}.{% endif %} The plan is kept in the DRSCCA Annual Plan sheet in the DRSCCA Apps shared drive.</p>
 
 {% elif view == 'detail' %}
@@ -178,6 +186,7 @@
 {% endif %}
 {% endblock %}
 {% block scripts %}
+{% include '_rollup.html' %}
 <script>
     const form = document.getElementById('planForm');
     const num = v => parseFloat(String(v).replace(/[$,]/g, '').replace('−', '-')) || 0;

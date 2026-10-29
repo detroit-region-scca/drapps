@@ -1,0 +1,67 @@
+{# Collapsible program groups and sortable columns for a table.rollup: one tbody.grp per program, its first row
+   tr.grp-row, its other rows tr.kid (tr.kid.fixed stays last). Sort values come from data-* on each row. #}
+<style>
+    .rollup .grp-row td { background: var(--surface-2); font-weight: 600; border-top: 2px solid var(--border); cursor: pointer; }
+    .rollup .chev { display: inline-block; width: 1em; color: var(--muted); transition: transform .15s; }
+    .rollup tbody.open .chev { transform: rotate(90deg); }
+    .rollup tbody.grp:not(.open) tr.kid { display: none; }
+    .rollup tr.kid td { font-size: .925rem; }
+    .rollup th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+    .rollup th[data-sort]::after { content: ' \2195'; color: var(--muted); font-size: .8em; }
+    .rollup th.asc::after { content: ' \2191'; color: inherit; }
+    .rollup th.desc::after { content: ' \2193'; color: inherit; }
+</style>
+<script>
+(() => {
+    const store = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } };
+    for (const t of document.querySelectorAll('table.rollup')) {
+        const key = `rollup:${location.pathname}:${t.id}`;
+        const groups = () => [...t.querySelectorAll('tbody.grp')];
+        const saveOpen = () => store(`${key}:open`, groups().filter(b => b.classList.contains('open')).map(b => b.dataset.grp));
+        const open = new Set(store(`${key}:open`) || []);
+        for (const b of groups()) {
+            b.classList.toggle('open', open.has(b.dataset.grp));
+            b.querySelector('.grp-row').addEventListener('click', e => {
+                if (e.target.closest('a, button')) return;
+                b.classList.toggle('open');
+                saveOpen();
+            });
+        }
+        document.querySelectorAll(`[data-toggle-all="${t.id}"]`).forEach(btn => btn.addEventListener('click', () => {
+            const expand = groups().some(b => !b.classList.contains('open'));
+            groups().forEach(b => b.classList.toggle('open', expand));
+            saveOpen();
+        }));
+        const value = (row, k) => {
+            const v = row.dataset[k] ?? '';
+            if (v === '') return null;
+            const n = Number(v);
+            return k === 'name' || k === 'date' || Number.isNaN(n) ? v.toLowerCase() : n;
+        };
+        const cmp = (k, dir) => (a, b) => {
+            const x = value(a, k), y = value(b, k);
+            if (x === null || y === null) return (x === null) - (y === null);    // blanks last either way
+            return (x < y ? -1 : x > y ? 1 : 0) * dir;
+        };
+        const sortBy = (k, dir) => {
+            t.querySelectorAll('th[data-sort]').forEach(th => th.classList.remove('asc', 'desc'));
+            t.querySelector(`th[data-sort="${k}"]`)?.classList.add(dir > 0 ? 'asc' : 'desc');
+            const order = groups().sort((a, b) => cmp(k, dir)(a.querySelector('.grp-row'), b.querySelector('.grp-row')));
+            const foot = t.querySelector('tfoot');
+            for (const b of order) {
+                t.insertBefore(b, foot);
+                const kids = [...b.querySelectorAll('tr.kid:not(.fixed)')].sort(cmp(k === 'name' ? 'date' : k, k === 'name' ? 1 : dir));
+                kids.concat([...b.querySelectorAll('tr.kid.fixed')]).forEach(r => b.appendChild(r));
+            }
+            store(`${key}:sort`, [k, dir]);
+        };
+        t.querySelectorAll('th[data-sort]').forEach(th => th.addEventListener('click', () => {
+            const k = th.dataset.sort, text = k === 'name' || k === 'date';
+            const dir = th.classList.contains('asc') ? -1 : th.classList.contains('desc') ? 1 : (text ? 1 : -1);
+            sortBy(k, dir);
+        }));
+        const saved = store(`${key}:sort`);
+        if (saved && t.querySelector(`th[data-sort="${saved[0]}"]`)) sortBy(...saved);
+    }
+})();
+</script>

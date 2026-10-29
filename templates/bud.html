@@ -29,25 +29,32 @@
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Events</div><div class="value">{{ s.events }}</div></div></div>
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">No budget yet</div><div class="value {{ 'text-warning' if s.missing }}">{{ s.missing }}</div></div></div>
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Budgeted surplus</div><div class="value">{{ money(s.budget) }}</div></div></div>
-        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Actual surplus, QuickBooks ({{ s.with_actuals }} events)</div><div class="value">{{ money(s.actual) }}</div></div></div>
+        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Actual surplus, QuickBooks</div><div class="value">{{ money(s.actual) }}</div><div class="small text-muted">{{ s.with_actuals }} events{% if s.other %}, plus {{ money(s.other) }} not in an event project{% endif %}</div></div></div>
     </div>
+    <div class="d-flex justify-content-end mb-2"><button class="btn btn-sm btn-outline-secondary" data-toggle-all="budTable">Expand or collapse all</button></div>
     <div class="card"><div class="card-body p-0 table-responsive">
-        <table class="table table-hover mb-0">
-            <thead><tr><th class="ps-3">Date</th><th>Event</th><th>Budget</th><th class="num">Budgeted surplus</th><th class="num">Actual (QBO)</th><th class="num pe-3">Funds requested</th></tr></thead>
-            <tbody>{% for g in groups %}
-                <tr class="prog-row"><td class="ps-3" colspan="3">{{ g.name }} <span class="text-muted small">{{ g.code }} · {{ g.rows|length }} events{% if g.missing %}, {{ g.missing }} without a budget{% endif %}</span></td>
+        <table class="table mb-0 rollup" id="budTable">
+            <thead><tr><th class="ps-3" data-sort="date">Date</th><th data-sort="name">Event</th><th>Budget</th><th class="num" data-sort="budget">Budgeted surplus</th><th class="num" data-sort="actual">Actual (QBO)</th><th class="num pe-3" data-sort="funds">Funds requested</th></tr></thead>
+            {% for g in groups %}
+            <tbody class="grp" data-grp="{{ g.code }}">
+                <tr class="grp-row" data-name="{{ g.name }}" data-date="{{ g.rows[-1].e.date if g.rows else '' }}" data-budget="{{ g.budget }}" data-actual="{{ g.actual }}" data-funds="{{ g.funds }}">
+                    <td class="ps-3" colspan="3"><span class="chev">▸</span> {{ g.name }} <span class="text-muted small fw-normal">{{ g.code }} · {{ g.rows|length }} events{% if g.missing %}, {{ g.missing }} without a budget{% endif %}</span></td>
                     <td class="num">{{ money(g.budget) }}</td><td class="num">{{ money(g.actual) }}</td><td class="num pe-3">${{ '{:,.2f}'.format(g.funds) }}</td></tr>
-                {% for r in g.rows %}<tr class="ev-row" onclick="location.href='{{ url_for('bud.detail', code=r.code) }}'">
-                <td class="ps-3 text-nowrap">{{ r.e.date }}</td>
-                <td><a href="{{ url_for('bud.detail', code=r.code) }}">{{ r.e.event_name }}</a> <span class="small text-muted">{{ r.e.program_code }} {{ r.code }}</span></td>
+                {% for r in g.rows %}<tr class="kid ev-row" onclick="location.href='{{ url_for('bud.detail', code=r.code) }}'" data-date="{{ r.e.date }}" data-name="{{ r.e.event_name }}" data-budget="{{ r.budget if r.budget is not none else '' }}" data-actual="{{ r.actual if r.actual is not none else '' }}" data-funds="{{ r.funds or '' }}">
+                <td class="ps-4 text-nowrap">{{ r.e.date }}</td>
+                <td><a href="{{ url_for('bud.detail', code=r.code) }}">{{ r.e.event_name }}</a> <span class="small text-muted">{{ r.code }}</span></td>
                 <td>{% if r.b %}<span class="badge rounded-pill text-bg-primary">Budget</span>{% else %}<span class="badge rounded-pill text-bg-warning">None</span>{% endif %}</td>
                 <td class="num">{{ money(r.budget) }}</td><td class="num">{{ money(r.actual) }}</td>
                 <td class="num pe-3">{% if r.funds %}${{ '{:,.2f}'.format(r.funds) }}{% else %}<span class="text-muted">·</span>{% endif %}</td></tr>
 {% endfor %}
-            {% else %}<tr><td colspan="6" class="text-muted ps-3">No events registered for {{ year }}.</td></tr>{% endfor %}</tbody>
+                {% if g.other %}<tr class="kid fixed text-muted"><td class="ps-4"></td><td colspan="3">{% if plan_on %}<a class="text-muted" href="{{ url_for('plan.detail', year=year, program=g.code) }}">Other, not in an event project</a>{% else %}Other, not in an event project{% endif %}</td>
+                    <td class="num">{{ money(g.other) }}</td><td class="pe-3"></td></tr>{% endif %}
+            </tbody>
+            {% else %}<tbody><tr><td colspan="6" class="text-muted ps-3">No events registered for {{ year }}.</td></tr></tbody>{% endfor %}
+            <tfoot></tfoot>
         </table>
     </div></div>
-    <p class="form-text mt-3">Events come from Event Register. Actuals are each event's QuickBooks project{% if s.as_of %}, as of {{ s.as_of }}{% endif %}. Budgets are kept in the DRSCCA Event Budgets sheet in the DRSCCA Apps shared drive; board approval is in the board minutes.</p>
+    <p class="form-text mt-3">Events come from Event Register. Actuals are each event's QuickBooks project{% if s.as_of %}, as of {{ s.as_of }}{% endif %}. "Other, not in an event project" is money on the program's QuickBooks accounts that is not tagged to an event, such as season trophies or last season's fees, so each program's actual matches the Annual Plan. Budgets are kept in the DRSCCA Event Budgets sheet in the DRSCCA Apps shared drive; board approval is in the board minutes.</p>
 
     {% elif view == 'detail' %}
     <div class="crumbs no-print"><a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Budgets</a> / {{ code }}</div>
@@ -166,6 +173,7 @@
     {% endif %}
 {% endblock %}
 {% block scripts %}
+{% include '_rollup.html' %}
 <script>
     const form = document.getElementById('budForm');
     const num = v => parseFloat(String(v).replace(/[$,]/g, '')) || 0;

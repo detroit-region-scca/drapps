@@ -68,6 +68,32 @@ def _event_actuals(program, year):
             for e in sorted(evs, key=lambda e: e.get('date', ''))]
 
 
+def _diff(actual, plan):
+    return round(actual - plan, 2) if actual is not None and plan is not None else None
+
+
+def _kids(year, program, p, program_actual, future):
+    """A program's rows when expanded: its plan lines and registered events, matched on the event code, then
+    whatever QuickBooks has on the program's accounts that is not in an event project, so the rows add up to
+    the program total."""
+    events = {x['code']: x for x in _event_actuals(program, year)}
+    kids = []
+    for ln in (p or {}).get('lines', []):
+        x = events.pop(ln['event_code'], None) if ln['event_code'] else None
+        kids.append({'name': ln['item'], 'date': x['e']['date'] if x else (f"{year}-{ln['month']:02d}" if ln['month'] else ''),
+                     'code': ln['event_code'] if x else '', 'plan': ln['net'], 'actual': x['net'] if x else None})
+    for code, x in events.items():
+        kids.append({'name': x['e'].get('event_name', ''), 'date': x['e']['date'], 'code': code, 'plan': None, 'actual': x['net']})
+    for k in kids:
+        k['diff'] = _diff(k['actual'], k['plan'])
+    if not future and program_actual is not None:
+        other = round(program_actual - sum(k['actual'] or 0 for k in kids), 2)
+        if abs(other) >= 0.5:
+            kids.append({'name': 'Other, not in an event project', 'date': '', 'code': '', 'plan': None, 'actual': other,
+                         'diff': None, 'other': True})
+    return sorted(kids, key=lambda k: (k.get('other', False), k['date'] or '9999'))
+
+
 @bp.route('/')
 @login_required
 def home():
@@ -75,13 +101,14 @@ def home():
         return g
     year = _year(request.args.get('year') or date.today().year)
     plan, (act, as_of) = P.plan(year), P.actuals(year)
+    future = int(year) > date.today().year
     rows = []
     for code, name in _programs():
         p, a = plan.get(code), act.get(code)
         pn = p['net'] if p and p['lines'] else None
         an = a['net'] if a else None
         rows.append({'code': code, 'name': name, 'plan': pn, 'actual': an, 'info': (p or {}).get('info', {}),
-                     'diff': round(an - pn, 2) if pn is not None and an is not None else None})
+                     'diff': _diff(an, pn), 'kids': _kids(year, code, p, an, future)})
     tot = {k: round(sum(r[k] or 0 for r in rows), 2) for k in ('plan', 'actual')}
     st = P.status()
     open_frs = [r for r in F.requests() if r['status'] == 'Submitted'] if F.enabled() else []
@@ -92,7 +119,7 @@ def home():
     summary['cash'] = round(sum(v for _, v in summary['banks']), 2)
     sent = sum(1 for r in rows if r['plan'] is not None or r['info'])
     return render_template('plan.html', **_ctx(view='home', year=year, years=P.years(), rows=rows, tot=tot, as_of=as_of,
-                                               s=summary, sent=sent, future=int(year) > date.today().year))
+                                               s=summary, sent=sent, future=future))
 
 
 @bp.route('/<year>/<program>')

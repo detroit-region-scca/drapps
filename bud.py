@@ -6,6 +6,7 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 
 import bud_store as B
 import fr_store as F
+import plan_store as P
 from utils import load_events, load_programs, log_audit_event, login_required
 
 bp = Blueprint('bud', __name__, url_prefix='/budgets')
@@ -73,14 +74,21 @@ def home():
                'with_actuals': sum(1 for r in rows if r['actual'] is not None),
                'as_of': next((q['as_of'] for q in qbo.values()), '')}
     programs = load_programs()
+    # QuickBooks money on a program's accounts that is not in any of its event projects (season trophies, last
+    # season's fees), so a program's actual here matches the Annual Plan.
+    prog_act = P.actuals(year)[0] if P.enabled() and int(year) <= date.today().year else {}
     groups = []
     for pc in sorted({r['e'].get('program_code', '') for r in rows}, key=lambda pc: programs.get(pc, pc)):
         g = [r for r in rows if r['e'].get('program_code', '') == pc]
-        groups.append({'code': pc, 'name': programs.get(pc, pc or 'Other'), 'rows': g,
-                       'budget': sum(r['budget'] or 0 for r in g), 'actual': sum(r['actual'] or 0 for r in g),
+        events = sum(r['actual'] or 0 for r in g)
+        other = round(prog_act[pc]['net'] - events, 2) if pc in prog_act else 0
+        groups.append({'code': pc, 'name': programs.get(pc, pc or 'Other'), 'rows': g, 'other': other if abs(other) >= 0.5 else 0,
+                       'budget': sum(r['budget'] or 0 for r in g), 'actual': round(events + other, 2) if abs(other) >= 0.5 else events,
                        'funds': sum(r['funds'] for r in g), 'missing': sum(1 for r in g if not r['b'])})
+    summary['other'] = sum(g['other'] for g in groups)
+    summary['actual'] = round(summary['actual'] + summary['other'], 2)
     return render_template('bud.html', **_ctx(view='list', groups=groups, year=year, years=years or [year], s=summary,
-                                              programs=programs))
+                                              programs=programs, plan_on=P.enabled()))
 
 
 @bp.route('/event/<path:code>')
