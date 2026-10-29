@@ -31,6 +31,7 @@ from wp import bp as wp_bp  # noqa: E402
 from fr import bp as fr_bp  # noqa: E402
 from bud import bp as bud_bp  # noqa: E402
 from plan import bp as plan_bp  # noqa: E402
+from equip import bp as equip_bp  # noqa: E402
 import wp_store  # noqa: E402
 import fr_store  # noqa: E402
 import officials  # noqa: E402
@@ -41,6 +42,7 @@ app.register_blueprint(wp_bp)
 app.register_blueprint(fr_bp)
 app.register_blueprint(bud_bp)
 app.register_blueprint(plan_bp)
+app.register_blueprint(equip_bp)
 app.config['MAX_CONTENT_LENGTH'] = 40 * 1024 * 1024  # funds request receipts
 
 # Mandatory Secret Key in Production
@@ -125,6 +127,8 @@ def treasurer():
     if bud_store.enabled():
         codes = {(e.get('custom_tag') or e.get('unique_code')) for e in load_events() if e.get('date', '').startswith(year)}
         jobs['budgets'] = sum(1 for c, b in bud_store.budgets().items() if c in codes and (not b.get('approved') or b.get('updated', '') > b['approved']))
+    import equip
+    jobs['equipment'] = equip.overdue_count()
     return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Treasurer", view='treasurer', jobs=jobs,
                            year=year, wp_enabled=wp_store.enabled())
 

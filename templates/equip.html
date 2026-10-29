@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% from '_ui.html' import tab, money with context %}
+{% block body_class %}app-equip{% endblock %}
+{% block app_name %}Equipment{% endblock %}
+{% block nav %}
+    {{ tab('equip.home', 'Overview') }}
+    {{ tab('equip.items', 'Items', request.endpoint in ('equip.items', 'equip.item')) }}
+    {{ tab('equip.places', 'Storage', request.endpoint in ('equip.places', 'equip.place')) }}
+    {{ tab('equip.tasks', 'To do', request.endpoint in ('equip.tasks', 'equip.task')) }}
+    {{ tab('equip.plan', 'Replacement plan') }}
+{% endblock %}
+{% macro due_badge(t) -%}
+    {% if not t.due %}<span class="badge rounded-pill text-bg-secondary">No date</span>
+    {% elif t.due < today %}<span class="badge rounded-pill text-bg-danger">Overdue</span>
+    {% else %}<span class="badge rounded-pill text-bg-light">{{ t.due }}</span>{% endif %}
+{%- endmacro %}
+{% macro editbar(edit_url, new_url=none, new_label='') -%}
+    <div class="d-flex flex-wrap gap-2 align-items-center no-print">
+        {% if editor %}{% if edit_url %}<a class="btn btn-sm btn-accent" href="{{ edit_url }}">Edit</a>{% endif %}
+            {% if new_url %}<a class="btn btn-sm btn-outline-light" href="{{ new_url }}">{{ new_label }}</a>{% endif %}
+        {% else %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('equip.signin', next=request.path) }}">Sign in to edit</a>{% endif %}
+    </div>
+{%- endmacro %}
+{% block style %}
+        body.app-equip { --accent: #ff9f6b; }
+{% endblock %}
+{% block content %}
+    {% if editor and view != 'signin' %}<div class="small text-muted mb-2 no-print">Editing as {{ editor.name }}.
+        <form method="post" action="{{ url_for('equip.signout') }}" class="d-inline"><button class="btn btn-link btn-sm p-0 align-baseline">Stop editing</button></form></div>{% endif %}
+
+    {% if view == 'home' %}
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Due in 90 days</div><div class="value {{ 'text-warning' if due }}">{{ due|length }}</div></div></div>
+        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Fixed cost a year</div><div class="value">{{ money(storage + recurring, 0) }}</div><div class="small text-muted">storage {{ money(storage, 0) }} + renewals {{ money(recurring, 0) }}</div></div></div>
+        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Set aside a year</div><div class="value">{{ money(reserve, 0) }}</div><div class="small text-muted">to replace on schedule</div></div></div>
+        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Items</div><div class="value">{{ n_items }}</div><div class="small text-muted">{{ n_capital }} over $2,500 · {{ money(value, 0) }} cost</div></div></div>
+    </div>
+
+    <h2 class="h6 text-muted">To do</h2>
+    <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <tbody>{% for t in due + undated %}<tr class="row-link" onclick="location.href='{{ url_for('equip.tasks') }}#{{ t.id }}'">
+            <td class="ps-3">{{ t.task }}<div class="small text-muted">{{ t.about }}{% if t.owner %} · {{ t.owner }}{% endif %}</div></td>
+            <td class="text-nowrap">{{ due_badge(t) }}</td><td class="num pe-3">{{ money(t.cost, 0) if t.cost else '' }}</td></tr>
+        {% else %}<tr><td class="ps-3 text-muted">Nothing due in the next 90 days.</td></tr>{% endfor %}</tbody>
+    </table></div></div>
+
+    <h2 class="h6 text-muted">Vehicles and trailers</h2>
+    <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <thead><tr><th class="ps-3">Item</th><th>Kept at</th><th>Condition</th><th class="num">Value left</th><th class="num pe-3">Replace</th></tr></thead>
+        <tbody>{% for i in big %}<tr class="row-link" onclick="location.href='{{ url_for('equip.item', item_id=i.id) }}'">
+            <td class="ps-3"><a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}</a> <span class="small text-muted">{{ i.program }}</span></td>
+            <td>{{ i.place }}</td><td class="small">{{ i.condition or i.status }}</td>
+            <td class="num">{{ money(i.lc.left, 0) if i.lc else money(none) }}</td><td class="num pe-3">{{ i.lc.replace if i.lc else '·' }}</td></tr>
+        {% else %}<tr><td class="ps-3 text-muted" colspan="5">None yet.</td></tr>{% endfor %}</tbody>
+    </table></div></div>
+
+    <h2 class="h6 text-muted">Storage</h2>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <tbody>{% for p in places %}<tr class="row-link" onclick="location.href='{{ url_for('equip.place', place_id=p.id) }}'">
+            <td class="ps-3"><a href="{{ url_for('equip.place', place_id=p.id) }}">{{ p.name }}</a><div class="small text-muted">{{ p.account_holder }}</div></td>
+            <td class="num pe-3">{% if p.cost_month %}{{ money(p.cost_month, 0) }}/mo{% elif p.cost_year %}{{ money(p.cost_year, 0) }}/yr{% else %}free{% endif %}</td></tr>
+        {% endfor %}</tbody>
+    </table></div></div>
+
+    {% elif view == 'items' %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div class="small"><a href="{{ url_for('equip.items', gone=none if show_gone else '1') }}">{{ 'Hide' if show_gone else 'Show' }} items that are gone</a></div>
+        {{ editbar(none, url_for('equip.item'), 'Add an item') }}
+    </div>
+    {% for cat, rows in groups %}
+    <h2 class="h6 text-muted mt-3">{{ cat }} ({{ rows|length }})</h2>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table table-hover mb-0">
+        <tbody>{% for i in rows %}<tr class="row-link" onclick="location.href='{{ url_for('equip.item', item_id=i.id) }}'">
+            <td class="ps-3"><a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}</a>{% if i.quantity and i.quantity > 1 %} <span class="text-muted">× {{ '%g'|format(i.quantity) }}</span>{% endif %}
+                <div class="small text-muted">{{ i.program }}{% if i.status != 'In use' %} · {{ i.status }}{% endif %}</div></td>
+            <td class="small">{{ i.place }}</td><td class="num">{{ '%d'|format(i.year) if i.year else '' }}</td>
+            <td class="num pe-3">{{ money(i.cost, 0) if i.cost else '' }}</td></tr>{% endfor %}</tbody>
+    </table></div></div>
+    {% endfor %}
+
+    {% elif view == 'item' %}
+    <div class="crumbs"><a href="{{ url_for('equip.items') }}">Items</a> / {{ it.name or 'New item' }}</div>
+    {% if edit %}
+    <form method="post" class="card p-3">
+        <div class="row g-2">
+            <div class="col-md-8"><label class="form-label small">Name</label><input name="name" class="form-control" value="{{ it.name or '' }}" required></div>
+            <div class="col-6 col-md-2"><label class="form-label small">Program</label><input name="program" class="form-control" value="{{ it.program or '' }}" placeholder="Solo, RX…"></div>
+            <div class="col-6 col-md-2"><label class="form-label small">Category</label><select name="category" class="form-select">{% for c in categories %}<option {{ 'selected' if c == it.category }}>{{ c }}</option>{% endfor %}</select></div>
+            <div class="col-md-4"><label class="form-label small">Kept at</label><input name="place" class="form-control" list="placeNames" value="{{ it.place or '' }}">
+                <datalist id="placeNames">{% for p in places %}<option value="{{ p.name }}">{% endfor %}</datalist></div>
+            <div class="col-4 col-md-2"><label class="form-label small">Year bought</label><input name="year" class="form-control" inputmode="numeric" value="{{ '%d'|format(it.year) if it.year else '' }}"></div>
+            <div class="col-4 col-md-2"><label class="form-label small">Quantity</label><input name="quantity" class="form-control" inputmode="numeric" value="{{ '%g'|format(it.quantity) if it.quantity else '' }}"></div>
+            <div class="col-4 col-md-2"><label class="form-label small">Cost</label><input name="cost" class="form-control" inputmode="decimal" value="{{ it.cost or '' }}"></div>
+            <div class="col-6 col-md-2"><label class="form-label small">Useful life (years)</label><input name="life_years" class="form-control" inputmode="numeric" value="{{ '%g'|format(it.life_years) if it.life_years else '' }}"></div>
+            <div class="col-md-4"><label class="form-label small">VIN or serial</label><input name="vin" class="form-control" value="{{ it.vin or '' }}"></div>
+            <div class="col-6 col-md-2"><label class="form-label small">Plate</label><input name="plate" class="form-control" value="{{ it.plate or '' }}"></div>
+            <div class="col-6 col-md-2"><label class="form-label small">Status</label><select name="status" class="form-select">{% for s in statuses %}<option {{ 'selected' if s == (it.status or 'In use') }}>{{ s }}</option>{% endfor %}</select></div>
+            <div class="col-md-4"><label class="form-label small">Condition</label><input name="condition" class="form-control" value="{{ it.condition or '' }}"></div>
+            <div class="col-md-12"><label class="form-label small">Documents (title, registration, insurance card, photos): a Drive link</label><input name="docs_url" class="form-control" value="{{ it.docs_url or '' }}"></div>
+            <div class="col-12"><label class="form-label small">Notes</label><textarea name="notes" class="form-control" rows="3">{{ it.notes or '' }}</textarea></div>
+        </div>
+        <div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ url_for('equip.item', item_id=it.id) if it.id else url_for('equip.items') }}">Cancel</a><button class="btn btn-accent">Save</button></div>
+    </form>
+    {% else %}
+    <div class="card p-3 mb-3">
+        <div class="d-flex flex-wrap justify-content-between gap-2">
+            <div><div class="page-title m-0">{{ it.name }}</div>
+                <div class="text-muted">{{ it.category }}{% if it.program %} · {{ it.program }}{% endif %} · {{ it.status }}{% if it.condition %} · {{ it.condition }}{% endif %}</div></div>
+            {{ editbar(url_for('equip.item', item_id=it.id, edit=1)) }}
+        </div>
+        <dl class="row mt-3 mb-0 small">
+            <dt class="col-sm-3">Kept at</dt><dd class="col-sm-9">{{ it.place or '·' }}</dd>
+            {% if it.quantity %}<dt class="col-sm-3">Quantity</dt><dd class="col-sm-9">{{ '%g'|format(it.quantity) }}</dd>{% endif %}
+            <dt class="col-sm-3">Bought</dt><dd class="col-sm-9">{{ '%d'|format(it.year) if it.year else '·' }}{% if it.cost %}, {{ money(it.cost) }}{% endif %}</dd>
+            {% if it.vin %}<dt class="col-sm-3">VIN or serial</dt><dd class="col-sm-9">{{ it.vin }}</dd>{% endif %}
+            {% if it.plate %}<dt class="col-sm-3">Plate</dt><dd class="col-sm-9">{{ it.plate }}</dd>{% endif %}
+            <dt class="col-sm-3">Lifecycle</dt><dd class="col-sm-9">{% if lc %}{{ money(lc.per_year, 0) }} a year over {{ '%g'|format(it.life_years) }} years; about {{ money(lc.left, 0) }} of value left; replace around {{ lc.replace }}{% else %}<span class="text-muted">Add the year bought, cost and useful life to see it.</span>{% endif %}</dd>
+            {% if it.docs_url %}<dt class="col-sm-3">Documents</dt><dd class="col-sm-9"><a href="{{ it.docs_url }}" target="_blank" rel="noopener">Open</a></dd>{% endif %}
+            {% if it.notes %}<dt class="col-sm-3">Notes</dt><dd class="col-sm-9" style="white-space: pre-wrap">{{ it.notes }}</dd>{% endif %}
+            {% if it.updated %}<dt class="col-sm-3">Updated</dt><dd class="col-sm-9 text-muted">{{ it.updated }} by {{ it.updated_by }}</dd>{% endif %}
+        </dl>
+    </div>
+    {% if tasks %}<h2 class="h6 text-muted">To do for this</h2><ul>{% for t in tasks %}<li>{{ t.task }}: {{ t.due or 'no date' }}</li>{% endfor %}</ul>{% endif %}
+    {% endif %}
+
+    {% elif view == 'places' %}
+    <div class="d-flex justify-content-end mb-3">{{ editbar(none, url_for('equip.place'), 'Add a place') }}</div>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table table-hover mb-0">
+        <thead><tr><th class="ps-3">Place</th><th>Account in the name of</th><th class="num">Items</th><th class="num pe-3">Cost</th></tr></thead>
+        <tbody>{% for p in places %}<tr class="row-link" onclick="location.href='{{ url_for('equip.place', place_id=p.id) }}'">
+            <td class="ps-3"><a href="{{ url_for('equip.place', place_id=p.id) }}">{{ p.name }}</a><div class="small text-muted">{{ p.address }}</div></td>
+            <td>{{ p.account_holder }}</td><td class="num">{{ p.n }}</td>
+            <td class="num pe-3">{% if p.cost_month %}{{ money(p.cost_month, 0) }}/mo{% elif p.cost_year %}{{ money(p.cost_year, 0) }}/yr{% else %}free{% endif %}</td></tr>{% endfor %}</tbody>
+    </table></div></div>
+
+    {% elif view == 'place' %}
+    <div class="crumbs"><a href="{{ url_for('equip.places') }}">Storage</a> / {{ p.name or 'New place' }}</div>
+    {% if edit %}
+    <form method="post" class="card p-3"><div class="row g-2">
+        <div class="col-md-6"><label class="form-label small">Name</label><input name="name" class="form-control" value="{{ p.name or '' }}" required></div>
+        <div class="col-md-6"><label class="form-label small">Address</label><input name="address" class="form-control" value="{{ p.address or '' }}"></div>
+        <div class="col-6 col-md-3"><label class="form-label small">Cost a month</label><input name="cost_month" class="form-control" inputmode="decimal" value="{{ p.cost_month or '' }}"></div>
+        <div class="col-6 col-md-3"><label class="form-label small">Cost a year</label><input name="cost_year" class="form-control" inputmode="decimal" value="{{ p.cost_year or '' }}"></div>
+        <div class="col-md-6"><label class="form-label small">Account in the name of / paid how</label><input name="account_holder" class="form-control" value="{{ p.account_holder or '' }}"></div>
+        <div class="col-12"><label class="form-label small">Access (who has keys; ask the treasurer for gate codes, don't write them here)</label><input name="access" class="form-control" value="{{ p.access or '' }}"></div>
+        <div class="col-12"><label class="form-label small">Notes</label><textarea name="notes" class="form-control" rows="3">{{ p.notes or '' }}</textarea></div>
+    </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ url_for('equip.places') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
+    {% else %}
+    <div class="card p-3 mb-3">
+        <div class="d-flex flex-wrap justify-content-between gap-2"><div><div class="page-title m-0">{{ p.name }}</div><div class="text-muted">{{ p.address }}</div></div>{{ editbar(url_for('equip.place', place_id=p.id, edit=1)) }}</div>
+        <dl class="row mt-3 mb-0 small">
+            <dt class="col-sm-3">Cost</dt><dd class="col-sm-9">{% if p.cost_month %}{{ money(p.cost_month) }} a month{% elif p.cost_year %}{{ money(p.cost_year) }} a year{% else %}free{% endif %}</dd>
+            <dt class="col-sm-3">Account</dt><dd class="col-sm-9">{{ p.account_holder or '·' }}</dd>
+            <dt class="col-sm-3">Access</dt><dd class="col-sm-9">{{ p.access or '·' }}</dd>
+            {% if p.notes %}<dt class="col-sm-3">Notes</dt><dd class="col-sm-9" style="white-space: pre-wrap">{{ p.notes }}</dd>{% endif %}
+        </dl>
+    </div>
+    <h2 class="h6 text-muted">Kept here ({{ held|length }})</h2>
+    <ul>{% for i in held %}<li><a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}</a>{% if i.quantity and i.quantity > 1 %} × {{ '%g'|format(i.quantity) }}{% endif %}</li>{% else %}<li class="text-muted">Nothing listed.</li>{% endfor %}</ul>
+    {% endif %}
+
+    {% elif view == 'tasks' %}
+    <div class="d-flex justify-content-end mb-3">{{ editbar(none, url_for('equip.task'), 'Add a to-do') }}</div>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <thead><tr><th class="ps-3">To do</th><th>Due</th><th>Repeats</th><th class="num">Cost</th><th class="pe-3"></th></tr></thead>
+        <tbody>{% for t in tasks %}<tr id="{{ t.id }}">
+            <td class="ps-3">{{ t.task }}<div class="small text-muted">{{ t.about }}{% if t.owner %} · {{ t.owner }}{% endif %}{% if t.notes %} · {{ t.notes }}{% endif %}</div>
+                {% if t.last_done %}<div class="small text-muted">Last done {{ t.last_done }} by {{ t.done_by }}</div>{% endif %}</td>
+            <td class="text-nowrap">{{ due_badge(t) }}</td>
+            <td class="small">{% if t.repeat_months == 12 %}Yearly{% elif t.repeat_months %}Every {{ '%g'|format(t.repeat_months) }} months{% else %}Once{% endif %}</td>
+            <td class="num">{{ money(t.cost, 0) if t.cost else '' }}</td>
+            <td class="pe-3 text-end text-nowrap no-print">{% if editor %}{% if t.due %}<form method="post" action="{{ url_for('equip.task', task_id=t.id) }}" class="d-inline"><input type="hidden" name="action" value="done"><button class="btn btn-sm btn-outline-light py-0">Done</button></form>{% endif %}
+                <a class="btn btn-sm btn-link py-0" href="{{ url_for('equip.task', task_id=t.id) }}">Edit</a>{% endif %}</td></tr>
+        {% endfor %}</tbody>
+    </table></div></div>
+
+    {% elif view == 'task' %}
+    <div class="crumbs"><a href="{{ url_for('equip.tasks') }}">To do</a> / {{ t.task or 'New' }}</div>
+    <form method="post" class="card p-3"><div class="row g-2">
+        <div class="col-md-8"><label class="form-label small">What has to be done</label><input name="task" class="form-control" value="{{ t.task or '' }}" required></div>
+        <div class="col-md-4"><label class="form-label small">For</label><input name="about" class="form-control" list="aboutNames" value="{{ t.about or '' }}">
+            <datalist id="aboutNames">{% for n in names %}<option value="{{ n }}">{% endfor %}</datalist></div>
+        <div class="col-6 col-md-3"><label class="form-label small">Due</label><input type="date" name="due" class="form-control" value="{{ t.due or '' }}"></div>
+        <div class="col-6 col-md-3"><label class="form-label small">Repeats every (months)</label><input name="repeat_months" class="form-control" inputmode="numeric" value="{{ '%g'|format(t.repeat_months) if t.repeat_months else '' }}" placeholder="12; blank = once"></div>
+        <div class="col-6 col-md-3"><label class="form-label small">Cost</label><input name="cost" class="form-control" inputmode="decimal" value="{{ t.cost or '' }}"></div>
+        <div class="col-6 col-md-3"><label class="form-label small">Who does it</label><input name="owner" class="form-control" value="{{ t.owner or '' }}"></div>
+        <div class="col-12"><label class="form-label small">Notes</label><input name="notes" class="form-control" value="{{ t.notes or '' }}"></div>
+    </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ url_for('equip.tasks') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
+
+    {% elif view == 'plan' %}
+    <p class="text-muted">When each long-lived item reaches the end of its useful life, at what it cost. Setting aside <b>{{ money(reserve, 0) }} a year</b> would cover these on schedule. This is for planning only; the region gets no tax benefit from depreciation.</p>
+    {% for y, rows in plan.items() %}
+    <h2 class="h6 mt-3">{{ y }} · {{ money(rows|sum(attribute='cost'), 0) }}</h2>
+    <ul class="mb-0">{% for i in rows %}<li><a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}</a> <span class="text-muted">{{ money(i.cost, 0) }}, bought {{ '%d'|format(i.year) }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="text-muted">Nothing has a year, cost and useful life yet.</p>{% endfor %}
+    {% if missing %}<p class="small mt-4"><b>Over $2,500 with no useful life set</b>, so not in the plan: {% for i in missing %}<a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}</a>{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
+
+    {% elif view == 'signin' %}
+    <div class="card p-4 mx-auto" style="max-width: 30rem;">
+        <div class="page-title">Sign in to edit</div>
+        <p class="text-muted small">Anyone can look. Changes are limited to the equipment committee: enter your committee email and we'll send a sign-in link to it.</p>
+        <form method="post"><input type="hidden" name="next" value="{{ nxt }}">
+            <input type="email" name="email" class="form-control mb-3" required autofocus placeholder="you@example.com">
+            <button class="btn btn-accent w-100">Email me a link</button></form>
+    </div>
+    {% endif %}
+{% endblock %}

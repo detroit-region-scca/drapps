@@ -37,6 +37,8 @@
             <span>Record board approvals of budgets<div class="small text-muted">{{ year }} budgets not approved, or changed since</div></span><span class="fw-semibold">{{ jobs.budgets }}</span></a>{% endif %}
         {% if jobs.books is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('plan.checks') }}">
             <span>Books check<div class="small text-muted">What the nightly QuickBooks sync found</div></span><span class="fw-semibold">{{ jobs.books }}</span></a>{% endif %}
+        <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('equip.home') }}">
+            <span>Equipment to-dos overdue<div class="small text-muted">Insurance, registrations, inspections</div></span><span class="fw-semibold">{{ jobs.equipment }}</span></a>
         {% if wp_enabled %}<a class="list-group-item list-group-item-action" href="{{ url_for('wp.month_end') }}">Worker points month end<div class="small text-muted">Post the month's points to QuickBooks</div></a>{% endif %}
         <a class="list-group-item list-group-item-action" href="{{ url_for('export_events') }}">Export events (CSV)</a>
         <a class="list-group-item list-group-item-action" href="{{ url_for('officials_page') }}">Region officials<div class="small text-muted">Who approves funds requests, read-only</div></a>
@@ -46,7 +48,7 @@
         <div class="card w-100" style="max-width: 380px;">
             <div class="card-body p-4">
                 <h1 class="h4 text-center mb-1">{{ title }}</h1>
-                <p class="text-center text-muted small mb-4">Events, Worker Points, Funds Requests, Annual Plan</p>
+                <p class="text-center text-muted small mb-4">Events, Worker Points, Funds Requests, Annual Plan, Equipment</p>
                 <form action="{{ url_for('login') }}" method="POST">
                     <input type="hidden" name="next" value="{{ next_url }}">
                     <label for="name" class="form-label">Your name</label>
@@ -102,6 +104,15 @@
             </a>
         </div>
         {% endif %}
+        <div class="col-6 col-md-4 col-lg">
+            <a class="app-tile" href="{{ url_for('equip.home') }}" style="--tile: #ff9f6b;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#ff9f6b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2 16V8h11v8M13 11h4l3 3v2h-7"/><circle cx="6" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>
+                </svg>
+                <div class="name">Equipment</div>
+                <div class="what">Vehicles, trailers, storage and what's due</div>
+            </a>
+        </div>
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('treasurer') }}" style="--tile: #9aa3ad;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#9aa3ad" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

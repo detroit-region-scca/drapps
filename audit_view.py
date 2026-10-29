@@ -8,7 +8,7 @@ from markupsafe import Markup, escape
 
 # action prefix -> (app label, badge colour)
 APPS = {'EVENT': ('Events', 'primary'), 'WP': ('Worker Points', 'warning'), 'FUNDS': ('Funds Requests', 'success'),
-        'BUDGET': ('Events', 'primary'), 'PLAN': ('Annual Plan', 'light'), 'LOGIN': ('Login', 'secondary')}
+        'BUDGET': ('Events', 'primary'), 'PLAN': ('Annual Plan', 'light'), 'EQUIP': ('Equipment', 'warning'), 'LOGIN': ('Login', 'secondary')}
 
 
 def app_of(action):
@@ -81,6 +81,16 @@ def describe(log):
                                                        f" ({g('note')})" if g('note') else '')
     if a == 'FUNDS_RECEIPTS':
         return Markup('{} added {} receipt file(s) to {}').format(who, g('files', ''), _link('fr.detail', g('id', ''), req_id=g('id', '')))
+    if a == 'EQUIP_ITEM_SAVED':
+        return Markup('{} {} {}').format(who, 'added' if g('new') else 'updated', _link('equip.item', g('name', ''), item_id=g('id', '')))
+    if a == 'EQUIP_PLACE_SAVED':
+        return Markup('{} updated storage place {}').format(who, _link('equip.place', g('name', ''), place_id=g('id', '')))
+    if a == 'EQUIP_TASK_SAVED':
+        return Markup('{} saved the equipment to-do "{}" (due {})').format(who, g('task', ''), g('due', '') or 'no date')
+    if a == 'EQUIP_TASK_DONE':
+        return Markup('{} marked done: {}{}').format(who, g('task', ''), f" (next due {g('next')})" if g('next') else '')
+    if a == 'EQUIP_SIGNIN':
+        return Markup('{} signed in to edit equipment').format(who)
     if a == 'FUNDS_REOPENED':
         return Markup('{} reopened {}').format(who, _link('fr.detail', g('id', ''), req_id=g('id', '')))
     if a == 'BUDGET_SAVED':
