@@ -1,0 +1,230 @@
+{% extends 'base.html' %}
+{% block body_class %}app-fr{% endblock %}
+{% block app_name %}Funds Requests{% endblock %}
+{% macro tab(endpoint, label) %}<li class="nav-item"><a class="nav-link{% if request.endpoint == endpoint %} active{% endif %}" href="{{ url_for(endpoint) }}">{{ label }}</a></li>{% endmacro %}
+{% block nav %}
+    {{ tab('fr.home', 'Requests') }}
+    {{ tab('fr.new', 'New request') }}
+{% endblock %}
+{% macro status_badge(s) %}<span class="badge rounded-pill {{ {'Submitted': 'text-bg-warning', 'Paid': 'text-bg-success', 'Rejected': 'text-bg-danger'}.get(s, 'text-bg-secondary') }}">{{ 'Waiting' if s == 'Submitted' else s }}</span>{% endmacro %}
+{% macro money(v) %}${{ '{:,.2f}'.format(v or 0) }}{% endmacro %}
+{% block style %}
+        body.app-fr { --accent: #3ecf8e; }
+        .section-label { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: .5rem; }
+        .method-opt { border: 1px solid var(--border); border-radius: 10px; padding: .75rem 1rem; cursor: pointer; height: 100%; }
+        .method-opt:has(input:checked) { border-color: var(--accent); background: var(--surface-2); }
+        .method-opt input { margin-right: .5rem; }
+        .row-remove { color: var(--muted); text-decoration: none; }
+        .row-remove:hover { color: #dc3545; }
+        .req-row { cursor: pointer; }
+        @media (max-width: 767.98px) { .line { border-bottom: 1px solid var(--border); } }
+        .filter .btn { border-color: var(--border); }
+        .filter .btn.active { background: var(--surface-2); border-color: var(--accent); color: var(--text); }
+        @media print { .app-bar, .no-print, .alert { display: none !important; } body { background: #fff; color: #000; } .card { border-color: #999; } }
+{% endblock %}
+{% block content %}
+    {% if view == 'list' %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div class="btn-group filter" role="group">
+            {% for s, label in [('Submitted', 'Waiting'), ('Paid', 'Paid'), ('Rejected', 'Rejected'), ('All', 'All')] %}
+            <a class="btn btn-sm btn-outline-light{% if status == s %} active{% endif %}" href="{{ url_for('fr.home', status=s) }}">{{ label }}{% if s in counts %} <span class="text-muted">{{ counts[s] }}</span>{% endif %}</a>
+            {% endfor %}
+        </div>
+        <a class="btn btn-accent" href="{{ url_for('fr.new') }}">New funds request</a>
+    </div>
+    {% if counts.Submitted %}<p class="text-muted">{{ counts.Submitted }} waiting to be paid, {{ money(open_total) }} in all.</p>{% endif %}
+    <div class="card"><div class="card-body p-0 table-responsive">
+        <table class="table table-hover mb-0">
+            <thead><tr><th class="ps-3">Request</th><th>Submitted</th><th>Pay to</th><th>For</th><th>Status</th><th class="num pe-3">Amount</th></tr></thead>
+            <tbody>
+            {% for r in reqs %}<tr class="req-row" onclick="location.href='{{ url_for('fr.detail', req_id=r.id) }}'">
+                <td class="ps-3 text-nowrap"><a href="{{ url_for('fr.detail', req_id=r.id) }}">{{ r.id }}</a></td>
+                <td class="text-nowrap">{{ r.submitted }}<div class="small text-muted">{{ r.submitter_name }}</div></td>
+                <td>{{ r.payee_name }}<div class="small text-muted">{{ r.method }}</div></td>
+                <td>{{ r.event_name or r.program }} <span class="small text-muted">{{ r.event_code }}</span></td>
+                <td>{{ status_badge(r.status) }}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
+                <td class="num pe-3">{{ money(r.net) }}</td></tr>
+            {% else %}<tr><td colspan="6" class="text-muted ps-3">Nothing here.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div></div>
+    <p class="form-text mt-3">Every request is also a row in the DRSCCA Funds Requests sheet in the DRSCCA Apps shared drive, with its receipts in a folder beside it.</p>
+
+    {% elif view == 'new' %}
+    <div class="page-title">New funds request</div>
+    <p class="text-muted">For paying a vendor or reimbursing you for region expenses. Attach the invoice or receipts if you have them.</p>
+    <form method="post" enctype="multipart/form-data" id="frForm" novalidate>
+        <div class="card p-3 mb-3">
+            <div class="section-label">What is it for</div>
+            <div class="row g-2">
+                <div class="col-md-8"><label class="form-label">Event</label>
+                    <select name="event_code" class="form-select" id="eventSel">
+                        <option value="">Not for one event (pick the program)</option>
+                        {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" {% if form.get('event_code') == c %}selected{% endif %}>{{ e.date }} · {{ e.program_code }} · {{ e.event_name }} {{ c }}</option>{% endfor %}
+                    </select></div>
+                <div class="col-md-4" id="programBox"><label class="form-label">Program</label>
+                    <select name="program" class="form-select">
+                        <option value="">Select…</option>
+                        {% for code, name in programs.items() %}<option value="{{ code }}" {% if form.get('program') == code %}selected{% endif %}>{{ code }}: {{ name }}</option>{% endfor %}
+                    </select></div>
+            </div>
+        </div>
+
+        <div class="card p-3 mb-3">
+            <div class="section-label">Expenses</div>
+            <div class="row g-2 d-none d-md-flex text-muted small mb-1"><div class="col-md-2">Date</div><div class="col-md-5">Description</div><div class="col-md-2">Category</div><div class="col-md-2 text-end">Amount</div></div>
+            <div id="lines">{% for ln in rows %}
+                <div class="row g-2 line mb-2 pb-2">
+                    <div class="col-6 col-md-2 order-1"><input type="date" name="line_date" class="form-control form-control-sm" value="{{ ln.date or '' }}" aria-label="Date"></div>
+                    <div class="col-12 col-md-5 order-3 order-md-2"><input name="line_desc" class="form-control form-control-sm" placeholder="Track rental, cones, trophies…" value="{{ ln.description or '' }}" aria-label="Description"></div>
+                    <div class="col-10 col-md-2 order-4 order-md-3"><select name="line_cat" class="form-select form-select-sm" aria-label="Category">{% for c in categories %}<option {% if ln.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+                    <div class="col-6 col-md-2 order-2 order-md-4"><input name="line_amount" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0.00" value="{{ ln.amount or '' }}" aria-label="Amount"></div>
+                    <div class="col-2 col-md-1 order-5 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)">✕</button></div>
+                </div>{% endfor %}
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-3">
+                <button type="button" class="btn btn-outline-light btn-sm" onclick="addLine()">Add expense</button>
+                <div class="ms-auto d-flex align-items-center gap-2"><label class="text-muted small text-nowrap" for="advances">Less advances already paid</label>
+                    <input name="advances" id="advances" class="form-control form-control-sm text-end" style="width:7rem" inputmode="decimal" placeholder="0.00" value="{{ form.get('advances', '') }}"></div>
+                <div class="fs-5">Total <b id="total">$0.00</b></div>
+            </div>
+        </div>
+
+        <div class="card p-3 mb-3">
+            <div class="section-label">How should it be paid</div>
+            <div class="row g-2 mb-3">
+                {% for key, label in methods.items() %}
+                <div class="col-md-4"><label class="method-opt d-block"><input type="radio" name="method" value="{{ key }}" {% if form.get('method', 'check') == key %}checked{% endif %}>{{ label }}
+                    <div class="small text-muted mt-1">{{ {'check': 'Region mails a check to the vendor or person below.', 'card': 'Treasurer pays the vendor on the region card.', 'reimburse': 'You paid; a check comes to you.'}[key] }}</div></label></div>
+                {% endfor %}
+            </div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="section-label">You</div>
+                    {% set src = form if form else last %}
+                    <input name="submitter_name" class="form-control mb-2" placeholder="Your name" required value="{{ src.get('submitter_name') or src.get('name') or who }}" autocomplete="name">
+                    <input name="submitter_email" type="email" class="form-control mb-2" placeholder="Email" required value="{{ src.get('submitter_email') or src.get('email', '') }}" autocomplete="email">
+                    <input name="submitter_phone" class="form-control mb-2" placeholder="Phone" value="{{ src.get('submitter_phone') or src.get('phone', '') }}" autocomplete="tel">
+                    <textarea name="submitter_address" class="form-control" rows="2" placeholder="Mailing address (needed for a reimbursement check)" autocomplete="street-address">{{ src.get('submitter_address') or src.get('address', '') }}</textarea>
+                </div>
+                <div class="col-md-6" id="payeeBox">
+                    <div class="section-label">Pay to</div>
+                    <input name="payee_name" class="form-control mb-2" placeholder="Vendor or person" value="{{ form.get('payee_name', '') }}">
+                    <input name="payee_email" type="email" class="form-control mb-2" placeholder="Email (optional)" value="{{ form.get('payee_email', '') }}">
+                    <input name="payee_phone" class="form-control mb-2" placeholder="Phone (optional)" value="{{ form.get('payee_phone', '') }}">
+                    <textarea name="payee_address" class="form-control" rows="2" placeholder="Mailing address (for a check)">{{ form.get('payee_address', '') }}</textarea>
+                </div>
+                <div class="col-md-6 d-none text-muted" id="payeeSelf"><div class="section-label">Pay to</div>You, at the address on the left.</div>
+            </div>
+        </div>
+
+        <div class="card p-3 mb-3">
+            <div class="section-label">Receipts and notes</div>
+            <input type="file" name="receipts" class="form-control mb-2" multiple accept="image/*,.pdf,.xls,.xlsx,.xlsm,.doc,.docx">
+            <div class="form-text mb-3">Invoices, receipts or photos of them. PDF or pictures are best; several files are fine.</div>
+            <textarea name="notes" class="form-control" rows="2" placeholder="Anything the treasurer should know (optional)">{{ form.get('notes', '') }}</textarea>
+        </div>
+        <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('fr.home') }}">Cancel</a><button class="btn btn-accent px-4" id="submitBtn">Submit request</button></div>
+    </form>
+
+    {% elif view == 'detail' %}
+    <div class="crumbs no-print"><a href="{{ url_for('fr.home') }}">Requests</a> / {{ r.id }}</div>
+    <div class="card p-3 mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+            <div>
+                <div class="page-title m-0">{{ r.id }} {{ status_badge(r.status) }}</div>
+                <div class="text-muted">Submitted {{ r.submitted }} by {{ r.submitter_name }}</div>
+                <div class="mt-1">{{ r.event_name or ('Program ' ~ r.program) }} <span class="text-muted">{{ r.event_code }}</span></div>
+            </div>
+            <div class="text-end stat"><div class="value">{{ money(r.net) }}</div><div class="label">{{ r.method }}</div></div>
+        </div>
+    </div>
+    <div class="row g-3 mb-3">
+        <div class="col-md-6"><div class="card p-3 h-100"><div class="section-label">Pay to</div>
+            <div class="fw-semibold">{{ r.payee_name }}</div><div style="white-space:pre-line">{{ r.payee_address }}</div>
+            <div class="text-muted small">{{ r.payee_email }} {{ r.payee_phone }}</div></div></div>
+        <div class="col-md-6"><div class="card p-3 h-100"><div class="section-label">Submitted by</div>
+            <div class="fw-semibold">{{ r.submitter_name }}</div><div style="white-space:pre-line">{{ r.submitter_address }}</div>
+            <div class="text-muted small"><a href="mailto:{{ r.submitter_email }}">{{ r.submitter_email }}</a> {{ r.submitter_phone }}</div></div></div>
+    </div>
+    <div class="card mb-3"><div class="card-body p-0 table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th class="ps-3">Date</th><th>Description</th><th>Category</th><th class="num pe-3">Amount</th></tr></thead>
+            <tbody>{% for ln in r.lines %}<tr><td class="ps-3 text-nowrap">{{ ln.date }}</td><td>{{ ln.description }}</td><td>{{ ln.category }}</td><td class="num pe-3">{{ money(ln.amount) }}</td></tr>{% endfor %}
+            <tr><td class="ps-3" colspan="3">Total{% if r.advances %} less advances {{ money(r.advances) }}{% endif %}</td><td class="num pe-3 fw-semibold">{{ money(r.net) }}</td></tr></tbody>
+        </table>
+    </div></div>
+    <div class="mb-3">{% if r.receipts_url %}<a class="btn btn-sm btn-outline-light" href="{{ r.receipts_url }}" target="_blank" rel="noopener">Open receipts in Drive</a>{% else %}<span class="text-muted">No receipts attached.</span>{% endif %}
+        <button class="btn btn-sm btn-outline-secondary ms-2 no-print" onclick="window.print()">Print</button></div>
+    {% if r.notes %}<p><span class="text-muted">Notes:</span> {{ r.notes }}</p>{% endif %}
+
+    {% if r.status == 'Submitted' %}
+    <div class="row g-3 no-print">
+        <div class="col-lg-8"><form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">
+            <input type="hidden" name="action" value="paid">
+            <div class="section-label">Mark paid</div>
+            <div class="row g-2">
+                <div class="col-sm-4"><input name="paid_ref" class="form-control" placeholder="Check # or card" required></div>
+                <div class="col-sm-4"><input type="date" name="paid_date" class="form-control" value="{{ today }}"></div>
+                <div class="col-sm-4"><input name="paid_amount" class="form-control text-end" inputmode="decimal" value="{{ '%.2f'|format(r.net) }}"></div>
+                <div class="col-sm-8"><input name="entered_by" class="form-control" placeholder="Your name" value="{{ who }}" required></div>
+                <div class="col-sm-4"><button class="btn btn-accent w-100">Mark paid</button></div>
+            </div>
+            <div class="form-text">Book it in QBO to the event's project as usual; this records that it was paid.</div>
+        </form></div>
+        <div class="col-lg-4"><form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">
+            <input type="hidden" name="action" value="reject"><input type="hidden" name="entered_by" value="{{ who }}">
+            <div class="section-label">Reject</div>
+            <input name="note" class="form-control mb-2" placeholder="Why (required)" required>
+            <button class="btn btn-outline-danger">Reject</button>
+        </form></div>
+    </div>
+    {% else %}
+    <div class="card p-3">
+        {% if r.status == 'Paid' %}<div>Paid {{ r.paid_date }} · {{ r.paid_ref }} · {{ money(r.paid_amount) }} · recorded by {{ r.closed_by }}</div>
+        {% else %}<div>Rejected by {{ r.closed_by }}: {{ r.closed_note }}</div>{% endif %}
+        {% if r.status == 'Paid' and r.closed_note %}<div class="text-muted small">{{ r.closed_note }}</div>{% endif %}
+        <form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Reopen {{ r.id }}?')">Reopen</button></form>
+    </div>
+    {% endif %}
+    {% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+    const lines = document.getElementById('lines');
+    const amt = v => parseFloat(String(v).replace(/[$,]/g, '')) || 0;
+    function total() {
+        if (!lines) return;
+        let t = 0;
+        lines.querySelectorAll('[name=line_amount]').forEach(i => t += amt(i.value));
+        t -= amt(document.getElementById('advances').value);
+        document.getElementById('total').textContent = '$' + t.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+    function addLine() {
+        const tr = lines.querySelector('.line').cloneNode(true);
+        tr.querySelectorAll('input').forEach(i => i.value = '');
+        tr.querySelector('select').selectedIndex = 0;
+        lines.appendChild(tr);
+        tr.querySelector('[name=line_desc]').focus();
+    }
+    function removeLine(btn) {
+        const tr = btn.closest('.line');
+        if (lines.querySelectorAll('.line').length > 1) tr.remove(); else tr.querySelectorAll('input').forEach(i => i.value = '');
+        total();
+    }
+    function syncForm() {
+        const ev = document.getElementById('eventSel');
+        document.getElementById('programBox').classList.toggle('d-none', !!ev.value);
+        const self = document.querySelector('[name=method]:checked')?.value === 'reimburse';
+        document.getElementById('payeeBox').classList.toggle('d-none', self);
+        document.getElementById('payeeSelf').classList.toggle('d-none', !self);
+    }
+    const form = document.getElementById('frForm');
+    if (form) {
+        form.addEventListener('input', total);
+        form.addEventListener('change', syncForm);
+        form.addEventListener('submit', () => { const b = document.getElementById('submitBtn'); b.disabled = true; b.textContent = 'Submitting…'; });
+        total(); syncForm();
+    }
+</script>
+{% endblock %}

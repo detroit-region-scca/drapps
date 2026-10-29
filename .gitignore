@@ -23,3 +23,4 @@ cookies.txt
 
 # Nightly .xlsx copies of the Google Sheets (backup_sheets.py)
 data/backups/
+data/*.lock

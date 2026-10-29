@@ -106,13 +106,15 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import threading
 
-def send_new_event_email(event):
+def send_mail(subject, body, recipient=None):
+    """Send a plain-text email in the background (see the SMTP notes inside)."""
+    recipient = recipient or os.environ.get('NOTIFICATION_EMAIL', 'treasurer@drscca.org')
+
     def send_email_async():
         smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
         smtp_port = int(os.environ.get('SMTP_PORT', 587))
         smtp_user = os.environ.get('SMTP_USER')
         smtp_password = os.environ.get('SMTP_PASSWORD')
-        recipient = os.environ.get('NOTIFICATION_EMAIL', 'treasurer@drscca.org')
 
         # SMTP_USER/SMTP_PASSWORD are optional. The lab relay on 192.168.4.114:25
         # takes no credentials at all: it accepts this host by IP via postfix
@@ -125,24 +127,6 @@ def send_new_event_email(event):
         if smtp_password:
             smtp_password = smtp_password.replace(" ", "")
 
-        year = event.get('date', '')[:4]
-        tag = event.get('custom_tag') or event.get('unique_code')
-        full_event_string = f"{year} {event.get('program_code')} {event.get('event_name')} {tag}"
-
-        subject = f"New Event Registered: {event.get('event_name')}"
-        body = f"""A new event has been registered in the DRSCCA system.
-
-Full Event String: {full_event_string}
-
-Event Details:
-- Name: {event.get('event_name')}
-- Date: {event.get('date')}
-- Program: {event.get('program_code')}
-- Unique Code: {tag}
-- Created By: {event.get('creator_name')}
-
-Please review this entry if needed.
-"""
         # From used to be smtp_user, which is empty when relaying without
         # credentials. SMTP_FROM is the explicit knob; the relay rewrites every
         # sender to service@cosmoslab.dev anyway, so this only affects the header.
@@ -167,8 +151,27 @@ Please review this entry if needed.
                 server.login(smtp_user, smtp_password)
             server.send_message(msg)
             server.quit()
-            logger.info(f"Notification email sent to {recipient} for event {event.get('unique_code')}")
+            logger.info(f"Email sent to {recipient}: {subject}")
         except Exception as e:
-            logger.error(f"Failed to send notification email: {e}")
+            logger.error(f"Failed to send email: {e}")
 
     threading.Thread(target=send_email_async).start()
+
+
+def send_new_event_email(event):
+    year = event.get('date', '')[:4]
+    tag = event.get('custom_tag') or event.get('unique_code')
+    full_event_string = f"{year} {event.get('program_code')} {event.get('event_name')} {tag}"
+    send_mail(f"New Event Registered: {event.get('event_name')}", f"""A new event has been registered in the DRSCCA system.
+
+Full Event String: {full_event_string}
+
+Event Details:
+- Name: {event.get('event_name')}
+- Date: {event.get('date')}
+- Program: {event.get('program_code')}
+- Unique Code: {tag}
+- Created By: {event.get('creator_name')}
+
+Please review this entry if needed.
+""")
