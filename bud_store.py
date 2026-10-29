@@ -3,12 +3,16 @@
 One row per event on Budgets (keyed by the #DR event code), one row per line on Lines with the three
 columns of the region's budget form: last year actual, this year budget, this year actual. Original files
 directors send go in a per-event folder under BUDGETS_FILES_FOLDER_ID.
+
+The 'QBO Actuals' tab holds each event project's profit and loss by account, copied from QuickBooks by
+tools/sync_qbo_actuals.py on the machine with the QuickBooks connection. The app only reads it.
 """
 import os
 import threading
 import time
 from datetime import date
 
+import gspread
 from filelock import FileLock
 
 from storage import DATA_DIR, drive_folder, drive_upload, open_book, worksheet
@@ -47,9 +51,13 @@ def _snapshot():
     hit = _cache.get('snap')
     if hit and time.time() - hit[0] < CACHE_SECONDS:
         return hit[1]
-    res = open_book(os.environ['BUDGETS_SHEET_ID']).values_batch_get(['Budgets!A:J', 'Lines!A:G'],
-                                                                     params={'valueRenderOption': 'UNFORMATTED_VALUE'})
-    vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], []]
+    book = open_book(os.environ['BUDGETS_SHEET_ID'])
+    try:
+        res = book.values_batch_get(['Budgets!A:J', 'Lines!A:G', 'QBO Actuals!A:F'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+    except gspread.exceptions.APIError:
+        # No QBO Actuals tab until the first sync has run.
+        res = book.values_batch_get(['Budgets!A:J', 'Lines!A:G'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+    vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], [], []]
     buds = [dict(zip(BUD_COLS, [str(v) for v in r] + [''] * len(BUD_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
     lines = []
     for r in vr[1][1:]:
@@ -61,9 +69,25 @@ def _snapshot():
         ln['event_code'], ln['description'], ln['section'] = str(ln['event_code']), str(ln['description']), str(ln['section'])
         ln['sort'] = _num(ln['sort']) or 0
         lines.append(ln)
-    snap = (buds, lines)
+    qbo = {}
+    for r in vr[2][1:]:
+        r = list(r) + [''] * 6
+        if not str(r[0]).strip():
+            continue
+        q = qbo.setdefault(str(r[0]), {'project': str(r[1]), 'as_of': str(r[5]), 'lines': []})
+        q['lines'].append({'section': str(r[2]), 'account': str(r[3]), 'amount': _num(r[4]) or 0.0})
+    for q in qbo.values():
+        inc = sum(ln['amount'] for ln in q['lines'] if ln['section'] == 'Income')
+        exp = sum(ln['amount'] for ln in q['lines'] if ln['section'] == 'Expense')
+        q['totals'] = {'income': round(inc, 2), 'expense': round(exp, 2), 'surplus': round(inc - exp, 2)}
+    snap = (buds, lines, qbo)
     _cache['snap'] = (time.time(), snap)
     return snap
+
+
+def qbo_actuals():
+    """{event_code: {'project', 'as_of', 'lines': [{section, account, amount}], 'totals'}} from the last sync."""
+    return _snapshot()[2]
 
 
 def totals(lines):
@@ -82,7 +106,7 @@ def totals(lines):
 
 def budgets():
     """{event_code: header dict with lines and totals}"""
-    buds, lines = _snapshot()
+    buds, lines, _ = _snapshot()
     out = {}
     for b in buds:
         ls = sorted([ln for ln in lines if ln['event_code'] == b['event_code']], key=lambda ln: (ln['section'] != 'Income', ln['sort']))
@@ -104,7 +128,7 @@ def save(header, lines, files=()):
     """Replace one event's budget: header row upserted, its lines rewritten. Other events are untouched."""
     with FileLock(SAVE_LOCK), _lock:
         refresh()
-        buds, all_lines = _snapshot()
+        buds, all_lines, _ = _snapshot()
         code = header['event_code']
         old = next((b for b in buds if b['event_code'] == code), None)
         header = dict(header, updated=date.today().isoformat(), files_url=(old or {}).get('files_url', ''))

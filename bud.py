@@ -56,21 +56,31 @@ def home():
     years = sorted({e.get('date', '')[:4] for e in load_events() if e.get('date')}, reverse=True)
     year = request.args.get('year') or str(date.today().year)
     buds = B.budgets()
+    qbo = B.qbo_actuals()
     fr_by = {}
     for r in (F.requests() if F.enabled() else []):
         if r['status'] != 'Rejected' and r['event_code']:
             fr_by[r['event_code']] = fr_by.get(r['event_code'], 0) + r['net']
     rows = []
-    for e in sorted((e for e in load_events() if e.get('date', '').startswith(year)), key=lambda e: e.get('date', '')):
+    for e in sorted((e for e in load_events() if e.get('date', '').startswith(year)), key=lambda e: e.get('date', ''), reverse=True):
         b = buds.get(_code(e))
         t = b['totals'] if b else {}
+        q = qbo.get(_code(e))
         rows.append({'e': e, 'code': _code(e), 'b': b, 'budget': (t.get('budget') or {}).get('surplus'),
-                     'actual': (t.get('actual') or {}).get('surplus'), 'funds': fr_by.get(_code(e), 0)})
+                     'actual': q['totals']['surplus'] if q else None, 'funds': fr_by.get(_code(e), 0)})
     summary = {'events': len(rows), 'missing': sum(1 for r in rows if not r['b']),
                'budget': sum(r['budget'] or 0 for r in rows), 'actual': sum(r['actual'] or 0 for r in rows),
-               'with_actuals': sum(1 for r in rows if r['actual'] is not None)}
-    return render_template('bud.html', **_ctx(view='list', rows=rows, year=year, years=years or [year], s=summary,
-                                              programs=load_programs()))
+               'with_actuals': sum(1 for r in rows if r['actual'] is not None),
+               'as_of': next((q['as_of'] for q in qbo.values()), '')}
+    programs = load_programs()
+    groups = []
+    for pc in sorted({r['e'].get('program_code', '') for r in rows}, key=lambda pc: programs.get(pc, pc)):
+        g = [r for r in rows if r['e'].get('program_code', '') == pc]
+        groups.append({'code': pc, 'name': programs.get(pc, pc or 'Other'), 'rows': g,
+                       'budget': sum(r['budget'] or 0 for r in g), 'actual': sum(r['actual'] or 0 for r in g),
+                       'funds': sum(r['funds'] for r in g), 'missing': sum(1 for r in g if not r['b'])})
+    return render_template('bud.html', **_ctx(view='list', groups=groups, year=year, years=years or [year], s=summary,
+                                              programs=programs))
 
 
 @bp.route('/event/<path:code>')
@@ -83,7 +93,8 @@ def detail(code):
     if not e and not b:
         flash('Event not found.', 'warning')
         return redirect(url_for('bud.home'))
-    return render_template('bud.html', **_ctx(view='detail', code=code, e=e or {}, b=b, funds=_funds(code)))
+    return render_template('bud.html', **_ctx(view='detail', code=code, e=e or {}, b=b, funds=_funds(code),
+                                              q=B.qbo_actuals().get(code)))
 
 
 @bp.route('/event/<path:code>/edit', methods=['GET', 'POST'])

@@ -11,6 +11,7 @@
         body.app-bud { --accent: #b48cff; }
         .section-label { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: .5rem; }
         .ev-row { cursor: pointer; }
+        .prog-row td { background: var(--surface-2); font-weight: 600; border-top: 2px solid var(--border); }
         .row-remove { color: var(--muted); text-decoration: none; }
         .row-remove:hover { color: #dc3545; }
         .bline .form-control { font-variant-numeric: tabular-nums; }
@@ -28,21 +29,25 @@
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Events</div><div class="value">{{ s.events }}</div></div></div>
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">No budget yet</div><div class="value {{ 'text-warning' if s.missing }}">{{ s.missing }}</div></div></div>
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Budgeted surplus</div><div class="value">{{ money(s.budget) }}</div></div></div>
-        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Actual surplus ({{ s.with_actuals }} events in)</div><div class="value">{{ money(s.actual) }}</div></div></div>
+        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Actual surplus, QuickBooks ({{ s.with_actuals }} events)</div><div class="value">{{ money(s.actual) }}</div></div></div>
     </div>
     <div class="card"><div class="card-body p-0 table-responsive">
         <table class="table table-hover mb-0">
-            <thead><tr><th class="ps-3">Date</th><th>Event</th><th>Budget</th><th class="num">Budgeted surplus</th><th class="num">Actual surplus</th><th class="num pe-3">Funds requested</th></tr></thead>
-            <tbody>{% for r in rows %}<tr class="ev-row" onclick="location.href='{{ url_for('bud.detail', code=r.code) }}'">
+            <thead><tr><th class="ps-3">Date</th><th>Event</th><th>Budget</th><th class="num">Budgeted surplus</th><th class="num">Actual (QBO)</th><th class="num pe-3">Funds requested</th></tr></thead>
+            <tbody>{% for g in groups %}
+                <tr class="prog-row"><td class="ps-3" colspan="3">{{ g.name }} <span class="text-muted small">{{ g.code }} · {{ g.rows|length }} events{% if g.missing %}, {{ g.missing }} without a budget{% endif %}</span></td>
+                    <td class="num">{{ money(g.budget) }}</td><td class="num">{{ money(g.actual) }}</td><td class="num pe-3">${{ '{:,.2f}'.format(g.funds) }}</td></tr>
+                {% for r in g.rows %}<tr class="ev-row" onclick="location.href='{{ url_for('bud.detail', code=r.code) }}'">
                 <td class="ps-3 text-nowrap">{{ r.e.date }}</td>
                 <td><a href="{{ url_for('bud.detail', code=r.code) }}">{{ r.e.event_name }}</a> <span class="small text-muted">{{ r.e.program_code }} {{ r.code }}</span></td>
-                <td>{% if not r.b %}<span class="badge rounded-pill text-bg-warning">None</span>{% elif r.actual is not none %}<span class="badge rounded-pill text-bg-success">Actuals in</span>{% else %}<span class="badge rounded-pill text-bg-primary">Budget</span>{% endif %}</td>
+                <td>{% if r.b %}<span class="badge rounded-pill text-bg-primary">Budget</span>{% else %}<span class="badge rounded-pill text-bg-warning">None</span>{% endif %}</td>
                 <td class="num">{{ money(r.budget) }}</td><td class="num">{{ money(r.actual) }}</td>
                 <td class="num pe-3">{% if r.funds %}${{ '{:,.2f}'.format(r.funds) }}{% else %}<span class="text-muted">·</span>{% endif %}</td></tr>
+{% endfor %}
             {% else %}<tr><td colspan="6" class="text-muted ps-3">No events registered for {{ year }}.</td></tr>{% endfor %}</tbody>
         </table>
     </div></div>
-    <p class="form-text mt-3">Events come from Event Register. Budgets are kept in the DRSCCA Event Budgets sheet in the DRSCCA Apps shared drive; board approval is in the board minutes.</p>
+    <p class="form-text mt-3">Events come from Event Register. Actuals are each event's QuickBooks project{% if s.as_of %}, as of {{ s.as_of }}{% endif %}. Budgets are kept in the DRSCCA Event Budgets sheet in the DRSCCA Apps shared drive; board approval is in the board minutes.</p>
 
     {% elif view == 'detail' %}
     <div class="crumbs no-print"><a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Budgets</a> / {{ code }}</div>
@@ -62,10 +67,30 @@
             </div>
         </div>
     </div>
-    {% if b %}
+    {% if b or q %}
+    <h2 class="h6 text-muted">Budget vs actual (QuickBooks{% if q %}, as of {{ q.as_of }}{% endif %})</h2>
     <div class="card mb-3"><div class="card-body p-0 table-responsive">
         <table class="table mb-0">
-            <thead><tr><th class="ps-3"></th><th class="num">Last year actual</th><th class="num">This year budget</th><th class="num pe-3">This year actual</th></tr></thead>
+            <thead><tr><th class="ps-3"></th><th class="num">Budget</th><th class="num">Actual</th><th class="num pe-3">Difference</th></tr></thead>
+            <tbody>{% for k, label in [('income', 'Income'), ('expense', 'Expense'), ('surplus', 'Surplus (loss)')] %}
+                {% set bv = b.totals.budget[k] if b and b.totals.budget else none %}{% set av = q.totals[k] if q else none %}
+                <tr class="{{ 'fw-semibold' if k == 'surplus' }}"><td class="ps-3">{{ label }}</td><td class="num">{{ money(bv) }}</td><td class="num">{{ money(av) }}</td>
+                <td class="num pe-3">{{ money(av - bv) if (av is not none and bv is not none) else money(none) }}</td></tr>
+            {% endfor %}</tbody>
+        </table>
+    </div></div>
+    {% if q %}
+    <details class="mb-3"><summary class="text-muted small">QuickBooks accounts for {{ q.project }}</summary>
+    <div class="card mt-2"><div class="card-body p-0 table-responsive"><table class="table table-sm mb-0">
+        <tbody>{% for ln in q.lines %}<tr><td class="ps-3 small text-muted">{{ ln.section }}</td><td>{{ ln.account }}</td><td class="num pe-3">{{ money(ln.amount) }}</td></tr>{% endfor %}</tbody>
+    </table></div></div></details>
+    {% else %}<p class="text-muted small">No QuickBooks project with code {{ code }} yet, so no actuals.</p>{% endif %}
+    {% endif %}
+    {% if b %}
+    <h2 class="h6 text-muted">Budget form</h2>
+    <div class="card mb-3"><div class="card-body p-0 table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th class="ps-3"></th><th class="num">Last year actual</th><th class="num">This year budget</th><th class="num pe-3">Actual on the form</th></tr></thead>
             <tbody>
             {% for section in ['Income', 'Expense'] %}
                 <tr><td class="ps-3 fw-semibold" colspan="4">{{ section }}</td></tr>
