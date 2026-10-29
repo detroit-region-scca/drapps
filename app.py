@@ -28,13 +28,16 @@ app = Flask(__name__)
 from wp import bp as wp_bp  # noqa: E402
 from fr import bp as fr_bp  # noqa: E402
 from bud import bp as bud_bp  # noqa: E402
+from plan import bp as plan_bp  # noqa: E402
 import wp_store  # noqa: E402
 import fr_store  # noqa: E402
 import audit_view  # noqa: E402
 import bud_store  # noqa: E402
+import plan_store  # noqa: E402
 app.register_blueprint(wp_bp)
 app.register_blueprint(fr_bp)
 app.register_blueprint(bud_bp)
+app.register_blueprint(plan_bp)
 app.config['MAX_CONTENT_LENGTH'] = 40 * 1024 * 1024  # funds request receipts
 
 # Mandatory Secret Key in Production
@@ -89,7 +92,7 @@ def home():
         # The create-event form used to post to '/'; a page left open from before keeps working.
         return index()
     return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Apps",
-                           wp_enabled=wp_store.enabled(), fr_enabled=fr_store.enabled(), bud_enabled=bud_store.enabled(), next_url=_safe_next(request.args.get('next')) or '')
+                           wp_enabled=wp_store.enabled(), fr_enabled=fr_store.enabled(), bud_enabled=bud_store.enabled(), plan_enabled=plan_store.enabled(), next_url=_safe_next(request.args.get('next')) or '')
 
 @app.errorhandler(RuntimeError)
 def storage_unavailable(e):

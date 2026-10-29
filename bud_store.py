@@ -5,7 +5,7 @@ columns of the region's budget form: last year actual, this year budget, this ye
 directors send go in a per-event folder under BUDGETS_FILES_FOLDER_ID.
 
 The 'QBO Actuals' tab holds each event project's profit and loss by account, copied from QuickBooks by
-tools/sync_qbo_actuals.py on the machine with the QuickBooks connection. The app only reads it.
+tools/qbo_nightly.py on the machine with the QuickBooks connection. The app only reads it.
 """
 import os
 import threading

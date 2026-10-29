@@ -1,0 +1,192 @@
+"""Annual Plan: each program's yearly plan (events and items, expected profit or cost) against QuickBooks actuals.
+
+Directors fill in their own program's plan for the next year (the template is the edit page); the board
+approves it in the minutes. The top of the page is the board-meeting money summary, and Books check lists what
+the nightly QuickBooks sync (tools/qbo_nightly.py) found for the treasurer.
+"""
+import os
+from datetime import date
+
+from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
+
+import bud_store as B
+import fr_store as F
+import plan_store as P
+from utils import load_events, load_programs, log_audit_event, login_required
+
+bp = Blueprint('plan', __name__, url_prefix='/plan')
+
+OPS = 'OPS'
+MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+BANKS = ('Checking', 'Business Money Market', 'Fifth Third CD')
+
+
+def _programs():
+    """[(code, name)] in a fixed order, Operations last."""
+    return list(load_programs().items()) + [(OPS, 'Operations')]
+
+
+def _ctx(**kw):
+    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Annual Plan", who=session.get('who', ''),
+                months=MONTHS, n_exceptions=len(P.exceptions()), **kw)
+
+
+def _guard():
+    if not P.enabled():
+        flash('The annual plan needs the Google Sheets storage (STORAGE_BACKEND=sheets and PLAN_SHEET_ID).', 'warning')
+        return redirect(url_for('home'))
+    return None
+
+
+def _year(y):
+    if not str(y).isdigit() or not 2020 <= int(y) <= 2100:
+        abort(404)
+    return str(y)
+
+
+def _money(v):
+    v = str(v or '').replace(',', '').replace('$', '').replace('−', '-').strip()
+    if not v:
+        return None
+    if v.startswith('(') and v.endswith(')'):
+        v = '-' + v[1:-1]
+    try:
+        return round(float(v), 2)
+    except ValueError:
+        return 'bad'
+
+
+def _code(e):
+    return e.get('custom_tag') or e.get('unique_code')
+
+
+def _event_actuals(program, year):
+    """The program's registered events that year with their QuickBooks profit (None until booked)."""
+    qbo = B.qbo_actuals() if B.enabled() else {}
+    evs = [e for e in load_events() if e.get('program_code') == program and str(e.get('date', '')).startswith(year)]
+    return [{'e': e, 'code': _code(e), 'net': (qbo.get(_code(e)) or {}).get('totals', {}).get('surplus')}
+            for e in sorted(evs, key=lambda e: e.get('date', ''))]
+
+
+@bp.route('/')
+@login_required
+def home():
+    if (g := _guard()):
+        return g
+    year = _year(request.args.get('year') or date.today().year)
+    plan, (act, as_of) = P.plan(year), P.actuals(year)
+    rows = []
+    for code, name in _programs():
+        p, a = plan.get(code), act.get(code)
+        pn = p['net'] if p and p['lines'] else None
+        an = a['net'] if a else None
+        rows.append({'code': code, 'name': name, 'plan': pn, 'actual': an, 'info': (p or {}).get('info', {}),
+                     'diff': round(an - pn, 2) if pn is not None and an is not None else None})
+    tot = {k: round(sum(r[k] or 0 for r in rows), 2) for k in ('plan', 'actual')}
+    st = P.status()
+    open_frs = [r for r in F.requests() if r['status'] == 'Submitted'] if F.enabled() else []
+    summary = {'banks': [(k, st[k]['amount']) for k in BANKS if k in st and st[k]['amount']],
+               'reserve': (st.get('Worker points reserve') or {}).get('amount'),
+               'as_of': next((v['as_of'] for v in st.values()), ''),
+               'open_frs': len(open_frs), 'open_frs_total': round(sum(r['net'] for r in open_frs), 2)}
+    summary['cash'] = round(sum(v for _, v in summary['banks']), 2)
+    sent = sum(1 for r in rows if r['plan'] is not None or r['info'])
+    return render_template('plan.html', **_ctx(view='home', year=year, years=P.years(), rows=rows, tot=tot, as_of=as_of,
+                                               s=summary, sent=sent, future=int(year) > date.today().year))
+
+
+@bp.route('/<year>/<program>')
+@login_required
+def detail(year, program):
+    if (g := _guard()):
+        return g
+    year, names = _year(year), dict(_programs())
+    if program not in names:
+        abort(404)
+    p = P.plan(year).get(program) or {'lines': [], 'net': 0.0, 'info': {}}
+    act, as_of = P.actuals(year)
+    qbo = B.qbo_actuals() if B.enabled() else {}
+    for ln in p['lines']:
+        ln['actual'] = (qbo.get(ln['event_code']) or {}).get('totals', {}).get('surplus') if ln['event_code'] else None
+    return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
+                                               a=act.get(program), as_of=as_of, events=_event_actuals(program, year)))
+
+
+@bp.route('/<year>/<program>/edit', methods=['GET', 'POST'])
+@login_required
+def edit(year, program):
+    if (g := _guard()):
+        return g
+    year, names = _year(year), dict(_programs())
+    if program not in names:
+        abort(404)
+    prev = str(int(year) - 1)
+    if request.method == 'POST':
+        f = request.form
+        who = f.get('entered_by', '').strip() or session.get('who', '') or 'Unknown'
+        session['who'] = who
+        lines, errors = [], []
+        for item, month, net, note, code in zip(f.getlist('item'), f.getlist('month'), f.getlist('net'), f.getlist('note'), f.getlist('code')):
+            item, note, v = item.strip(), note.strip(), _money(net)
+            if not item and v is None and not note:
+                continue
+            if v == 'bad':
+                errors.append(f'"{item or net}": the amount must be a number, like 1400 or -500.')
+                continue
+            lines.append({'item': item or 'Other', 'month': int(month) if month.isdigit() else '', 'net': v, 'note': note, 'event_code': code})
+        info = {'director': f.get('director', '').strip(), 'email': f.get('email', '').strip(), 'notes': f.get('notes', '').strip(),
+                'updated_by': who}
+        if errors:
+            for msg in errors:
+                flash(msg, 'danger')
+            return render_template('plan.html', **_ctx(view='edit', year=year, prev=prev, program=program, name=names[program],
+                                                       info=info, lines=lines, ref=_reference(program, prev))), 400
+        P.save(year, program, info, lines)
+        total = round(sum(ln['net'] or 0 for ln in lines), 2)
+        log_audit_event('PLAN_SAVED', who, {'year': year, 'program': program, 'lines': len(lines), 'net': total})
+        flash(f'{names[program]} plan for {year} saved.', 'success')
+        return redirect(url_for('plan.detail', year=year, program=program))
+    p = P.plan(year).get(program)
+    copied = False
+    if p and (p['lines'] or p['info']):
+        lines, info = p['lines'], p['info']
+    else:
+        # A new year starts from last year's plan: same items and amounts, which the director changes.
+        last = P.plan(prev).get(program) or {'lines': [], 'info': {}}
+        lines = [{'item': ln['item'], 'month': ln['month'], 'net': ln['net'], 'note': '', 'event_code': ''} for ln in last['lines']]
+        info = {k: last['info'].get(k, '') for k in ('director', 'email')}
+        copied = bool(lines)
+    return render_template('plan.html', **_ctx(view='edit', year=year, prev=prev, program=program, name=names[program], info=info,
+                                               lines=lines, copied=copied, ref=_reference(program, prev)))
+
+
+def _reference(program, year):
+    """What the director sees beside the form: last year's QuickBooks totals and event results."""
+    act, as_of = P.actuals(year)
+    return {'year': year, 'a': act.get(program), 'as_of': as_of, 'events': [x for x in _event_actuals(program, year)]}
+
+
+@bp.route('/checks', methods=['GET', 'POST'])
+@login_required
+def checks():
+    if (g := _guard()):
+        return g
+    if request.method == 'POST':
+        key = request.form.get('key', '')
+        e = next((x for x in P.exceptions() if x['key'] == key), None)
+        if e:
+            who = request.form.get('who', '').strip() or session.get('who', '') or 'Unknown'
+            session['who'] = who
+            note = request.form.get('note', '').strip()
+            P.mark_reviewed(key, who, note)
+            log_audit_event('PLAN_REVIEWED', who, {'key': key, 'kind': e['kind'], 'detail': e['detail'], 'note': note})
+            flash('Marked as looked at. It stays hidden unless something changes.', 'success')
+        return redirect(url_for('plan.checks'))
+    exc = P.exceptions()
+    kinds = []
+    for e in exc:
+        if e['kind'] not in kinds:
+            kinds.append(e['kind'])
+    reviewed = [e for e in P.exceptions(include_reviewed=True) if e['reviewed']]
+    return render_template('plan.html', **_ctx(view='checks', groups=[(k, [e for e in exc if e['kind'] == k]) for k in kinds],
+                                               reviewed=reviewed, as_of=next((e['as_of'] for e in exc), '')))

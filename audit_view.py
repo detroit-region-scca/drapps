@@ -8,7 +8,7 @@ from markupsafe import Markup, escape
 
 # action prefix -> (app label, badge colour)
 APPS = {'EVENT': ('Events', 'primary'), 'WP': ('Worker Points', 'warning'), 'FUNDS': ('Funds Requests', 'success'),
-        'BUDGET': ('Budgets', 'info'), 'LOGIN': ('Login', 'secondary')}
+        'BUDGET': ('Budgets', 'info'), 'PLAN': ('Annual Plan', 'light'), 'LOGIN': ('Login', 'secondary')}
 
 
 def app_of(action):
@@ -80,6 +80,11 @@ def describe(log):
         return Markup('{} reopened {}').format(who, _link('fr.detail', g('id', ''), req_id=g('id', '')))
     if a == 'BUDGET_SAVED':
         return Markup('{} saved the budget for {} ({} lines)').format(who, _link('bud.detail', g('event_code', ''), code=g('event_code', '')), g('lines', ''))
+    if a == 'PLAN_SAVED':
+        return Markup('{} saved the {} {} plan ({} lines, {})').format(who, g('year', ''), _link('plan.detail', g('program', ''), year=g('year', ''), program=g('program', '')),
+                                                                     g('lines', ''), _money(g('net')) if (g('net') or 0) >= 0 else '-' + _money(g('net')))
+    if a == 'PLAN_REVIEWED':
+        return Markup('{} marked a books check item as looked at: {}{}').format(who, g('detail', ''), Markup(' ({})').format(g('note')) if g('note') else '')
     if a.endswith('_IMPORTED'):
         return Markup('{} imported {}').format(who, g('summary', ''))
     if a in ('LOGIN_SUCCESS', 'LOGIN_FAILURE'):

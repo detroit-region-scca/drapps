@@ -1,0 +1,206 @@
+{% extends 'base.html' %}
+{% block body_class %}app-plan{% endblock %}
+{% block app_name %}Annual Plan{% endblock %}
+{% macro tab(endpoint, label, active) %}<li class="nav-item"><a class="nav-link{% if active %} active{% endif %}" href="{{ url_for(endpoint) }}">{{ label }}</a></li>{% endmacro %}
+{% block nav %}
+    {{ tab('plan.home', 'Plan vs actual', view != 'checks') }}
+    {{ tab('plan.checks', 'Books check' ~ (' (' ~ n_exceptions ~ ')' if n_exceptions else ''), view == 'checks') }}
+{% endblock %}
+{% macro money(v) %}{% if v is none %}<span class="text-muted">·</span>{% else %}<span class="{{ 'text-danger' if v < 0 else '' }}">{{ '-' if v < 0 }}${{ '{:,.0f}'.format(v|abs) }}</span>{% endif %}{% endmacro %}
+{% macro cents(v) %}{% if v is none %}<span class="text-muted">·</span>{% else %}<span class="{{ 'text-danger' if v < 0 else '' }}">{{ '-' if v < 0 }}${{ '{:,.2f}'.format(v|abs) }}</span>{% endif %}{% endmacro %}
+{% block style %}
+        body.app-plan { --accent: #4fd1c5; }
+        .ev-row { cursor: pointer; }
+        .total-row td { font-weight: 600; border-top: 2px solid var(--border); }
+        .row-remove { color: var(--muted); text-decoration: none; }
+        .row-remove:hover { color: #dc3545; }
+        .pline .form-control, .pline .form-select { font-variant-numeric: tabular-nums; }
+        @media (max-width: 767.98px) { .pline { border-bottom: 1px solid var(--border); } }
+        .ref { font-size: .9rem; }
+        @media print { .app-bar, .no-print, .alert { display: none !important; } body { background: #fff; color: #000; } .card { border-color: #ccc; } }
+{% endblock %}
+{% block content %}
+{% if view == 'home' %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <form method="get" class="d-flex gap-2 align-items-center no-print"><label class="text-muted" for="year">Year</label>
+            <select id="year" name="year" class="form-select" onchange="this.form.submit()">{% for y in years %}<option {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></form>
+        <button class="btn btn-sm btn-outline-secondary no-print" onclick="window.print()">Print for the board</button>
+    </div>
+    {% if future %}
+    <div class="alert alert-info">Plans for {{ year }}: <b>{{ sent }} of {{ rows|length }}</b> programs are in. Directors: open your program below and press <b>Fill in the {{ year }} plan</b>. It starts from this year's plan, so you only change what's different.</div>
+    {% else %}
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Cash in the bank</div><div class="value">{{ money(s.cash) }}</div>
+            <div class="small text-muted">{% for k, v in s.banks %}{{ k }} {{ money(v) }}{% if not loop.last %} · {% endif %}{% endfor %}</div></div></div>
+        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Worker points reserve</div><div class="value">{{ money(s.reserve) }}</div><div class="small text-muted">owed to members in points</div></div></div>
+        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Funds requests waiting</div><div class="value">{{ s.open_frs }}</div><div class="small text-muted">{{ money(s.open_frs_total) }} · <a href="{{ url_for('fr.home') }}">open</a></div></div></div>
+        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">{{ year }} profit so far</div><div class="value">{{ money(tot.actual) }}</div><div class="small text-muted">plan for the year {{ money(tot.plan) }}</div></div></div>
+    </div>
+    {% endif %}
+    <div class="card"><div class="card-body p-0 table-responsive">
+        <table class="table table-hover mb-0">
+            <thead><tr><th class="ps-3">Program</th><th>Director</th><th class="num">Plan</th><th class="num">{{ 'Actual so far' if not future else '' }}</th><th class="num pe-3">{{ 'Ahead (behind)' if not future else '' }}</th></tr></thead>
+            <tbody>{% for r in rows %}
+                <tr class="ev-row" onclick="location.href='{{ url_for('plan.detail', year=year, program=r.code) }}'">
+                    <td class="ps-3"><a href="{{ url_for('plan.detail', year=year, program=r.code) }}">{{ r.name }}</a> <span class="small text-muted">{{ r.code }}</span></td>
+                    <td class="small">{{ r.info.director or '' }}{% if future %}{% if r.info.updated %} <span class="badge rounded-pill text-bg-success">In {{ r.info.updated }}</span>{% else %} <span class="badge rounded-pill text-bg-warning">Waiting</span>{% endif %}{% endif %}</td>
+                    <td class="num">{{ money(r.plan) }}</td>
+                    <td class="num">{{ money(r.actual) if not future else '' }}</td>
+                    <td class="num pe-3">{{ money(r.diff) if not future else '' }}</td>
+                </tr>{% endfor %}
+                <tr class="total-row"><td class="ps-3" colspan="2">Region total</td><td class="num">{{ money(tot.plan) }}</td><td class="num">{{ money(tot.actual) if not future else '' }}</td>
+                    <td class="num pe-3">{{ money(tot.actual - tot.plan) if not future else '' }}</td></tr>
+            </tbody>
+        </table>
+    </div></div>
+    <p class="form-text mt-3">Plan amounts are expected profit, with costs and losses negative. Actuals are QuickBooks income minus expenses by program{% if as_of %}, as of {{ as_of }}{% endif %}; Operations includes membership, storage, insurance and investment income. Street Survival and SIM Racing are booked under other programs in QuickBooks, so they have no actuals of their own.
+        {% if s.as_of %}Balances as of {{ s.as_of }}.{% endif %} The plan is kept in the DRSCCA Annual Plan sheet in the DRSCCA Apps shared drive.</p>
+
+{% elif view == 'detail' %}
+    <div class="crumbs no-print"><a href="{{ url_for('plan.home', year=year) }}">Annual Plan {{ year }}</a> / {{ name }}</div>
+    <div class="card p-3 mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+            <div>
+                <div class="page-title m-0">{{ name }} plan for {{ year }}</div>
+                <div class="text-muted small">{% if p.info.director %}Director: {{ p.info.director }}{% if p.info.email %} · {{ p.info.email }}{% endif %}{% endif %}
+                    {% if p.info.updated %}<br>Updated {{ p.info.updated }} by {{ p.info.updated_by }}{% endif %}</div>
+            </div>
+            <div class="d-flex gap-2 no-print">
+                <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">Print</button>
+                <a class="btn btn-sm btn-accent" href="{{ url_for('plan.edit', year=year, program=program) }}">{{ 'Edit the plan' if p.lines else 'Fill in the ' ~ year ~ ' plan' }}</a>
+            </div>
+        </div>
+        {% if p.info.notes %}<div class="mt-2" style="white-space: pre-wrap;">{{ p.info.notes }}</div>{% endif %}
+    </div>
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <h2 class="h6 text-muted">Plan</h2>
+            <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+                <thead><tr><th class="ps-3">Month</th><th>Event or item</th><th class="num">Plan</th><th class="num pe-3">Actual</th></tr></thead>
+                <tbody>{% for ln in p.lines %}<tr>
+                    <td class="ps-3 text-muted">{{ months[ln.month - 1] if ln.month else '' }}</td>
+                    <td>{{ ln.item }}{% if ln.note %}<div class="small text-muted">{{ ln.note }}</div>{% endif %}</td>
+                    <td class="num">{{ money(ln.net) }}</td><td class="num pe-3">{% if ln.event_code %}<a href="{{ url_for('bud.detail', code=ln.event_code) }}">{{ money(ln.actual) }}</a>{% else %}<span class="text-muted">·</span>{% endif %}</td>
+                </tr>{% else %}<tr><td colspan="4" class="ps-3 text-muted">No plan yet.</td></tr>{% endfor %}
+                {% if p.lines %}<tr class="total-row"><td class="ps-3" colspan="2">Program total</td><td class="num">{{ money(p.net) }}</td><td class="num pe-3">{{ money(a.net if a else none) }}</td></tr>{% endif %}
+                </tbody></table></div></div>
+        </div>
+        <div class="col-lg-5">
+            <h2 class="h6 text-muted">QuickBooks{% if as_of %}, as of {{ as_of }}{% endif %}</h2>
+            {% if a %}
+            <div class="card mb-3"><div class="card-body p-0"><table class="table table-sm mb-0">
+                <tbody>{% for ln in a.lines %}<tr><td class="ps-3">{{ ln.account }}</td><td class="num pe-3">{{ cents(ln.amount if ln.section == 'Income' else -ln.amount) }}</td></tr>{% endfor %}
+                <tr class="total-row"><td class="ps-3">Profit (loss)</td><td class="num pe-3">{{ cents(a.net) }}</td></tr></tbody></table></div></div>
+            {% else %}<p class="text-muted small">Nothing booked to {{ name }} accounts for {{ year }}.</p>{% endif %}
+            {% if events %}
+            <h2 class="h6 text-muted">Registered events</h2>
+            <div class="card mb-3"><div class="card-body p-0"><table class="table table-sm mb-0"><tbody>
+                {% for x in events %}<tr><td class="ps-3 text-muted text-nowrap">{{ x.e.date[5:] }}</td><td><a href="{{ url_for('bud.detail', code=x.code) }}">{{ x.e.event_name }}</a></td><td class="num pe-3">{{ money(x.net) }}</td></tr>{% endfor %}
+            </tbody></table></div></div>{% endif %}
+        </div>
+    </div>
+
+{% elif view == 'edit' %}
+    <div class="crumbs"><a href="{{ url_for('plan.home', year=year) }}">Annual Plan {{ year }}</a> / <a href="{{ url_for('plan.detail', year=year, program=program) }}">{{ name }}</a> / Edit</div>
+    <div class="page-title">{{ name }} plan for {{ year }}</div>
+    <p class="text-muted">List each event or item you expect, the month, and about how much it will make. Use a minus sign for a cost or a loss, like <b>-500</b>. Rough numbers are fine.</p>
+    {% if copied %}<div class="alert alert-info py-2">This starts from your {{ prev }} plan. Change what's different, remove what's not happening, and save.</div>{% endif %}
+    <div class="row g-3">
+    <div class="col-lg-8">
+    <form method="post" id="planForm">
+        <div class="card p-3 mb-3"><div class="row g-2">
+            <div class="col-md-4"><label class="form-label">Program director</label><input name="director" class="form-control" value="{{ info.director or '' }}"></div>
+            <div class="col-md-4"><label class="form-label">Email</label><input name="email" type="email" class="form-control" value="{{ info.email or '' }}"></div>
+            <div class="col-md-4"><label class="form-label">Your name</label><input name="entered_by" class="form-control" value="{{ who }}" required></div>
+        </div></div>
+        <div class="card p-3 mb-3">
+            <div class="row g-2 d-none d-md-flex text-muted small mb-1"><div class="col-md-5">Event or item</div><div class="col-md-2">Month</div><div class="col-md-2 text-end">Expected profit</div><div class="col-md-2">Note</div></div>
+            <div class="lines">
+            {% for ln in (lines or [{}, {}, {}]) %}
+                <div class="row g-2 pline mb-2 pb-2">
+                    <input type="hidden" name="code" value="{{ ln.event_code or '' }}">
+                    <div class="col-12 col-md-5"><input name="item" class="form-control form-control-sm" placeholder="Event or item" value="{{ ln.item or '' }}"></div>
+                    <div class="col-4 col-md-2"><select name="month" class="form-select form-select-sm"><option value=""></option>{% for m in months %}<option value="{{ loop.index }}" {% if ln.month == loop.index %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
+                    <div class="col-4 col-md-2"><input name="net" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0" value="{{ '' if ln.net is none or ln.net == '' else ('%.0f'|format(ln.net) if ln.net == ln.net|round else ln.net) }}"></div>
+                    <div class="col-3 col-md-2"><input name="note" class="form-control form-control-sm" placeholder="Note" value="{{ ln.note or '' }}"></div>
+                    <div class="col-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)">✕</button></div>
+                </div>
+            {% endfor %}
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
+                <button type="button" class="btn btn-outline-light btn-sm" onclick="addLine()">Add a line</button>
+                <div class="ms-auto fw-semibold">Program total <span id="total"></span></div>
+            </div>
+        </div>
+        <div class="card p-3 mb-3">
+            <label class="form-label">Anything the board should know <span class="text-muted">(optional)</span></label>
+            <textarea name="notes" class="form-control" rows="3" placeholder="New events, big purchases, price changes">{{ info.notes or '' }}</textarea>
+        </div>
+        <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('plan.detail', year=year, program=program) }}">Cancel</a><button class="btn btn-accent px-4">Save plan</button></div>
+    </form>
+    </div>
+    <div class="col-lg-4 ref">
+        <h2 class="h6 text-muted">For reference: {{ ref.year }}</h2>
+        {% if ref.a %}<div class="card p-3 mb-3">
+            <div class="d-flex justify-content-between"><span>Income</span><span>{{ money(ref.a.income) }}</span></div>
+            <div class="d-flex justify-content-between"><span>Costs</span><span>{{ money(-ref.a.expense) }}</span></div>
+            <div class="d-flex justify-content-between fw-semibold border-top mt-1 pt-1"><span>Profit (loss)</span><span>{{ money(ref.a.net) }}</span></div>
+            <div class="small text-muted mt-1">QuickBooks{% if ref.as_of %}, as of {{ ref.as_of }}{% endif %}</div>
+        </div>{% endif %}
+        {% if ref.events %}<div class="card mb-3"><div class="card-body p-0"><table class="table table-sm mb-0"><tbody>
+            {% for x in ref.events %}<tr><td class="ps-3 text-muted text-nowrap">{{ x.e.date[5:] }}</td><td>{{ x.e.event_name }}</td><td class="num pe-3">{{ money(x.net) }}</td></tr>{% endfor %}
+        </tbody></table></div></div>{% endif %}
+        {% if not ref.a and not ref.events %}<p class="text-muted small">No {{ ref.year }} numbers for this program.</p>{% endif %}
+    </div>
+    </div>
+
+{% elif view == 'checks' %}
+    <p class="text-muted">What the nightly QuickBooks check found{% if as_of %} on {{ as_of }}{% endif %}. Fix it in QuickBooks or the apps and it drops off the next night, or mark it as looked at.</p>
+    {% for kind, items in groups %}
+    <h2 class="h6 text-muted mt-4">{{ kind }} ({{ items|length }})</h2>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <tbody>{% for e in items %}<tr>
+            <td class="ps-3 text-nowrap text-muted small">{{ e.date }}</td>
+            <td>{{ e.name }}<div class="small text-muted">{% if e.link.startswith('FR-') %}<a href="{{ url_for('fr.detail', req_id=e.link) }}">{{ e.detail }}</a>{% elif e.link.startswith('#DR') %}<a href="{{ url_for('bud.detail', code=e.link) }}">{{ e.detail }}</a>{% else %}{{ e.detail }}{% endif %}</div></td>
+            <td class="num">{{ cents(e.amount) }}</td>
+            <td class="pe-3 text-end"><button class="btn btn-sm btn-outline-light text-nowrap" type="button" data-bs-toggle="collapse" data-bs-target="#rv{{ loop.index }}{{ kind|length }}">Looked at</button></td>
+        </tr>
+        <tr class="collapse" id="rv{{ loop.index }}{{ kind|length }}"><td colspan="4" class="ps-3 pe-3">
+            <form method="post" class="row g-2 align-items-end"><input type="hidden" name="key" value="{{ e.key }}">
+                <div class="col-sm-4"><label class="form-label small">Your name</label><input name="who" class="form-control form-control-sm" value="{{ who }}"></div>
+                <div class="col-sm-6"><label class="form-label small">Why it's OK <span class="text-muted">(optional)</span></label><input name="note" class="form-control form-control-sm" placeholder="e.g. event cancelled"></div>
+                <div class="col-sm-2"><button class="btn btn-sm btn-accent w-100">Hide it</button></div></form>
+        </td></tr>{% endfor %}</tbody>
+    </table></div></div>
+    {% else %}<div class="card p-4 text-center text-muted">Nothing to look at. The books match the apps.</div>{% endfor %}
+    {% if reviewed %}<details class="mt-4"><summary class="text-muted small">Looked at already ({{ reviewed|length }})</summary>
+        <ul class="small text-muted mt-2">{% for e in reviewed %}<li>{{ e.kind }}: {{ e.detail }} · {{ e.reviewed.by }} {{ e.reviewed.reviewed }}{% if e.reviewed.note %}: {{ e.reviewed.note }}{% endif %}</li>{% endfor %}</ul></details>{% endif %}
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+    const form = document.getElementById('planForm');
+    const num = v => parseFloat(String(v).replace(/[$,]/g, '').replace('−', '-')) || 0;
+    const fmt = v => (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', {maximumFractionDigits: 0});
+    function total() {
+        let t = 0;
+        form.querySelectorAll('[name=net]').forEach(i => t += num(i.value));
+        const el = document.getElementById('total');
+        el.textContent = fmt(t);
+        el.className = t < 0 ? 'text-danger' : '';
+    }
+    function addLine() {
+        const box = form.querySelector('.lines');
+        const row = box.querySelector('.pline').cloneNode(true);
+        row.querySelectorAll('input, select').forEach(i => i.value = '');
+        box.appendChild(row);
+        row.querySelector('[name=item]').focus();
+    }
+    function removeLine(btn) {
+        const box = btn.closest('.lines'), row = btn.closest('.pline');
+        if (box.querySelectorAll('.pline').length > 1) row.remove(); else row.querySelectorAll('input, select').forEach(i => i.value = '');
+        total();
+    }
+    if (form) { form.addEventListener('input', total); total(); }
+</script>
+{% endblock %}

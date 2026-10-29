@@ -62,3 +62,18 @@ The easiest way to run the application is using Docker Compose. The provided `do
    python app.py
    ```
 3. Open your web browser and navigate to `http://localhost:<PORT>` (default 5858).
+
+## Nightly QuickBooks sync
+
+`tools/qbo_nightly.py` runs on bodhi at 02:30 (systemd user timer `drscca-qbo.timer`; failures alert through
+`notify`). It only reads QuickBooks (`tools/qbo_export.mjs`, using the qbo-mcp install and its token store) and:
+
+- copies each `#DR` event project's profit and loss to the Event Budgets sheet (budget vs actual),
+- copies the region profit and loss by program and year, bank balances and the worker points reserve to the
+  Annual Plan sheet, and sets the ledger's QBO reserve balance,
+- marks open funds requests paid when QuickBooks has a matching check (payee's last name and amount) or an
+  exact card statement line,
+- lists exceptions for the treasurer on Annual Plan > Books check (checks with no funds request, paid requests
+  missing from QuickBooks, events with no project or no actuals, requests waiting over a month).
+
+Run by hand with `set -a && . ~/.secrets/qbo.env && set +a && venv/bin/python tools/qbo_nightly.py [--dry-run]`.
