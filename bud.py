@@ -107,7 +107,9 @@ def home():
         rows.append({'e': e, 'code': _code(e), 'program': pc, 'date': e.get('date', ''), 'name': e.get('event_name', ''),
                      'b': b, 'status': _status(b), 'budget': (t.get('budget') or {}).get('surplus'),
                      'actual': q['totals']['surplus'] if q else None, 'plan': plan_by_code.get(_code(e)),
-                     'unplanned': bool(plan.get(pc, {}).get('lines')) and _code(e) not in plan_by_code})
+                     'unplanned': bool(plan.get(pc, {}).get('lines')) and _code(e) not in plan_by_code,
+                     # The QuickBooks project's own name once it exists; else the name to give it (as on the event page).
+                     'qbo_name': q['project'] if q and q.get('project') else f"{e.get('date', '')[:4]} {pc} {e.get('event_name', '')} {_code(e)}"})
     # Plan lines with a month and no registered event yet: the events the director expects but has not registered.
     # A line with no month (supplies, trophies) is program spending, not an event, and stays on the "other" row,
     # as do lines for months already past (planned, never registered).

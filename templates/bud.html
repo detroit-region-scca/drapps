@@ -9,6 +9,8 @@
         .row-remove:hover { color: #dc3545; }
         .bline .form-control { font-variant-numeric: tabular-nums; }
         .tot { font-variant-numeric: tabular-nums; }
+        .copy-qb { font-size: .8rem; color: var(--muted); text-decoration: none; vertical-align: baseline; }
+        .copy-qb:hover { color: var(--accent); }
         @media (max-width: 767.98px) { .bline { border-bottom: 1px solid var(--border); } }
 {% endblock %}
 {% block content %}
@@ -48,7 +50,8 @@
                     <td class="num d-none d-md-table-cell">{{ money(g.plan) }}</td><td class="num d-none d-md-table-cell">{{ money(g.budget) }}</td><td class="num pe-3">{{ money(g.actual) }}</td></tr>
                 {% for r in g.rows %}{% set href = url_for('bud.detail', code=r.code) if r.e else r.register %}
                 <tr class="kid row-link{{ ' text-muted' if not r.e }}" onclick="location.href='{{ href }}'" data-date="{{ r.date }}" data-name="{{ r.name }}" data-budget="{{ r.budget if r.budget is not none else '' }}" data-actual="{{ r.actual if r.actual is not none else '' }}" data-plan="{{ r.plan if r.plan is not none else '' }}">
-                <td class="ps-4">{% if r.e %}<a href="{{ href }}">{{ r.name }}</a> <span class="small text-muted">{{ r.code }}</span>{% if r.unplanned %} <span class="small text-warning" title="Not tied to a line in the annual plan">not in plan</span>{% endif %}{% else %}{{ r.name }}{% endif %}</td>
+                <td class="ps-4">{% if r.e %}<a href="{{ href }}">{{ r.name }}</a> <span class="small text-muted">{{ r.code }}</span>
+                    <button type="button" class="btn btn-link btn-sm p-0 ms-1 small no-print copy-qb" data-copy="{{ r.qbo_name }}" title="Copy the QuickBooks project name: {{ r.qbo_name }}" onclick="event.stopPropagation(); copyText(this)">Copy QB name</button>{% if r.unplanned %} <span class="small text-warning" title="Not tied to a line in the annual plan">not in plan</span>{% endif %}{% else %}{{ r.name }}{% endif %}</td>
                 <td class="text-nowrap">{{ r.date }}</td>
                 <td>{{ badge(r) }}</td>
                 <td class="num d-none d-md-table-cell">{{ money(r.plan) }}</td><td class="num d-none d-md-table-cell">{{ money(r.budget) }}</td><td class="num pe-3">{{ money(r.actual) }}</td></tr>
