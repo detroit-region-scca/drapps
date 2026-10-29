@@ -160,7 +160,7 @@ def detail(year, program):
         ln['budget'] = _budget_surplus(ln['event_code']) if ln['event_code'] else None
         if not ln['event_code'] and program != OPS:
             # "Register event" opens the Event Register filled in from this line, tied to it once saved.
-            ln['register'] = url_for('index', program=program, event_name=re.sub(r'^\d{4}-\d{2}-\w+\s+', '', ln['item']),
+            ln['register'] = url_for('index', year=year, program=program, event_name=re.sub(r'^\d{4}-\d{2}-\w+\s+', '', ln['item']),
                                      date=f"{year}-{ln['month']:02d}-01" if ln['month'] else '', plan_line=f"{ln['sort']:g}")
     prev = str(int(year) - 1)
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,

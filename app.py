@@ -189,7 +189,7 @@ def index():
     this_year = str(datetime.now().year)
     new_event = next((e for e in events if e['id'] == request.args.get('new_event_id')), None)
     year = request.args.get('year') or ((new_event or {}).get('date') or '')[:4] or this_year
-    years = sorted({(e.get('date') or '')[:4] for e in events if (e.get('date') or '')[:4].isdigit()} | {this_year}, reverse=True)
+    years = sorted({(e.get('date') or '')[:4] for e in events if (e.get('date') or '')[:4].isdigit()} | {this_year, year}, reverse=True)
 
     grouped_events = defaultdict(list)
     for event in (e for e in events if (e.get('date') or '').startswith(year)):
@@ -220,7 +220,7 @@ def index():
                            program_directors_text=program_directors_text,
                            form_data=form_data,
                            tag_error=tag_error,
-                           year=year, years=years,
+                           year=year, years=years, q=request.args.get('q', ''),
                            budgets=_budget_codes(),
                            open_plan=_open_plan_lines(events))
 
@@ -270,7 +270,7 @@ def delete_event(event_id):
             flash('Event deleted successfully.', 'danger')
         else:
             flash('Event not found.', 'warning')
-    return redirect(url_for('index'))
+    return redirect(url_for('index', year=((event_to_delete or {}).get('date') or '')[:4] or None))
 
 @app.route('/edit/<event_id>', methods=['POST'])
 @login_required
@@ -296,11 +296,11 @@ def edit_event(event_id):
         if custom_tag:
             if custom_tag == event_to_edit.get('unique_code'):
                 flash(f"Error: Tag '{custom_tag}' is already the generated code for this event.", "danger")
-                return redirect(url_for('index'))
+                return redirect(url_for('index', year=original_event['date'][:4] or None))
                 
             if not is_tag_unique(custom_tag, events, exclude_event_id=event_id):
                 flash(f"Error: Tag '{custom_tag}' is already in use by another event.", "danger")
-                return redirect(url_for('index'))
+                return redirect(url_for('index', year=original_event['date'][:4] or None))
 
         event_to_edit['custom_tag'] = custom_tag
         
@@ -316,7 +316,7 @@ def edit_event(event_id):
         })
     
     flash('Event updated successfully!', 'success')
-    return redirect(url_for('index'))
+    return redirect(url_for('index', year=event_to_edit['date'][:4] or None))
 
 @app.route('/export')
 @login_required

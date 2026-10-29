@@ -65,7 +65,7 @@
             <div class="d-flex gap-2 no-print">
                 {% if b and b.files_url %}<a class="btn btn-sm btn-outline-light" href="{{ b.files_url }}" target="_blank" rel="noopener">Files</a>{% endif %}
                 {% if b %}<button class="btn btn-sm btn-outline-secondary" onclick="window.print()">Print</button>{% endif %}
-                <a class="btn btn-sm btn-outline-light" href="{{ url_for('index') }}">Event Register</a>
+                <a class="btn btn-sm btn-outline-light" href="{{ url_for('index', year=(e.date or '')[:4] or none, q=code) }}">Event Register</a>
                 <a class="btn btn-sm btn-accent" href="{{ url_for('bud.edit', code=code) }}">{{ 'Edit budget' if b else 'Create budget' }}</a>
             </div>
         </div>

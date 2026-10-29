@@ -76,7 +76,7 @@
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
             <div class="page-title m-0">Registered events</div>
             <div class="d-flex gap-2 flex-grow-1 justify-content-end align-items-center">
-                <input type="text" id="eventSearch" class="form-control form-control-sm" style="max-width: 250px;" placeholder="Search events..." onkeyup="filterEvents()">
+                <input type="text" id="eventSearch" class="form-control form-control-sm" style="max-width: 250px;" placeholder="Search events..." value="{{ q }}" onkeyup="filterEvents()">
                 <button class="btn btn-sm btn-outline-secondary text-nowrap" data-toggle-all="evTable">Expand or collapse all</button>
                 <a href="{{ url_for('export_events') }}" class="btn btn-sm btn-outline-secondary text-nowrap">Export CSV</a>
             </div>
@@ -228,6 +228,9 @@
             ['program', 'date', 'event_name'].forEach(n => form[n].addEventListener(n === 'event_name' ? 'input' : 'change', update));
             update();
         })();
+
+        // Arriving with ?q= (the Budgets page's "Event Register" button) shows just that event.
+        document.addEventListener('DOMContentLoaded', () => { if (document.getElementById('eventSearch').value) filterEvents(); });
 
         function filterEvents() {
             const query = document.getElementById('eventSearch').value.toLowerCase();
