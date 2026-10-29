@@ -21,6 +21,7 @@
         .app-bar .apps-btn:hover { color: var(--text); border-color: var(--muted); }
         .app-bar .apps-btn svg { width: 18px; height: 18px; }
         .app-bar .navbar-brand { font-weight: 600; color: var(--text); }
+        @media (max-width: 575.98px) { .app-bar .navbar-brand { font-size: 1.05rem; } }
         .app-bar .navbar-brand .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); margin-right: .5rem; }
         .app-bar .nav-link { color: var(--muted); border-radius: 8px; padding: .4rem .75rem !important; }
         .app-bar .nav-link:hover { color: var(--text); }
@@ -61,6 +62,12 @@
         </a>
         {% endif %}
         <span class="navbar-brand"><span class="dot"></span>{% block app_name %}{{ title }}{% endblock %}</span>
+        {% if request.endpoint == 'home' %}
+        {# The launcher has no sections, so no menu: just log out. #}
+        <form action="{{ url_for('logout') }}" method="POST" class="m-0 ms-auto">
+            <button type="submit" class="btn btn-link btn-logout text-decoration-none px-0">Log out</button>
+        </form>
+        {% else %}
         <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#appnav" aria-controls="appnav" aria-expanded="false" aria-label="Menu">
             <span class="navbar-toggler-icon"></span>
         </button>
@@ -70,6 +77,7 @@
                 <button type="submit" class="btn btn-link btn-logout text-decoration-none px-lg-2 px-0">Log out</button>
             </form>
         </div>
+        {% endif %}
     </div>
 </nav>
 {% endif %}

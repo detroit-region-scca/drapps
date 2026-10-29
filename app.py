@@ -95,6 +95,17 @@ def storage_unavailable(e):
     flash(str(e), 'danger')
     return redirect(url_for('index'))
 
+def _budget_codes():
+    """Event codes that have a budget, for the Budget buttons on the events list; None hides the buttons."""
+    if not bud_store.enabled():
+        return None
+    try:
+        return set(bud_store.budgets())
+    except Exception as e:
+        logging.error(f"Budgets unavailable for the events list: {e}")
+        return None
+
+
 @app.route('/events', methods=['GET', 'POST'])
 def index():
     if not session.get('authenticated'):
@@ -166,7 +177,8 @@ def index():
                            scca_region_name=scca_region_name,
                            program_directors_text=program_directors_text,
                            form_data=form_data,
-                           tag_error=tag_error)
+                           tag_error=tag_error,
+                           budgets=_budget_codes())
 
 @app.route('/audit')
 @login_required
