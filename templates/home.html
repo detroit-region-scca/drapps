@@ -1,5 +1,4 @@
 {% extends 'base.html' %}
-{% block width %}1000px{% endblock %}
 {% block style %}
         .app-tile { display: block; text-decoration: none; color: var(--text); background: var(--surface); border: 1px solid var(--border);
                     border-radius: 14px; padding: 1.1rem .9rem; text-align: center; transition: border-color .15s, transform .15s; height: 100%; }
@@ -80,6 +79,5 @@
         </div>
         {% endif %}
     </div>
-    <p class="text-center mt-4"><a class="text-muted small" href="{{ url_for('audit_log') }}">Audit log: every change in every app</a></p>
     {% endif %}
 {% endblock %}

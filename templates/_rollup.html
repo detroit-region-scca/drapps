@@ -2,6 +2,10 @@
    tr.grp-row, its other rows tr.kid (tr.kid.fixed stays last). Sort values come from data-* on each row. #}
 <style>
     .rollup .grp-row td { background: var(--surface-2); font-weight: 600; border-top: 2px solid var(--border); cursor: pointer; }
+    .rollup .grp-row a { color: inherit; text-decoration: none; }
+    .rollup .grp-row a:hover { text-decoration: underline; }
+    .rollup tr.kid a { text-decoration: none; }
+    .rollup tr.kid a:hover { text-decoration: underline; }
     .rollup .chev { display: inline-block; width: 1em; color: var(--muted); transition: transform .15s; }
     .rollup tbody.open .chev { transform: rotate(90deg); }
     .rollup tbody.grp:not(.open) tr.kid { display: none; }

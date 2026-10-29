@@ -1,10 +1,8 @@
 {% extends 'base.html' %}
-{% block width %}1200px{% endblock %}
 {% block app_name %}Event Register{% endblock %}
 {% macro tab(endpoint, label) %}<li class="nav-item"><a class="nav-link{% if request.endpoint == endpoint %} active{% endif %}" href="{{ url_for(endpoint) }}">{{ label }}</a></li>{% endmacro %}
 {% block nav %}
     {{ tab('index', 'Events') }}
-    {{ tab('audit_log', 'Audit log') }}
 {% endblock %}
 {% block style %}
         .btn-budget { background: #b48cff; border-color: #b48cff; color: #111; }
@@ -79,46 +77,24 @@
             <h4 class="m-0">Registered Events</h4>
             <div class="d-flex gap-2 flex-grow-1 justify-content-end align-items-center">
                 <input type="text" id="eventSearch" class="form-control form-control-sm border-secondary bg-dark text-light" style="max-width: 250px;" placeholder="Search events..." onkeyup="filterEvents()">
-                <button class="btn btn-sm btn-outline-light text-nowrap" onclick="toggleAccordions(true)">Expand All</button>
-                <button class="btn btn-sm btn-outline-light text-nowrap" onclick="toggleAccordions(false)">Collapse All</button>
+                <button class="btn btn-sm btn-outline-secondary text-nowrap" data-toggle-all="evTable">Expand or collapse all</button>
                 <a href="{{ url_for('export_events') }}" class="btn btn-sm btn-success text-nowrap">Export CSV</a>
             </div>
         </div>
 
-        <div class="accordion mb-5" id="eventAccordion">
-            {% for program_name, event_list in grouped_events.items() %}
-            <div class="accordion-item">
-                <h2 class="accordion-header">
-                    <button class="accordion-button collapsed shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ loop.index }}">
-                        {{ program_name }} ({{ event_list|length }})
-                    </button>
-                </h2>
-                <div id="collapse-{{ loop.index }}" class="accordion-collapse collapse">
-                    <div class="accordion-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover m-0" style="table-layout: fixed;">
-                                <thead class="table-dark">
-                                    <tr>
-                                        <th style="width: 50%;">Event Name</th>
-                                        <th style="width: 15%;">Creator</th>
-                                        <th style="width: 10%;">Date</th>
-                                        <th style="width: 25%;" class="text-end pe-3">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for event in event_list %}
-                                    <tr>
-                                        <td>
-                                            {{ event.date[:4] }} {{ event.program_code }} {{ event.event_name }}
-                                            {% if event.custom_tag %}
-                                            <span class="badge bg-info text-dark">{{ event.custom_tag }}</span>
-                                            {% else %}
-                                            <span class="badge bg-secondary">{{ event.unique_code }}</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>{{ event.creator_name }}</td>
-                                        <td class="text-nowrap">{{ event.date }}</td>
-                                        <td class="text-end text-nowrap pe-3 ps-4">
+        <div class="card mb-5"><div class="card-body p-0 table-responsive">
+        <table class="table table-hover mb-0 rollup" id="evTable">
+            <thead><tr><th class="ps-3" data-sort="name">Event</th><th>Creator</th><th data-sort="date">Date</th><th class="text-end pe-3">Actions</th></tr></thead>
+            {% for code, event_list in grouped_events.items() %}
+            <tbody class="grp" data-grp="{{ code }}">
+                <tr class="grp-row" data-name="{{ programs.get(code, code) }}" data-date="{{ event_list[0].date if event_list else '' }}">
+                    <td class="ps-3" colspan="4"><span class="chev">▸</span> {{ programs.get(code, code) }} <span class="text-muted small fw-normal">{{ code }} · {{ event_list|length }} event{{ '' if event_list|length == 1 else 's' }}</span></td></tr>
+                {% for event in event_list %}
+                <tr class="kid" data-name="{{ event.event_name }}" data-date="{{ event.date }}">
+                    <td class="ps-4">{{ event.event_name }} <span class="small text-muted">{{ event.custom_tag or event.unique_code }}</span></td>
+                    <td>{{ event.creator_name }}</td>
+                    <td class="text-nowrap">{{ event.date }}</td>
+                    <td class="text-end text-nowrap pe-3 ps-4">
                                             {% if budgets is not none %}{% set code = event.custom_tag or event.unique_code %}
                                             <a class="btn btn-sm py-0 px-2 me-1 {{ 'btn-budget' if code in budgets else 'btn-outline-budget' }}" href="{{ url_for('bud.detail', code=code) }}" title="{{ 'View budget' if code in budgets else 'No budget yet' }}">Budget</a>
                                             {% endif %}
@@ -134,21 +110,14 @@
                                                 data-url="{{ url_for('delete_event', event_id=event.id) }}" 
                                                 data-event-name="{{ event.event_name }}">X</button>
                                         </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% else %}
-            <div class="text-center py-4 border rounded border-secondary text-muted">
-                No events registered yet.
-            </div>
+                </tr>
+                {% endfor %}
+            </tbody>
+            {% else %}<tbody><tr><td colspan="4" class="text-muted ps-3">No events registered for {{ year }}.</td></tr></tbody>
             {% endfor %}
-        </div>
-        
+        </table>
+        </div></div>
+
         <!-- Delete Modal -->
         <div class="modal fade" id="deleteModal" tabindex="-1">
             <div class="modal-dialog">
@@ -221,6 +190,7 @@
 
 {% endblock %}
 {% block scripts %}
+{% include '_rollup.html' %}
     <script>
         // "Which annual plan line is this?": the program's open plan lines for the event's year, best guess selected.
         (() => {
@@ -259,31 +229,16 @@
 
         function filterEvents() {
             const query = document.getElementById('eventSearch').value.toLowerCase();
-            document.querySelectorAll('.accordion-item').forEach(accordionItem => {
-                let showAccordion = false;
-                const rows = accordionItem.querySelectorAll('tbody tr');
-                
-                rows.forEach(row => {
-                    const text = row.innerText.toLowerCase();
-                    if (text.includes(query)) {
-                        row.style.display = '';
-                        showAccordion = true;
-                    } else {
-                        row.style.display = 'none';
-                    }
+            document.querySelectorAll('#evTable tbody.grp').forEach(grp => {
+                let hits = 0;
+                grp.querySelectorAll('tr.kid').forEach(row => {
+                    const hit = row.innerText.toLowerCase().includes(query);
+                    row.style.display = hit ? '' : 'none';
+                    hits += hit;
                 });
-
-                if (showAccordion) {
-                    accordionItem.style.display = '';
-                    if (query !== '') {
-                        const collapseEl = accordionItem.querySelector('.accordion-collapse');
-                        if (!collapseEl.classList.contains('show')) {
-                            new bootstrap.Collapse(collapseEl, { toggle: false }).show();
-                        }
-                    }
-                } else {
-                    accordionItem.style.display = 'none';
-                }
+                grp.style.display = hits || !query ? '' : 'none';
+                if (query && hits) grp.classList.add('open');
+                if (!query) grp.querySelectorAll('tr.kid').forEach(row => row.style.display = '');
             });
         }
 
@@ -342,12 +297,6 @@
             setTimeout(() => { btn.innerText = old; btn.disabled = false; }, 1500);
         }
 
-        function toggleAccordions(expand) {
-            document.querySelectorAll('.accordion-collapse').forEach(item => {
-                let bsCollapse = new bootstrap.Collapse(item, { toggle: false });
-                expand ? bsCollapse.show() : bsCollapse.hide();
-            });
-        }
 
         const delModal = document.getElementById('deleteModal');
         if(delModal) {

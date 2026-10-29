@@ -145,14 +145,19 @@ def home():
     if (g := _guard()):
         return g
     status = request.args.get('status', 'Submitted')
-    reqs = sorted(F.requests(), key=lambda r: r['id'], reverse=True)
+    every = F.requests()
+    this_year = str(date.today().year)
+    years = sorted({r['submitted'][:4] for r in every if r['submitted'][:4].isdigit()} | {this_year}, reverse=True)
+    year = request.args.get('year') if request.args.get('year') in years else this_year
+    # Waiting requests show whatever year they were filed in: an open request is never out of view.
+    reqs = sorted((r for r in every if r['submitted'].startswith(year) or r['status'] == 'Submitted'), key=lambda r: r['id'], reverse=True)
     counts = {s: sum(1 for r in reqs if r['status'] == s) for s in ('Submitted', 'Paid', 'Rejected')}
     shown = reqs if status == 'All' else [r for r in reqs if r['status'] == status]
     a = Approvals()
     for r in shown:
         if r['status'] == 'Submitted':
             r['waiting'] = FL.waiting_on(a.items(r))
-    return render_template('fr.html', **_ctx(view='list', reqs=shown, status=status, counts=counts,
+    return render_template('fr.html', **_ctx(view='list', reqs=shown, status=status, counts=counts, year=year, years=years,
                                              open_total=sum(r['net'] for r in reqs if r['status'] == 'Submitted')))
 
 

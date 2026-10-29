@@ -186,12 +186,17 @@ def index():
     programs = load_programs()
     recommended_msr_name = None
 
-    grouped_events = defaultdict(list)
-    for event in events:
-        program_name_key = f"{event['program_code']}: {programs.get(event['program_code'])}"
-        grouped_events[program_name_key].append(event)
+    this_year = str(datetime.now().year)
+    new_event = next((e for e in events if e['id'] == request.args.get('new_event_id')), None)
+    year = request.args.get('year') or ((new_event or {}).get('date') or '')[:4] or this_year
+    years = sorted({(e.get('date') or '')[:4] for e in events if (e.get('date') or '')[:4].isdigit()} | {this_year}, reverse=True)
 
-    sorted_grouped_events = dict(sorted(grouped_events.items()))
+    grouped_events = defaultdict(list)
+    for event in (e for e in events if (e.get('date') or '').startswith(year)):
+        grouped_events[event['program_code']].append(event)
+
+    sorted_grouped_events = {code: sorted(evs, key=lambda e: e.get('date', ''))
+                             for code, evs in sorted(grouped_events.items(), key=lambda kv: programs.get(kv[0], kv[0]))}
 
     scca_region_acronym = os.environ.get("SCCA_REGION_ACRONYM", "SCCA")
     scca_region_name = os.environ.get("SCCA_REGION_NAME", "SCCA")
@@ -210,6 +215,7 @@ def index():
                            program_directors_text=program_directors_text,
                            form_data=form_data,
                            tag_error=tag_error,
+                           year=year, years=years,
                            budgets=_budget_codes(),
                            open_plan=_open_plan_lines(events))
 

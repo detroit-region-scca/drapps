@@ -21,10 +21,6 @@
 {% endblock %}
 {% block content %}
     {% if view == 'list' %}
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-        <form method="get" class="d-flex gap-2 align-items-center"><label class="text-muted" for="year">Year</label>
-            <select id="year" name="year" class="form-select" onchange="this.form.submit()">{% for y in years %}<option {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></form>
-    </div>
     <div class="row g-3 mb-4">
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Events</div><div class="value">{{ s.events }}</div></div></div>
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">No budget yet</div><div class="value {{ 'text-warning' if s.missing }}">{{ s.missing }}</div></div></div>
@@ -34,19 +30,19 @@
     <div class="d-flex justify-content-end gap-2 mb-2"><a class="btn btn-sm btn-outline-light" href="{{ url_for('bud.approve_many', year=year) }}">Record board approvals</a><button class="btn btn-sm btn-outline-secondary" data-toggle-all="budTable">Expand or collapse all</button></div>
     <div class="card"><div class="card-body p-0 table-responsive">
         <table class="table mb-0 rollup" id="budTable">
-            <thead><tr><th class="ps-3" data-sort="date">Date</th><th data-sort="name">Event</th><th>Budget</th><th class="num" data-sort="plan">Annual plan</th><th class="num" data-sort="budget">Budgeted surplus</th><th class="num pe-3" data-sort="actual">Actual (QBO)</th></tr></thead>
+            <thead><tr><th class="ps-3" data-sort="name">Event</th><th data-sort="date">Date</th><th>Budget</th><th class="num" data-sort="plan">Annual plan</th><th class="num" data-sort="budget">Budgeted surplus</th><th class="num pe-3" data-sort="actual">Actual (QBO)</th></tr></thead>
             {% for g in groups %}
             <tbody class="grp" data-grp="{{ g.code }}">
                 <tr class="grp-row" data-name="{{ g.name }}" data-date="{{ g.rows[0].e.date if g.rows else '' }}" data-plan="{{ g.plan if g.plan is not none else '' }}" data-budget="{{ g.budget }}" data-actual="{{ g.actual }}">
                     <td class="ps-3" colspan="3"><span class="chev">▸</span> {{ g.name }} <span class="text-muted small fw-normal">{{ g.code }} · {% if g.rows %}{{ g.rows|length }} events{% if g.missing %}, {{ g.missing }} without a budget{% endif %}{% else %}no events{% endif %}</span></td>
                     <td class="num">{{ money(g.plan) }}</td><td class="num">{{ money(g.budget) }}</td><td class="num pe-3">{{ money(g.actual) }}</td></tr>
                 {% for r in g.rows %}<tr class="kid ev-row" onclick="location.href='{{ url_for('bud.detail', code=r.code) }}'" data-date="{{ r.e.date }}" data-name="{{ r.e.event_name }}" data-budget="{{ r.budget if r.budget is not none else '' }}" data-actual="{{ r.actual if r.actual is not none else '' }}" data-plan="{{ r.plan if r.plan is not none else '' }}">
-                <td class="ps-4 text-nowrap">{{ r.e.date }}</td>
-                <td><a href="{{ url_for('bud.detail', code=r.code) }}">{{ r.e.event_name }}</a> <span class="small text-muted">{{ r.code }}</span></td>
+                <td class="ps-4"><a href="{{ url_for('bud.detail', code=r.code) }}">{{ r.e.event_name }}</a> <span class="small text-muted">{{ r.code }}</span></td>
+                <td class="text-nowrap">{{ r.e.date }}</td>
                 <td>{% if r.status == 'approved' %}<span class="badge rounded-pill text-bg-success" title="Board approved {{ r.b.approved }}">Approved</span>{% elif r.status == 'changed' %}<span class="badge rounded-pill text-bg-info" title="Edited after the board approved it on {{ r.b.approved }}">Changed</span>{% elif r.b %}<span class="badge rounded-pill text-bg-primary" title="Not board approved yet">Budget</span>{% else %}<span class="badge rounded-pill text-bg-warning">None</span>{% endif %}</td>
                 <td class="num">{{ money(r.plan) }}</td><td class="num">{{ money(r.budget) }}</td><td class="num pe-3">{{ money(r.actual) }}</td></tr>
 {% endfor %}
-                {% if g.other or g.other_plan %}<tr class="kid fixed text-muted"><td class="ps-4"></td><td colspan="2">{% set other_label = 'Other, not tied to an event' if g.rows else 'Program income and costs (no events)' %}{% if plan_on %}<a class="text-muted" href="{{ url_for('plan.detail', year=year, program=g.code) }}">{{ other_label }}</a>{% else %}{{ other_label }}{% endif %}</td>
+                {% if g.other or g.other_plan %}<tr class="kid fixed text-muted"><td class="ps-4" colspan="3">{% set other_label = 'Other, not tied to an event' if g.rows else 'Program income and costs (no events)' %}{% if plan_on %}<a class="text-muted" href="{{ url_for('plan.detail', year=year, program=g.code) }}">{{ other_label }}</a>{% else %}{{ other_label }}{% endif %}</td>
                     <td class="num">{{ money(g.other_plan) if g.other_plan else '' }}</td><td></td><td class="num pe-3">{{ money(g.other) if g.other else '' }}</td></tr>{% endif %}
             </tbody>
             {% else %}<tbody><tr><td colspan="6" class="text-muted ps-3">No events registered for {{ year }}.</td></tr></tbody>{% endfor %}

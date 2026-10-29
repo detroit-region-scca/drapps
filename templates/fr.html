@@ -27,7 +27,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="btn-group filter" role="group">
             {% for s, label in [('Submitted', 'Waiting'), ('Paid', 'Paid'), ('Rejected', 'Rejected'), ('All', 'All')] %}
-            <a class="btn btn-sm btn-outline-light{% if status == s %} active{% endif %}" href="{{ url_for('fr.home', status=s) }}">{{ label }}{% if s in counts %} <span class="text-muted">{{ counts[s] }}</span>{% endif %}</a>
+            <a class="btn btn-sm btn-outline-light{% if status == s %} active{% endif %}" href="{{ url_for('fr.home', status=s, year=year) }}">{{ label }}{% if s in counts %} <span class="text-muted">{{ counts[s] }}</span>{% endif %}</a>
             {% endfor %}
         </div>
         <a class="btn btn-accent" href="{{ url_for('fr.new') }}">New funds request</a>

@@ -34,9 +34,7 @@
 {% endblock %}
 {% block content %}
 {% if view == 'home' %}
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-        <form method="get" class="d-flex gap-2 align-items-center no-print"><label class="text-muted" for="year">Year</label>
-            <select id="year" name="year" class="form-select" onchange="this.form.submit()">{% for y in years %}<option {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></form>
+    <div class="d-flex flex-wrap justify-content-end align-items-center gap-2 mb-3">
         <button class="btn btn-sm btn-outline-secondary no-print" onclick="window.print()">Print for the board</button>
     </div>
     {% if future %}
@@ -65,13 +63,13 @@
             {% for r in rows %}
             <tbody class="grp" data-grp="{{ r.code }}">
                 <tr class="grp-row" data-name="{{ r.name }}" data-plan="{{ r.plan if r.plan is not none else '' }}" data-budget="{{ r.budget if r.budget is not none else '' }}" data-actual="{{ r.actual if r.actual is not none else '' }}" data-diff="{{ r.diff if r.diff is not none else '' }}">
-                    <td class="ps-3"><span class="chev">{{ '▸' if r.kids else '' }}</span> <a href="{{ url_for('plan.detail', year=year, program=r.code) }}">{{ r.name }}</a> <span class="small text-muted">{{ r.code }}</span></td>
+                    <td class="ps-3"><span class="chev">{{ '▸' if r.kids else '' }}</span> <a href="{{ url_for('plan.detail', year=year, program=r.code) }}">{{ r.name }}</a> <span class="text-muted small fw-normal">{{ r.code }}</span></td>
                     <td class="small fw-normal">{{ r.info.director or '' }}{% if future %}{% if r.info.updated %} <span class="badge rounded-pill text-bg-success">In {{ r.info.updated }}</span>{% else %} <span class="badge rounded-pill text-bg-warning">Waiting</span>{% endif %}{% endif %}</td>
                     <td class="num">{{ money(r.plan) }}</td><td class="num">{{ money(r.budget) }}</td>
                     {% if not future %}<td class="num">{{ money(r.actual) }}</td><td class="num pe-3">{{ money(r.diff) }}</td>{% endif %}
                 </tr>
                 {% for k in r.kids %}<tr class="kid{{ ' fixed text-muted' if k.other }}" data-name="{{ k.name }}" data-date="{{ k.date }}" data-plan="{{ k.plan if k.plan is not none else '' }}" data-budget="{{ k.budget if k.budget is not none else '' }}" data-actual="{{ k.actual if k.actual is not none else '' }}" data-diff="{{ k.diff if k.diff is not none else '' }}">
-                    <td class="ps-5">{% if k.code %}<a href="{{ url_for('bud.detail', code=k.code) }}">{{ k.name }}</a>{% elif k.other %}<a class="text-muted" href="{{ url_for('plan.detail', year=year, program=r.code) }}">{{ k.name }}</a>{% else %}{{ k.name }}{% endif %}</td>
+                    <td class="ps-4">{% if k.code %}<a href="{{ url_for('bud.detail', code=k.code) }}">{{ k.name }}</a>{% elif k.other %}<a class="text-muted" href="{{ url_for('plan.detail', year=year, program=r.code) }}">{{ k.name }}</a>{% else %}{{ k.name }}{% endif %}</td>
                     <td class="small text-muted text-nowrap">{{ k.date }}</td>
                     <td class="num">{{ money(k.plan) }}</td><td class="num">{{ money(k.budget) }}</td>
                     {% if not future %}<td class="num">{{ money(k.actual) }}</td><td class="num pe-3">{{ money(k.diff) }}</td>{% endif %}

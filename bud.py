@@ -76,7 +76,7 @@ def home():
     plan = P.plan(year) if P.enabled() else {}
     plan_by_code = {ln['event_code']: ln['net'] for x in plan.values() for ln in x['lines'] if ln['event_code']}
     rows = []
-    for e in sorted((e for e in load_events() if e.get('date', '').startswith(year)), key=lambda e: e.get('date', ''), reverse=True):
+    for e in sorted((e for e in load_events() if e.get('date', '').startswith(year)), key=lambda e: e.get('date', '')):
         b = buds.get(_code(e))
         t = b['totals'] if b else {}
         q = qbo.get(_code(e))
