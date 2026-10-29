@@ -1,6 +1,7 @@
 // Prints what the apps need from QuickBooks as one JSON document, for qbo_nightly.py:
 //   projects  each #DR event project's profit and loss by account
 //   programs  the region's profit and loss by account, per calendar year
+//   monthly   the same by account and month, this year and last, for the plan vs actual chart
 //   balances  bank accounts and the worker points reserve
 //   payments  checks, bill payments and card charges since PAYMENTS_SINCE
 // Runs on the machine that holds the QuickBooks connection (the qbo-mcp install and its token
@@ -58,6 +59,28 @@ for (const y of [year - 1, year, year + 1]) {
   programs.push({ year: y, lines: pnlLines(rep) });
 }
 
+// Leaf account rows of a ProfitAndLoss report summarized by month: one amount per month column (Total dropped).
+const monthLines = (rep) => {
+  const lines = [];
+  const walk = (rows, section) => {
+    for (const r of rows || []) {
+      const top = r.group || section;
+      if (r.ColData && r.type !== 'Section') {
+        const months = r.ColData.slice(1, 13).map(d => parseFloat(d.value || '0') || 0);
+        if (months.some(Boolean)) lines.push({ section: /Income/i.test(top) ? 'Income' : 'Expense', account: r.ColData[0].value, months });
+      }
+      if (r.Rows) walk(r.Rows.Row, top);
+    }
+  };
+  walk(rep.Rows?.Row, '');
+  return lines;
+};
+const monthly = [];
+for (const y of [year - 1, year]) {
+  const rep = await get(`reports/ProfitAndLoss?start_date=${y}-01-01&end_date=${y}-12-31&accounting_method=Accrual&summarize_column_by=Month`);
+  monthly.push({ year: y, lines: monthLines(rep) });
+}
+
 const balances = (await query('Account', "WHERE AccountType IN ('Bank', 'Other Current Liability')"))
   .filter(a => a.Active && (a.AccountType === 'Bank' || /Worker Awards/i.test(a.Name)))
   .map(a => ({ account: a.FullyQualifiedName, type: a.AccountType, balance: a.CurrentBalance }));
@@ -79,4 +102,4 @@ for (const b of await query('BillPayment', `WHERE TxnDate >= '${since}'`)) {
   });
 }
 
-console.log(JSON.stringify({ as_of: today, projects, programs, balances, payments }));
+console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments }));

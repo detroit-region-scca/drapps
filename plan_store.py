@@ -3,6 +3,7 @@
   Plan            one row per planned event or item: year, program, item, month, net (+ profit, - cost)
   Programs        one row per program and year: director, email, notes for the board, last update
   QBO Programs    the region profit and loss by account and year      } written nightly by
+  QBO Monthly     profit by program and month, this year and last      }
   QBO Status      bank balances and the worker points reserve          } tools/qbo_nightly.py,
   QBO Exceptions  things in the books the treasurer should look at     } read only here
   Reviewed        exception keys the treasurer has looked at, so they stay hidden
@@ -24,7 +25,7 @@ PROG_COLS = ['year', 'program', 'director', 'email', 'notes', 'updated', 'update
 EXC_COLS = ['key', 'kind', 'date', 'name', 'amount', 'detail', 'link', 'as_of']
 CACHE_SECONDS = 15
 SAVE_LOCK = os.path.join(DATA_DIR, 'plan_save.lock')
-RANGES = ['Plan!A:H', 'Programs!A:G', 'QBO Programs!A:F', 'QBO Status!A:C', 'QBO Exceptions!A:H', 'Reviewed!A:D']
+RANGES = ['Plan!A:H', 'Programs!A:G', 'QBO Programs!A:F', 'QBO Status!A:C', 'QBO Exceptions!A:H', 'Reviewed!A:D', 'QBO Monthly!A:E']
 
 _lock = threading.Lock()
 _cache = {}
@@ -57,7 +58,12 @@ def _snapshot():
     hit = _cache.get('snap')
     if hit and time.time() - hit[0] < CACHE_SECONDS:
         return hit[1]
-    res = open_book(os.environ['PLAN_SHEET_ID']).values_batch_get(RANGES, params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+    book = open_book(os.environ['PLAN_SHEET_ID'])
+    try:
+        res = book.values_batch_get(RANGES, params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+    except gspread.exceptions.APIError:
+        # No QBO Monthly tab until the first sync that writes it.
+        res = book.values_batch_get(RANGES[:-1], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])]
     lines = _rows(vr[0], PLAN_COLS)
     for ln in lines:
@@ -74,7 +80,8 @@ def _snapshot():
     for e in exc:
         e.update({k: str(e[k]) for k in EXC_COLS if k != 'amount'}, amount=_num(e['amount']))
     reviewed = {str(r['key']): r for r in _rows(vr[5], ['key', 'reviewed', 'by', 'note'])}
-    snap = (lines, progs, qbo, status, exc, reviewed)
+    monthly = _rows(vr[6], ['year', 'program', 'month', 'net', 'as_of']) if len(vr) > 6 else []
+    snap = (lines, progs, qbo, status, exc, reviewed, monthly)
     _cache['snap'] = (time.time(), snap)
     return snap
 
@@ -106,6 +113,15 @@ def actuals(year):
     rows = [r for r in _snapshot()[2] if str(r['year']) == str(year)]
     lines = [{'section': str(r['section']), 'account': str(r['account']), 'amount': _num(r['amount']) or 0.0} for r in rows]
     return qbo_logic.program_totals(lines), (str(rows[0]['as_of']) if rows else '')
+
+
+def monthly(year):
+    """{program: [net for Jan..Dec]} from QuickBooks for one year."""
+    out = {}
+    for r in _snapshot()[6]:
+        if str(r['year']) == str(year) and _num(r['month']):
+            out.setdefault(str(r['program']), [0.0] * 12)[int(_num(r['month'])) - 1] += _num(r['net']) or 0
+    return out
 
 
 def status():

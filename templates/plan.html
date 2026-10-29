@@ -17,6 +17,19 @@
         .pline .form-control, .pline .form-select { font-variant-numeric: tabular-nums; }
         @media (max-width: 767.98px) { .pline { border-bottom: 1px solid var(--border); } }
         .ref { font-size: .9rem; }
+        .viz { --series-actual: #3987e5; --series-plan: #d95926; }
+        .viz-title { color: var(--muted); font-size: .9rem; }
+        .viz-head { font-size: 1.05rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+        .viz-legend { display: flex; gap: 1rem; font-size: .8rem; color: var(--muted); }
+        .viz-legend .sw { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--series-actual); vertical-align: middle; margin-right: .35rem; }
+        .viz-legend .sw-plan { border-top: 2px dashed var(--series-plan); }
+        .viz-box { position: relative; }
+        #viz { display: block; width: 100%; height: 280px; overflow: visible; }
+        #viz text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+        #viz text.end-label { fill: var(--text); font-size: 12px; font-weight: 600; }
+        .viz-tip { position: absolute; pointer-events: none; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+                   padding: .4rem .6rem; font-size: .8rem; white-space: nowrap; font-variant-numeric: tabular-nums; z-index: 2; }
+        .viz-tip .sw { display: inline-block; width: 10px; height: 2px; vertical-align: middle; margin-right: .3rem; }
         @media print { .app-bar, .no-print, .alert { display: none !important; } body { background: #fff; color: #000; } .card { border-color: #ccc; } }
 {% endblock %}
 {% block content %}
@@ -29,12 +42,19 @@
     {% if future %}
     <div class="alert alert-info">Plans for {{ year }}: <b>{{ sent }} of {{ rows|length }}</b> programs are in. Directors: open your program below and press <b>Fill in the {{ year }} plan</b>. It starts from this year's plan, so you only change what's different.</div>
     {% else %}
-    <div class="row g-3 mb-4">
-        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Cash in the bank</div><div class="value">{{ money(s.cash) }}</div>
-            <div class="small text-muted">{% for k, v in s.banks %}{{ k }} {{ money(v) }}{% if not loop.last %} · {% endif %}{% endfor %}</div></div></div>
-        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Worker points reserve</div><div class="value">{{ money(s.reserve) }}</div><div class="small text-muted">owed to members in points</div></div></div>
-        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Funds requests waiting</div><div class="value">{{ s.open_frs }}</div><div class="small text-muted">{{ money(s.open_frs_total) }} · <a href="{{ url_for('fr.home') }}">open</a></div></div></div>
-        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">{{ year }} profit so far</div><div class="value">{{ money(tot.actual) }}</div><div class="small text-muted">plan for the year {{ money(tot.plan) }}</div></div></div>
+    <div class="card p-3 mb-4 viz">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+            <div>
+                <div class="viz-title">Profit through the year, {{ year }}</div>
+                <div class="viz-head" id="vizHead"></div>
+            </div>
+            <select id="vizProgram" class="form-select form-select-sm no-print" style="width:auto" aria-label="Program">
+                <option value="">All programs</option>{% for c, n in chart.programs %}<option value="{{ c }}">{{ n }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="viz-legend" aria-hidden="true"><span><i class="sw sw-actual"></i>Actual (QuickBooks)</span><span><i class="sw sw-plan"></i>Plan</span></div>
+        <div id="vizBox" class="viz-box"><svg id="viz" role="img" aria-labelledby="vizHead"></svg><div id="vizTip" class="viz-tip" hidden></div></div>
+        <details class="mt-2 no-print"><summary class="small text-muted">Show as a table</summary><div class="table-responsive mt-2"><table class="table table-sm mb-0" id="vizTable"></table></div></details>
     </div>
     {% endif %}
     <div class="d-flex justify-content-end mb-2 no-print"><button class="btn btn-sm btn-outline-secondary" data-toggle-all="planTable">Expand or collapse all</button></div>
@@ -62,7 +82,7 @@
         </table>
     </div></div>
     <p class="form-text mt-3">Plan amounts are expected profit, with costs and losses negative. Actuals are QuickBooks income minus expenses by program{% if as_of %}, as of {{ as_of }}{% endif %}. Click a program to see its events; "Other, not in an event project" is program money in QuickBooks that is not tagged to an event, such as season trophies or last season's fees. Operations includes membership, storage, insurance and investment income. Street Survival and SIM Racing are booked under other programs in QuickBooks, so they have no actuals of their own.
-        {% if s.as_of %}Balances as of {{ s.as_of }}.{% endif %} The plan is kept in the DRSCCA Annual Plan sheet in the DRSCCA Apps shared drive.</p>
+        The plan is kept in the DRSCCA Annual Plan sheet in the DRSCCA Apps shared drive.</p>
 
 {% elif view == 'detail' %}
     <div class="crumbs no-print"><a href="{{ url_for('plan.home', year=year) }}">Annual Plan {{ year }}</a> / {{ name }}</div>
@@ -189,6 +209,85 @@
 {% endblock %}
 {% block scripts %}
 {% include '_rollup.html' %}
+{% if chart %}<script>
+// Plan vs actual: cumulative profit by month for the region or one program. One axis, two lines.
+(() => {
+    const D = {{ chart|tojson }}, M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const svg = document.getElementById('viz'), box = document.getElementById('vizBox'), tip = document.getElementById('vizTip');
+    const sel = document.getElementById('vizProgram'), head = document.getElementById('vizHead'), table = document.getElementById('vizTable');
+    const NS = 'http://www.w3.org/2000/svg';
+    const money = v => (v < 0 ? '-$' : '$') + Math.abs(Math.round(v)).toLocaleString('en-US');
+    const short = v => { const a = Math.abs(v); return (v < 0 ? '-$' : '$') + (a >= 1000 ? (a / 1000).toFixed(a >= 10000 ? 0 : 1) + 'k' : Math.round(a)); };
+    const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); (parent || svg).appendChild(e); return e; };
+    const cum = xs => { let s = 0; return xs.map(x => s += x); };
+    const sum = (src, code) => { const out = Array(12).fill(0); for (const [c, v] of Object.entries(src)) if (!code || c === code) v.forEach((x, i) => out[i] += x); return out; };
+    try { const saved = localStorage.getItem('planChartProgram'); if (saved !== null && [...sel.options].some(o => o.value === saved)) sel.value = saved; } catch (e) {}
+    function niceTicks(lo, hi) {
+        const span = hi - lo || 1, raw = span / 4, mag = 10 ** Math.floor(Math.log10(raw));
+        const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= 5);
+        const ticks = []; for (let v = Math.floor(lo / step) * step; v <= hi + 1e-9; v += step) ticks.push(v);
+        if (ticks[ticks.length - 1] < hi) ticks.push(ticks[ticks.length - 1] + step);
+        return ticks;
+    }
+    function draw() {
+        const code = sel.value, plan = cum(sum(D.plan, code)), act = cum(sum(D.actual, code)).slice(0, D.last);
+        const n = act.length, planToDate = n ? plan[n - 1] : 0, a = n ? act[n - 1] : 0, d = a - planToDate;
+        head.textContent = n ? `${money(a)} actual vs ${money(planToDate)} planned by the end of ${M[n - 1]} (${d >= 0 ? 'ahead ' : 'behind '}${money(Math.abs(d))}). Plan for the year ${money(plan[11])}.`
+                             : `Plan for the year ${money(plan[11])}.`;
+        const W = box.clientWidth, H = 280, m = {l: 56, r: 84, t: 12, b: 26};
+        svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.innerHTML = '';
+        const ticks = niceTicks(Math.min(0, ...plan, ...act), Math.max(0, ...plan, ...act));
+        const lo = ticks[0], hi = ticks[ticks.length - 1];
+        const x = i => m.l + i * (W - m.l - m.r) / 11, y = v => m.t + (hi - v) / (hi - lo || 1) * (H - m.t - m.b);
+        for (const t of ticks) {
+            el('line', {x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), stroke: 'var(--border)', 'stroke-width': t === 0 ? 1.5 : 1, 'stroke-dasharray': t === 0 ? '' : '2 4'});
+            el('text', {x: m.l - 8, y: y(t) + 4, 'text-anchor': 'end'}).textContent = short(t);
+        }
+        M.forEach((mo, i) => { if (W > 520 || i % 2 === 0) el('text', {x: x(i), y: H - 6, 'text-anchor': 'middle'}).textContent = mo; });
+        const path = vs => vs.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
+        el('path', {d: path(plan), fill: 'none', stroke: 'var(--series-plan)', 'stroke-width': 2, 'stroke-dasharray': '6 4', 'stroke-linejoin': 'round'});
+        if (n) el('path', {d: path(act), fill: 'none', stroke: 'var(--series-actual)', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round'});
+        // Direct labels at each line's end, nudged apart when they would collide.
+        const ends = [{v: plan[11], i: 11, txt: `Plan ${short(plan[11])}`}];
+        if (n) ends.push({v: a, i: n - 1, txt: `Actual ${short(a)}`});
+        if (ends.length === 2 && ends[1].i === 11 && Math.abs(y(ends[0].v) - y(ends[1].v)) < 14) {
+            const up = y(ends[1].v) <= y(ends[0].v) ? 1 : 0; ends[up].dy = -7; ends[1 - up].dy = 7;
+        }
+        for (const e of ends) el('text', {x: x(e.i) + 8, y: y(e.v) + 4 + (e.dy || 0), class: 'end-label'}).textContent = e.txt;
+        // Hover: crosshair, dots, tooltip.
+        const cross = el('line', {y1: m.t, y2: H - m.b, stroke: 'var(--muted)', 'stroke-width': 1, visibility: 'hidden'});
+        const dotP = el('circle', {r: 4.5, fill: 'var(--series-plan)', stroke: 'var(--surface)', 'stroke-width': 2, visibility: 'hidden'});
+        const dotA = el('circle', {r: 4.5, fill: 'var(--series-actual)', stroke: 'var(--surface)', 'stroke-width': 2, visibility: 'hidden'});
+        const hit = el('rect', {x: m.l - 10, y: 0, width: W - m.l - m.r + 20, height: H, fill: 'transparent'});
+        const show = ev => {
+            const r = svg.getBoundingClientRect(), px = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left;
+            const i = Math.max(0, Math.min(11, Math.round((px - m.l) / ((W - m.l - m.r) / 11))));
+            cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.setAttribute('visibility', 'visible');
+            dotP.setAttribute('cx', x(i)); dotP.setAttribute('cy', y(plan[i])); dotP.setAttribute('visibility', 'visible');
+            const hasA = i < n;
+            dotA.setAttribute('visibility', hasA ? 'visible' : 'hidden');
+            if (hasA) { dotA.setAttribute('cx', x(i)); dotA.setAttribute('cy', y(act[i])); }
+            tip.innerHTML = `<div class="fw-semibold mb-1">End of ${M[i]}</div>` +
+                (hasA ? `<div><i class="sw" style="background:var(--series-actual)"></i>Actual ${money(act[i])}</div>` : '') +
+                `<div><i class="sw" style="background:var(--series-plan)"></i>Plan ${money(plan[i])}</div>` +
+                (hasA ? `<div class="text-muted">${act[i] - plan[i] >= 0 ? 'Ahead' : 'Behind'} ${money(Math.abs(act[i] - plan[i]))}</div>` : '');
+            tip.hidden = false;
+            const tw = tip.offsetWidth;
+            tip.style.left = Math.min(Math.max(0, x(i) + 12 + tw > W ? x(i) - tw - 12 : x(i) + 12), W - tw) + 'px';
+            tip.style.top = m.t + 'px';
+        };
+        const hide = () => { tip.hidden = true; [cross, dotP, dotA].forEach(e => e.setAttribute('visibility', 'hidden')); };
+        hit.addEventListener('mousemove', show); hit.addEventListener('touchstart', show, {passive: true}); hit.addEventListener('touchmove', show, {passive: true});
+        hit.addEventListener('mouseleave', hide);
+        table.innerHTML = '<thead><tr><th>End of</th><th class="num">Plan</th><th class="num">Actual</th><th class="num">Ahead (behind)</th></tr></thead><tbody>' +
+            M.map((mo, i) => `<tr><td>${mo}</td><td class="num">${money(plan[i])}</td><td class="num">${i < n ? money(act[i]) : ''}</td><td class="num">${i < n ? money(act[i] - plan[i]) : ''}</td></tr>`).join('') + '</tbody>';
+    }
+    sel.addEventListener('change', () => { try { localStorage.setItem('planChartProgram', sel.value); } catch (e) {} draw(); });
+    // Redraw whenever the chart's box changes width (window resize, phone rotation, late layout).
+    let lastW = 0;
+    new ResizeObserver(() => { if (box.clientWidth !== lastW) { lastW = box.clientWidth; draw(); } }).observe(box);
+})();
+</script>{% endif %}
 <script>
     const form = document.getElementById('planForm');
     const num = v => parseFloat(String(v).replace(/[$,]/g, '').replace('−', '-')) || 0;

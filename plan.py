@@ -1,7 +1,7 @@
 """Annual Plan: each program's yearly plan (events and items, expected profit or cost) against QuickBooks actuals.
 
 Directors fill in their own program's plan for the next year (the template is the edit page); the board
-approves it in the minutes. The top of the page is the board-meeting money summary, and Books check lists what
+approves it in the minutes. The top of the page charts profit against the plan through the year, and Books check lists what
 the nightly QuickBooks sync (tools/qbo_nightly.py) found for the treasurer.
 """
 import os
@@ -10,7 +10,6 @@ from datetime import date
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 
 import bud_store as B
-import fr_store as F
 import plan_store as P
 from utils import load_events, load_programs, log_audit_event, login_required
 
@@ -18,7 +17,6 @@ bp = Blueprint('plan', __name__, url_prefix='/plan')
 
 OPS = 'OPS'
 MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-BANKS = ('Checking', 'Business Money Market', 'Fifth Third CD')
 
 
 def _programs():
@@ -101,6 +99,26 @@ def _kids(year, program, p, program_actual, future):
     return sorted(kids, key=lambda k: (k.get('other', False), k['date'] or '9999'))
 
 
+def _chart(year, plan, as_of):
+    """Monthly plan and QuickBooks profit per program, for the plan vs actual chart. A plan line with no month
+    is spread evenly over the year; the actual stops at the last month QuickBooks covers."""
+    plan_m = {}
+    for code, p in plan.items():
+        m = plan_m.setdefault(code, [0.0] * 12)
+        for ln in p['lines']:
+            if ln['month']:
+                m[ln['month'] - 1] += ln['net'] or 0
+            else:
+                for i in range(12):
+                    m[i] += (ln['net'] or 0) / 12
+    actual = P.monthly(year)
+    today = date.today()
+    last = 12 if int(year) < today.year else today.month if int(year) == today.year else 0
+    r2 = lambda xs: [round(x, 2) for x in xs]  # noqa: E731
+    return {'programs': [[c, n] for c, n in _programs()], 'plan': {c: r2(v) for c, v in plan_m.items()},
+            'actual': {c: r2(v) for c, v in actual.items()}, 'last': last, 'as_of': as_of}
+
+
 @bp.route('/')
 @login_required
 def home():
@@ -119,16 +137,10 @@ def home():
         rows.append({'code': code, 'name': name, 'plan': pn, 'actual': an, 'info': (p or {}).get('info', {}),
                      'budget': round(sum(budgets), 2) if budgets else None, 'diff': _diff(an, pn), 'kids': kids})
     tot = {k: round(sum(r[k] or 0 for r in rows), 2) for k in ('plan', 'budget', 'actual')}
-    st = P.status()
-    open_frs = [r for r in F.requests() if r['status'] == 'Submitted'] if F.enabled() else []
-    summary = {'banks': [(k, st[k]['amount']) for k in BANKS if k in st and st[k]['amount']],
-               'reserve': (st.get('Worker points reserve') or {}).get('amount'),
-               'as_of': next((v['as_of'] for v in st.values()), ''),
-               'open_frs': len(open_frs), 'open_frs_total': round(sum(r['net'] for r in open_frs), 2)}
-    summary['cash'] = round(sum(v for _, v in summary['banks']), 2)
     sent = sum(1 for r in rows if r['plan'] is not None or r['info'])
+    chart = None if future else _chart(year, plan, as_of)
     return render_template('plan.html', **_ctx(view='home', year=year, years=P.years(), rows=rows, tot=tot, as_of=as_of,
-                                               s=summary, sent=sent, future=future))
+                                               sent=sent, future=future, chart=chart))
 
 
 @bp.route('/<year>/<program>')

@@ -1,7 +1,7 @@
 """Nightly QuickBooks sync for the DRSCCA apps. Read only on the QuickBooks side.
 
 1. Event project actuals      -> Event Budgets sheet, 'QBO Actuals' tab
-2. Program actuals by year    -> Annual Plan sheet, 'QBO Programs' tab
+2. Program actuals by year    -> Annual Plan sheet, 'QBO Programs' tab, and by month -> 'QBO Monthly' tab
 3. Bank and reserve balances  -> Annual Plan sheet, 'QBO Status' tab, and the worker points ledger's QBO balance
 4. Open funds requests that QuickBooks shows as paid are marked paid (check number or region card)
 5. Registered events tied to the annual plan line they clearly match; unclear ones go to the exceptions
@@ -44,6 +44,15 @@ def main():
     events_rows = [[p['code'], p['project'], ln['section'], ln['account'], ln['amount'], as_of] for p in data['projects'] for ln in p['lines']]
     program_rows = [[y['year'], Q.program_of(ln['account']), ln['section'], ln['account'], ln['amount'], as_of]
                     for y in data['programs'] for ln in y['lines']]
+    monthly_rows = []
+    for y in data.get('monthly', []):
+        net = {}
+        for ln in y['lines']:
+            sign = 1 if ln['section'] == 'Income' else -1
+            for m, v in enumerate(ln['months'], start=1):
+                key = (Q.program_of(ln['account']), m)
+                net[key] = net.get(key, 0) + sign * v
+        monthly_rows += [[y['year'], prog, m, round(v, 2), as_of] for (prog, m), v in sorted(net.items()) if abs(v) >= 0.005]
     status_rows = [[RESERVE if b['type'] != 'Bank' else b['account'], abs(b['balance']) if b['type'] != 'Bank' else b['balance'], as_of]
                    for b in data['balances']]
     reserve = next((r[1] for r in status_rows if r[0] == RESERVE), None)
@@ -102,6 +111,7 @@ def main():
         if ws.row_count > len(events_rows) + 1:
             ws.batch_clear([f'A{len(events_rows) + 2}:F{ws.row_count}'])
         P.write_tab('QBO Programs', ['year', 'program', 'section', 'account', 'amount', 'as_of'], program_rows)
+        P.write_tab('QBO Monthly', ['year', 'program', 'month', 'net', 'as_of'], monthly_rows)
         P.write_tab('QBO Status', ['item', 'amount', 'as_of'], status_rows)
         P.write_tab('QBO Exceptions', P.EXC_COLS, [[e[c] if c != 'as_of' else as_of for c in P.EXC_COLS] for e in exc])
     print(f"QuickBooks sync {as_of}{' (dry run)' if DRY else ''}: " + '\n'.join(say))
