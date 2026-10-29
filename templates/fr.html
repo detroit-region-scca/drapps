@@ -250,7 +250,7 @@
         total();
     }
     // Events for the picked program only (rebuilt rather than hidden: hidden options still show on iPhones).
-    const allEvents = {{ events_js|tojson }};
+    const allEvents = {{ (events_js or [])|tojson }};
     const progSel = document.getElementById('progSel'), evSel = document.getElementById('eventSel');
     function fillEvents() {
         if (!evSel) return;
