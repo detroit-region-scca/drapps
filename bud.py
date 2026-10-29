@@ -72,17 +72,15 @@ def home():
     year = request.args.get('year') or str(date.today().year)
     buds = B.budgets()
     qbo = B.qbo_actuals()
-    fr_by = {}
-    for r in (F.requests() if F.enabled() else []):
-        if r['status'] != 'Rejected' and r['event_code']:
-            fr_by[r['event_code']] = fr_by.get(r['event_code'], 0) + r['net']
+    plan = P.plan(year) if P.enabled() else {}
+    plan_by_code = {ln['event_code']: ln['net'] for x in plan.values() for ln in x['lines'] if ln['event_code']}
     rows = []
     for e in sorted((e for e in load_events() if e.get('date', '').startswith(year)), key=lambda e: e.get('date', ''), reverse=True):
         b = buds.get(_code(e))
         t = b['totals'] if b else {}
         q = qbo.get(_code(e))
         rows.append({'e': e, 'code': _code(e), 'b': b, 'status': _status(b), 'budget': (t.get('budget') or {}).get('surplus'),
-                     'actual': q['totals']['surplus'] if q else None, 'funds': fr_by.get(_code(e), 0)})
+                     'actual': q['totals']['surplus'] if q else None, 'plan': plan_by_code.get(_code(e))})
     summary = {'events': len(rows), 'missing': sum(1 for r in rows if not r['b']),
                'budget': sum(r['budget'] or 0 for r in rows), 'actual': sum(r['actual'] or 0 for r in rows),
                'with_actuals': sum(1 for r in rows if r['actual'] is not None),
@@ -98,13 +96,17 @@ def home():
         other = round(prog_act[pc]['net'] - events, 2) if pc in prog_act else 0
         groups.append({'code': pc, 'name': programs.get(pc, pc or 'Other'), 'rows': g, 'other': other if abs(other) >= 0.5 else 0,
                        'budget': sum(r['budget'] or 0 for r in g), 'actual': round(events + other, 2) if abs(other) >= 0.5 else events,
-                       'funds': sum(r['funds'] for r in g), 'missing': sum(1 for r in g if not r['b'])})
+                       'missing': sum(1 for r in g if not r['b'])})
     # Programs with QuickBooks money but no events that year (Operations: membership, storage, insurance), so the
     # page total is the region total on the Annual Plan.
     for pc, a in prog_act.items():
         if pc not in {g['code'] for g in groups} and abs(a['net']) >= 0.5:
             groups.append({'code': pc, 'name': programs.get(pc, 'Operations' if pc == 'OPS' else pc), 'rows': [], 'other': a['net'],
-                           'budget': 0, 'actual': a['net'], 'funds': 0, 'missing': 0})
+                           'budget': 0, 'actual': a['net'], 'missing': 0})
+    # Plan: the program's whole plan, as on the Annual Plan; lines not tied to one of these events sit on the other row.
+    for g in groups:
+        g['plan'] = (plan.get(g['code']) or {}).get('net') if plan.get(g['code'], {}).get('lines') else None
+        g['other_plan'] = round(g['plan'] - sum(r['plan'] or 0 for r in g['rows']), 2) if g['plan'] is not None else None
     summary['other'] = sum(g['other'] for g in groups)
     summary['actual'] = round(summary['actual'] + summary['other'], 2)
     return render_template('bud.html', **_ctx(view='list', groups=groups, year=year, years=years or [year], s=summary,
