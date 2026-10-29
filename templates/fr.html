@@ -42,7 +42,7 @@
                 <td class="text-nowrap">{{ r.submitted }}<div class="small text-muted">{{ r.submitter_name }}</div></td>
                 <td>{{ r.payee_name }}<div class="small text-muted">{{ r.method }}</div></td>
                 <td>{{ r.event_name or r.program }} <span class="small text-muted">{{ r.event_code }}</span></td>
-                <td>{{ status_badge(r.status) }}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
+                <td>{% if r.status == 'Submitted' %}{% if r.waiting %}<span class="badge rounded-pill text-bg-warning">Waiting</span><div class="small text-muted">{{ r.waiting|join(', ') }}</div>{% else %}<span class="badge rounded-pill text-bg-info">Ready to pay</span>{% endif %}{% else %}{{ status_badge(r.status) }}{% endif %}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
                 <td class="num pe-3">{{ money(r.net) }}</td></tr>
             {% else %}<tr><td colspan="6" class="text-muted ps-3">Nothing here.</td></tr>{% endfor %}
             </tbody>
@@ -154,13 +154,31 @@
             <tr><td class="ps-3" colspan="3">Total{% if r.advances %} less advances {{ money(r.advances) }}{% endif %}</td><td class="num pe-3 fw-semibold">{{ money(r.net) }}</td></tr></tbody>
         </table>
     </div></div>
-    <div class="mb-3">{% if r.receipts_url %}<a class="btn btn-sm btn-outline-light" href="{{ r.receipts_url }}" target="_blank" rel="noopener">Open receipts in Drive</a>{% else %}<span class="text-muted">No receipts attached.</span>{% endif %}
-        <button class="btn btn-sm btn-outline-secondary ms-2 no-print" onclick="window.print()">Print</button></div>
+    <div class="mb-3 d-flex flex-wrap align-items-center gap-2">{% if r.receipts_url %}<a class="btn btn-sm btn-outline-light" href="{{ r.receipts_url }}" target="_blank" rel="noopener">Open receipts in Drive</a>{% else %}<span class="text-muted">No receipts attached.</span>{% endif %}
+        <form method="post" action="{{ url_for('fr.receipts', req_id=r.id) }}" enctype="multipart/form-data" class="d-flex gap-2 no-print">
+            <input type="file" name="receipts" multiple class="form-control form-control-sm" accept="image/*,.pdf,.xls,.xlsx,.xlsm,.doc,.docx" aria-label="Add receipts">
+            <button class="btn btn-sm btn-outline-light text-nowrap">Add</button></form>
+        <button class="btn btn-sm btn-outline-secondary no-print" onclick="window.print()">Print</button></div>
     {% if r.notes %}<p><span class="text-muted">Notes:</span> {{ r.notes }}</p>{% endif %}
 
     {% if r.status == 'Submitted' %}
+    {% if items %}<div class="card p-3 mb-3">
+        <div class="section-label">Approvals</div>
+        <ul class="list-unstyled mb-2">{% for i in items %}
+            <li class="mb-1"><span class="{{ 'text-success' if i.done else 'text-warning' }}" aria-hidden="true">{{ '✓' if i.done else '○' }}</span> {{ i.label }}{% if i.by %} <span class="small text-muted">{{ i.by }}</span>{% endif %}</li>{% endfor %}
+        </ul>
+        {% if not ready %}<details class="no-print"><summary class="small">Record an approval given in person or at a board meeting</summary>
+            <form method="post" action="{{ url_for('fr.approve', req_id=r.id) }}" class="row g-2 mt-1">
+                <div class="col-sm-4"><select name="role" class="form-select form-select-sm" aria-label="Who approved">{% for k, v in roles.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+                <div class="col-sm-3"><input name="name" class="form-control form-control-sm" placeholder="Their name" aria-label="Their name"></div>
+                <div class="col-sm-3"><input name="note" class="form-control form-control-sm" placeholder="Board: meeting date" aria-label="Note"></div>
+                <div class="col-sm-2"><button class="btn btn-sm btn-outline-light w-100">Record</button></div>
+            </form>
+            <form method="post" action="{{ url_for('fr.ask', req_id=r.id) }}" class="mt-2"><button class="btn btn-link btn-sm p-0">Email the approval links again</button></form>
+        </details>{% endif %}
+    </div>{% endif %}
     <div class="row g-3 no-print">
-        <div class="col-lg-8"><form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">
+        <div class="col-lg-8">{% if not ready %}<div class="card p-3 h-100 text-muted"><div class="section-label">Mark paid</div>Waiting on the approvals above. Region policy: no payment until they are in.</div>{% else %}<form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">
             <input type="hidden" name="action" value="paid">
             <div class="section-label">Mark paid</div>
             <div class="row g-2">
@@ -173,7 +191,7 @@
                 <div class="col-sm-4 d-flex align-items-end"><button class="btn btn-accent w-100">Mark paid</button></div>
             </div>
             <div class="form-text">Book it in QBO to the event's project as usual; this records that it was paid.</div>
-        </form></div>
+        </form>{% endif %}</div>
         <div class="col-lg-4"><form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">
             <input type="hidden" name="action" value="reject"><input type="hidden" name="entered_by" value="{{ who }}">
             <div class="section-label">Reject</div>
@@ -187,9 +205,28 @@
         {% if r.status == 'Paid' %}<div>Paid {{ r.paid_date }} · {{ r.paid_ref }} · {{ money(r.paid_amount) }} · recorded by {{ r.closed_by }}</div>
         {% else %}<div>Rejected by {{ r.closed_by }}: {{ r.closed_note }}</div>{% endif %}
         {% if r.status == 'Paid' and r.closed_note %}<div class="text-muted small">{{ r.closed_note }}</div>{% endif %}
+        {% for a in approvals %}<div class="text-muted small">{{ roles[a.role] }}: {{ a.name }}, {{ a.date }}{% if a.note %} ({{ a.note }}){% endif %}</div>{% endfor %}
         <form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Reopen {{ r.id }}?')">Reopen</button></form>
     </div>
     {% endif %}
+
+    {% elif view == 'link' %}
+    <div class="card p-3 mx-auto" style="max-width: 36rem">
+        {% if r %}
+        <div class="page-title m-0">{{ r.id }}: {{ money(r.net) }}</div>
+        <div class="text-muted mb-2">Pay {{ r.payee_name }} ({{ r.method }}), asked by {{ r.submitter_name }} on {{ r.submitted }}</div>
+        <div class="mb-2">{{ r.event_name or ('Program ' ~ r.program) }} <span class="text-muted">{{ r.event_code }}</span></div>
+        <ul class="small mb-2">{% for ln in r.lines %}<li>{{ ln.description }}: {{ money(ln.amount) }}</li>{% endfor %}</ul>
+        {% if r.receipts_url %}<div class="mb-3"><a href="{{ r.receipts_url }}" target="_blank" rel="noopener">Receipts</a></div>{% endif %}
+        {% endif %}
+        {% if msg %}<div class="alert alert-info mb-0">{{ msg }}</div>
+        {% else %}
+        <div class="mb-2">Approving as {{ role|lower }}{% if name %} ({{ name }}){% endif %}.</div>
+        <form method="post" class="mb-3"><input type="hidden" name="action" value="approve"><button class="btn btn-accent px-4">Approve</button></form>
+        <form method="post" class="d-flex gap-2"><input type="hidden" name="action" value="reject">
+            <input name="note" class="form-control" placeholder="Reason to reject" aria-label="Reason to reject"><button class="btn btn-outline-danger">Reject</button></form>
+        {% endif %}
+    </div>
     {% endif %}
 {% endblock %}
 {% block scripts %}

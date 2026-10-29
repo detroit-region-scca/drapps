@@ -76,6 +76,11 @@ def describe(log):
         return Markup('{} marked {} paid: {} by {}').format(who, _link('fr.detail', g('id', ''), req_id=g('id', '')), _money(g('amount')), g('ref', ''))
     if a == 'FUNDS_REJECTED':
         return Markup('{} rejected {}: {}').format(who, _link('fr.detail', g('id', ''), req_id=g('id', '')), g('note', ''))
+    if a == 'FUNDS_APPROVED':
+        return Markup('{} approved {} as {}{}').format(who, _link('fr.detail', g('id', ''), req_id=g('id', '')), g('role', ''),
+                                                       f" ({g('note')})" if g('note') else '')
+    if a == 'FUNDS_RECEIPTS':
+        return Markup('{} added {} receipt file(s) to {}').format(who, g('files', ''), _link('fr.detail', g('id', ''), req_id=g('id', '')))
     if a == 'FUNDS_REOPENED':
         return Markup('{} reopened {}').format(who, _link('fr.detail', g('id', ''), req_id=g('id', '')))
     if a == 'BUDGET_SAVED':

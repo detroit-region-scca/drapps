@@ -6,6 +6,7 @@ Receipts need the Shared Drive: a service account has no storage of its own, so 
 in anyone's My Drive.
 """
 import os
+import re
 import threading
 import time
 from datetime import date
@@ -17,7 +18,7 @@ from storage import DATA_DIR, drive_folder, drive_upload, open_book, worksheet
 REQ_COLS = ['id', 'submitted', 'status', 'event_code', 'event_name', 'program', 'submitter_name', 'submitter_email',
             'submitter_phone', 'submitter_address', 'payee_name', 'payee_address', 'payee_email', 'payee_phone', 'method',
             'total', 'advances', 'net', 'notes', 'receipts_url', 'entered_by', 'paid_date', 'paid_ref', 'paid_amount',
-            'closed_by', 'closed_note']
+            'closed_by', 'closed_note', 'approvals']
 LINE_COLS = ['request_id', 'date', 'description', 'category', 'amount']
 NUMERIC = ('total', 'advances', 'net', 'paid_amount')
 CATEGORIES = ['Site Rental', 'Supplies', 'Professional Service', 'Storage', 'Travel Cost', 'Other']
@@ -46,7 +47,7 @@ def _snapshot():
     hit = _cache.get('snap')
     if hit and time.time() - hit[0] < CACHE_SECONDS:
         return hit[1]
-    res = open_book(os.environ['FUNDS_SHEET_ID']).values_batch_get(['Requests!A:Z', 'Lines!A:E'],
+    res = open_book(os.environ['FUNDS_SHEET_ID']).values_batch_get(['Requests!A:AA', 'Lines!A:E'],
                                                                    params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], []]
     reqs = [dict(zip(REQ_COLS, [str(v) for v in r] + [''] * len(REQ_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
@@ -110,14 +111,38 @@ def _cell(v):
     return v if isinstance(v, (int, float)) else str(v or '')
 
 
-def close(req_id, status, **fields):
-    """Mark a request Paid or Rejected (fields: paid_date, paid_ref, paid_amount, closed_by, closed_note)."""
+def update(req_id, **fields):
+    """Change fields on one request (re-reads the row so concurrent edits to other columns survive)."""
     with _lock:
         ws = _ws('Requests')
         row = ws.col_values(1).index(req_id) + 1
         cur = dict(zip(REQ_COLS, ws.row_values(row) + [''] * len(REQ_COLS)))
-        cur.update(fields, status=status)
+        cur.update(fields)
         for k in NUMERIC:
             cur[k] = _num(cur[k]) if cur[k] != '' else ''
         ws.update([[_cell(cur[c]) for c in REQ_COLS]], f'A{row}', value_input_option='RAW')
         refresh()
+        return cur
+
+
+def close(req_id, status, **fields):
+    """Mark a request Paid or Rejected (fields: paid_date, paid_ref, paid_amount, closed_by, closed_note)."""
+    return update(req_id, status=status, **fields)
+
+
+def add_receipts(req_id, files):
+    """Upload more receipts into the request's Drive folder (made now if it had none). Returns how many."""
+    files = [f for f in files if f and f.filename]
+    if not files:
+        return 0
+    r = get(req_id)
+    m = re.search(r'/folders/([\w-]+)', r.get('receipts_url') or '')
+    folder_id, url = (m.group(1), r['receipts_url']) if m else (None, '')
+    if not folder_id:
+        folder = drive_folder(f"{req_id} - {r['payee_name']}"[:120], os.environ['FUNDS_RECEIPTS_FOLDER_ID'])
+        folder_id, url = folder['id'], folder['webViewLink']
+    for f in files:
+        drive_upload(f, folder_id)
+    if url != r.get('receipts_url'):
+        update(req_id, receipts_url=url)
+    return len(files)
