@@ -7,7 +7,7 @@ from datetime import datetime
 from filelock import FileLock
 import pytz
 from functools import wraps
-from flask import session, redirect, url_for, request
+from flask import g, has_request_context, session, redirect, url_for, request
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +28,16 @@ def load_programs():
     return store.load_programs()
 
 def load_events():
-    events = store.load_events()
-    return sorted(events, key=lambda x: x.get('date', ''), reverse=False)
+    """All events, oldest first. A page view reads the sheet once however many times it asks (the Annual Plan asks
+    once per program, which ran into the Sheets read quota); a POST always reads fresh, since it may write the
+    list back. Callers get their own copy of the list, so changing it never leaks into the next caller."""
+    memo = has_request_context() and request.method == 'GET'
+    if memo and '_events' in g:
+        return [dict(e) for e in g._events]
+    events = sorted(store.load_events(), key=lambda x: x.get('date', ''), reverse=False)
+    if memo:
+        g._events = [dict(e) for e in events]
+    return events
 
 def save_events(events):
     store.save_events(events)

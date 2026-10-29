@@ -5,6 +5,7 @@ import random
 import logging
 import hmac
 import csv
+import gspread
 from urllib.parse import quote
 import io
 from dotenv import load_dotenv
@@ -98,6 +99,16 @@ def home():
 def storage_unavailable(e):
     flash(str(e), 'danger')
     return redirect(url_for('index'))
+
+
+@app.errorhandler(gspread.exceptions.APIError)
+def sheets_busy(e):
+    """Google Sheets allows 60 reads a minute; past that (after gspread's own retries) say so instead of a 500."""
+    logging.error(f"Google Sheets error on {request.path}: {e}")
+    busy = getattr(getattr(e, 'response', None), 'status_code', None) == 429
+    msg = ('Google Sheets is busy (too many reads this minute). Wait a minute and reload.' if busy
+           else 'Google Sheets returned an error. Reload in a moment; if it keeps happening, tell the treasurer.')
+    return render_template('base.html', title='Busy', busy_msg=msg), 503
 
 def _budget_codes():
     """Event codes that have a budget, for the Budget buttons on the events list; None hides the buttons."""
