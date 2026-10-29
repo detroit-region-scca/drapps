@@ -3,6 +3,7 @@ import os
 import string
 import random
 import logging
+import hmac
 import csv
 import io
 from collections import defaultdict
@@ -25,6 +26,7 @@ logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
 
 from wp import bp as wp_bp  # noqa: E402
+import wp_store  # noqa: E402
 app.register_blueprint(wp_bp)
 
 # Mandatory Secret Key in Production
@@ -53,22 +55,44 @@ def cleanup_temp_files():
 
 cleanup_temp_files()
 
+def _safe_next(target):
+    """Only same-site paths are followed after login (never an absolute or //host URL)."""
+    return target if target and target.startswith('/') and not target.startswith('//') else None
+
 @app.route('/login', methods=['POST'])
 def login():
-    password = request.form.get('password')
-    if APP_PASSWORD and password == APP_PASSWORD:
+    password = request.form.get('password') or ''
+    nxt = _safe_next(request.form.get('next'))
+    if APP_PASSWORD and hmac.compare_digest(password.encode(), APP_PASSWORD.encode()):
         session['authenticated'] = True
-        return redirect(url_for('index'))
+        return redirect(nxt or url_for('home'))
     flash('Invalid password', 'danger')
-    return redirect(url_for('index'))
+    return redirect(url_for('home', next=nxt) if nxt else url_for('home'))
 
 @app.route('/logout', methods=['POST'])
 def logout():
     session.pop('authenticated', None)
-    return redirect(url_for('index'))
+    return redirect(url_for('home'))
 
 @app.route('/', methods=['GET', 'POST'])
+def home():
+    """Login form, or once signed in the two apps: Event Register and Worker Points."""
+    if request.method == 'POST':
+        # The create-event form used to post to '/'; a page left open from before keeps working.
+        return index()
+    return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Apps",
+                           wp_enabled=wp_store.enabled(), next_url=_safe_next(request.args.get('next')) or '')
+
+@app.errorhandler(RuntimeError)
+def storage_unavailable(e):
+    flash(str(e), 'danger')
+    return redirect(url_for('index'))
+
+@app.route('/events', methods=['GET', 'POST'])
 def index():
+    if not session.get('authenticated'):
+        # Before loading anything: an anonymous request should not cost a Sheets read.
+        return redirect(url_for('home', next=request.full_path.rstrip('?')))
     if request.method == 'POST':
         if not session.get('authenticated'):
             return redirect(url_for('index'))

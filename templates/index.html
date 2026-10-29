@@ -25,7 +25,7 @@
                 <h4 class="mb-0">Login Required</h4>
             </div>
             <div class="card-body">
-                <form action="/login" method="POST">
+                <form action="{{ url_for('login') }}" method="POST">
                     {% if error %}
                     <div class="alert alert-danger">{{ error }}</div>
                     {% endif %}
@@ -44,13 +44,14 @@
         <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
             <h2 class="m-0 text-primary">{{ title }}</h2>
             <div class="d-flex gap-2">
+                <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm">Home</a>
                 {% if audit_logs is defined %}
-                <a href="{{ url_for('index') }}" class="btn btn-outline-light btn-sm">Main Page</a>
+                <a href="{{ url_for('index') }}" class="btn btn-outline-light btn-sm">Events</a>
                 {% else %}
                 <a href="{{ url_for('audit_log') }}" class="btn btn-outline-info btn-sm">Audit Log</a>
                 {% endif %}
                 <a href="{{ url_for('wp.home') }}" class="btn btn-outline-warning btn-sm">Worker Points</a>
-                <form action="/logout" method="POST" class="m-0">
+                <form action="{{ url_for('logout') }}" method="POST" class="m-0">
                     <button type="submit" class="btn btn-outline-danger btn-sm">Logout</button>
                 </form>
             </div>
@@ -138,7 +139,7 @@
         <!-- Form Card -->
         <div class="card mb-4">
             <div class="card-body">
-                <form action="/" method="POST" id="createEventForm">
+                <form action="{{ url_for('index') }}" method="POST" id="createEventForm">
                     <div class="row g-3">
                         <div class="col-md-4">
                             <label class="form-label">Your Name</label>

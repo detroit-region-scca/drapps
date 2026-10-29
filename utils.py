@@ -7,7 +7,7 @@ from datetime import datetime
 from filelock import FileLock
 import pytz
 from functools import wraps
-from flask import session, redirect, url_for
+from flask import session, redirect, url_for, request
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get('authenticated'):
-            return redirect(url_for('index'))
+            return redirect(url_for('home', next=request.full_path.rstrip('?')))
         return f(*args, **kwargs)
     return decorated_function
 

@@ -16,7 +16,12 @@ import os
 import threading
 import time
 
+from dotenv import load_dotenv
 from filelock import FileLock
+
+# Read .env before any setting below: the backend is chosen at import, and it must agree with
+# everything that checks STORAGE_BACKEND later (Docker sets these before start; local runs need this).
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -137,22 +142,31 @@ class SheetStore:
         return val
 
     def load_events(self):
-        def load():
-            try:
-                rows = self._ws('Events').get_all_records(expected_headers=EVENT_COLS, numericise_ignore=['all'])
-                return [{k: (r.get(k) or '') for k in EVENT_COLS} for r in rows if r.get('id')]
-            except Exception as e:
-                logger.error(f"Sheets unreachable, using local copy of events: {e}")
-                return self.files.load_events()
-        return [dict(e) for e in self._cached('events', load)]
+        # Never cached: create/edit/delete read, change and write the whole list, and gunicorn runs
+        # several workers, so a cached copy in one worker would silently undo another worker's write.
+        try:
+            rows = self._ws('Events').get_all_records(expected_headers=EVENT_COLS, numericise_ignore=['all'])
+            self._degraded = False
+            return [{k: (r.get(k) or '') for k in EVENT_COLS} for r in rows if r.get('id')]
+        except Exception as e:
+            logger.error(f"Sheets unreachable, using local copy of events: {e}")
+            self._degraded = True
+            return self.files.load_events()
 
     def save_events(self, events):
+        if getattr(self, '_degraded', False):
+            # The list came from the local mirror; writing it back could undo edits made in the sheet.
+            raise RuntimeError('Google Sheets is unreachable, so events are read-only until it is back.')
         rows = [[str(e.get(c, '') or '') for c in EVENT_COLS] for e in sorted(events, key=lambda e: e.get('date', ''))]
         ws = self._ws('Events')
-        ws.batch_clear([f"A2:H{max(ws.row_count, 2)}"])
+        # Write the new rows first and clear only what is left below them, so a failure part-way
+        # can never leave the sheet empty.
+        if len(rows) + 1 > ws.row_count:
+            ws.add_rows(len(rows) + 1 - ws.row_count + 50)
         if rows:
             ws.update(rows, f"A2:H{len(rows) + 1}", value_input_option='RAW')
-        self._cache.pop('events', None)
+        if ws.row_count > len(rows) + 1:
+            ws.batch_clear([f"A{len(rows) + 2}:H{ws.row_count}"])
         self.files.save_events(events)
 
     def append_audit(self, entry):

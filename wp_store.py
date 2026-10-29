@@ -118,12 +118,28 @@ def check():
     return _cached('check', load)
 
 
+def refresh():
+    """Drop the cached snapshot. Every write path calls this first: gunicorn runs several workers,
+    and a balance or "already posted" check made from another worker's stale copy would be wrong."""
+    _invalidate()
+
+
+def _text(v):
+    """A typed value stored as plain text, never as a formula (=, +, - or @ at the start would
+    otherwise be evaluated by Sheets when written with USER_ENTERED)."""
+    v = str(v or '')
+    return "'" + v if v[:1] in ('=', '+', '-', '@') else v
+
+
 def append_transactions(rows):
-    """rows: dicts with date (date), member, name, event_code, description, points, type, source."""
-    values = [[t['date'].isoformat(), "'" + t['member'], t['name'], t['event_code'], t['description'], t['points'], t['type'], t['source']]
-              for t in rows]
+    """rows: dicts with date (date), member, name, event_code, description, points, type, source.
+
+    Written RAW: text stays text (no formula can be injected), the member number stays text so the
+    Ledger's SUMIF matches it, the date is stored as YYYY-MM-DD and points as a number."""
+    values = [[t['date'].isoformat(), str(t['member']), str(t['name']), str(t['event_code']), str(t['description']),
+               float(t['points']), str(t['type']), str(t['source'])] for t in rows]
     with _lock:
-        worksheet(os.environ['LEDGER_SHEET_ID'], 'Transactions').append_rows(values, value_input_option='USER_ENTERED')
+        worksheet(os.environ['LEDGER_SHEET_ID'], 'Transactions').append_rows(values, value_input_option='RAW')
         _invalidate()
 
 
@@ -134,7 +150,7 @@ def add_member(member, last, first, exp, life=False):
         col_a = ws.col_values(1)
         total_row = col_a.index('TOTAL') + 1
         i = total_row
-        ws.insert_row(["'" + member, last, first, 'LIFE' if life else '', "'" + exp, 0, 0, 0,
+        ws.insert_row(["'" + str(member), _text(last), _text(first), 'LIFE' if life else '', "'" + str(exp), 0, 0, 0,
                        f'=F{i}-G{i}+H{i}', f'=SUMIF(Transactions!B:B,A{i},Transactions!F:F)', f'=I{i}+J{i}', f'=K{i}*5'],
                       index=i, value_input_option='USER_ENTERED')
         _invalidate()

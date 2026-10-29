@@ -27,8 +27,18 @@ def _events_by_code():
 def _guard():
     if not S.enabled():
         flash('Worker points need the Google Sheets storage (STORAGE_BACKEND=sheets and LEDGER_SHEET_ID).', 'warning')
-        return redirect(url_for('index'))
+        return redirect(url_for('home'))
     return None
+
+
+def _month(value):
+    """'YYYY-MM' from a form or query string; anything unreadable means this month."""
+    try:
+        y, mo = map(int, (value or '').split('-'))
+        date(y, mo, 1)
+    except ValueError:
+        y, mo = date.today().year, date.today().month
+    return f'{y:04d}-{mo:02d}', y, mo
 
 
 @bp.route('/')
@@ -66,6 +76,8 @@ def event():
     events = sorted(load_events(), key=lambda e: e.get('date', ''), reverse=True)
     mem = S.members()
     if request.method == 'POST':
+        S.refresh()
+        mem = S.members()
         code = request.form['event_code']
         ev = _events_by_code().get(code)
         who = request.form.get('entered_by', '').strip() or 'Unknown'
@@ -103,6 +115,8 @@ def event():
 def redeem():
     if (g := _guard()):
         return g
+    if request.method == 'POST':
+        S.refresh()
     mem = S.members()
     if request.method == 'POST':
         mid = request.form['member'].split(' ')[0].strip()
@@ -131,8 +145,9 @@ def redeem():
 def allocations():
     if (g := _guard()):
         return g
-    month = request.values.get('month') or date.today().strftime('%Y-%m')
-    y, mo = map(int, month.split('-'))
+    month, y, mo = _month(request.values.get('month'))
+    if request.method == 'POST':
+        S.refresh()
     code = f'AC-{month}'
     roles = S.allocations()
     already = [t for t in S.transactions() if t['type'] == 'Allocation' and t['event_code'] == code]
@@ -157,6 +172,8 @@ def allocations():
 def forfeits():
     if (g := _guard()):
         return g
+    if request.method == 'POST':
+        S.refresh()
     mem = S.members()
     if request.method == 'POST':
         mid = request.form['member']
@@ -179,8 +196,7 @@ def forfeits():
 def month_end():
     if (g := _guard()):
         return g
-    month = request.args.get('month') or date.today().strftime('%Y-%m')
-    y, mo = map(int, month.split('-'))
+    month, y, mo = _month(request.args.get('month'))
     summ = L.month_end_summary(S.transactions(), _events_by_code(), y, mo)
     return render_template('wp.html', **_ctx(view='month_end', month=month, s=summ, check=S.check(), programs=load_programs()))
 
@@ -189,6 +205,7 @@ def month_end():
 @login_required
 def set_check():
     try:
+        S.refresh()
         S.set_qbo_balance(float(request.form['qbo'].replace(',', '').replace('$', '')), date.fromisoformat(request.form['as_of']))
         log_audit_event('WP_QBO_BALANCE', request.form.get('entered_by', 'Unknown'), {'qbo': request.form['qbo'], 'as_of': request.form['as_of']})
     except (ValueError, KeyError):
@@ -202,7 +219,11 @@ def new_member():
     if (g := _guard()):
         return g
     if request.method == 'POST':
+        S.refresh()
         mid = request.form['member'].strip()
+        if not mid.isdigit():
+            flash('The SCCA member number should be digits only.', 'danger')
+            return redirect(url_for('wp.new_member'))
         if any(m['member'] == mid for m in S.members()):
             flash(f'Member {mid} is already in the ledger.', 'warning')
             return redirect(url_for('wp.member', member_id=mid))
