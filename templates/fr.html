@@ -51,16 +51,19 @@
         <div class="card p-3 mb-3">
             <div class="section-label">What is it for</div>
             <div class="row g-2">
-                <div class="col-md-8"><label class="form-label">Event</label>
-                    <select name="event_code" class="form-select" id="eventSel">
-                        <option value="">Not for one event (pick the program)</option>
-                        {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" {% if (form.get('event_code') or pick) == c %}selected{% endif %}>{{ e.date }} · {{ e.program_code }} · {{ e.event_name }} {{ c }}</option>{% endfor %}
-                    </select></div>
-                <div class="col-md-4" id="programBox"><label class="form-label">Program</label>
-                    <select name="program" class="form-select">
+                {% set chosen = form.get('event_code') or pick %}
+                {% set chosen_ev = (events|selectattr('unique_code', 'equalto', chosen)|first or events|selectattr('custom_tag', 'equalto', chosen)|first) if chosen else none %}
+                <div class="col-md-4"><label class="form-label" for="progSel">Program</label>
+                    <select name="program" class="form-select" id="progSel">
                         <option value="">Select…</option>
-                        {% for code, name in programs.items() %}<option value="{{ code }}" {% if form.get('program') == code %}selected{% endif %}>{{ code }}: {{ name }}</option>{% endfor %}
+                        {% set chosen_prog = form.get('program') or (chosen_ev.program_code if chosen_ev else '') %}
+                        {% for code, name in programs.items() %}<option value="{{ code }}" {% if chosen_prog == code %}selected{% endif %}>{{ name }}</option>{% endfor %}
                     </select></div>
+                <div class="col-md-8"><label class="form-label" for="eventSel">Event</label>
+                    <select name="event_code" class="form-select" id="eventSel" data-chosen="{{ chosen or '' }}">
+                        <option value="">Not for one event</option>
+                    </select>
+                    <div class="form-text">This year's and last year's events for the program, newest first.</div></div>
             </div>
         </div>
 
@@ -246,9 +249,19 @@
         if (lines.querySelectorAll('.line').length > 1) tr.remove(); else tr.querySelectorAll('input').forEach(i => i.value = '');
         total();
     }
+    // Events for the picked program only (rebuilt rather than hidden: hidden options still show on iPhones).
+    const allEvents = {{ events_js|tojson }};
+    const progSel = document.getElementById('progSel'), evSel = document.getElementById('eventSel');
+    function fillEvents() {
+        if (!evSel) return;
+        const keep = evSel.value || evSel.dataset.chosen;
+        evSel.dataset.chosen = '';
+        evSel.innerHTML = '<option value="">Not for one event</option>' + allEvents.filter(e => e.p === progSel.value).map(e =>
+            `<option value="${e.c}">${e.d} · ${e.n.replace(/[<>&"]/g, ch => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'})[ch])} ${e.c}</option>`).join('');
+        if (keep && allEvents.some(e => e.c === keep && e.p === progSel.value)) evSel.value = keep;
+    }
+    if (progSel) { progSel.addEventListener('change', fillEvents); fillEvents(); }
     function syncForm() {
-        const ev = document.getElementById('eventSel');
-        document.getElementById('programBox').classList.toggle('d-none', !!ev.value);
         const self = document.querySelector('[name=method]:checked')?.value === 'reimburse';
         document.getElementById('payeeBox').classList.toggle('d-none', self);
         document.getElementById('payeeSelf').classList.toggle('d-none', !self);

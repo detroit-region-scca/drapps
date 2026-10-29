@@ -43,6 +43,13 @@ def _events():
     return sorted(load_events(), key=lambda e: e.get('date', ''), reverse=True)
 
 
+def _events_js(events, keep=''):
+    """The event picker's choices: this year's and last year's events (newest first), plus the one asked for."""
+    since = str(date.today().year - 1)
+    return [{'c': e.get('custom_tag') or e.get('unique_code'), 'd': e.get('date', ''), 'n': e.get('event_name', ''), 'p': e.get('program_code', '')}
+            for e in events if e.get('date', '') >= since or keep in (e.get('custom_tag'), e.get('unique_code'))]
+
+
 LINK_DAYS = 90
 
 
@@ -169,8 +176,8 @@ def new():
     events = _events()
     if request.method == 'GET':
         last = session.get('fr_submitter', {})
-        return render_template('fr.html', **_ctx(view='new', events=events, programs=load_programs(), form={}, last=last,
-                                                 pick=request.args.get('event', ''),
+        return render_template('fr.html', **_ctx(view='new', events=events, programs=dict(load_programs(), OPS='Operations'), form={}, last=last,
+                                                 pick=request.args.get('event', ''), events_js=_events_js(events, request.args.get('event', '')),
                                                  rows=[{}] * 3))
     f = request.form
     errors = []
@@ -215,7 +222,8 @@ def new():
             flash(e, 'danger')
         rows = [{'date': d, 'description': desc, 'category': c, 'amount': a}
                 for d, desc, c, a in zip(f.getlist('line_date'), f.getlist('line_desc'), f.getlist('line_cat'), f.getlist('line_amount'))]
-        return render_template('fr.html', **_ctx(view='new', events=events, programs=load_programs(), form=f, last={},
+        return render_template('fr.html', **_ctx(view='new', events=events, programs=dict(load_programs(), OPS='Operations'), form=f, last={},
+                                                 events_js=_events_js(events, f.get('event_code', '')),
                                                  rows=rows or [{}])), 400
     total = round(sum(ln['amount'] for ln in lines), 2)
     req = {'event_code': f.get('event_code', '') if ev else '', 'event_name': ev['event_name'] if ev else '', 'program': program,
