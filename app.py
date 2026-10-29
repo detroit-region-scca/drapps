@@ -30,6 +30,7 @@ from fr import bp as fr_bp  # noqa: E402
 from bud import bp as bud_bp  # noqa: E402
 import wp_store  # noqa: E402
 import fr_store  # noqa: E402
+import audit_view  # noqa: E402
 import bud_store  # noqa: E402
 app.register_blueprint(wp_bp)
 app.register_blueprint(fr_bp)
@@ -183,72 +184,32 @@ def index():
 @app.route('/audit')
 @login_required
 def audit_log():
+    """The shared audit log: every app writes to it, so it is filtered by app and action here."""
     lock = FileLock(f"{AUDIT_FILE}.lock")
     with lock:
         logs = load_audit_logs()
-    scca_region_name = os.environ.get("SCCA_REGION_NAME", "SCCA")
-    
-    # Handle simple filtering via query parameters
-    action_filter = request.args.get('action')
+    apps = [label for label, _ in audit_view.APPS.values()]
+    actions = sorted({log.get('action', '') for log in logs if log.get('action')})
+    app_filter, action_filter = request.args.get('app', ''), request.args.get('action', '')
+    if app_filter:
+        logs = [log for log in logs if audit_view.app_of(log.get('action', ''))[0] == app_filter]
     if action_filter:
         logs = [log for log in logs if log.get('action') == action_filter]
-        
-    # Handle dynamic limit
     limit_param = request.args.get('limit', '100')
     if limit_param != 'all':
         try:
-            limit = int(limit_param)
-            logs = logs[:limit]
+            logs = logs[:int(limit_param)]
         except ValueError:
-            logs = logs[:100] # fallback to 100 on bad input
-    
+            logs = logs[:100]
     for log in logs:
-        # Format Timestamp
         try:
-            dt = datetime.fromisoformat(log.get('timestamp', ''))
-            log['display_time'] = dt.strftime('%m-%d %I:%M %p')
+            log['display_time'] = datetime.fromisoformat(log.get('timestamp', '')).strftime('%Y-%m-%d %I:%M %p')
         except ValueError:
             log['display_time'] = log.get('timestamp', '')
-            
-        # Generate Diff Text with Actor included
-        action = log.get('action', '')
-        user = log.get('user', 'Unknown')
-        details = log.get('details', {})
-        diff_text = ''
-        
-        if action == 'EVENT_EDITED' and isinstance(details, dict):
-            orig = details.get('original', {})
-            upd = details.get('updated', {})
-            diffs = []
-            for k in ['program_code', 'date', 'event_name', 'creator_name', 'custom_tag']:
-                if orig.get(k) != upd.get(k):
-                    diffs.append(f"{k}: '{orig.get(k)}' -> '{upd.get(k)}'")
-            diff_text = f"<b>{user}</b> changed: " + (', '.join(diffs) if diffs else 'No changes')
-        elif action == 'EVENT_CREATED' and isinstance(details, dict):
-            diff_text = f"<b>{user}</b> created: {details.get('event_name', '')} ({details.get('program_code', '')})"
-        elif action == 'EVENT_DELETED' and isinstance(details, dict):
-            diff_text = f"<b>{user}</b> deleted: {details.get('event_name', '')} ({details.get('program_code', '')})"
-        elif action in ('LOGIN_SUCCESS', 'LOGIN_FAILURE') and isinstance(details, dict):
-            diff_text = f"IP: {details.get('remote_addr', 'Unknown')}"
-        else:
-            diff_text = f"<b>{user}</b> performed an action. See details."
-            
-        log['diff_text'] = diff_text
-        
-        # Determine Bootstrap Color Class
-        if action == 'EVENT_CREATED':
-            log['color'] = 'bg-success'
-        elif action == 'EVENT_EDITED':
-            log['color'] = 'bg-warning text-dark'
-        elif action in ('EVENT_DELETED', 'LOGIN_FAILURE'):
-            log['color'] = 'bg-danger'
-        else:
-            log['color'] = 'bg-secondary'
-    
-    return render_template('index.html', 
-                           title=f"{scca_region_name} Audit Log",
-                           audit_logs=logs,
-                           scca_region_name=scca_region_name)
+        log['app'], log['color'] = audit_view.app_of(log.get('action', ''))
+        log['line'] = audit_view.describe(log)
+    return render_template('audit.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Audit Log", logs=logs,
+                           apps=apps, actions=actions, app_filter=app_filter, action_filter=action_filter, limit=limit_param)
 
 @app.route('/delete/<event_id>', methods=['POST'])
 @login_required

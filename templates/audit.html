@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block app_name %}Audit Log{% endblock %}
+{% block nav %}
+    <li class="nav-item"><a class="nav-link active" href="{{ url_for('audit_log') }}">All apps</a></li>
+{% endblock %}
+{% block content %}
+    <form method="get" class="d-flex flex-wrap gap-2 mb-3">
+        <select name="app" class="form-select form-select-sm" style="max-width:200px" onchange="this.form.submit()">
+            <option value="">All apps</option>{% for a in apps %}<option {% if a == app_filter %}selected{% endif %}>{{ a }}</option>{% endfor %}
+        </select>
+        <select name="action" class="form-select form-select-sm" style="max-width:260px" onchange="this.form.submit()">
+            <option value="">All actions</option>{% for a in actions %}<option value="{{ a }}" {% if a == action_filter %}selected{% endif %}>{{ a.replace('_', ' ').lower() }}</option>{% endfor %}
+        </select>
+        <select name="limit" class="form-select form-select-sm" style="max-width:140px" onchange="this.form.submit()">
+            {% for n, label in [('100', 'Last 100'), ('250', 'Last 250'), ('500', 'Last 500'), ('all', 'All')] %}<option value="{{ n }}" {% if n == limit %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+    </form>
+    <div class="card"><div class="card-body p-0 table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th class="ps-3" style="width:11rem">When</th><th style="width:9rem">App</th><th class="pe-3">What happened</th></tr></thead>
+            <tbody>{% for log in logs %}<tr>
+                <td class="ps-3 text-nowrap small">{{ log.display_time }}</td>
+                <td><span class="badge rounded-pill text-bg-{{ log.color }}">{{ log.app }}</span></td>
+                <td class="pe-3">{{ log.line }}
+                    <details class="mt-1"><summary class="small text-muted">Details</summary>
+                    <pre class="mb-0 mt-1 p-2 rounded small" style="background:var(--surface-2); white-space:pre-wrap">{{ log.details | tojson(indent=2) }}</pre></details></td>
+            </tr>{% else %}<tr><td colspan="3" class="text-muted ps-3">Nothing logged{% if app_filter or action_filter %} for this filter{% endif %}.</td></tr>{% endfor %}</tbody>
+        </table>
+    </div></div>
+{% endblock %}

@@ -13,60 +13,6 @@
         .btn-outline-budget:hover { background: #b48cff; color: #111; }
 {% endblock %}
 {% block content %}
-        {% if audit_logs is defined %}
-        <!-- Audit Log View -->
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4 class="m-0">Recent Activity</h4>
-            <form action="{{ url_for('audit_log') }}" method="GET" class="m-0 d-flex gap-2">
-                <select name="action" class="form-select form-select-sm border-secondary bg-dark text-light" onchange="this.form.submit()">
-                    <option value="">All Actions</option>
-                    <option value="EVENT_CREATED" {% if request.args.get('action') == 'EVENT_CREATED' %}selected{% endif %}>Created</option>
-                    <option value="EVENT_EDITED" {% if request.args.get('action') == 'EVENT_EDITED' %}selected{% endif %}>Edited</option>
-                    <option value="EVENT_DELETED" {% if request.args.get('action') == 'EVENT_DELETED' %}selected{% endif %}>Deleted</option>
-                    <option value="LOGIN_SUCCESS" {% if request.args.get('action') == 'LOGIN_SUCCESS' %}selected{% endif %}>Login Success</option>
-                    <option value="LOGIN_FAILURE" {% if request.args.get('action') == 'LOGIN_FAILURE' %}selected{% endif %}>Login Failure</option>
-                </select>
-                <select name="limit" class="form-select form-select-sm border-secondary bg-dark text-light" onchange="this.form.submit()">
-                    <option value="100" {% if request.args.get('limit', '100') == '100' %}selected{% endif %}>Last 100</option>
-                    <option value="250" {% if request.args.get('limit') == '250' %}selected{% endif %}>Last 250</option>
-                    <option value="500" {% if request.args.get('limit') == '500' %}selected{% endif %}>Last 500</option>
-                    <option value="all" {% if request.args.get('limit') == 'all' %}selected{% endif %}>All</option>
-                </select>
-            </form>
-        </div>
-
-        <div class="card">
-            <div class="card-body p-0 table-responsive">
-                <table class="table table-hover mb-0" style="table-layout: fixed;">
-                    <thead class="table-dark">
-                        <tr>
-                            <th style="width: 20%;" class="ps-3">Time (EST)</th>
-                            <th style="width: 20%;">Action</th>
-                            <th style="width: 60%;" class="pe-3">Details</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for log in audit_logs %}
-                        <tr>
-                            <td class="ps-3 text-nowrap"><small>{{ log.display_time }}</small></td>
-                            <td><span class="badge {{ log.color }}">{{ log.action }}</span></td>
-                            <td class="pe-3">
-                                <div class="mb-1">{{ log.diff_text | safe }}</div>
-                                <button class="btn btn-sm btn-link p-0 text-decoration-none" type="button" data-bs-toggle="collapse" data-bs-target="#details-{{ loop.index }}">Show Full Details</button>
-                                <div class="collapse mt-2" id="details-{{ loop.index }}">
-                                    <pre class="mb-0 text-light bg-dark p-2 rounded border border-secondary" style="font-size: 0.8rem; overflow-x: auto;">{{ log.details | tojson(indent=2) }}</pre>
-                                </div>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="3" class="text-center py-4 text-muted">No audit logs found.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        {% else %}
         <!-- Main Page View -->
         <p class="text-muted text-center mb-3">{{ program_directors_text }}</p>
 
@@ -268,7 +214,6 @@
             </div>
         </div>
 
-        {% endif %} <!-- End of conditional page rendering -->
 {% endblock %}
 {% block scripts %}
     <script>
