@@ -10,6 +10,7 @@ from datetime import date
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 
 import bud_store as B
+import officials as O
 import plan_store as P
 from bud import register_url
 from utils import load_events, load_programs, log_audit_event, login_required
@@ -205,7 +206,9 @@ def edit(year, program):
             if code and code in [ln['event_code'] for ln in lines]:
                 errors.append(f'{code} is picked on two lines; an event goes with one plan line.')
             lines.append({'item': item or 'Other', 'month': int(month) if month.isdigit() else '', 'net': v, 'note': note, 'event_code': code})
-        info = {'director': f.get('director', '').strip(), 'email': f.get('email', '').strip(), 'notes': f.get('notes', '').strip(),
+        # Director and email come from the officials directory; the form does not set them.
+        d_name, d_mail = O.director(program)
+        info = {'director': d_name, 'email': d_mail, 'notes': f.get('notes', '').strip(),
                 'updated_by': who}
         if errors:
             for msg in errors:

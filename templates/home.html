@@ -16,6 +16,13 @@
             <input class="form-control mb-3" name="name" required autofocus autocomplete="name" value="{{ session.get('who', '') }}" placeholder="First and last name">
             <button class="btn btn-accent w-100">Continue</button></form>
     </div></div>
+    {% elif view == 'officials' %}
+    <div class="crumbs"><a href="{{ url_for('home') }}">Apps</a> / Officials</div>
+    <div class="page-title">Region officials</div>
+    <p class="text-muted small">Funds request approvals go only to these people and addresses. The list can't be changed in the apps; the treasurer keeps it.</p>
+    {% if people %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <tbody>{% for o in people %}<tr><td class="ps-3">{{ o.title }}</td><td>{{ o.name }}</td><td class="pe-3"><a href="mailto:{{ o.email }}">{{ o.email }}</a></td></tr>{% endfor %}</tbody>
+    </table></div></div>{% else %}<p class="text-warning">No officials list on this server, so no approval emails are sent.</p>{% endif %}
     {% elif view == 'treasurer' %}
     <div class="crumbs"><a href="{{ url_for('home') }}">Apps</a> / Treasurer</div>
     <div class="page-title mb-3">Treasurer</div>
@@ -32,6 +39,7 @@
             <span>Books check<div class="small text-muted">What the nightly QuickBooks sync found</div></span><span class="fw-semibold">{{ jobs.books }}</span></a>{% endif %}
         {% if wp_enabled %}<a class="list-group-item list-group-item-action" href="{{ url_for('wp.month_end') }}">Worker points month end<div class="small text-muted">Post the month's points to QuickBooks</div></a>{% endif %}
         <a class="list-group-item list-group-item-action" href="{{ url_for('export_events') }}">Export events (CSV)</a>
+        <a class="list-group-item list-group-item-action" href="{{ url_for('officials_page') }}">Region officials<div class="small text-muted">Who approves funds requests, read-only</div></a>
     </div>
     {% elif not session.get('authenticated') %}
     <div class="d-flex justify-content-center align-items-center" style="min-height: 80vh;">

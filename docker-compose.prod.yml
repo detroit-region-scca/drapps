@@ -18,6 +18,9 @@ services:
       # Google service account key for STORAGE_BACKEND=sheets (data lives in the treasurer's
       # Google Drive). Host path set per deployment in .env; /dev/null when unused.
       - ${GOOGLE_SA_KEY_HOST:-/dev/null}:/run/secrets/google-sa.json:ro
+      # Region officials (who approves what): read-only, so nobody can change an approver through the app.
+      # Host path per deployment in .env; /dev/null when unused.
+      - ${OFFICIALS_HOST:-/dev/null}:/run/secrets/officials.json:ro
     env_file:
       - .env
     environment:

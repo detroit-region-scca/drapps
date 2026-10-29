@@ -33,6 +33,7 @@ from bud import bp as bud_bp  # noqa: E402
 from plan import bp as plan_bp  # noqa: E402
 import wp_store  # noqa: E402
 import fr_store  # noqa: E402
+import officials  # noqa: E402
 import audit_view  # noqa: E402
 import bud_store  # noqa: E402
 import plan_store  # noqa: E402
@@ -91,6 +92,19 @@ def ask_name():
     if (session.get('authenticated') and not (session.get('who') or '').strip()
             and request.endpoint not in ('name', 'logout', 'login', 'static', 'fr.approve_link')):
         return redirect(url_for('name', next=request.full_path.rstrip('?')))
+
+
+@app.context_processor
+def _officials():
+    return {'officials': officials}
+
+
+@app.route('/officials')
+@login_required
+def officials_page():
+    """Who holds which region role, read-only: the treasurer keeps the list on the server."""
+    return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Officials", view='officials',
+                           people=officials.all(), programs=load_programs())
 
 
 @app.route('/treasurer')

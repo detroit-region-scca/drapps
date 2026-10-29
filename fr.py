@@ -1,7 +1,8 @@
 """Funds Requests: replaces the emailed Excel Funds Request Form. Records live in the Funds Requests sheet (fr_store).
 
 A request is paid only once it has the approvals the region policies ask for (fr_logic). The chair or program
-director and, over $2,500, the RE or ARE get an email with a link that approves without the app password.
+director and, over $2,500, the RE or ARE get an email with a link that approves without the app password. Their
+addresses come only from the read-only officials directory (officials.py).
 """
 import os
 from datetime import date
@@ -12,6 +13,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 import bud_store as B
 import fr_logic as FL
 import fr_store as F
+import officials as O
 import plan_store as P
 from utils import load_events, load_programs, log_audit_event, login_required, send_mail
 
@@ -53,16 +55,6 @@ def _events_js(events, keep=''):
 LINK_DAYS = 90
 
 
-def _signers():
-    """[(name, email)] from SECOND_SIGNERS, "Name <email>, Name <email>" (the RE and ARE)."""
-    out = []
-    for part in os.environ.get('SECOND_SIGNERS', '').split(','):
-        name, _, mail = part.partition('<')
-        if mail.strip(' >'):
-            out.append((name.strip(), mail.strip(' >')))
-    return out
-
-
 class Approvals:
     """Everything review() needs, loaded once per page."""
 
@@ -78,8 +70,8 @@ class Approvals:
         return self.plans[year]
 
     def director(self, r):
-        info = self._plan(r['submitted'][:4]).get(r['program'], {}).get('info', {})
-        return info.get('director', ''), info.get('email', '')
+        """The program director from the officials directory (read-only), never from anything editable in the app."""
+        return O.director(r['program'])
 
     def items(self, r):
         code, b = r['event_code'], self.budgets.get(r['event_code'])
@@ -115,7 +107,7 @@ def ask_approvals(rid, roles=None):
         if mail:
             to.append(('chair', name, mail))
     if 'second' in missing:
-        to += [('second', n, m) for n, m in _signers()]
+        to += [('second', n, m) for n, m in O.signers()]
     for role, name, mail in to:
         body = '\n'.join([
             f"{r['submitter_name']} asked the region to pay {r['payee_name']} ${r['net']:,.2f} ({rid}).",
