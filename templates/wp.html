@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #121212; color: #e0e0e0; overflow-y: scroll; }
+        .card { background-color: #1e1e1e; border-color: #333; }
+        .form-control, .form-select { background-color: #2a2a2a; color: #fff; border-color: #444; }
+        .form-control:focus, .form-select:focus { background-color: #333; color: #fff; border-color: #0d6efd; box-shadow: none; }
+        .table { color: #e0e0e0; }
+        .num { text-align: right; font-variant-numeric: tabular-nums; }
+    </style>
+</head>
+<body class="py-4">
+<div class="container" style="max-width: 1100px;">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-3 border-bottom border-secondary">
+        <h2 class="m-0 text-primary"><a href="{{ url_for('wp.home') }}" class="text-decoration-none">{{ title }}</a></h2>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('wp.event') }}" class="btn btn-primary btn-sm">Enter event workers</a>
+            <a href="{{ url_for('wp.redeem') }}" class="btn btn-outline-light btn-sm">Redeem</a>
+            <a href="{{ url_for('wp.allocations') }}" class="btn btn-outline-light btn-sm">Monthly allocations</a>
+            <a href="{{ url_for('wp.forfeits') }}" class="btn btn-outline-light btn-sm">Forfeits</a>
+            <a href="{{ url_for('wp.month_end') }}" class="btn btn-outline-info btn-sm">Month end</a>
+            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">Events</a>
+        </div>
+    </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}<div class="alert alert-{{ cat }} py-2">{{ msg }}</div>{% endfor %}
+    {% endwith %}
+
+    {% if view == 'home' %}
+    <div class="row g-3 mb-3">
+        <div class="col-md-4"><div class="card p-3"><div class="text-muted small">Points outstanding</div><div class="fs-4">{{ '%.2f'|format(total) }}</div><div class="text-muted small">{{ members_count }} members</div></div></div>
+        <div class="col-md-4"><div class="card p-3"><div class="text-muted small">Value (${{ point_value }}/pt)</div><div class="fs-4">${{ '{:,.2f}'.format(total * point_value) }}</div></div></div>
+        <div class="col-md-4"><div class="card p-3">
+            <div class="text-muted small">Check vs QBO{% if check.as_of %} ({{ check.as_of }}){% endif %}</div>
+            <div class="fs-4 {{ 'text-success' if check.difference|abs < 0.005 else 'text-warning' }}">{{ 'Ties' if check.difference|abs < 0.005 else '$' ~ '{:,.2f}'.format(check.difference) ~ ' off' }}</div>
+            <div class="text-muted small">QBO ${{ '{:,.2f}'.format(check.qbo) }}</div>
+        </div></div>
+    </div>
+    <form class="d-flex gap-2 mb-3" method="get">
+        <input class="form-control" name="q" value="{{ q }}" placeholder="Find a member by name or SCCA number" autofocus>
+        <button class="btn btn-outline-light">Search</button>
+        <a class="btn btn-outline-secondary text-nowrap" href="{{ url_for('wp.new_member') }}">Add member</a>
+    </form>
+    {% if q %}
+    <table class="table table-sm table-dark table-hover">
+        <thead><tr><th>Member</th><th>Name</th><th>Expires</th><th class="num">Points</th><th class="num">Value</th></tr></thead>
+        <tbody>
+        {% for m in hits %}<tr><td><a href="{{ url_for('wp.member', member_id=m.member) }}">{{ m.member }}</a></td><td>{{ m.first }} {{ m.last }}{% if m.life %} <span class="badge bg-secondary">LIFE</span>{% endif %}</td><td>{{ m.exp }}</td><td class="num">{{ '%.1f'|format(m.balance) }}</td><td class="num">${{ '{:,.2f}'.format(m.balance * point_value) }}</td></tr>
+        {% else %}<tr><td colspan="5" class="text-muted">No match.</td></tr>{% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    <h5 class="mt-4">Recent activity</h5>
+    <table class="table table-sm table-dark">
+        <thead><tr><th>Date</th><th>Member</th><th>Event</th><th>What</th><th class="num">Points</th><th>Type</th></tr></thead>
+        <tbody>{% for t in recent %}<tr><td>{{ t.date }}</td><td><a href="{{ url_for('wp.member', member_id=t.member) }}">{{ t.name }}</a></td><td>{{ t.event_code }}</td><td>{{ t.description }}</td><td class="num">{{ '%g'|format(t.points) }}</td><td>{{ t.type }}</td></tr>{% endfor %}</tbody>
+    </table>
+
+    {% elif view == 'member' %}
+    <h4>{{ m.first }} {{ m.last }} <small class="text-muted">#{{ m.member }}{% if m.exp %} · expires {{ m.exp }}{% endif %}{% if m.life %} · LIFE{% endif %}</small></h4>
+    <p class="fs-5">{{ '%.1f'|format(m.balance) }} points · ${{ '{:,.2f}'.format(m.balance * point_value) }}</p>
+    <p class="text-muted small">Balance at 8/31/2026 (keeper's file): {{ '%.1f'|format(m.opening) }} points. Changes since:</p>
+    <table class="table table-sm table-dark">
+        <thead><tr><th>Date</th><th>Event</th><th>What</th><th class="num">Points</th><th>Type</th><th>Source</th></tr></thead>
+        <tbody>{% for t in tx %}<tr><td>{{ t.date }}</td><td>{{ t.event_code }}</td><td>{{ t.description }}</td><td class="num">{{ '%g'|format(t.points) }}</td><td>{{ t.type }}</td><td class="small text-muted">{{ t.source }}</td></tr>
+        {% else %}<tr><td colspan="6" class="text-muted">No changes since 8/31.</td></tr>{% endfor %}</tbody>
+    </table>
+    <a class="btn btn-outline-light btn-sm" href="{{ url_for('wp.redeem', member=m.member) }}">Redeem points</a>
+
+    {% elif view == 'event' %}
+    <h4>Enter workers for an event</h4>
+    <form method="post" class="card p-3">
+        <div class="row g-2 mb-3">
+            <div class="col-md-6"><label class="form-label">Event</label>
+                <select name="event_code" class="form-select" required>
+                    <option value="" disabled selected>Select the event…</option>
+                    {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" {% if form.get('event_code') == c %}selected{% endif %}>{{ e.date }} · {{ e.program_code }} · {{ e.event_name }} {{ c }}</option>{% endfor %}
+                </select></div>
+            <div class="col-md-3"><label class="form-label">Date worked</label><input type="date" name="date" class="form-control" value="{{ form.get('date', '') }}"><div class="form-text">Blank = event date</div></div>
+            <div class="col-md-3"><label class="form-label">Your name</label><input name="entered_by" class="form-control" required value="{{ form.get('entered_by', '') }}"></div>
+        </div>
+        <datalist id="memberlist">{% for m in members %}<option value="{{ m.member }} {{ m.first }} {{ m.last }}">{% endfor %}</datalist>
+        <table class="table table-sm table-dark" id="rows">
+            <thead><tr><th style="width:50%">Member (type a name)</th><th>Duty</th><th style="width:12%">Points</th></tr></thead>
+            <tbody>{% for i in range(8) %}<tr><td><input name="member" list="memberlist" class="form-control form-control-sm"></td><td><input name="duty" class="form-control form-control-sm" placeholder="Chair, worker, timing…"></td><td><input name="points" type="number" step="0.5" min="0" class="form-control form-control-sm"></td></tr>{% endfor %}</tbody>
+        </table>
+        <div class="d-flex gap-2"><button type="button" class="btn btn-outline-light btn-sm" onclick="addRow()">Add row</button><button class="btn btn-primary btn-sm ms-auto">Post points</button></div>
+        <p class="form-text mt-2">Not in the list? <a href="{{ url_for('wp.new_member') }}">Add the member</a> first. Non-members don't earn points.</p>
+    </form>
+    <script>function addRow(){const b=document.querySelector('#rows tbody');b.appendChild(b.rows[0].cloneNode(true));b.lastElementChild.querySelectorAll('input').forEach(i=>i.value='');}</script>
+
+    {% elif view == 'redeem' %}
+    <h4>Redeem points</h4>
+    <form method="post" class="card p-3" style="max-width:640px">
+        <datalist id="memberlist">{% for m in members %}<option value="{{ m.member }} {{ m.first }} {{ m.last }} ({{ '%.1f'|format(m.balance) }} pts)">{% endfor %}</datalist>
+        <label class="form-label">Member</label><input name="member" list="memberlist" class="form-control mb-2" required value="{{ request.args.get('member', '') }}">
+        <label class="form-label">Points used</label><input name="points" type="number" step="0.5" min="0.5" class="form-control mb-2" required>
+        <label class="form-label">For</label><input name="note" class="form-control mb-2" placeholder="SCCA renewal, banquet registration…" required>
+        <label class="form-label">Your name</label><input name="entered_by" class="form-control mb-3" required>
+        <button class="btn btn-primary">Record redemption</button>
+        <p class="form-text mt-2">Pay the renewal or bill as usual (check or card from the Worker Awards reserve); this only takes the points off the member.</p>
+    </form>
+
+    {% elif view == 'allocations' %}
+    <h4>Monthly allocations</h4>
+    <form class="d-flex gap-2 mb-3" method="get"><input type="month" name="month" value="{{ month }}" class="form-control" style="max-width:220px"><button class="btn btn-outline-light">Show</button></form>
+    <table class="table table-sm table-dark" style="max-width:720px"><thead><tr><th>Role</th><th>Member</th><th class="num">Points</th></tr></thead>
+        <tbody>{% for r in plan %}<tr><td>{{ r.role }}</td><td>{{ r.name }}</td><td class="num">{{ '%g'|format(r.points) }}</td></tr>{% endfor %}</tbody></table>
+    {% if already %}<div class="alert alert-secondary py-2">{{ month }} is already posted ({{ already|length }} rows).</div>
+    {% else %}<form method="post" class="d-flex gap-2" style="max-width:720px"><input type="hidden" name="month" value="{{ month }}"><input name="entered_by" class="form-control" placeholder="Your name" required><button class="btn btn-primary text-nowrap">Post {{ month }}</button></form>{% endif %}
+    <p class="form-text mt-2">Who holds each role and the rates are on the ledger sheet's Allocations tab.</p>
+
+    {% elif view == 'forfeits' %}
+    <h4>Lapsed memberships with points</h4>
+    <p class="text-muted">Members whose membership expired before this month and who still hold points. Check SCCA before forfeiting; a renewal may not be in the ledger yet.</p>
+    <table class="table table-sm table-dark"><thead><tr><th>Member</th><th>Name</th><th>Expired</th><th class="num">Points</th><th></th></tr></thead>
+        <tbody>{% for m in cands %}<tr><td><a href="{{ url_for('wp.member', member_id=m.member) }}">{{ m.member }}</a></td><td>{{ m.first }} {{ m.last }}</td><td>{{ m.exp }}</td><td class="num">{{ '%.1f'|format(m.balance) }}</td>
+            <td><form method="post" class="d-flex gap-1"><input type="hidden" name="member" value="{{ m.member }}"><input name="entered_by" class="form-control form-control-sm" placeholder="Your name" required style="max-width:140px"><button class="btn btn-sm btn-outline-danger" onclick="return confirm('Forfeit {{ '%.1f'|format(m.balance) }} points for {{ m.first }} {{ m.last }}?')">Forfeit</button></form></td></tr>
+        {% else %}<tr><td colspan="5" class="text-muted">No lapsed members hold points.</td></tr>{% endfor %}</tbody></table>
+
+    {% elif view == 'month_end' %}
+    <h4>Month end</h4>
+    <form class="d-flex gap-2 mb-3" method="get"><input type="month" name="month" value="{{ month }}" class="form-control" style="max-width:220px"><button class="btn btn-outline-light">Show</button></form>
+    <p>One QBO journal entry for {{ month }}:</p>
+    <table class="table table-sm table-dark"><thead><tr><th>Debit</th><th>Credit</th><th class="num">Points</th><th class="num">Amount</th><th>For</th></tr></thead>
+        <tbody>{% for l in s.lines %}<tr><td>{{ l.debit }}</td><td>{{ l.credit }}</td><td class="num">{{ '%g'|format(l.points) }}</td><td class="num">${{ '{:,.2f}'.format(l.amount) }}</td><td>{{ l.what }}</td></tr>
+        {% else %}<tr><td colspan="5" class="text-muted">No earned, allocated or forfeited points this month.</td></tr>{% endfor %}</tbody></table>
+    {% if s.used_rows %}<p class="mb-1">Redemptions this month ({{ '%g'|format(-s.used_points) }} points, ${{ '{:,.2f}'.format(-s.used_points * point_value) }}). These are booked on the check or card charge that paid them, not in the entry above:</p>
+    <ul>{% for t in s.used_rows %}<li>{{ t.date }} {{ t.name }}: {{ '%g'|format(-t.points) }} pts, {{ t.description }}</li>{% endfor %}</ul>{% endif %}
+    <p>Net change in the reserve: ${{ '{:,.2f}'.format(s.net_change) }}.</p>
+    <div class="card p-3" style="max-width:720px">
+        <div class="mb-2">Ledger total ${{ '{:,.2f}'.format(check.value) }} vs QBO ${{ '{:,.2f}'.format(check.qbo) }}{% if check.as_of %} as of {{ check.as_of }}{% endif %}: <b class="{{ 'text-success' if check.difference|abs < 0.005 else 'text-warning' }}">{{ 'ties' if check.difference|abs < 0.005 else 'off by $' ~ '{:,.2f}'.format(check.difference) }}</b></div>
+        <form method="post" action="{{ url_for('wp.set_check') }}" class="d-flex gap-2"><input name="qbo" class="form-control" placeholder="QBO Reserve Fund balance" required><input type="date" name="as_of" class="form-control" required><input name="entered_by" class="form-control" placeholder="Your name" required><button class="btn btn-outline-info text-nowrap">Update</button></form>
+    </div>
+
+    {% elif view == 'new_member' %}
+    <h4>Add a member to the ledger</h4>
+    <form method="post" class="card p-3" style="max-width:640px">
+        <label class="form-label">SCCA member #</label><input name="member" class="form-control mb-2" required>
+        <div class="row g-2 mb-2"><div class="col"><label class="form-label">First name</label><input name="first" class="form-control" required></div><div class="col"><label class="form-label">Last name</label><input name="last" class="form-control" required></div></div>
+        <label class="form-label">Membership expires (M/YY)</label><input name="exp" class="form-control mb-2" placeholder="5/27">
+        <div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="life" id="life"><label class="form-check-label" for="life">Life member</label></div>
+        <label class="form-label">Your name</label><input name="entered_by" class="form-control mb-3" required>
+        <button class="btn btn-primary">Add member</button>
+    </form>
+    {% endif %}
+</div>
+</body>
+</html>

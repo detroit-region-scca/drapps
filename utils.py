@@ -11,13 +11,9 @@ from flask import session, redirect, url_for
 
 logger = logging.getLogger(__name__)
 
-# Core paths and config
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-DATA_FILE = os.environ.get("DATA_FILE", os.path.join(DATA_DIR, "events.ndjson"))
-AUDIT_FILE = os.environ.get("AUDIT_FILE", os.path.join(DATA_DIR, "audit.ndjson"))
-DATA_LOCK_FILE = os.environ.get("DATA_LOCK_FILE", f"{DATA_FILE}.lock")
-PROGRAMS_FILE = os.environ.get("PROGRAMS_FILE", os.path.join(DATA_DIR, "programs.json"))
+# Core paths and config. Storage itself (files or Google Sheets) lives in storage.py;
+# the paths are re-exported because app.py imports them for its lock files.
+from storage import store, DATA_DIR, DATA_FILE, AUDIT_FILE, DATA_LOCK_FILE, PROGRAMS_FILE  # noqa: F401
 TIMEZONE = os.environ.get("TIMEZONE", "US/Eastern")
 
 def login_required(f):
@@ -29,38 +25,14 @@ def login_required(f):
     return decorated_function
 
 def load_programs():
-    if not os.path.exists(PROGRAMS_FILE):
-        return {}
-    try:
-        with open(PROGRAMS_FILE, 'r') as f:
-            return json.load(f)
-    except (json.JSONDecodeError, FileNotFoundError) as e:
-        logger.error(f"Error loading programs: {e}")
-        return {}
-
-def _load_ndjson(file_path):
-    if not os.path.exists(file_path):
-        return []
-    data = []
-    with open(file_path, 'r') as f:
-        for line_num, line in enumerate(f, 1):
-            try:
-                data.append(json.loads(line))
-            except json.JSONDecodeError as e:
-                logger.error(f"Malformed JSON in {file_path} at line {line_num}: {e}")
-    return data
+    return store.load_programs()
 
 def load_events():
-    events = _load_ndjson(DATA_FILE)
+    events = store.load_events()
     return sorted(events, key=lambda x: x.get('date', ''), reverse=False)
 
 def save_events(events):
-    tmp_file = f"{DATA_FILE}.tmp"
-    with open(tmp_file, 'w') as f:
-        for event in events:
-            json.dump(event, f)
-            f.write('\n')
-    os.replace(tmp_file, DATA_FILE)
+    store.save_events(events)
 
 def log_audit_event(action, user, details):
     try:
@@ -74,13 +46,10 @@ def log_audit_event(action, user, details):
         "user": user,
         "details": details
     }
-    with FileLock(f"{AUDIT_FILE}.lock"):
-        with open(AUDIT_FILE, 'a') as f:
-            json.dump(log_entry, f)
-            f.write('\n')
+    store.append_audit(log_entry)
 
 def load_audit_logs():
-    logs = _load_ndjson(AUDIT_FILE)
+    logs = store.load_audit()
     return sorted(logs, key=lambda x: x.get('timestamp', ''), reverse=True)
 
 def format_custom_tag(tag):

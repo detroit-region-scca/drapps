@@ -20,3 +20,6 @@ venv/
 # curl cookie jar from manual API poking. May hold a live session cookie --
 # must never be committed.
 cookies.txt
+
+# Nightly .xlsx copies of the Google Sheets (backup_sheets.py)
+data/backups/

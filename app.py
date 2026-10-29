@@ -24,6 +24,9 @@ logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
+from wp import bp as wp_bp  # noqa: E402
+app.register_blueprint(wp_bp)
+
 # Mandatory Secret Key in Production
 secret = os.environ.get("FLASK_SECRET_KEY")
 is_prod = os.environ.get("FLASK_ENV") == "production"

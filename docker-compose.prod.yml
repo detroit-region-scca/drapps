@@ -15,6 +15,9 @@ services:
       - "${HOST_PORT:-5858}:5858"
     volumes:
       - ./data:/app/data
+      # Google service account key for STORAGE_BACKEND=sheets (data lives in the treasurer's
+      # Google Drive). Host path set per deployment in .env; /dev/null when unused.
+      - ${GOOGLE_SA_KEY_HOST:-/dev/null}:/run/secrets/google-sa.json:ro
     env_file:
       - .env
     environment:
