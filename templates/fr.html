@@ -164,18 +164,21 @@
             <input type="hidden" name="action" value="paid">
             <div class="section-label">Mark paid</div>
             <div class="row g-2">
-                <div class="col-sm-4"><input name="paid_ref" class="form-control" placeholder="Check # or card" required></div>
-                <div class="col-sm-4"><input type="date" name="paid_date" class="form-control" value="{{ today }}"></div>
-                <div class="col-sm-4"><input name="paid_amount" class="form-control text-end" inputmode="decimal" value="{{ '%.2f'|format(r.net) }}"></div>
-                <div class="col-sm-8"><input name="entered_by" class="form-control" placeholder="Your name" value="{{ who }}" required></div>
-                <div class="col-sm-4"><button class="btn btn-accent w-100">Mark paid</button></div>
+                <div class="col-sm-5"><label class="form-label small" for="paidRef">Check # or card</label>
+                    <input name="paid_ref" id="paidRef" class="form-control" placeholder="Check 6080">
+                    <div class="mt-1"><button type="button" class="btn btn-link btn-sm p-0" onclick="document.getElementById('paidRef').value='Region card'">Paid on the region card</button></div></div>
+                <div class="col-sm-4"><label class="form-label small" for="paidDate">Date paid</label><input type="date" name="paid_date" id="paidDate" class="form-control" value="{{ today }}"></div>
+                <div class="col-sm-3"><label class="form-label small" for="paidAmt">Amount</label><input name="paid_amount" id="paidAmt" class="form-control text-end" inputmode="decimal" value="{{ '%.2f'|format(r.net) }}"></div>
+                <div class="col-sm-8"><label class="form-label small" for="paidWho">Your name</label><input name="entered_by" id="paidWho" class="form-control" value="{{ who }}"></div>
+                <div class="col-sm-4 d-flex align-items-end"><button class="btn btn-accent w-100">Mark paid</button></div>
             </div>
             <div class="form-text">Book it in QBO to the event's project as usual; this records that it was paid.</div>
         </form></div>
         <div class="col-lg-4"><form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">
             <input type="hidden" name="action" value="reject"><input type="hidden" name="entered_by" value="{{ who }}">
             <div class="section-label">Reject</div>
-            <input name="note" class="form-control mb-2" placeholder="Why (required)" required>
+            <label class="form-label small" for="rejNote">Why</label>
+            <input name="note" id="rejNote" class="form-control mb-2" placeholder="Duplicate, no receipt…">
             <button class="btn btn-outline-danger">Reject</button>
         </form></div>
     </div>

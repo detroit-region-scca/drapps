@@ -10,7 +10,7 @@
     {{ tab('wp.forfeits', 'Forfeits') }}
     {{ tab('wp.month_end', 'Month end') }}
 {% endblock %}
-{% macro who_field(cls='') %}<input name="entered_by" class="form-control {{ cls }}" placeholder="Your name" value="{{ who }}" required autocomplete="name">{% endmacro %}
+{% macro who_field(cls='') %}<input name="entered_by" class="form-control {{ cls }}" placeholder="Your name" value="{{ who }}" autocomplete="name">{% endmacro %}
 {% macro type_badge(t) %}<span class="badge rounded-pill {{ {'Earned': 'text-bg-success', 'Used': 'text-bg-info', 'Allocation': 'text-bg-primary', 'Forfeit': 'text-bg-danger'}.get(t, 'text-bg-secondary') }}">{{ t }}</span>{% endmacro %}
 {% macro pts(v) %}<span class="{{ 'text-danger' if v < 0 else '' }}">{{ '%+g'|format(v) }}</span>{% endmacro %}
 {% block style %}
@@ -184,7 +184,7 @@
         <div class="col-lg-4"><form method="post" class="card p-3 h-100">
             <input type="hidden" name="action" value="decline">
             <div class="section-label text-muted small mb-2">DECLINE</div>
-            <input name="note" class="form-control mb-2" placeholder="Why (required)" required>
+            <input name="note" class="form-control mb-2" placeholder="Why">
             <input type="hidden" name="entered_by" value="{{ who }}">
             <button class="btn btn-outline-danger">Decline</button>
         </form></div>
