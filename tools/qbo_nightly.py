@@ -114,6 +114,8 @@ def main():
         P.write_tab('QBO Monthly', ['year', 'program', 'month', 'net', 'as_of'], monthly_rows)
         P.write_tab('QBO Status', ['item', 'amount', 'as_of'], status_rows)
         P.write_tab('QBO Exceptions', P.EXC_COLS, [[e[c] if c != 'as_of' else as_of for c in P.EXC_COLS] for e in exc])
+        P.write_tab('QBO Outstanding', ['date', 'number', 'payee', 'amount', 'as_of'],
+                    [[o['date'], o['number'], o['payee'], o['amount'], as_of] for o in data.get('outstanding', [])])
     print(f"QuickBooks sync {as_of}{' (dry run)' if DRY else ''}: " + '\n'.join(say))
 
 

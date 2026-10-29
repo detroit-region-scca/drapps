@@ -120,13 +120,11 @@ def _chart(year, plan, as_of):
             'actual': {c: r2(v) for c, v in actual.items()}, 'last': last, 'as_of': as_of}
 
 
-@bp.route('/')
-@login_required
-def home():
-    if (g := _guard()):
-        return g
-    year = _year(request.args.get('year') or date.today().year)
-    plan, (act, as_of) = P.plan(year), P.actuals(year)
+def summary(year, plan=None, act=None):
+    """Each program's plan, budgeted and actual profit for a year, with its lines and events; and the totals.
+    Shared by the Annual Plan page and the treasurer's report."""
+    plan = plan if plan is not None else P.plan(year)
+    act = act if act is not None else P.actuals(year)[0]
     future = int(year) > date.today().year
     rows = []
     for code, name in _programs():
@@ -137,7 +135,18 @@ def home():
         budgets = [k['budget'] for k in kids if k['budget'] is not None]
         rows.append({'code': code, 'name': name, 'plan': pn, 'actual': an, 'info': (p or {}).get('info', {}),
                      'budget': round(sum(budgets), 2) if budgets else None, 'diff': _diff(an, pn), 'kids': kids})
-    tot = {k: round(sum(r[k] or 0 for r in rows), 2) for k in ('plan', 'budget', 'actual')}
+    return rows, {k: round(sum(r[k] or 0 for r in rows), 2) for k in ('plan', 'budget', 'actual')}
+
+
+@bp.route('/')
+@login_required
+def home():
+    if (g := _guard()):
+        return g
+    year = _year(request.args.get('year') or date.today().year)
+    plan, (act, as_of) = P.plan(year), P.actuals(year)
+    future = int(year) > date.today().year
+    rows, tot = summary(year, plan, act)
     sent = sum(1 for r in rows if r['plan'] is not None or r['info'])
     chart = None if future else _chart(year, plan, as_of)
     return render_template('plan.html', **_ctx(view='home', year=year, years=P.years(), rows=rows, tot=tot, as_of=as_of,

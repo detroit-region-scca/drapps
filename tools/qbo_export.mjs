@@ -4,6 +4,7 @@
 //   monthly   the same by account and month, this year and last, for the plan vs actual chart
 //   balances  bank accounts and the worker points reserve
 //   payments  checks, bill payments and card charges since PAYMENTS_SINCE
+//   outstanding  checks since PAYMENTS_SINCE the bank has not cleared yet (QuickBooks "Clr" blank; voided $0 checks left out)
 // Runs on the machine that holds the QuickBooks connection (the qbo-mcp install and its token
 // store); the web app never talks to QuickBooks. QBO_MCP_DIR points at that install. Read only.
 const dir = process.env.QBO_MCP_DIR || `${process.env.HOME}/.mcp-servers/qbo-mcp`;
@@ -102,4 +103,11 @@ for (const b of await query('BillPayment', `WHERE TxnDate >= '${since}'`)) {
   });
 }
 
-console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments }));
+const tl = await get(`reports/TransactionList?start_date=${since}&end_date=${today}&transaction_type=Check&columns=tx_date,txn_type,doc_num,name,is_cleared,subt_nat_amount`);
+const tcols = (tl.Columns?.Column || []).map(c => c.ColTitle), tc = n => tcols.indexOf(n);
+const trows = []; const twalk = rr => (rr || []).forEach(r => { if (r.ColData) trows.push(r.ColData.map(c => c.value)); if (r.Rows) twalk(r.Rows.Row); });
+twalk(tl.Rows?.Row);
+const outstanding = trows.filter(r => r[tc('Transaction Type')] === 'Check' && !r[tc('Clr')] && Math.abs(Number(r[tc('Amount')]) || 0) >= 0.005)
+  .map(r => ({ date: r[tc('Date')], number: r[tc('Num')], payee: r[tc('Name')], amount: Math.abs(Number(r[tc('Amount')])) }));
+
+console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding }));

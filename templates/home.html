@@ -20,6 +20,8 @@
     <div class="crumbs"><a href="{{ url_for('home') }}">Apps</a> / Treasurer</div>
     <div class="page-title mb-3">Treasurer</div>
     <div class="list-group">
+        <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('treasurer_report') }}">
+            <span>Treasurer's report<div class="small text-muted">This month's report for the board, ready to print</div></span><span class="text-muted">›</span></a>
         {% if jobs.pay is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('fr.home') }}">
             <span>Funds requests ready to pay<div class="small text-muted">All approvals in</div></span><span class="fw-semibold">{{ jobs.pay[0] }}{% if jobs.pay[0] %} · ${{ '{:,.2f}'.format(jobs.pay[1]) }}{% endif %}</span></a>
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('fr.home') }}">

@@ -11,7 +11,7 @@ from urllib.parse import quote
 import io
 from dotenv import load_dotenv
 from filelock import FileLock
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from utils import (
     load_programs, load_events, save_events, log_audit_event, load_audit_logs,
@@ -113,6 +113,51 @@ def treasurer():
         jobs['budgets'] = sum(1 for c, b in bud_store.budgets().items() if c in codes and (not b.get('approved') or b.get('updated', '') > b['approved']))
     return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Treasurer", view='treasurer', jobs=jobs,
                            year=year, wp_enabled=wp_store.enabled())
+
+
+@app.route('/treasurer/report')
+@login_required
+def treasurer_report():
+    """The monthly treasurer's report for the board (Region policy II.A.4: budgets go to the board each month):
+    balances, plan against actual by program, budgets for approval, funds requests, outstanding checks, books check."""
+    import fr
+    import fr_logic
+    import plan as plan_view
+    today = datetime.now().date()
+    month = request.args.get('month') or today.strftime('%Y-%m')
+    if not (len(month) == 7 and month[:4].isdigit() and month[5:].isdigit()):
+        month = today.strftime('%Y-%m')
+    year = month[:4]
+    ctx = {'month': month, 'year': year, 'today': today.isoformat()}
+    if plan_store.enabled():
+        ctx['balances'] = plan_store.status()
+        ctx['rows'], ctx['tot'] = plan_view.summary(year)
+        ctx['as_of'] = plan_store.actuals(year)[1]
+        ctx['outstanding'] = plan_store.outstanding()
+        kinds = {}
+        for e in plan_store.exceptions():
+            kinds[e['kind']] = kinds.get(e['kind'], 0) + 1
+        ctx['books'] = sorted(kinds.items(), key=lambda kv: -kv[1])
+    events = [e for e in load_events() if e.get('date', '').startswith(year)]
+    if bud_store.enabled():
+        buds, qbo = bud_store.budgets(), bud_store.qbo_actuals()
+        soon = (today + timedelta(days=60)).isoformat()
+        board, missing = [], []
+        for e in sorted(events, key=lambda e: e['date']):
+            code = e.get('custom_tag') or e.get('unique_code')
+            b = buds.get(code)
+            if b and (not b.get('approved') or b.get('updated', '') > b['approved']):
+                board.append({'e': e, 'code': code, 'changed': bool(b.get('approved')), 'budget': (b['totals'].get('budget') or {}).get('surplus'),
+                              'actual': ((qbo.get(code) or {}).get('totals') or {}).get('surplus')})
+            elif not b and today.isoformat() <= e['date'] <= soon:
+                missing.append({'e': e, 'code': code})
+        ctx['board'], ctx['missing'] = board, missing
+    if fr_store.enabled():
+        a = fr.Approvals()
+        ctx['paid'] = sorted((r for r in a.reqs if r['status'] == 'Paid' and str(r['paid_date']).startswith(month)), key=lambda r: r['paid_date'])
+        ctx['open'] = [dict(r, waiting=fr_logic.waiting_on(a.items(r))) for r in a.reqs if r['status'] == 'Submitted']
+    region = os.environ.get('SCCA_REGION_NAME', 'SCCA')
+    return render_template('report.html', title=f"{region} Treasurer's Report {month}", region=region, **ctx)
 
 
 @app.route('/name', methods=['GET', 'POST'])

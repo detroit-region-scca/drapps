@@ -299,3 +299,19 @@ def clean_name(item, year=None):
     s = re.sub(r'\(\s*\)', '', s)
     s = re.sub(r'\s{2,}', ' ', s).strip(' :-')
     return s or (item or '').strip()
+
+
+def outstanding():
+    """Checks the bank has not cleared yet, as of the last sync: [{date, number, payee, amount, as_of}], oldest first."""
+    hit = _cache.get('outstanding')
+    if hit and time.time() - hit[0] < CACHE_SECONDS:
+        return hit[1]
+    try:
+        rows = _rows(_ws('QBO Outstanding').get('A:E', value_render_option='UNFORMATTED_VALUE'), ['date', 'number', 'payee', 'amount', 'as_of'])
+    except gspread.exceptions.WorksheetNotFound:
+        rows = []
+    for r in rows:
+        r['amount'], r['date'], r['number'] = _num(r['amount']) or 0.0, str(r['date']), str(r['number'])
+    rows.sort(key=lambda r: r['date'])
+    _cache['outstanding'] = (time.time(), rows)
+    return rows

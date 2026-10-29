@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% from '_ui.html' import money with context %}
+{% block app_name %}Treasurer{% endblock %}
+{% block style %}
+        .report h2 { font-size: 1rem; font-weight: 600; margin: 1.75rem 0 .5rem; }
+        .report .table { font-size: .925rem; }
+        .report .total-row td { font-weight: 600; border-top: 2px solid var(--border); }
+        @media print {
+            .report { font-size: 11pt; }
+            .report .card { border: 0; }
+            .report .table { --bs-table-color: #000; color: #000; }
+            .report .table > :not(caption) > * > * { border-color: #bbb; }
+            .report .text-muted { color: #555 !important; }
+            .report h2 { break-after: avoid; }
+            .report section { break-inside: avoid; }
+        }
+{% endblock %}
+{% block content %}
+<div class="report">
+    <div class="crumbs no-print"><a href="{{ url_for('treasurer') }}">Treasurer</a> / Report</div>
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+        <div>
+            <div class="page-title m-0">{{ region }} Treasurer's Report</div>
+            <div class="text-muted">{{ month }}{% if as_of %} · QuickBooks as of {{ as_of }}{% endif %} · prepared {{ today }} by {{ session.get('who', '') }}</div>
+        </div>
+        <form method="get" class="d-flex gap-2 no-print"><input type="month" name="month" class="form-control form-control-sm" value="{{ month }}" onchange="this.form.submit()" aria-label="Month">
+            <button type="button" class="btn btn-sm btn-accent" onclick="window.print()">Print</button></form>
+    </div>
+
+    {% if balances %}<section><h2>Balances</h2>
+    <div class="card"><div class="card-body p-0"><table class="table mb-0">
+        <tbody>{% for item, b in balances.items() if b.amount %}<tr><td class="ps-3">{{ item }}</td><td class="num pe-3">{{ money(b.amount) }}</td></tr>{% endfor %}</tbody>
+    </table></div></div></section>{% endif %}
+
+    {% if rows %}<section><h2>{{ year }} plan against actual, by program</h2>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <thead><tr><th class="ps-3">Program</th><th class="num">Plan</th><th class="num">Budgeted</th><th class="num">Actual so far</th><th class="num pe-3">Ahead (behind)</th></tr></thead>
+        <tbody>{% for r in rows %}<tr><td class="ps-3">{{ r.name }}</td><td class="num">{{ money(r.plan) }}</td><td class="num">{{ money(r.budget) }}</td><td class="num">{{ money(r.actual) }}</td><td class="num pe-3">{{ money(r.diff) }}</td></tr>{% endfor %}
+        <tr class="total-row"><td class="ps-3">Region</td><td class="num">{{ money(tot.plan) }}</td><td class="num">{{ money(tot.budget) }}</td><td class="num">{{ money(tot.actual) }}</td><td class="num pe-3">{{ money((tot.actual - tot.plan)|round(2)) }}</td></tr></tbody>
+    </table></div></div></section>{% endif %}
+
+    {% if board is defined %}<section><h2>Budgets for board approval ({{ board|length }})</h2>
+    {% if board %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <thead><tr><th class="ps-3">Event</th><th>Date</th><th></th><th class="num">Budgeted surplus</th><th class="num pe-3">Actual</th></tr></thead>
+        <tbody>{% for x in board %}<tr><td class="ps-3">{{ x.e.event_name }} <span class="small text-muted">{{ x.e.program_code }} {{ x.code }}</span></td><td class="text-nowrap">{{ x.e.date }}</td>
+            <td class="small">{{ 'Changed since approval' if x.changed else 'New' }}</td><td class="num">{{ money(x.budget) }}</td><td class="num pe-3">{{ money(x.actual) }}</td></tr>{% endfor %}</tbody>
+    </table></div></div>{% else %}<p class="text-muted">Every {{ year }} budget is board approved.</p>{% endif %}
+    {% if missing %}<p class="small mt-2 mb-0"><b>No budget yet, event within 60 days</b> (policy: budgets 60 days before):
+        {% for x in missing %}{{ x.e.event_name }} ({{ x.e.date }}, {{ x.e.program_code }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+    </section>{% endif %}
+
+    {% if paid is defined %}<section><h2>Funds requests paid in {{ month }} ({{ paid|length }}, {{ money(paid|sum(attribute='paid_amount')) }})</h2>
+    {% if paid %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <tbody>{% for r in paid %}<tr><td class="ps-3 text-nowrap">{{ r.id }}</td><td>{{ r.payee_name or r.submitter_name }}</td><td class="small text-muted">{{ r.event_name or r.program }}</td><td class="text-nowrap">{{ r.paid_ref }}</td><td class="num pe-3">{{ money(r.paid_amount) }}</td></tr>{% endfor %}</tbody>
+    </table></div></div>{% else %}<p class="text-muted">None.</p>{% endif %}
+
+    <h2>Funds requests open ({{ open|length }}, {{ money(open|sum(attribute='net')) }})</h2>
+    {% if open %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <tbody>{% for r in open %}<tr><td class="ps-3 text-nowrap">{{ r.id }}</td><td>{{ r.payee_name or r.submitter_name }}</td><td class="small text-muted">{{ r.event_name or r.program }}</td>
+            <td class="small">{{ 'Waiting on ' ~ r.waiting|join(', ') if r.waiting else 'Ready to pay' }}</td><td class="num pe-3">{{ money(r.net) }}</td></tr>{% endfor %}</tbody>
+    </table></div></div>{% else %}<p class="text-muted">None.</p>{% endif %}</section>{% endif %}
+
+    {% if outstanding is defined %}<section><h2>Outstanding checks ({{ outstanding|length }}, {{ money(outstanding|sum(attribute='amount')) }})</h2>
+    {% if outstanding %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <tbody>{% for o in outstanding %}<tr><td class="ps-3">{{ o.number }}</td><td class="text-nowrap">{{ o.date }}</td><td>{{ o.payee }}</td><td class="num pe-3">{{ money(o.amount) }}</td></tr>{% endfor %}</tbody>
+    </table></div></div>{% else %}<p class="text-muted">None.</p>{% endif %}</section>{% endif %}
+
+    {% if books is defined %}<section><h2>Books check</h2>
+    {% if books %}<ul class="mb-0">{% for k, n in books %}<li>{{ k }}: {{ n }}</li>{% endfor %}</ul>{% else %}<p class="text-muted">Nothing open.</p>{% endif %}</section>{% endif %}
+</div>
+{% endblock %}
