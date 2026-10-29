@@ -112,7 +112,8 @@ def exceptions(requests, payments, events, projects, today, since=None):
     on_requests = {check_number(r['paid_ref']) for r in requests} - {None}
     numbers = {p['number'] for p in payments if p['kind'] == 'check' and p['number']}
     for p in payments:
-        if p['kind'] == 'check' and p['number'] and p['number'] not in on_requests and (_day(p['date']) or since) >= since:
+        # A voided check stays in QuickBooks at $0; it is not a payment anyone needs a request for.
+        if p['kind'] == 'check' and p['number'] and p['amount'] and p['number'] not in on_requests and (_day(p['date']) or since) >= since:
             what = '; '.join(ln['description'].split('\n')[0][:50] for ln in p['lines'][:2])
             add(f"check:{p['number']}", 'Check with no funds request', p['date'], p['payee'], p['amount'],
                 f"Check {p['number']}" + (f": {what}" if what else ''))

@@ -77,3 +77,9 @@ def test_exceptions():
                 {'code': '#DRZZZ', 'project': 'Old #DRZZZ', 'lines': [{'amount': 1}]}]
     keys = {e['key'] for e in Q.exceptions(reqs, pays, events, projects, today)}
     assert keys == {'check:6001', 'frcheck:FR-1', 'frwait:FR-2', 'evproj:#DRAAA', 'evact:#DRBBB', 'projev:#DRZZZ'}
+
+
+def test_voided_check_is_not_an_exception():
+    today = date(2026, 10, 29)
+    keys = {e['key'] for e in Q.exceptions([], [chk('6038', 'Pat Smith', 0, d='2026-06-12')], [], [], today)}
+    assert 'check:6038' not in keys
