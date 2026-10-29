@@ -2,7 +2,7 @@
 import os
 from datetime import date
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 import wp_logic as L
 import wp_store as S
@@ -12,7 +12,16 @@ bp = Blueprint('wp', __name__, url_prefix='/wp')
 
 
 def _ctx(**kw):
-    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Worker Points", enabled=S.enabled(), point_value=L.POINT_VALUE, **kw)
+    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Worker Points", enabled=S.enabled(), point_value=L.POINT_VALUE,
+                who=session.get('who', ''), **kw)
+
+
+def _who():
+    """Who is entering this, from the form; remembered for the rest of the login so it is typed once."""
+    who = request.form.get('entered_by', '').strip() or session.get('who', '')
+    if who:
+        session['who'] = who
+    return who or 'Unknown'
 
 
 def _events_by_code():
@@ -80,7 +89,7 @@ def event():
         mem = S.members()
         code = request.form['event_code']
         ev = _events_by_code().get(code)
-        who = request.form.get('entered_by', '').strip() or 'Unknown'
+        who = _who()
         when = date.fromisoformat(request.form.get('date') or (ev or {}).get('date') or date.today().isoformat())
         balances = {m['member']: m['balance'] for m in mem}
         names = {m['member']: f"{m['first']} {m['last']}" for m in mem}
@@ -120,7 +129,7 @@ def redeem():
     mem = S.members()
     if request.method == 'POST':
         mid = request.form['member'].split(' ')[0].strip()
-        who = request.form.get('entered_by', '').strip() or 'Unknown'
+        who = _who()
         try:
             pts = -abs(float(request.form['points']))
         except ValueError:
@@ -156,7 +165,7 @@ def allocations():
         if already:
             flash(f'Allocations for {month} were already posted.', 'warning')
             return redirect(url_for('wp.allocations', month=month))
-        who = request.form.get('entered_by', '').strip() or 'Unknown'
+        who = _who()
         rows = [{'date': date(y, mo, 1), 'member': r['member'], 'name': r['name'], 'event_code': code,
                  'description': f"{date(y, mo, 1):%B} allocation: {r['role']}", 'points': r['points'], 'type': 'Allocation',
                  'source': f'Entered in app by {who}'} for r in plan if r['points'] > 0]
@@ -177,7 +186,7 @@ def forfeits():
     mem = S.members()
     if request.method == 'POST':
         mid = request.form['member']
-        who = request.form.get('entered_by', '').strip() or 'Unknown'
+        who = _who()
         m = next((m for m in mem if m['member'] == mid), None)
         if not m or m['balance'] <= 0:
             flash('Nothing to forfeit for that member.', 'warning')
@@ -207,7 +216,7 @@ def set_check():
     try:
         S.refresh()
         S.set_qbo_balance(float(request.form['qbo'].replace(',', '').replace('$', '')), date.fromisoformat(request.form['as_of']))
-        log_audit_event('WP_QBO_BALANCE', request.form.get('entered_by', 'Unknown'), {'qbo': request.form['qbo'], 'as_of': request.form['as_of']})
+        log_audit_event('WP_QBO_BALANCE', _who(), {'qbo': request.form['qbo'], 'as_of': request.form['as_of']})
     except (ValueError, KeyError):
         flash('Enter the QBO balance and a date.', 'danger')
     return redirect(request.referrer or url_for('wp.home'))
@@ -229,7 +238,7 @@ def new_member():
             return redirect(url_for('wp.member', member_id=mid))
         S.add_member(mid, request.form['last'].strip().title(), request.form['first'].strip().title(),
                      request.form.get('exp', '').strip(), bool(request.form.get('life')))
-        log_audit_event('WP_MEMBER_ADDED', request.form.get('entered_by', 'Unknown'), {'member': mid, 'name': f"{request.form['first']} {request.form['last']}"})
+        log_audit_event('WP_MEMBER_ADDED', _who(), {'member': mid, 'name': f"{request.form['first']} {request.form['last']}"})
         flash('Member added.', 'success')
         return redirect(url_for('wp.member', member_id=mid))
     return render_template('wp.html', **_ctx(view='new_member'))

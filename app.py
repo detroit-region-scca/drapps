@@ -104,6 +104,7 @@ def index():
             date_str = request.form['date'].strip()
             event_name = request.form['event_name'].strip()
             creator_name = request.form['your_name'].strip()
+            session['who'] = creator_name
             custom_tag = format_custom_tag(request.form.get('custom_tag'))
 
             if not is_tag_unique(custom_tag, events):

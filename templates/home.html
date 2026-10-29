@@ -1,51 +1,34 @@
-<!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background-color: #121212; color: #e0e0e0; }
-        .card { background-color: #1e1e1e; border-color: #333; }
-        .form-control { background-color: #2a2a2a; color: #fff; border-color: #444; }
-        .form-control:focus { background-color: #333; color: #fff; border-color: #0d6efd; box-shadow: none; }
-        .app-tile { display: block; text-decoration: none; color: #e0e0e0; background: #1e1e1e; border: 1px solid #333;
-                    border-radius: 16px; padding: 2rem 1.5rem; text-align: center; transition: border-color .15s, transform .15s; }
-        .app-tile:hover, .app-tile:focus { border-color: #0d6efd; color: #fff; transform: translateY(-2px); }
+{% extends 'base.html' %}
+{% block width %}760px{% endblock %}
+{% block style %}
+        .app-tile { display: block; text-decoration: none; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+                    border-radius: 16px; padding: 2rem 1.5rem; text-align: center; transition: border-color .15s, transform .15s; height: 100%; }
+        .app-tile:hover, .app-tile:focus { border-color: var(--tile); color: #fff; transform: translateY(-2px); }
         .app-tile svg { width: 64px; height: 64px; margin-bottom: 1rem; }
         .app-tile .name { font-size: 1.35rem; font-weight: 600; }
-        .app-tile .what { color: #9a9a9a; font-size: .95rem; margin-top: .35rem; }
-    </style>
-</head>
-<body class="py-5">
-<div class="container" style="max-width: 760px;">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for cat, msg in messages %}<div class="alert alert-{{ cat }} py-2">{{ msg }}</div>{% endfor %}
-    {% endwith %}
+        .app-tile .what { color: var(--muted); font-size: .95rem; margin-top: .35rem; }
+{% endblock %}
+{% block content %}
     {% if not session.get('authenticated') %}
-    <div class="card mx-auto" style="max-width: 400px;">
-        <div class="card-header text-center border-secondary"><h4 class="mb-0">Login Required</h4></div>
-        <div class="card-body">
-            <form action="{{ url_for('login') }}" method="POST">
-                <input type="hidden" name="next" value="{{ next_url }}">
-                <div class="mb-3">
+    <div class="d-flex justify-content-center align-items-center" style="min-height: 80vh;">
+        <div class="card w-100" style="max-width: 380px;">
+            <div class="card-body p-4">
+                <h1 class="h4 text-center mb-1">{{ title }}</h1>
+                <p class="text-center text-muted small mb-4">Event Register and Worker Points</p>
+                <form action="{{ url_for('login') }}" method="POST">
+                    <input type="hidden" name="next" value="{{ next_url }}">
                     <label for="password" class="form-label">Password</label>
-                    <input type="password" class="form-control" id="password" name="password" required autofocus>
-                </div>
-                <button type="submit" class="btn btn-primary w-100">Login</button>
-            </form>
+                    <input type="password" class="form-control mb-3" id="password" name="password" required autofocus>
+                    <button type="submit" class="btn btn-primary w-100">Log in</button>
+                </form>
+            </div>
         </div>
     </div>
     {% else %}
-    <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
-        <h2 class="m-0 text-primary">{{ title }}</h2>
-        <form action="{{ url_for('logout') }}" method="POST" class="m-0"><button type="submit" class="btn btn-outline-danger btn-sm">Logout</button></form>
-    </div>
-    <div class="row g-4">
+    <div class="row g-4 mt-1">
         <div class="col-sm-6">
-            <a class="app-tile" href="{{ url_for('index') }}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#0d6efd" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <a class="app-tile" href="{{ url_for('index') }}" style="--tile: #4c8dff;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#4c8dff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4M7.5 13.5h3M7.5 17h6"/>
                 </svg>
                 <div class="name">Event Register</div>
@@ -54,8 +37,8 @@
         </div>
         {% if wp_enabled %}
         <div class="col-sm-6">
-            <a class="app-tile" href="{{ url_for('wp.home') }}">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#ffc107" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <a class="app-tile" href="{{ url_for('wp.home') }}" style="--tile: #f5b83d;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#f5b83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <circle cx="12" cy="9" r="6"/><path d="M12 6.5v5M9.5 9h5"/><path d="M8.5 14l-2 7 5.5-3 5.5 3-2-7"/>
                 </svg>
                 <div class="name">Worker Points</div>
@@ -65,6 +48,4 @@
         {% endif %}
     </div>
     {% endif %}
-</div>
-</body>
-</html>
+{% endblock %}

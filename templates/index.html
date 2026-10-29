@@ -1,62 +1,12 @@
-<!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background-color: #121212; color: #e0e0e0; overflow-y: scroll; }
-        .card { background-color: #1e1e1e; border-color: #333; }
-        .form-control, .form-select { background-color: #2a2a2a; color: #fff; border-color: #444; }
-        .form-control:focus, .form-select:focus { background-color: #333; color: #fff; border-color: #0d6efd; box-shadow: none; }
-        .table { color: #e0e0e0; }
-        .accordion-button { background-color: #2a2a2a; color: #fff; border-color: #444; }
-        .accordion-button:not(.collapsed) { background-color: #0d6efd; color: #fff; }
-        .accordion-item { border-color: #444; }
-        .modal-content { background-color: #1e1e1e; border-color: #444; }
-    </style>
-</head>
-<body class="py-4">
-    {% if not session.get('authenticated') %}
-    <div class="container d-flex justify-content-center align-items-center" style="min-height: 80vh;">
-        <div class="card w-100" style="max-width: 400px;">
-            <div class="card-header text-center border-secondary">
-                <h4 class="mb-0">Login Required</h4>
-            </div>
-            <div class="card-body">
-                <form action="{{ url_for('login') }}" method="POST">
-                    {% if error %}
-                    <div class="alert alert-danger">{{ error }}</div>
-                    {% endif %}
-                    <div class="mb-3">
-                        <label for="password" class="form-label">Password</label>
-                        <input type="password" class="form-control" id="password" name="password" required autofocus>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Login</button>
-                </form>
-            </div>
-        </div>
-    </div>
-    {% else %}
-    <div class="container" style="max-width: 1200px;">
-        <!-- Header & Nav -->
-        <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
-            <h2 class="m-0 text-primary">{{ title }}</h2>
-            <div class="d-flex gap-2">
-                <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm">Home</a>
-                {% if audit_logs is defined %}
-                <a href="{{ url_for('index') }}" class="btn btn-outline-light btn-sm">Events</a>
-                {% else %}
-                <a href="{{ url_for('audit_log') }}" class="btn btn-outline-info btn-sm">Audit Log</a>
-                {% endif %}
-                <a href="{{ url_for('wp.home') }}" class="btn btn-outline-warning btn-sm">Worker Points</a>
-                <form action="{{ url_for('logout') }}" method="POST" class="m-0">
-                    <button type="submit" class="btn btn-outline-danger btn-sm">Logout</button>
-                </form>
-            </div>
-        </div>
-
+{% extends 'base.html' %}
+{% block width %}1200px{% endblock %}
+{% block app_name %}Event Register{% endblock %}
+{% macro tab(endpoint, label) %}<li class="nav-item"><a class="nav-link{% if request.endpoint == endpoint %} active{% endif %}" href="{{ url_for(endpoint) }}">{{ label }}</a></li>{% endmacro %}
+{% block nav %}
+    {{ tab('index', 'Events') }}
+    {{ tab('audit_log', 'Audit log') }}
+{% endblock %}
+{% block content %}
         {% if audit_logs is defined %}
         <!-- Audit Log View -->
         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -78,17 +28,6 @@
                 </select>
             </form>
         </div>
-
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
 
         <div class="card">
             <div class="card-body p-0 table-responsive">
@@ -125,17 +64,6 @@
         <!-- Main Page View -->
         <p class="text-muted text-center mb-3">{{ program_directors_text }}</p>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
         <!-- Form Card -->
         <div class="card mb-4">
             <div class="card-body">
@@ -143,7 +71,7 @@
                     <div class="row g-3">
                         <div class="col-md-4">
                             <label class="form-label">Your Name</label>
-                            <input type="text" class="form-control" name="your_name" placeholder="e.g. John Doe" value="{{ form_data.get('your_name', '') if form_data else '' }}" required>
+                            <input type="text" class="form-control" name="your_name" placeholder="e.g. John Doe" value="{{ (form_data.get('your_name') if form_data else '') or session.get('who', '') }}" required>
                         </div>
                         <div class="col-md-5">
                             <label class="form-label">Program Name</label>
@@ -332,10 +260,8 @@
         </div>
 
         {% endif %} <!-- End of conditional page rendering -->
-    </div>
-    {% endif %} <!-- End of authenticated check -->
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% endblock %}
+{% block scripts %}
     <script>
         function filterEvents() {
             const query = document.getElementById('eventSearch').value.toLowerCase();
@@ -457,5 +383,4 @@
             });
         }
     </script>
-</body>
-</html>
+{% endblock %}
