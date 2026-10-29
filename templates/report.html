@@ -35,9 +35,12 @@
     {% if rows %}<section><h2>{{ year }} plan against actual, by program</h2>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
         <thead><tr><th class="ps-3">Program</th><th class="num">Plan</th><th class="num">Budgeted</th><th class="num">Actual so far</th><th class="num pe-3">Ahead (behind)</th></tr></thead>
-        <tbody>{% for r in rows %}<tr><td class="ps-3">{{ r.name }}</td><td class="num">{{ money(r.plan) }}</td><td class="num">{{ money(r.budget) }}</td><td class="num">{{ money(r.actual) }}</td><td class="num pe-3">{{ money(r.diff) }}</td></tr>{% endfor %}
+        {# A program with nothing planned, budgeted or booked (Street Survival runs under General Events) is left out. #}
+        <tbody>{% for r in rows if r.plan or r.budget is not none or r.actual is not none %}<tr><td class="ps-3">{{ r.name }}</td><td class="num">{{ money(r.plan) }}</td><td class="num">{{ money(r.budget) }}</td><td class="num">{{ money(r.actual) }}</td><td class="num pe-3">{{ money(r.diff) }}</td></tr>{% endfor %}
         <tr class="total-row"><td class="ps-3">Region</td><td class="num">{{ money(tot.plan) }}</td><td class="num">{{ money(tot.budget) }}</td><td class="num">{{ money(tot.actual) }}</td><td class="num pe-3">{{ money((tot.actual - tot.plan)|round(2)) }}</td></tr></tbody>
-    </table></div></div></section>{% endif %}
+    </table></div></div>
+    {% set hidden = rows|rejectattr('plan')|selectattr('budget', 'none')|selectattr('actual', 'none')|map(attribute='name')|list %}
+    {% if hidden %}<div class="small text-muted mt-1">Nothing planned, budgeted or booked: {{ hidden|join(', ') }}.</div>{% endif %}</section>{% endif %}
 
     {% if board is defined %}<section><h2>Budgets for board approval ({{ board|length }})</h2>
     {% if board %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
