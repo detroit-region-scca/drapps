@@ -148,7 +148,8 @@ def home():
     plan, (act, as_of) = P.plan(year), P.actuals(year)
     future = int(year) > date.today().year
     rows, tot = summary(year, plan, act)
-    sent = sum(1 for r in rows if r['plan'] is not None or r['info'])
+    # In = a director saved it through the form (a line moved in by the treasurer is not a submitted plan).
+    sent = sum(1 for r in rows if r['info'].get('updated'))
     chart = None if future else _chart(year, plan, as_of)
     return render_template('plan.html', **_ctx(view='home', year=year, years=P.years(), rows=rows, tot=tot, as_of=as_of,
                                                sent=sent, future=future, chart=chart))
