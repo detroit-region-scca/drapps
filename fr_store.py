@@ -5,7 +5,6 @@ on Lines (joined by id), receipts in a Drive folder per request under FUNDS_RECE
 Receipts need the Shared Drive: a service account has no storage of its own, so it cannot own files
 in anyone's My Drive.
 """
-import json
 import os
 import threading
 import time
@@ -13,7 +12,7 @@ from datetime import date
 
 from filelock import FileLock
 
-from storage import DATA_DIR, open_book, sheets_client, worksheet
+from storage import DATA_DIR, drive_folder, drive_upload, open_book, worksheet
 
 REQ_COLS = ['id', 'submitted', 'status', 'event_code', 'event_name', 'program', 'submitter_name', 'submitter_email',
             'submitter_phone', 'submitter_address', 'payee_name', 'payee_address', 'payee_email', 'payee_phone', 'method',
@@ -25,8 +24,6 @@ CATEGORIES = ['Site Rental', 'Supplies', 'Professional Service', 'Storage', 'Tra
 METHODS = {'check': 'Check to the payee', 'card': 'Region credit card', 'reimburse': 'Reimburse me'}
 CACHE_SECONDS = 15
 ID_LOCK = os.path.join(DATA_DIR, 'funds_id.lock')
-DRIVE = 'https://www.googleapis.com/drive/v3/files'
-UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files'
 
 _lock = threading.Lock()
 _cache = {}
@@ -90,26 +87,6 @@ def _next_id(year):
     return f'{prefix}{max(nums, default=0) + 1:03d}'
 
 
-def _session():
-    # gspread's authorised session already carries the Drive scope.
-    return sheets_client().http_client.session
-
-
-def _folder(name, parent):
-    r = _session().post(DRIVE, params={'supportsAllDrives': 'true', 'fields': 'id,webViewLink'},
-                        json={'name': name, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [parent]})
-    r.raise_for_status()
-    return r.json()
-
-
-def _upload(f, parent):
-    meta = {'name': f.filename, 'parents': [parent]}
-    files = {'metadata': ('metadata', json.dumps(meta), 'application/json'),
-             'file': (f.filename, f.stream, f.mimetype or 'application/octet-stream')}
-    r = _session().post(UPLOAD, params={'uploadType': 'multipart', 'supportsAllDrives': 'true'}, files=files)
-    r.raise_for_status()
-
-
 def create(req, lines, receipts):
     """req: dict of REQ_COLS fields (without id/submitted/status/receipts_url). Returns the new id."""
     with FileLock(ID_LOCK), _lock:
@@ -117,9 +94,9 @@ def create(req, lines, receipts):
         receipts = [f for f in receipts if f and f.filename]
         url = ''
         if receipts:
-            folder = _folder(f"{rid} - {req['payee_name']}"[:120], os.environ['FUNDS_RECEIPTS_FOLDER_ID'])
+            folder = drive_folder(f"{rid} - {req['payee_name']}"[:120], os.environ['FUNDS_RECEIPTS_FOLDER_ID'])
             for f in receipts:
-                _upload(f, folder['id'])
+                drive_upload(f, folder['id'])
             url = folder['webViewLink']
         row = dict(req, id=rid, submitted=date.today().isoformat(), status='Submitted', receipts_url=url)
         _ws('Requests').append_row([_cell(row.get(c, '')) for c in REQ_COLS], value_input_option='RAW')

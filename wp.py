@@ -4,8 +4,10 @@ from datetime import date
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
+import fr_store as F
 import wp_logic as L
 import wp_store as S
+from fr import notify as fr_notify
 from utils import load_events, load_programs, log_audit_event, login_required
 
 bp = Blueprint('wp', __name__, url_prefix='/wp')
@@ -119,34 +121,112 @@ def event():
     return render_template('wp.html', **_ctx(view='event', events=events, members=mem, form={}))
 
 
-@bp.route('/redeem', methods=['GET', 'POST'])
+@bp.route('/redeem')
 @login_required
 def redeem():
+    """Redemption requests: pending ones first, then the recent decisions."""
+    if (g := _guard()):
+        return g
+    reqs = sorted(S.requests(), key=lambda r: r['id'], reverse=True)
+    return render_template('wp.html', **_ctx(view='requests', pending=[r for r in reqs if r['status'] == 'Pending'],
+                                             done=[r for r in reqs if r['status'] != 'Pending'][:25]))
+
+
+@bp.route('/redeem/new', methods=['GET', 'POST'])
+@login_required
+def redeem_new():
     if (g := _guard()):
         return g
     if request.method == 'POST':
         S.refresh()
     mem = S.members()
     if request.method == 'POST':
-        mid = request.form['member'].split(' ')[0].strip()
+        f = request.form
+        mid = f['member'].split(' ')[0].strip()
         who = _who()
         try:
-            pts = -abs(float(request.form['points']))
+            pts = abs(float(f['points']))
         except ValueError:
-            flash('Points must be a number.', 'danger')
-            return redirect(url_for('wp.redeem'))
-        bal = {m['member']: m['balance'] for m in mem}
-        if (err := L.validate_entry(mid, pts, 'Used', bal)):
-            flash(err, 'danger')
-            return redirect(url_for('wp.redeem'))
-        m = next(m for m in mem if m['member'] == mid)
-        S.append_transactions([{'date': date.today(), 'member': mid, 'name': f"{m['first']} {m['last']}", 'event_code': 'USED',
-                                'description': request.form.get('note', '').strip() or 'Redeemed', 'points': pts, 'type': 'Used',
-                                'source': f'Entered in app by {who}'}])
-        log_audit_event('WP_REDEEMED', who, {'member': mid, 'points': pts, 'note': request.form.get('note', '')})
-        flash(f"{m['first']} {m['last']} redeemed {abs(pts):g} points (${abs(pts) * L.POINT_VALUE:,.2f}).", 'success')
-        return redirect(url_for('wp.member', member_id=mid))
-    return render_template('wp.html', **_ctx(view='redeem', members=mem))
+            pts = 0
+        m = next((m for m in mem if m['member'] == mid), None)
+        errors = []
+        if not m:
+            errors.append('Pick the member from the list.')
+        elif pts <= 0:
+            errors.append('Points must be a number above zero.')
+        elif (err := L.validate_entry(mid, -pts, 'Used', {x['member']: x['balance'] for x in mem})):
+            errors.append(err)
+        if not f.get('for', '').strip() or not f.get('payee', '').strip():
+            errors.append('Say what the points are for and who should be paid.')
+        if errors:
+            for e in errors:
+                flash(e, 'danger')
+            return render_template('wp.html', **_ctx(view='request_new', members=mem, form=f))
+        rid = S.add_request({'member': mid, 'name': f"{m['first']} {m['last']}", 'points': pts, 'amount': round(pts * L.POINT_VALUE, 2),
+                             'for': f['for'].strip(), 'payee': f['payee'].strip(), 'payee_address': f.get('payee_address', '').strip(),
+                             'requested_by': who, 'requested_email': f.get('requested_email', '').strip(), 'notes': f.get('notes', '').strip()})
+        log_audit_event('WP_REDEMPTION_REQUESTED', who, {'id': rid, 'member': mid, 'points': pts})
+        flash(f'Request {rid} filed. Nothing comes off until it is approved.', 'success')
+        return redirect(url_for('wp.redeem_detail', rid=rid))
+    form = {'member': request.args.get('member', '')}
+    return render_template('wp.html', **_ctx(view='request_new', members=mem, form=form))
+
+
+@bp.route('/redeem/<rid>', methods=['GET', 'POST'])
+@login_required
+def redeem_detail(rid):
+    if (g := _guard()):
+        return g
+    if request.method == 'POST':
+        S.refresh()
+    r = next((r for r in S.requests() if r['id'] == rid), None)
+    if not r:
+        flash('Request not found.', 'warning')
+        return redirect(url_for('wp.redeem'))
+    m = next((m for m in S.members() if m['member'] == r['member']), None)
+    if request.method == 'GET':
+        return render_template('wp.html', **_ctx(view='request', r=r, m=m, fr_on=F.enabled()))
+    if r['status'] != 'Pending':
+        flash(f'{rid} was already {r["status"].lower()}.', 'warning')
+        return redirect(url_for('wp.redeem_detail', rid=rid))
+    who = _who()
+    if request.form.get('action') == 'decline':
+        note = request.form.get('note', '').strip()
+        if not note:
+            flash('Say why it is declined.', 'danger')
+            return redirect(url_for('wp.redeem_detail', rid=rid))
+        S.decide_request(rid, 'Declined', decided=date.today().isoformat(), decided_by=who, decision_note=note)
+        log_audit_event('WP_REDEMPTION_DECLINED', who, {'id': rid, 'note': note})
+        flash(f'{rid} declined. No points were taken.', 'info')
+        return redirect(url_for('wp.redeem'))
+    if (err := L.validate_entry(r['member'], -r['points'], 'Used', {m['member']: m['balance']} if m else {})):
+        flash(err, 'danger')
+        return redirect(url_for('wp.redeem_detail', rid=rid))
+    # Points first: a funds request without the deduction would pay out points the member still holds.
+    S.append_transactions([{'date': date.today(), 'member': r['member'], 'name': r['name'], 'event_code': 'USED',
+                            'description': f"{r['for']} ({rid})", 'points': -r['points'], 'type': 'Used',
+                            'source': f'Request {rid}, approved in app by {who}'}])
+    fr_id, note = '', ''
+    if F.enabled():
+        method = F.METHODS.get(request.form.get('method'), F.METHODS['check'])
+        req = {'event_code': '', 'event_name': 'Worker points redemption', 'program': '',
+               'submitter_name': r['requested_by'], 'submitter_email': r['requested_email'], 'submitter_phone': '', 'submitter_address': '',
+               'payee_name': r['payee'], 'payee_address': r['payee_address'], 'payee_email': '', 'payee_phone': '', 'method': method,
+               'total': r['amount'], 'advances': 0, 'net': r['amount'],
+               'notes': f"Points redemption {rid}: {r['name']} #{r['member']}, {r['points']:g} pts for {r['for']}. Approved by {who}.",
+               'entered_by': who}
+        lines = [{'date': date.today().isoformat(), 'description': f"Worker points: {r['name']} #{r['member']}, {r['for']}",
+                  'category': 'Other', 'amount': r['amount']}]
+        try:
+            fr_id = F.create(req, lines, [])
+            fr_notify(fr_id, req, lines, 0)
+        except Exception as e:
+            note = 'Funds request could not be created; enter it by hand.'
+            flash(f'Points were taken off, but the funds request failed ({e}). Please file it by hand.', 'warning')
+    S.decide_request(rid, 'Approved', decided=date.today().isoformat(), decided_by=who, funds_request=fr_id, decision_note=note)
+    log_audit_event('WP_REDEEMED', who, {'id': rid, 'member': r['member'], 'points': -r['points'], 'funds_request': fr_id})
+    flash(f"Approved {rid}: {r['points']:g} points off {r['name']}" + (f', funds request {fr_id} opened.' if fr_id else '.'), 'success')
+    return redirect(url_for('wp.redeem_detail', rid=rid))
 
 
 @bp.route('/allocations', methods=['GET', 'POST'])

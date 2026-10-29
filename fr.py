@@ -35,6 +35,21 @@ def _events():
     return sorted(load_events(), key=lambda e: e.get('date', ''), reverse=True)
 
 
+def notify(rid, req, lines, n_files):
+    """Email the treasurer about a new funds request (from the form, or an approved points redemption)."""
+    body = '\n'.join([
+        f"{req['submitter_name']} submitted funds request {rid}.", '',
+        f"Event: {req['event_name'] or '(not one event)'} {req['event_code']}  Program: {req['program']}",
+        f"Pay: {req['payee_name']}  by {req['method']}",
+        f"Address: {req['payee_address']}" if req['payee_address'] else '', '',
+        *[f"  {ln['date']}  {ln['category']}: {ln['description']}  ${ln['amount']:,.2f}" for ln in lines], '',
+        f"Total ${req['total']:,.2f}" + (f"  less advances ${req['advances']:,.2f}  = ${req['net']:,.2f}" if req['advances'] else ''),
+        f"Receipts: {n_files} file(s)" if n_files else 'Receipts: none attached',
+        f"Notes: {req['notes']}" if req['notes'] else '', '',
+        f"Review and mark paid: {request.url_root.rstrip('/')}{url_for('fr.detail', req_id=rid)}"])
+    send_mail(f"Funds request {rid}: {req['payee_name']} ${req['net']:,.2f}", body)
+
+
 @bp.route('/')
 @login_required
 def home():
@@ -113,17 +128,7 @@ def new():
     session['fr_submitter'] = sub
     n_files = sum(1 for r in receipts if r and r.filename)
     log_audit_event('FUNDS_REQUESTED', sub['name'], {'id': rid, 'payee': payee['name'], 'net': req['net'], 'event_code': req['event_code']})
-    body = '\n'.join([
-        f"{sub['name']} submitted funds request {rid}.", '',
-        f"Event: {req['event_name'] or '(not one event)'} {req['event_code']}  Program: {program}",
-        f"Pay: {payee['name']}  by {req['method']}",
-        f"Address: {payee['address']}" if payee['address'] else '', '',
-        *[f"  {ln['date']}  {ln['category']}: {ln['description']}  ${ln['amount']:,.2f}" for ln in lines], '',
-        f"Total ${total:,.2f}" + (f"  less advances ${advances:,.2f}  = ${req['net']:,.2f}" if advances else ''),
-        f"Receipts: {n_files} file(s) {req.get('receipts_url', '')}" if n_files else 'Receipts: none attached',
-        f"Notes: {req['notes']}" if req['notes'] else '', '',
-        f"Review and mark paid: {request.url_root.rstrip('/')}{url_for('fr.detail', req_id=rid)}"])
-    send_mail(f"Funds request {rid}: {payee['name']} ${req['net']:,.2f}", body)
+    notify(rid, req, lines, n_files)
     flash(f'Submitted {rid}. The treasurer has been emailed.', 'success')
     return redirect(url_for('fr.detail', req_id=rid))
 

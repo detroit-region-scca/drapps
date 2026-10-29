@@ -122,6 +122,27 @@ def worksheet(sheet_id, title):
     return _tabs[(sheet_id, title)]
 
 
+DRIVE = 'https://www.googleapis.com/drive/v3/files'
+UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files'
+
+
+def drive_folder(name, parent):
+    """Create a Drive folder (Shared Drive aware) and return {'id', 'webViewLink'}."""
+    r = sheets_client().http_client.session.post(DRIVE, params={'supportsAllDrives': 'true', 'fields': 'id,webViewLink'},
+                                                 json={'name': name, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [parent]})
+    r.raise_for_status()
+    return r.json()
+
+
+def drive_upload(f, parent):
+    """Upload a Werkzeug FileStorage into a Drive folder. The service account has no storage of its own,
+    so the parent must be in a Shared Drive."""
+    files = {'metadata': ('metadata', json.dumps({'name': f.filename, 'parents': [parent]}), 'application/json'),
+             'file': (f.filename, f.stream, f.mimetype or 'application/octet-stream')}
+    r = sheets_client().http_client.session.post(UPLOAD, params={'uploadType': 'multipart', 'supportsAllDrives': 'true'}, files=files)
+    r.raise_for_status()
+
+
 class SheetStore:
     name = 'sheets'
 

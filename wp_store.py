@@ -8,18 +8,25 @@ change is one row on the Transactions tab. Tabs this module relies on:
   Transactions  Date | Member # | Name | Event code | Description | Points | Type | Source document
   Allocations   Role | Member # | Name | Pts/month Apr-Oct | Pts/month Nov-Mar
   Check         B1 total points, B2 value, B3 QBO balance, B4 as-of, B5 difference
+  Requests      redemption requests (REQ_COLS); approving one writes a Used row to Transactions
 """
 import os
 import threading
 import time
 from datetime import date, timedelta
 
-from storage import open_book, worksheet
+import gspread
+from filelock import FileLock
+
+from storage import DATA_DIR, open_book, worksheet
 
 CACHE_SECONDS = 15
 _lock = threading.Lock()
 _cache = {}
 EPOCH = date(1899, 12, 30)  # Sheets serial day 0
+REQ_COLS = ['id', 'requested', 'status', 'member', 'name', 'points', 'amount', 'for', 'payee', 'payee_address', 'requested_by',
+            'requested_email', 'notes', 'decided', 'decided_by', 'funds_request', 'decision_note']
+REQ_LOCK = os.path.join(DATA_DIR, 'wp_request_id.lock')
 
 
 def enabled():
@@ -33,10 +40,14 @@ def _book():
 def _snapshot():
     """All four tabs in ONE read (Sheets allows 60 reads a minute), cached briefly."""
     def load():
-        res = _book().values_batch_get(['Ledger!A:L', 'Transactions!A:H', 'Allocations!A:E', 'Check!B1:B5'],
-                                       params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        ranges = ['Ledger!A:L', 'Transactions!A:H', 'Allocations!A:E', 'Check!B1:B5', 'Requests!A:Q']
+        try:
+            res = _book().values_batch_get(ranges, params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        except gspread.exceptions.APIError:
+            # A ledger without the Requests tab (added 2026-10) still works; redemption requests just show none.
+            res = _book().values_batch_get(ranges[:4], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
         vr = res.get('valueRanges', [])
-        return [r.get('values', []) for r in vr] + [[]] * (4 - len(vr))
+        return [r.get('values', []) for r in vr] + [[]] * (5 - len(vr))
     return _cached('snapshot', load)
 
 
@@ -116,6 +127,48 @@ def check():
         v = [(row[0] if row else '') for row in vals] + [''] * 5
         return {'points': _num(v[0]), 'value': _num(v[1]), 'qbo': _num(v[2]), 'as_of': _as_date(v[3]), 'difference': _num(v[4])}
     return _cached('check', load)
+
+
+def requests():
+    def load():
+        out = []
+        for r in _snapshot()[4][1:]:
+            if not r or not str(r[0]).strip():
+                continue
+            d = dict(zip(REQ_COLS, [str(v) for v in r] + [''] * len(REQ_COLS)))
+            d['points'], d['amount'] = _num(d['points']), _num(d['amount'])
+            out.append(d)
+        return out
+    return _cached('requests', load)
+
+
+def add_request(req):
+    """req: dict of REQ_COLS fields without id/requested/status. Returns the new id (PR-YYYY-NNN)."""
+    with FileLock(REQ_LOCK), _lock:
+        ws = worksheet(os.environ['LEDGER_SHEET_ID'], 'Requests')
+        prefix = f'PR-{date.today().year}-'
+        nums = [int(v[len(prefix):]) for v in ws.col_values(1) if v.startswith(prefix) and v[len(prefix):].isdigit()]
+        rid = f'{prefix}{max(nums, default=0) + 1:03d}'
+        row = dict(req, id=rid, requested=date.today().isoformat(), status='Pending')
+        ws.append_row([_req_cell(row, c) for c in REQ_COLS], value_input_option='RAW')
+        _invalidate()
+        return rid
+
+
+def _req_cell(row, c):
+    v = row.get(c, '')
+    return _num(v) if c in ('points', 'amount') and v != '' else str(v or '')
+
+
+def decide_request(rid, status, **fields):
+    """Close a request: status Approved or Declined, with decided/decided_by/funds_request/decision_note."""
+    with _lock:
+        ws = worksheet(os.environ['LEDGER_SHEET_ID'], 'Requests')
+        row = ws.col_values(1).index(rid) + 1
+        cur = dict(zip(REQ_COLS, ws.row_values(row) + [''] * len(REQ_COLS)))
+        cur.update(fields, status=status)
+        ws.update([[_req_cell(cur, c) for c in REQ_COLS]], f'A{row}', value_input_option='RAW')
+        _invalidate()
 
 
 def refresh():

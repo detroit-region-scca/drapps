@@ -14,7 +14,7 @@
         <div class="card w-100" style="max-width: 380px;">
             <div class="card-body p-4">
                 <h1 class="h4 text-center mb-1">{{ title }}</h1>
-                <p class="text-center text-muted small mb-4">Event Register, Worker Points, Funds Requests</p>
+                <p class="text-center text-muted small mb-4">Event Register, Worker Points, Funds Requests, Event Budgets</p>
                 <form action="{{ url_for('login') }}" method="POST">
                     <input type="hidden" name="next" value="{{ next_url }}">
                     <label for="password" class="form-label">Password</label>
@@ -26,7 +26,7 @@
     </div>
     {% else %}
     <div class="row g-4 mt-1">
-        <div class="col-md-4">
+        <div class="col-sm-6">
             <a class="app-tile" href="{{ url_for('index') }}" style="--tile: #4c8dff;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#4c8dff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4M7.5 13.5h3M7.5 17h6"/>
@@ -36,7 +36,7 @@
             </a>
         </div>
         {% if wp_enabled %}
-        <div class="col-md-4">
+        <div class="col-sm-6">
             <a class="app-tile" href="{{ url_for('wp.home') }}" style="--tile: #f5b83d;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#f5b83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <circle cx="12" cy="9" r="6"/><path d="M12 6.5v5M9.5 9h5"/><path d="M8.5 14l-2 7 5.5-3 5.5 3-2-7"/>
@@ -47,13 +47,24 @@
         </div>
         {% endif %}
         {% if fr_enabled %}
-        <div class="col-md-4">
+        <div class="col-sm-6">
             <a class="app-tile" href="{{ url_for('fr.home') }}" style="--tile: #3ecf8e;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#3ecf8e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M6 2.5h9l4 4v15H6z"/><path d="M15 2.5v4h4"/><path d="M12.5 10v8M14.5 11.5h-3a1.25 1.25 0 0 0 0 2.5h2a1.25 1.25 0 0 1 0 2.5h-3"/>
                 </svg>
                 <div class="name">Funds Requests</div>
                 <div class="what">Ask for a check, card payment or reimbursement</div>
+            </a>
+        </div>
+        {% endif %}
+        {% if bud_enabled %}
+        <div class="col-sm-6">
+            <a class="app-tile" href="{{ url_for('bud.home') }}" style="--tile: #b48cff;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#b48cff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>
+                </svg>
+                <div class="name">Event Budgets</div>
+                <div class="what">Plan each event and compare budget to actual</div>
             </a>
         </div>
         {% endif %}
