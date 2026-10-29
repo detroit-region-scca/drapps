@@ -162,12 +162,12 @@ def save(header, lines, files=()):
         refresh()
 
 
-def set_approved(code, approved, who):
-    """Record (or with approved='' clear) the date the board approved an event's budget."""
+def set_approved(codes, approved, who):
+    """Record (or with approved='' clear) the date the board approved these events' budgets."""
+    codes = [codes] if isinstance(codes, str) else list(codes)
     with FileLock(SAVE_LOCK), _lock:
         ws = _ws('Budgets')
-        if ws.row_values(1)[10:12] != ['approved', 'approved_by']:
-            ws.update([['approved', 'approved_by']], 'K1', value_input_option='RAW')
-        n = ws.col_values(1).index(code) + 1
-        ws.update([[approved, who if approved else '']], f'K{n}', value_input_option='RAW')
+        col = ws.col_values(1)
+        ws.batch_update([{'range': f'K{col.index(c) + 1}', 'values': [[approved, who if approved else '']]} for c in codes if c in col],
+                        value_input_option='RAW')
         refresh()

@@ -1,5 +1,6 @@
 """Event Budgets: the region budget form (last year, budget, actual) per event, kept in the Event Budgets sheet (bud_store)."""
 import os
+import re
 from datetime import date
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
@@ -128,6 +129,39 @@ def detail(code):
                                               today=date.today().isoformat()))
 
 
+@bp.route('/approve', methods=['GET', 'POST'])
+@login_required
+def approve_many():
+    """After a board meeting: tick the budgets the board approved and record them all with one meeting date."""
+    if (g := _guard()):
+        return g
+    year = request.args.get('year') or str(date.today().year)
+    if request.method == 'POST':
+        f = request.form
+        who = f.get('who', '').strip() or session.get('who', '') or 'Unknown'
+        session['who'] = who
+        codes = [c for c in f.getlist('code') if B.get(c)]
+        try:
+            approved = date.fromisoformat(f.get('approved', '')).isoformat()
+        except ValueError:
+            flash('The meeting date must be a date.', 'danger')
+            return redirect(url_for('bud.approve_many', year=year))
+        if not codes:
+            flash('Tick at least one budget.', 'warning')
+            return redirect(url_for('bud.approve_many', year=year))
+        B.set_approved(codes, approved, who)
+        for c in codes:
+            log_audit_event('BUDGET_APPROVED', who, {'event_code': c, 'approved': approved})
+        flash(f'Board approval on {approved} recorded for {len(codes)} budget{"s" if len(codes) != 1 else ""}.', 'success')
+        return redirect(url_for('bud.home', year=year))
+    plan = P.plan(year) if P.enabled() else {}
+    plan_by_code = {ln['event_code']: ln['net'] for x in plan.values() for ln in x['lines'] if ln['event_code']}
+    rows = [{'b': b, 'status': _status(b), 'surplus': ((b['totals'].get('budget') or {}).get('surplus')), 'plan': plan_by_code.get(code)}
+            for code, b in B.budgets().items() if str(b.get('date', '')).startswith(year) and _status(b) != 'approved']
+    rows.sort(key=lambda r: (r['b'].get('program', ''), r['b'].get('date', '')))
+    return render_template('bud.html', **_ctx(view='approve', rows=rows, year=year, today=date.today().isoformat()))
+
+
 @bp.route('/event/<path:code>/approve', methods=['POST'])
 @login_required
 def approve(code):
@@ -187,20 +221,31 @@ def edit(code):
         log_audit_event('BUDGET_SAVED', who, {'event_code': code, 'lines': len(lines)})
         flash('Budget saved.', 'success')
         return redirect(url_for('bud.detail', code=code))
-    # GET: the saved budget, or a copy of another event's to start from (its budget becomes this budget,
-    # its actuals become "last year"), or a blank form.
+    # GET: the saved budget, or a copy of another event's to start from (its budget becomes this budget, any
+    # actuals typed on its old form become "last year", and its QuickBooks results are shown above), or a blank form.
     src = request.args.get('copy')
     if b:
         lines, form = b['lines'], b
     elif src and (sb := B.get(src)):
-        lines = [{'section': ln['section'], 'description': ln['description'], 'last_year': ln['actual'] if ln['actual'] is not None else ln['budget'],
+        lines = [{'section': ln['section'], 'description': ln['description'], 'last_year': ln['actual'],
                   'budget': ln['budget'], 'actual': None} for ln in sb['lines']]
         form = {'chair': sb.get('chair', ''), 'location': sb.get('location', '')}
     else:
         lines, form = [], {}
     others = sorted((x for k, x in B.budgets().items() if k != code), key=lambda x: x.get('date', ''), reverse=True)
+    copied = bool(src and not b and B.get(src))
     return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=form, lines=lines, others=others, funds=_funds(code),
-                                              copied=bool(src and not b), plan=_plan_line(code)))
+                                              copied=copied, plan=_plan_line(code), src=B.get(src) if copied else None,
+                                              src_q=_short_accounts(B.qbo_actuals().get(src)) if copied else None))
+
+
+def _short_accounts(q):
+    """QuickBooks actuals with account names cut to the useful part ("Club RX Rallycross Site Rental" -> "Site Rental")."""
+    if not q:
+        return None
+    lines = [dict(ln, label=re.sub(r'^Club \w+ (Autocross|Rallycross|Road Racing|Road Rally|General Events?)\s*', '', ln['account']) or ln['account'])
+             for ln in q['lines']]
+    return dict(q, lines=lines)
 
 
 def _form_lines(f):

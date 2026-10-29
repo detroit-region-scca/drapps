@@ -5,6 +5,7 @@ approves it in the minutes. The top of the page charts profit against the plan t
 the nightly QuickBooks sync (tools/qbo_nightly.py) found for the treasurer.
 """
 import os
+import re
 from datetime import date
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
@@ -205,11 +206,17 @@ def edit(year, program):
     else:
         # A new year starts from last year's plan: same items and amounts, which the director changes.
         last = P.plan(prev).get(program) or {'lines': [], 'info': {}}
-        lines = [{'item': ln['item'], 'month': ln['month'], 'net': ln['net'], 'note': '', 'event_code': ''} for ln in last['lines']]
+        lines = [{'item': ln['item'], 'month': ln['month'], 'net': ln['net'], 'note': '', 'event_code': ''}
+                 for ln in last['lines'] if not _placeholder(ln['item'])]
         info = {k: last['info'].get(k, '') for k in ('director', 'email')}
         copied = bool(lines)
     return render_template('plan.html', **_ctx(view='edit', year=year, prev=prev, program=program, name=names[program], info=info,
                                                lines=lines, copied=copied, ref=_reference(program, prev), reg=_event_actuals(program, year)))
+
+
+def _placeholder(item):
+    """A stand-in line from an old plan ("2026-01-RX Sample Event 5", "Event 12"), not worth copying forward."""
+    return bool(re.search(r'\bsample event\b', item or '', re.I) or re.fullmatch(r'(\d{4}-\d{2}-\w+\s+)?event\s*\d+', (item or '').strip(), re.I))
 
 
 def _reference(program, year):
