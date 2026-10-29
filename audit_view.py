@@ -80,6 +80,13 @@ def describe(log):
         return Markup('{} reopened {}').format(who, _link('fr.detail', g('id', ''), req_id=g('id', '')))
     if a == 'BUDGET_SAVED':
         return Markup('{} saved the budget for {} ({} lines)').format(who, _link('bud.detail', g('event_code', ''), code=g('event_code', '')), g('lines', ''))
+    if a == 'BUDGET_APPROVED':
+        return Markup('{} recorded board approval of the budget for {} on {}').format(who, _link('bud.detail', g('event_code', ''), code=g('event_code', '')), g('approved', ''))
+    if a == 'BUDGET_UNAPPROVED':
+        return Markup('{} cleared the board approval of the budget for {}').format(who, _link('bud.detail', g('event_code', ''), code=g('event_code', '')))
+    if a == 'PLAN_LINKED':
+        return Markup('{} tied {} to the {} {} plan line "{}"').format(who, _link('bud.detail', g('event_code', ''), code=g('event_code', '')), g('year', ''),
+                                                                      _link('plan.detail', g('program', ''), year=g('year', ''), program=g('program', '')), g('item', ''))
     if a == 'PLAN_SAVED':
         return Markup('{} saved the {} {} plan ({} lines, {})').format(who, g('year', ''), _link('plan.detail', g('program', ''), year=g('year', ''), program=g('program', '')),
                                                                      g('lines', ''), _money(g('net')) if (g('net') or 0) >= 0 else '-' + _money(g('net')))

@@ -110,6 +110,33 @@ def _budget_codes():
         return None
 
 
+def _open_plan_lines(events):
+    """{"2026|RX": [open plan lines]} for this year and next, for the "Which plan line is this?" list."""
+    if not plan_store.enabled():
+        return {}
+    try:
+        y = datetime.now().year
+        return {f'{year}|{code}': [{'sort': ln['sort'], 'item': ln['item'], 'month': ln['month'], 'net': ln['net']}
+                                   for ln in plan_store.open_lines(str(year), code, events)]
+                for year in (y, y + 1) for code in load_programs()}
+    except Exception as e:
+        logging.error(f"Annual plan unavailable for the events form: {e}")
+        return {}
+
+
+def _link_plan_line(event, sort, who):
+    if not sort or not plan_store.enabled():
+        return
+    code, year = event['custom_tag'] or event['unique_code'], event['date'][:4]
+    try:
+        if plan_store.link(year, event['program_code'], float(sort), code):
+            item = next((ln['item'] for ln in plan_store.plan(year).get(event['program_code'], {}).get('lines', []) if ln['event_code'] == code), '')
+            log_audit_event('PLAN_LINKED', who, {'event_code': code, 'year': year, 'program': event['program_code'], 'item': item})
+    except Exception as e:
+        logging.error(f"Could not tie {code} to the annual plan: {e}")
+        flash('The event was created, but tying it to the annual plan failed. Do it from the Annual Plan page.', 'warning')
+
+
 @app.route('/events', methods=['GET', 'POST'])
 def index():
     if not session.get('authenticated'):
@@ -148,6 +175,7 @@ def index():
             save_events(events)
             log_audit_event('EVENT_CREATED', creator_name, new_event)
             send_new_event_email(new_event)
+        _link_plan_line(new_event, request.form.get('plan_line', ''), creator_name)
         flash('Event created successfully!', 'success')
         return redirect(url_for('index', new_event_id=new_event['id']))
 
@@ -182,7 +210,8 @@ def index():
                            program_directors_text=program_directors_text,
                            form_data=form_data,
                            tag_error=tag_error,
-                           budgets=_budget_codes())
+                           budgets=_budget_codes(),
+                           open_plan=_open_plan_lines(events))
 
 @app.route('/audit')
 @login_required

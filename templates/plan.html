@@ -40,24 +40,24 @@
     <div class="d-flex justify-content-end mb-2 no-print"><button class="btn btn-sm btn-outline-secondary" data-toggle-all="planTable">Expand or collapse all</button></div>
     <div class="card"><div class="card-body p-0 table-responsive">
         <table class="table mb-0 rollup" id="planTable">
-            <thead><tr><th class="ps-3" data-sort="name">Program</th><th>Director</th><th class="num" data-sort="plan">Plan</th>
+            <thead><tr><th class="ps-3" data-sort="name">Program</th><th>Director</th><th class="num" data-sort="plan">Plan</th><th class="num" data-sort="budget">Budget</th>
                 {% if not future %}<th class="num" data-sort="actual">Actual so far</th><th class="num pe-3" data-sort="diff">Ahead (behind)</th>{% endif %}</tr></thead>
             {% for r in rows %}
             <tbody class="grp" data-grp="{{ r.code }}">
-                <tr class="grp-row" data-name="{{ r.name }}" data-plan="{{ r.plan if r.plan is not none else '' }}" data-actual="{{ r.actual if r.actual is not none else '' }}" data-diff="{{ r.diff if r.diff is not none else '' }}">
+                <tr class="grp-row" data-name="{{ r.name }}" data-plan="{{ r.plan if r.plan is not none else '' }}" data-budget="{{ r.budget if r.budget is not none else '' }}" data-actual="{{ r.actual if r.actual is not none else '' }}" data-diff="{{ r.diff if r.diff is not none else '' }}">
                     <td class="ps-3"><span class="chev">{{ '▸' if r.kids else '' }}</span> <a href="{{ url_for('plan.detail', year=year, program=r.code) }}">{{ r.name }}</a> <span class="small text-muted">{{ r.code }}</span></td>
                     <td class="small fw-normal">{{ r.info.director or '' }}{% if future %}{% if r.info.updated %} <span class="badge rounded-pill text-bg-success">In {{ r.info.updated }}</span>{% else %} <span class="badge rounded-pill text-bg-warning">Waiting</span>{% endif %}{% endif %}</td>
-                    <td class="num">{{ money(r.plan) }}</td>
+                    <td class="num">{{ money(r.plan) }}</td><td class="num">{{ money(r.budget) }}</td>
                     {% if not future %}<td class="num">{{ money(r.actual) }}</td><td class="num pe-3">{{ money(r.diff) }}</td>{% endif %}
                 </tr>
-                {% for k in r.kids %}<tr class="kid{{ ' fixed text-muted' if k.other }}" data-name="{{ k.name }}" data-date="{{ k.date }}" data-plan="{{ k.plan if k.plan is not none else '' }}" data-actual="{{ k.actual if k.actual is not none else '' }}" data-diff="{{ k.diff if k.diff is not none else '' }}">
+                {% for k in r.kids %}<tr class="kid{{ ' fixed text-muted' if k.other }}" data-name="{{ k.name }}" data-date="{{ k.date }}" data-plan="{{ k.plan if k.plan is not none else '' }}" data-budget="{{ k.budget if k.budget is not none else '' }}" data-actual="{{ k.actual if k.actual is not none else '' }}" data-diff="{{ k.diff if k.diff is not none else '' }}">
                     <td class="ps-5">{% if k.code %}<a href="{{ url_for('bud.detail', code=k.code) }}">{{ k.name }}</a>{% elif k.other %}<a class="text-muted" href="{{ url_for('plan.detail', year=year, program=r.code) }}">{{ k.name }}</a>{% else %}{{ k.name }}{% endif %}</td>
                     <td class="small text-muted text-nowrap">{{ k.date }}</td>
-                    <td class="num">{{ money(k.plan) }}</td>
+                    <td class="num">{{ money(k.plan) }}</td><td class="num">{{ money(k.budget) }}</td>
                     {% if not future %}<td class="num">{{ money(k.actual) }}</td><td class="num pe-3">{{ money(k.diff) }}</td>{% endif %}
                 </tr>{% endfor %}
             </tbody>{% endfor %}
-            <tfoot><tr class="total-row"><td class="ps-3" colspan="2">Region total</td><td class="num">{{ money(tot.plan) }}</td>
+            <tfoot><tr class="total-row"><td class="ps-3" colspan="2">Region total</td><td class="num">{{ money(tot.plan) }}</td><td class="num">{{ money(tot.budget) }}</td>
                 {% if not future %}<td class="num">{{ money(tot.actual) }}</td><td class="num pe-3">{{ money(tot.actual - tot.plan) }}</td>{% endif %}</tr></tfoot>
         </table>
     </div></div>
@@ -84,13 +84,13 @@
         <div class="col-lg-7">
             <h2 class="h6 text-muted">Plan</h2>
             <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-                <thead><tr><th class="ps-3">Month</th><th>Event or item</th><th class="num">Plan</th><th class="num pe-3">Actual</th></tr></thead>
+                <thead><tr><th class="ps-3">Month</th><th>Event or item</th><th class="num">Plan</th><th class="num">Budget</th><th class="num pe-3">Actual</th></tr></thead>
                 <tbody>{% for ln in p.lines %}<tr>
                     <td class="ps-3 text-muted">{{ months[ln.month - 1] if ln.month else '' }}</td>
                     <td>{{ ln.item }}{% if ln.note %}<div class="small text-muted">{{ ln.note }}</div>{% endif %}</td>
-                    <td class="num">{{ money(ln.net) }}</td><td class="num pe-3">{% if ln.event_code %}<a href="{{ url_for('bud.detail', code=ln.event_code) }}">{{ money(ln.actual) }}</a>{% else %}<span class="text-muted">·</span>{% endif %}</td>
-                </tr>{% else %}<tr><td colspan="4" class="ps-3 text-muted">No plan yet.</td></tr>{% endfor %}
-                {% if p.lines %}<tr class="total-row"><td class="ps-3" colspan="2">Program total</td><td class="num">{{ money(p.net) }}</td><td class="num pe-3">{{ money(a.net if a else none) }}</td></tr>{% endif %}
+                    <td class="num">{{ money(ln.net) }}</td><td class="num">{{ money(ln.budget) }}</td><td class="num pe-3">{% if ln.event_code %}<a href="{{ url_for('bud.detail', code=ln.event_code) }}">{{ money(ln.actual) }}</a>{% else %}<span class="text-muted">·</span>{% endif %}</td>
+                </tr>{% else %}<tr><td colspan="5" class="ps-3 text-muted">No plan yet.</td></tr>{% endfor %}
+                {% if p.lines %}<tr class="total-row"><td class="ps-3" colspan="2">Program total</td><td class="num">{{ money(p.net) }}</td><td class="num">{{ money(p.lines|selectattr('budget')|sum(attribute='budget') or none) }}</td><td class="num pe-3">{{ money(a.net if a else none) }}</td></tr>{% endif %}
                 </tbody></table></div></div>
         </div>
         <div class="col-lg-5">
@@ -126,12 +126,14 @@
             <div class="lines">
             {% for ln in (lines or [{}, {}, {}]) %}
                 <div class="row g-2 pline mb-2 pb-2">
-                    <input type="hidden" name="code" value="{{ ln.event_code or '' }}">
                     <div class="col-12 col-md-5"><input name="item" class="form-control form-control-sm" placeholder="Event or item" value="{{ ln.item or '' }}"></div>
                     <div class="col-4 col-md-2"><select name="month" class="form-select form-select-sm"><option value=""></option>{% for m in months %}<option value="{{ loop.index }}" {% if ln.month == loop.index %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
                     <div class="col-4 col-md-2"><input name="net" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0" value="{{ '' if ln.net is none or ln.net == '' else ('%.0f'|format(ln.net) if ln.net == ln.net|round else ln.net) }}"></div>
                     <div class="col-3 col-md-2"><input name="note" class="form-control form-control-sm" placeholder="Note" value="{{ ln.note or '' }}"></div>
                     <div class="col-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)">✕</button></div>
+                    {% if reg %}<div class="col-12 col-md-5"><select name="code" class="form-select form-select-sm text-muted" title="The registered event this line became">
+                        <option value="">Registered event: none yet</option>{% for x in reg %}<option value="{{ x.code }}" {% if ln.event_code == x.code %}selected{% endif %}>{{ x.e.date[5:] }} · {{ x.e.event_name }} {{ x.code }}</option>{% endfor %}
+                    </select></div>{% else %}<input type="hidden" name="code" value="{{ ln.event_code or '' }}">{% endif %}
                 </div>
             {% endfor %}
             </div>
@@ -169,7 +171,7 @@
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
         <tbody>{% for e in items %}<tr>
             <td class="ps-3 text-nowrap text-muted small">{{ e.date }}</td>
-            <td>{{ e.name }}<div class="small text-muted">{% if e.link.startswith('FR-') %}<a href="{{ url_for('fr.detail', req_id=e.link) }}">{{ e.detail }}</a>{% elif e.link.startswith('#DR') %}<a href="{{ url_for('bud.detail', code=e.link) }}">{{ e.detail }}</a>{% else %}{{ e.detail }}{% endif %}</div></td>
+            <td>{{ e.name }}<div class="small text-muted">{% if e.link.startswith('FR-') %}<a href="{{ url_for('fr.detail', req_id=e.link) }}">{{ e.detail }}</a>{% elif e.link.startswith('#DR') %}<a href="{{ url_for('bud.detail', code=e.link) }}">{{ e.detail }}</a>{% elif '/' in e.link %}<a href="{{ url_for('plan.edit', year=e.link.split('/')[0], program=e.link.split('/')[1]) }}">{{ e.detail }}</a>{% else %}{{ e.detail }}{% endif %}</div></td>
             <td class="num">{{ cents(e.amount) }}</td>
             <td class="pe-3 text-end"><button class="btn btn-sm btn-outline-light text-nowrap" type="button" data-bs-toggle="collapse" data-bs-target="#rv{{ loop.index }}{{ kind|length }}">Looked at</button></td>
         </tr>

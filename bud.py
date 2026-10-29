@@ -43,6 +43,20 @@ def _money(v):
         return 'bad'
 
 
+def _plan_line(code):
+    """The annual plan line this event is tied to, or None."""
+    return P.line_for(code) if P.enabled() else None
+
+
+def _status(b):
+    """'approved', 'changed' (edited after approval), 'budget' or None."""
+    if not b:
+        return None
+    if b.get('approved'):
+        return 'changed' if b.get('updated', '') > b['approved'] else 'approved'
+    return 'budget'
+
+
 def _funds(code):
     if not F.enabled():
         return []
@@ -67,7 +81,7 @@ def home():
         b = buds.get(_code(e))
         t = b['totals'] if b else {}
         q = qbo.get(_code(e))
-        rows.append({'e': e, 'code': _code(e), 'b': b, 'budget': (t.get('budget') or {}).get('surplus'),
+        rows.append({'e': e, 'code': _code(e), 'b': b, 'status': _status(b), 'budget': (t.get('budget') or {}).get('surplus'),
                      'actual': q['totals']['surplus'] if q else None, 'funds': fr_by.get(_code(e), 0)})
     summary = {'events': len(rows), 'missing': sum(1 for r in rows if not r['b']),
                'budget': sum(r['budget'] or 0 for r in rows), 'actual': sum(r['actual'] or 0 for r in rows),
@@ -102,7 +116,31 @@ def detail(code):
         flash('Event not found.', 'warning')
         return redirect(url_for('bud.home'))
     return render_template('bud.html', **_ctx(view='detail', code=code, e=e or {}, b=b, funds=_funds(code),
-                                              q=B.qbo_actuals().get(code)))
+                                              q=B.qbo_actuals().get(code), plan=_plan_line(code), status=_status(b),
+                                              today=date.today().isoformat()))
+
+
+@bp.route('/event/<path:code>/approve', methods=['POST'])
+@login_required
+def approve(code):
+    if (g := _guard()):
+        return g
+    if not B.get(code):
+        flash('There is no budget to approve.', 'warning')
+        return redirect(url_for('bud.detail', code=code))
+    who = request.form.get('who', '').strip() or session.get('who', '') or 'Unknown'
+    session['who'] = who
+    approved = request.form.get('approved', '').strip()
+    if approved:
+        try:
+            approved = date.fromisoformat(approved).isoformat()
+        except ValueError:
+            flash('The approval date must be a date.', 'danger')
+            return redirect(url_for('bud.detail', code=code))
+    B.set_approved(code, approved, who)
+    log_audit_event('BUDGET_APPROVED' if approved else 'BUDGET_UNAPPROVED', who, {'event_code': code, 'approved': approved})
+    flash(f'Board approval recorded: {approved}.' if approved else 'Board approval cleared.', 'success')
+    return redirect(url_for('bud.detail', code=code))
 
 
 @bp.route('/event/<path:code>/edit', methods=['GET', 'POST'])
@@ -132,7 +170,8 @@ def edit(code):
         if errors:
             for msg in errors:
                 flash(msg, 'danger')
-            return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=f, lines=_form_lines(f), funds=_funds(code))), 400
+            return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=f, lines=_form_lines(f), funds=_funds(code),
+                                                      plan=_plan_line(code))), 400
         header = {'event_code': code, 'event_name': e.get('event_name', ''), 'program': e.get('program_code', ''), 'date': e.get('date', ''),
                   'chair': f.get('chair', '').strip(), 'location': f.get('location', '').strip(), 'notes': f.get('notes', '').strip(),
                   'updated_by': who}
@@ -153,7 +192,7 @@ def edit(code):
         lines, form = [], {}
     others = sorted((x for k, x in B.budgets().items() if k != code), key=lambda x: x.get('date', ''), reverse=True)
     return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=form, lines=lines, others=others, funds=_funds(code),
-                                              copied=bool(src and not b)))
+                                              copied=bool(src and not b), plan=_plan_line(code)))
 
 
 def _form_lines(f):

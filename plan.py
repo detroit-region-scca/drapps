@@ -60,11 +60,16 @@ def _code(e):
     return e.get('custom_tag') or e.get('unique_code')
 
 
+def _budget_surplus(code):
+    b = (B.budgets() if B.enabled() else {}).get(code)
+    return ((b or {}).get('totals', {}).get('budget') or {}).get('surplus')
+
+
 def _event_actuals(program, year):
-    """The program's registered events that year with their QuickBooks profit (None until booked)."""
+    """The program's registered events that year with their budgeted surplus and QuickBooks profit (None until there)."""
     qbo = B.qbo_actuals() if B.enabled() else {}
     evs = [e for e in load_events() if e.get('program_code') == program and str(e.get('date', '')).startswith(year)]
-    return [{'e': e, 'code': _code(e), 'net': (qbo.get(_code(e)) or {}).get('totals', {}).get('surplus')}
+    return [{'e': e, 'code': _code(e), 'budget': _budget_surplus(_code(e)), 'net': (qbo.get(_code(e)) or {}).get('totals', {}).get('surplus')}
             for e in sorted(evs, key=lambda e: e.get('date', ''))]
 
 
@@ -81,15 +86,17 @@ def _kids(year, program, p, program_actual, future):
     for ln in (p or {}).get('lines', []):
         x = events.pop(ln['event_code'], None) if ln['event_code'] else None
         kids.append({'name': ln['item'], 'date': x['e']['date'] if x else (f"{year}-{ln['month']:02d}" if ln['month'] else ''),
-                     'code': ln['event_code'] if x else '', 'plan': ln['net'], 'actual': x['net'] if x else None})
+                     'code': ln['event_code'] if x else '', 'plan': ln['net'], 'budget': x['budget'] if x else None,
+                     'actual': x['net'] if x else None})
     for code, x in events.items():
-        kids.append({'name': x['e'].get('event_name', ''), 'date': x['e']['date'], 'code': code, 'plan': None, 'actual': x['net']})
+        kids.append({'name': x['e'].get('event_name', ''), 'date': x['e']['date'], 'code': code, 'plan': None, 'budget': x['budget'],
+                     'actual': x['net']})
     for k in kids:
         k['diff'] = _diff(k['actual'], k['plan'])
     if not future and program_actual is not None:
         other = round(program_actual - sum(k['actual'] or 0 for k in kids), 2)
         if abs(other) >= 0.5:
-            kids.append({'name': 'Other, not in an event project', 'date': '', 'code': '', 'plan': None, 'actual': other,
+            kids.append({'name': 'Other, not in an event project', 'date': '', 'code': '', 'plan': None, 'budget': None, 'actual': other,
                          'diff': None, 'other': True})
     return sorted(kids, key=lambda k: (k.get('other', False), k['date'] or '9999'))
 
@@ -107,9 +114,11 @@ def home():
         p, a = plan.get(code), act.get(code)
         pn = p['net'] if p and p['lines'] else None
         an = a['net'] if a else None
+        kids = _kids(year, code, p, an, future)
+        budgets = [k['budget'] for k in kids if k['budget'] is not None]
         rows.append({'code': code, 'name': name, 'plan': pn, 'actual': an, 'info': (p or {}).get('info', {}),
-                     'diff': _diff(an, pn), 'kids': _kids(year, code, p, an, future)})
-    tot = {k: round(sum(r[k] or 0 for r in rows), 2) for k in ('plan', 'actual')}
+                     'budget': round(sum(budgets), 2) if budgets else None, 'diff': _diff(an, pn), 'kids': kids})
+    tot = {k: round(sum(r[k] or 0 for r in rows), 2) for k in ('plan', 'budget', 'actual')}
     st = P.status()
     open_frs = [r for r in F.requests() if r['status'] == 'Submitted'] if F.enabled() else []
     summary = {'banks': [(k, st[k]['amount']) for k in BANKS if k in st and st[k]['amount']],
@@ -135,6 +144,7 @@ def detail(year, program):
     qbo = B.qbo_actuals() if B.enabled() else {}
     for ln in p['lines']:
         ln['actual'] = (qbo.get(ln['event_code']) or {}).get('totals', {}).get('surplus') if ln['event_code'] else None
+        ln['budget'] = _budget_surplus(ln['event_code']) if ln['event_code'] else None
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
                                                a=act.get(program), as_of=as_of, events=_event_actuals(program, year)))
 
@@ -160,6 +170,8 @@ def edit(year, program):
             if v == 'bad':
                 errors.append(f'"{item or net}": the amount must be a number, like 1400 or -500.')
                 continue
+            if code and code in [ln['event_code'] for ln in lines]:
+                errors.append(f'{code} is picked on two lines; an event goes with one plan line.')
             lines.append({'item': item or 'Other', 'month': int(month) if month.isdigit() else '', 'net': v, 'note': note, 'event_code': code})
         info = {'director': f.get('director', '').strip(), 'email': f.get('email', '').strip(), 'notes': f.get('notes', '').strip(),
                 'updated_by': who}
@@ -167,7 +179,8 @@ def edit(year, program):
             for msg in errors:
                 flash(msg, 'danger')
             return render_template('plan.html', **_ctx(view='edit', year=year, prev=prev, program=program, name=names[program],
-                                                       info=info, lines=lines, ref=_reference(program, prev))), 400
+                                                       info=info, lines=lines, ref=_reference(program, prev),
+                                                       reg=_event_actuals(program, year))), 400
         P.save(year, program, info, lines)
         total = round(sum(ln['net'] or 0 for ln in lines), 2)
         log_audit_event('PLAN_SAVED', who, {'year': year, 'program': program, 'lines': len(lines), 'net': total})
@@ -184,7 +197,7 @@ def edit(year, program):
         info = {k: last['info'].get(k, '') for k in ('director', 'email')}
         copied = bool(lines)
     return render_template('plan.html', **_ctx(view='edit', year=year, prev=prev, program=program, name=names[program], info=info,
-                                               lines=lines, copied=copied, ref=_reference(program, prev)))
+                                               lines=lines, copied=copied, ref=_reference(program, prev), reg=_event_actuals(program, year)))
 
 
 def _reference(program, year):

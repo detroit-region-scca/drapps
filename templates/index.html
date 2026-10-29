@@ -46,6 +46,11 @@
                             <label class="form-label">Custom Tag (Optional)</label>
                             <input type="text" class="form-control" name="custom_tag" placeholder="e.g. #ProSolo" value="{{ form_data.get('custom_tag', '') if form_data else '' }}">
                         </div>
+                        <div class="col-12 d-none" id="planLineBox">
+                            <label class="form-label">Which annual plan line is this? <span class="text-muted">(optional)</span></label>
+                            <select class="form-select" name="plan_line" id="planLine"></select>
+                            <div class="form-text">Ties the event to its line in the annual plan, so the plan, the budget and the actual line up.</div>
+                        </div>
                         <div class="col-12 text-end mt-4">
                             <button type="submit" class="btn btn-primary px-4">Submit Event</button>
                         </div>
@@ -217,6 +222,41 @@
 {% endblock %}
 {% block scripts %}
     <script>
+        // "Which annual plan line is this?": the program's open plan lines for the event's year, best guess selected.
+        (() => {
+            const open = {{ open_plan|tojson }};
+            const form = document.getElementById('createEventForm'), box = document.getElementById('planLineBox'), sel = document.getElementById('planLine');
+            if (!form || !box) return;
+            const stop = new Set(`the and for with day night test tune school event events rallycross rally cross autocross solo road racing scca drscca
+                region budget form pdf xlsm season january february march april may june july august september october november december
+                jan feb mar apr jun jul aug sep sept oct nov dec`.split(/\s+/));
+            const words = s => new Set((String(s || '').toLowerCase().match(/[a-z]+/g) || []).filter(w => w.length >= 3 && !stop.has(w)));
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const money = v => v == null || v === '' ? '' : ` · ${v < 0 ? '-' : '+'}$${Math.abs(v).toLocaleString('en-US', {maximumFractionDigits: 0})}`;
+            function score(ln, name, month) {
+                const a = words(ln.item), b = words(name);
+                let s = 3 * [...a].filter(w => b.has(w)).length;
+                if (ln.month && month) s += ln.month === month ? 2 : Math.abs(ln.month - month) === 1 ? 1 : 0;
+                return s;
+            }
+            let picked = false;
+            function update() {
+                const prog = form.program.value, d = form.date.value, name = form.event_name.value;
+                const lines = open[`${d.slice(0, 4)}|${prog}`] || [];
+                box.classList.toggle('d-none', !lines.length);
+                if (!lines.length) { sel.innerHTML = ''; return; }
+                const month = Number(d.slice(5, 7)) || null, keep = picked ? sel.value : null;
+                const scored = lines.map(ln => [score(ln, name, month), ln]).sort((x, y) => y[0] - x[0]);
+                const best = scored[0][0] >= 3 && (scored.length < 2 || scored[1][0] < scored[0][0]) ? scored[0][1] : null;
+                sel.innerHTML = '<option value="">Not in the plan</option>' + lines.map(ln =>
+                    `<option value="${ln.sort}">${ln.month ? months[ln.month - 1] + ' · ' : ''}${ln.item.replace(/[<>&"]/g, c => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'})[c])}${money(ln.net)}</option>`).join('');
+                sel.value = keep !== null && lines.some(ln => String(ln.sort) === keep) ? keep : best ? String(best.sort) : '';
+            }
+            sel.addEventListener('change', () => picked = true);
+            ['program', 'date', 'event_name'].forEach(n => form[n].addEventListener(n === 'event_name' ? 'input' : 'change', update));
+            update();
+        })();
+
         function filterEvents() {
             const query = document.getElementById('eventSearch').value.toLowerCase();
             document.querySelectorAll('.accordion-item').forEach(accordionItem => {

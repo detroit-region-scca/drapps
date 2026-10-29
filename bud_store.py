@@ -17,7 +17,8 @@ from filelock import FileLock
 
 from storage import DATA_DIR, drive_folder, drive_upload, open_book, worksheet
 
-BUD_COLS = ['event_code', 'event_name', 'program', 'date', 'chair', 'location', 'updated', 'updated_by', 'notes', 'files_url']
+BUD_COLS = ['event_code', 'event_name', 'program', 'date', 'chair', 'location', 'updated', 'updated_by', 'notes', 'files_url',
+            'approved', 'approved_by']
 LINE_COLS = ['event_code', 'section', 'description', 'last_year', 'budget', 'actual', 'sort']
 AMOUNTS = ('last_year', 'budget', 'actual')
 CACHE_SECONDS = 15
@@ -53,10 +54,10 @@ def _snapshot():
         return hit[1]
     book = open_book(os.environ['BUDGETS_SHEET_ID'])
     try:
-        res = book.values_batch_get(['Budgets!A:J', 'Lines!A:G', 'QBO Actuals!A:F'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        res = book.values_batch_get(['Budgets!A:L', 'Lines!A:G', 'QBO Actuals!A:F'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     except gspread.exceptions.APIError:
         # No QBO Actuals tab until the first sync has run.
-        res = book.values_batch_get(['Budgets!A:J', 'Lines!A:G'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        res = book.values_batch_get(['Budgets!A:L', 'Lines!A:G'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], [], []]
     buds = [dict(zip(BUD_COLS, [str(v) for v in r] + [''] * len(BUD_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
     lines = []
@@ -131,7 +132,8 @@ def save(header, lines, files=()):
         buds, all_lines, _ = _snapshot()
         code = header['event_code']
         old = next((b for b in buds if b['event_code'] == code), None)
-        header = dict(header, updated=date.today().isoformat(), files_url=(old or {}).get('files_url', ''))
+        header = dict(header, updated=date.today().isoformat(), files_url=(old or {}).get('files_url', ''),
+                      approved=(old or {}).get('approved', ''), approved_by=(old or {}).get('approved_by', ''))
         files = [f for f in files if f and f.filename]
         if files:
             if not header['files_url']:
@@ -157,4 +159,15 @@ def save(header, lines, files=()):
             lw.update(rows, f'A2:G{len(rows) + 1}', value_input_option='RAW')
         if lw.row_count > len(rows) + 1:
             lw.batch_clear([f'A{len(rows) + 2}:G{lw.row_count}'])
+        refresh()
+
+
+def set_approved(code, approved, who):
+    """Record (or with approved='' clear) the date the board approved an event's budget."""
+    with FileLock(SAVE_LOCK), _lock:
+        ws = _ws('Budgets')
+        if ws.row_values(1)[10:12] != ['approved', 'approved_by']:
+            ws.update([['approved', 'approved_by']], 'K1', value_input_option='RAW')
+        n = ws.col_values(1).index(code) + 1
+        ws.update([[approved, who if approved else '']], f'K{n}', value_input_option='RAW')
         refresh()

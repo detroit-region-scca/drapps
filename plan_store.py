@@ -8,6 +8,7 @@
   Reviewed        exception keys the treasurer has looked at, so they stay hidden
 """
 import os
+import re
 import threading
 import time
 from datetime import date
@@ -169,3 +170,98 @@ def write_tab(title, cols, rows):
     ws.update([cols] + [[_cell(v) for v in r] for r in rows], 'A1', value_input_option='RAW')
     if ws.row_count > len(rows) + 1:
         ws.batch_clear([f'A{len(rows) + 2}:{chr(64 + len(cols))}{ws.row_count}'])
+
+
+# Plan lines and registered events: a plan line carries the #DR code of the event it became.
+
+STOP_WORDS = set("""the and for with day night test tune school event events rallycross rally cross autocross solo
+    road racing scca drscca region budget form pdf xlsm season january february march april may june july august
+    september october november december jan feb mar apr jun jul aug sep sept oct nov dec""".split())
+
+
+def _words(s):
+    return {w for w in re.findall(r'[a-z]+', (s or '').lower()) if len(w) >= 3 and w not in STOP_WORDS}
+
+
+def _code(e):
+    return e.get('custom_tag') or e.get('unique_code') or ''
+
+
+def match_score(item, month, event):
+    """How well a plan line fits a registered event: its code in the line, shared distinctive words, the same month."""
+    if _code(event) and _code(event).lower() in (item or '').lower():
+        return 100
+    score = 3 * len(_words(item) & _words(event.get('event_name')))
+    em = int(event['date'][5:7]) if re.match(r'\d{4}-\d{2}', event.get('date') or '') else None
+    if month and em:
+        score += 2 if month == em else 1 if abs(month - em) == 1 else 0
+    return score
+
+
+def suggest(event, lines):
+    """The one open plan line that fits an event (a shared word or its code, and no other line as good), or None."""
+    scored = sorted(((match_score(ln['item'], ln['month'], event), i) for i, ln in enumerate(lines)), reverse=True)
+    if not scored or scored[0][0] < 3 or (len(scored) > 1 and scored[1][0] == scored[0][0]):
+        return None
+    return lines[scored[0][1]]
+
+
+def plan_matches(events, lines):
+    """For the nightly sync: ([(event, line)] to link, [(event, [candidate lines])] to ask about).
+
+    Only open lines (no event yet, or an event that no longer exists) and events no line points to. A link needs
+    a shared word and the same month (or the code in the line) and must be each other's best fit; an event that
+    some open line partly fits but not clearly is returned to ask about. An event with no candidate at all was
+    simply not in the plan.
+    """
+    codes = {_code(e) for e in events}
+    linked = {ln['event_code'] for ln in lines if ln['event_code'] in codes}
+    link, ask = [], []
+    for e in events:
+        y, prog = (e.get('date') or '')[:4], e.get('program_code')
+        if not y or _code(e) in linked:
+            continue
+        cands = [ln for ln in lines if ln['year'] == y and ln['program'] == prog and ln['event_code'] not in codes
+                 and ln not in [x for _, x in link]]
+        best = suggest(e, cands)
+        if best and match_score(best['item'], best['month'], e) >= 5:
+            rivals = [x for x in events if x is not e and (x.get('date') or '')[:4] == y and x.get('program_code') == prog
+                      and _code(x) not in linked]
+            if all(match_score(best['item'], best['month'], x) < match_score(best['item'], best['month'], e) for x in rivals):
+                link.append((e, best))
+                continue
+        near = [ln for ln in cands if match_score(ln['item'], ln['month'], e) >= 3]
+        if near:
+            ask.append((e, near))
+    return link, ask
+
+
+def open_lines(year, program, events):
+    """A program's plan lines for a year that are not tied to a registered event yet."""
+    codes = {_code(e) for e in events}
+    return [ln for ln in (plan(year).get(program) or {}).get('lines', []) if ln['event_code'] not in codes]
+
+
+def line_for(code):
+    """The plan line an event code is tied to, or None."""
+    return next((ln for ln in _snapshot()[0] if code and ln['event_code'] == code), None)
+
+
+def link(year, program, sort, code):
+    """Tie one plan line (year, program, sort) to an event code, untying any other line that had that code."""
+    with FileLock(SAVE_LOCK), _lock:
+        ws = _ws('Plan')
+        values = ws.get('A:H', value_render_option='UNFORMATTED_VALUE')
+        updates, found = [], False
+        for n, r in enumerate(values[1:], start=2):
+            r = list(r) + [''] * 8
+            if str(r[0]) == str(year) and str(r[1]) == program and _num(r[7]) == float(sort):
+                updates.append({'range': f'F{n}', 'values': [[code]]})
+                found = True
+            elif code and str(r[5]) == code:
+                updates.append({'range': f'F{n}', 'values': [['']]})
+        if not found:
+            return False
+        ws.batch_update(updates, value_input_option='RAW')
+        refresh()
+        return True

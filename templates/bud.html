@@ -43,7 +43,7 @@
                 {% for r in g.rows %}<tr class="kid ev-row" onclick="location.href='{{ url_for('bud.detail', code=r.code) }}'" data-date="{{ r.e.date }}" data-name="{{ r.e.event_name }}" data-budget="{{ r.budget if r.budget is not none else '' }}" data-actual="{{ r.actual if r.actual is not none else '' }}" data-funds="{{ r.funds or '' }}">
                 <td class="ps-4 text-nowrap">{{ r.e.date }}</td>
                 <td><a href="{{ url_for('bud.detail', code=r.code) }}">{{ r.e.event_name }}</a> <span class="small text-muted">{{ r.code }}</span></td>
-                <td>{% if r.b %}<span class="badge rounded-pill text-bg-primary">Budget</span>{% else %}<span class="badge rounded-pill text-bg-warning">None</span>{% endif %}</td>
+                <td>{% if r.status == 'approved' %}<span class="badge rounded-pill text-bg-success" title="Board approved {{ r.b.approved }}">Approved</span>{% elif r.status == 'changed' %}<span class="badge rounded-pill text-bg-info" title="Edited after the board approved it on {{ r.b.approved }}">Changed</span>{% elif r.b %}<span class="badge rounded-pill text-bg-primary" title="Not board approved yet">Budget</span>{% else %}<span class="badge rounded-pill text-bg-warning">None</span>{% endif %}</td>
                 <td class="num">{{ money(r.budget) }}</td><td class="num">{{ money(r.actual) }}</td>
                 <td class="num pe-3">{% if r.funds %}${{ '{:,.2f}'.format(r.funds) }}{% else %}<span class="text-muted">·</span>{% endif %}</td></tr>
 {% endfor %}
@@ -64,7 +64,12 @@
                 <div class="page-title m-0">{{ e.event_name or (b and b.event_name) }}</div>
                 <div class="text-muted">{{ e.date }} · {{ e.program_code }} · {{ code }}</div>
                 {% if b %}<div class="small mt-1">{% if b.chair %}Chair: {{ b.chair }}{% endif %}{% if b.location %} · {{ b.location }}{% endif %}</div>
-                <div class="small text-muted">Updated {{ b.updated }} by {{ b.updated_by }}</div>{% endif %}
+                <div class="small text-muted">Updated {{ b.updated }} by {{ b.updated_by }}</div>
+                <div class="small mt-1">{% if status == 'approved' %}<span class="badge rounded-pill text-bg-success">Board approved {{ b.approved }}</span>
+                    {% elif status == 'changed' %}<span class="badge rounded-pill text-bg-info">Changed since the board approved it on {{ b.approved }}</span>
+                    {% else %}<span class="badge rounded-pill text-bg-secondary">Not board approved yet</span>{% endif %}</div>{% endif %}
+                <div class="small mt-1">{% if plan %}Annual plan: <a href="{{ url_for('plan.detail', year=plan.year, program=plan.program) }}">{{ plan.item }}</a>, {{ money(plan.net) }}
+                    {% elif e.date %}<span class="text-muted">Not tied to an annual plan line.</span> <a class="no-print" href="{{ url_for('plan.edit', year=e.date[:4], program=e.program_code) }}">Tie it</a>{% endif %}</div>
             </div>
             <div class="d-flex gap-2 no-print">
                 {% if b and b.files_url %}<a class="btn btn-sm btn-outline-light" href="{{ b.files_url }}" target="_blank" rel="noopener">Files</a>{% endif %}
@@ -78,14 +83,17 @@
     <h2 class="h6 text-muted">Budget vs actual (QuickBooks{% if q %}, as of {{ q.as_of }}{% endif %})</h2>
     <div class="card mb-3"><div class="card-body p-0 table-responsive">
         <table class="table mb-0">
-            <thead><tr><th class="ps-3"></th><th class="num">Budget</th><th class="num">Actual</th><th class="num pe-3">Difference</th></tr></thead>
+            <thead><tr><th class="ps-3"></th><th class="num">Annual plan</th><th class="num">Budget</th><th class="num">Actual</th><th class="num pe-3">Actual vs budget</th></tr></thead>
             <tbody>{% for k, label in [('income', 'Income'), ('expense', 'Expense'), ('surplus', 'Surplus (loss)')] %}
                 {% set bv = b.totals.budget[k] if b and b.totals.budget else none %}{% set av = q.totals[k] if q else none %}
-                <tr class="{{ 'fw-semibold' if k == 'surplus' }}"><td class="ps-3">{{ label }}</td><td class="num">{{ money(bv) }}</td><td class="num">{{ money(av) }}</td>
+                <tr class="{{ 'fw-semibold' if k == 'surplus' }}"><td class="ps-3">{{ label }}</td><td class="num">{{ money(plan.net if plan and k == 'surplus' else none) }}</td><td class="num">{{ money(bv) }}</td><td class="num">{{ money(av) }}</td>
                 <td class="num pe-3">{{ money(av - bv) if (av is not none and bv is not none) else money(none) }}</td></tr>
             {% endfor %}</tbody>
         </table>
     </div></div>
+    {% set bs = b.totals.budget.surplus if b and b.totals.budget else none %}
+    {% if plan and plan.net is not none and bs is not none and (bs - plan.net)|abs >= [250, (plan.net|abs) * 0.25]|max %}
+    <div class="alert alert-warning py-2">The budget expects {{ money(bs) }}, but the annual plan expected {{ money(plan.net) }} for this event. Worth a word with the director before the board approves it.</div>{% endif %}
     {% if q %}
     <details class="mb-3"><summary class="text-muted small">QuickBooks accounts for {{ q.project }}</summary>
     <div class="card mt-2"><div class="card-body p-0 table-responsive"><table class="table table-sm mb-0">
@@ -119,6 +127,25 @@
         <tr><td class="ps-3 text-muted" colspan="3">Total requested</td><td class="num pe-3">${{ '{:,.2f}'.format(funds|sum(attribute='net')) }}</td></tr></tbody>
     </table></div></div>
     <p class="form-text">Card charges and MSR fees are not funds requests, so actual expenses can be higher than this.</p>
+    {% endif %}
+    {% if b %}
+    <div class="card p-3 mt-3 no-print">
+        <div class="section-label">Board approval</div>
+        {% if b.approved %}
+        <form method="post" action="{{ url_for('bud.approve', code=code) }}" class="d-flex flex-wrap gap-2 align-items-center">
+            <span>Approved {{ b.approved }}{% if b.approved_by %}, recorded by {{ b.approved_by }}{% endif %}.</span>
+            <input type="hidden" name="approved" value=""><input type="hidden" name="who" value="{{ who }}">
+            <button class="btn btn-sm btn-outline-secondary ms-auto">Clear approval</button>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('bud.approve', code=code) }}" class="row g-2 align-items-end">
+            <div class="col-6 col-md-3"><label class="form-label small">Board meeting date</label><input type="date" name="approved" class="form-control form-control-sm" value="{{ today }}" required></div>
+            <div class="col-6 col-md-3"><label class="form-label small">Your name</label><input name="who" class="form-control form-control-sm" value="{{ who }}" required></div>
+            <div class="col-12 col-md-3"><button class="btn btn-sm btn-accent w-100">Record board approval</button></div>
+        </form>
+        <div class="form-text">For the treasurer or secretary, after the board approves this budget in a meeting.</div>
+        {% endif %}
+    </div>
     {% endif %}
 
     {% elif view == 'edit' %}
@@ -162,6 +189,7 @@
         {% endfor %}
         <div class="card p-3 mb-3">
             <div class="d-flex flex-wrap justify-content-between gap-2 mb-3"><div class="fw-semibold">Surplus (loss)</div><div class="tot" id="surplus"></div></div>
+            {% if plan %}<div class="small text-muted mb-3 text-end">The annual plan expects {{ money(plan.net) }} from this event ({{ plan.item }}).</div>{% endif %}
             <label class="form-label">Notes <span class="text-muted">(optional)</span></label>
             <textarea name="notes" class="form-control mb-3" rows="2">{{ form.get('notes', '') }}</textarea>
             <label class="form-label">Attach files <span class="text-muted">(the original budget spreadsheet or PDF, optional)</span></label>

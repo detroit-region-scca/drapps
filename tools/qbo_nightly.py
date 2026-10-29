@@ -4,7 +4,8 @@
 2. Program actuals by year    -> Annual Plan sheet, 'QBO Programs' tab
 3. Bank and reserve balances  -> Annual Plan sheet, 'QBO Status' tab, and the worker points ledger's QBO balance
 4. Open funds requests that QuickBooks shows as paid are marked paid (check number or region card)
-5. Exceptions for the treasurer -> Annual Plan sheet, 'QBO Exceptions' tab
+5. Registered events tied to the annual plan line they clearly match; unclear ones go to the exceptions
+6. Exceptions for the treasurer -> Annual Plan sheet, 'QBO Exceptions' tab
 
 Run on the machine with the QuickBooks connection (see qbo_export.mjs); the web app only reads what this writes.
 Needs node, the QBO env (QUICKBOOKS_* from the qbo-mcp token store) and the app's .env. --dry-run prints only.
@@ -59,7 +60,19 @@ def main():
         F.refresh()
         reqs = F.requests() if F.enabled() else []
 
-    exc = Q.exceptions(reqs, data['payments'], load_events(), data['projects'], today)
+    events = load_events()
+    exc = Q.exceptions(reqs, data['payments'], events, data['projects'], today)
+    if P.enabled():
+        link, ask = P.plan_matches(events, P._snapshot()[0])
+        for e, ln in link:
+            say.append(f"plan: {P._code(e)} {e['event_name']} -> {ln['item']}")
+            if not DRY:
+                P.link(ln['year'], ln['program'], ln['sort'], P._code(e))
+                log_audit_event('PLAN_LINKED', WHO, {'event_code': P._code(e), 'year': ln['year'], 'program': ln['program'], 'item': ln['item']})
+        for e, near in ask:
+            exc.append({'key': f"evplan:{P._code(e)}", 'kind': 'Event not tied to the annual plan', 'date': e['date'],
+                        'name': e['event_name'], 'amount': None, 'link': f"{e['date'][:4]}/{e['program_code']}",
+                        'detail': f"{P._code(e)} may be the plan line " + ' or '.join(f'"{x["item"]}"' for x in near[:3])})
     if W.enabled() and reserve is not None:
         before = W.check()
         if not DRY and (abs((before['qbo'] or 0) - reserve) > 0.005 or before['as_of'] != today):
