@@ -286,3 +286,16 @@ def link(year, program, sort, code):
 def placeholder(item):
     """A stand-in line from an old plan ("2026-01-RX Sample Event 5", "Event 12"), not worth copying forward."""
     return bool(re.search(r'\bsample event\b', item or '', re.I) or re.fullmatch(r'(\d{4}-\d{2}-\w+\s+)?event\s*\d+', (item or '').strip(), re.I))
+
+
+def clean_name(item, year=None):
+    """A plan line name in the plain style: no "2026-01-RX " numbering, no "#DR" event code, and without the year
+    (the QuickBooks project name adds year, program and code itself). "June 2026 Sunday Funday (2026 RX #5)" with
+    year 2026 becomes "June Sunday Funday (RX #5)"."""
+    s = re.sub(r'^\d{4}-\d{2}-\w+\s+', '', item or '')
+    s = re.sub(r'\s*\(?#DR\w+\)?', '', s)
+    if year:
+        s = re.sub(rf'\b{year}\b\s*', '', s)
+    s = re.sub(r'\(\s*\)', '', s)
+    s = re.sub(r'\s{2,}', ' ', s).strip(' :-')
+    return s or (item or '').strip()

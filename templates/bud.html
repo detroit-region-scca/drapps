@@ -68,7 +68,8 @@
 
     {% elif view == 'detail' %}
     <div class="crumbs no-print"><a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Events {{ (e.date or '')[:4] }}</a> / {{ code }}</div>
-    {% set qbo_name = ((e.date or '')[:4] ~ ' ' ~ (e.program_code or '') ~ ' ' ~ (e.event_name or '') ~ ' ' ~ code)|trim %}
+    {# The QuickBooks project's own name once it exists (older projects carry older naming); else the name to give it. #}
+    {% set qbo_name = q.project if q and q.project else ((e.date or '')[:4] ~ ' ' ~ (e.program_code or '') ~ ' ' ~ (e.event_name or '') ~ ' ' ~ code)|trim %}
     <div class="card p-3 mb-3">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
             <div>

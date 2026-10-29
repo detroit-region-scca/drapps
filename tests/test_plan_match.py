@@ -35,3 +35,11 @@ def test_plan_matches_skips_other_programs_and_years():
     events = [ev('#DRAAA', 'Summer Heat', '2026-07-11', prog='AX'), ev('#DRBBB', 'Summer Heat', '2027-07-10')]
     link, ask = P.plan_matches(events, [line('Summer Heat', 7, 0)])
     assert not link and not ask
+
+
+def test_clean_name_drops_numbering_code_and_year():
+    assert P.clean_name('2026-01-RY Road Rally School', '2026') == 'Road Rally School'
+    assert P.clean_name('June 2026 Sunday Funday (2026 RX #5)', '2026') == 'June Sunday Funday (RX #5)'
+    assert P.clean_name('DRSCCA Solo #1 - Season Opener (#DRM36)') == 'DRSCCA Solo #1 - Season Opener'
+    assert P.clean_name('2026 Banquet', '2026') == 'Banquet'
+    assert P.clean_name('Solo #1 (Memorial)', '2026') == 'Solo #1 (Memorial)'
