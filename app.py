@@ -4,6 +4,7 @@ import string
 import random
 import logging
 import hmac
+import calendar
 import csv
 import gspread
 from urllib.parse import quote
@@ -77,9 +78,52 @@ def login():
     nxt = _safe_next(request.form.get('next'))
     if APP_PASSWORD and hmac.compare_digest(password.encode(), APP_PASSWORD.encode()):
         session['authenticated'] = True
+        # The name is asked once here and signs everything done in the apps (the audit log, approvals, saves).
+        if (request.form.get('name') or '').strip():
+            session['who'] = request.form['name'].strip()[:80]
         return redirect(nxt or url_for('home'))
     flash('Invalid password', 'danger')
     return redirect(url_for('home', next=nxt) if nxt else url_for('home'))
+
+@app.before_request
+def ask_name():
+    """Signed in without a name (logged in before the name was asked at login): ask once."""
+    if (session.get('authenticated') and not (session.get('who') or '').strip()
+            and request.endpoint not in ('name', 'logout', 'login', 'static', 'fr.approve_link')):
+        return redirect(url_for('name', next=request.full_path.rstrip('?')))
+
+
+@app.route('/treasurer')
+@login_required
+def treasurer():
+    """The treasurer's jobs in one place, each with what is waiting: kept off the directors' pages."""
+    import fr
+    import fr_logic
+    year = str(datetime.now().year)
+    jobs = {}
+    if plan_store.enabled():
+        jobs['books'] = len(plan_store.exceptions())
+    if fr_store.enabled():
+        a = fr.Approvals()
+        waiting = [r for r in a.reqs if r['status'] == 'Submitted']
+        ready = [r for r in waiting if fr_logic.ready(a.items(r))]
+        jobs['pay'], jobs['approvals'] = (len(ready), sum(r['net'] for r in ready)), len(waiting) - len(ready)
+    if bud_store.enabled():
+        codes = {(e.get('custom_tag') or e.get('unique_code')) for e in load_events() if e.get('date', '').startswith(year)}
+        jobs['budgets'] = sum(1 for c, b in bud_store.budgets().items() if c in codes and (not b.get('approved') or b.get('updated', '') > b['approved']))
+    return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Treasurer", view='treasurer', jobs=jobs,
+                           year=year, wp_enabled=wp_store.enabled())
+
+
+@app.route('/name', methods=['GET', 'POST'])
+@login_required
+def name():
+    """Who is using the apps on this device; every change is signed with it."""
+    if request.method == 'POST' and (request.form.get('name') or '').strip():
+        session['who'] = request.form['name'].strip()[:80]
+        return redirect(_safe_next(request.form.get('next')) or url_for('home'))
+    return render_template('home.html', title='Your name', view='name', next_url=_safe_next(request.args.get('next')) or '')
+
 
 @app.route('/logout', methods=['POST'])
 def logout():
@@ -203,11 +247,15 @@ def index():
     program_directors_text = os.environ.get("PROGRAM_DIRECTORS_TEXT", "For use by SCCA program directors")
 
     form_data = session.pop('form_data', {})
-    if not form_data and request.args.get('plan_line'):
+    if not form_data and (request.args.get('plan_line') or request.args.get('program')):
         # Arrived from an annual plan line's "Register event": fill the form in from it.
-        form_data = {k: request.args[k] for k in ('program', 'date', 'event_name', 'plan_line') if request.args.get(k)}
-        if form_data.get('date'):
-            flash('Filled in from the annual plan. The day is a placeholder (the 1st); set the real date.', 'info')
+        # The plan only knows the month: the date picker opens on it and the director picks the day (no stand-in 1st).
+        form_data = {k: request.args[k] for k in ('program', 'event_name', 'plan_line', 'month') if request.args.get(k)}
+        try:
+            y, m = map(int, form_data.get('month', '').split('-'))
+            form_data['month_end'] = f"{y}-{m:02d}-{calendar.monthrange(y, m)[1]:02d}"
+        except ValueError:
+            form_data.pop('month', None)
     tag_error = session.pop('tag_error', None)
 
     return render_template('index.html', 

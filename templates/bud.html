@@ -27,35 +27,43 @@
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Actual surplus, QuickBooks</div><div class="value">{{ money(s.actual) }}</div>{% if s.as_of %}<div class="small text-muted">as of {{ s.as_of }}</div>{% endif %}</div></div>
     </div>
     <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
-        <a class="btn btn-sm btn-accent" href="{{ url_for('index') }}">Add event</a>
+        <div class="d-flex gap-2">
+            <a class="btn btn-sm btn-accent" href="{{ url_for('index', program=only or none) }}">Add event</a>
+            <form method="get" class="m-0"><input type="hidden" name="year" value="{{ year }}">
+                <select name="program" class="form-select form-select-sm w-auto" aria-label="Program" onchange="this.form.submit()">
+                    <option value="">All programs</option>{% for pc, nm in names.items() %}<option value="{{ pc }}" {{ 'selected' if pc == only }}>{{ nm }}</option>{% endfor %}
+                </select></form>
+        </div>
         <div class="d-flex flex-wrap gap-2">
-            {% if budgets_on %}<a class="btn btn-sm btn-outline-light" href="{{ url_for('bud.approve_many', year=year) }}">Record board approvals</a>{% endif %}
-            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('export_events') }}">Export CSV</a>
             <button class="btn btn-sm btn-outline-secondary" data-toggle-all="budTable">Expand or collapse all</button>
         </div>
     </div>
     <div class="card"><div class="card-body p-0 table-responsive">
         <table class="table mb-0 rollup" id="budTable">
-            <thead><tr><th class="ps-3" data-sort="name">Event</th><th data-sort="date">Date</th><th>Status</th><th class="num" data-sort="plan">Annual plan</th><th class="num" data-sort="budget">Budgeted surplus</th><th class="num pe-3" data-sort="actual">Actual (QBO)</th></tr></thead>
+            <thead><tr><th class="ps-3" data-sort="name">Event</th><th data-sort="date">Date</th><th>Status</th><th class="num d-none d-md-table-cell" data-sort="plan">Annual plan</th><th class="num d-none d-md-table-cell" data-sort="budget">Budgeted surplus</th><th class="num pe-3" data-sort="actual">Actual (QBO)</th></tr></thead>
             {% for g in groups %}
-            <tbody class="grp" data-grp="{{ g.code }}">
+            <tbody class="grp" data-grp="{{ g.code }}"{{ ' data-open' if only }}>
                 <tr class="grp-row" data-name="{{ g.name }}" data-date="{{ g.rows[0].date if g.rows else '' }}" data-plan="{{ g.plan if g.plan is not none else '' }}" data-budget="{{ g.budget }}" data-actual="{{ g.actual }}">
                     <td class="ps-3" colspan="3"><span class="chev">▸</span> {% if plan_on %}<a href="{{ url_for('plan.detail', year=year, program=g.code) }}">{{ g.name }}</a>{% else %}{{ g.name }}{% endif %} <span class="text-muted small fw-normal">{{ g.code }} · {{ g.events }} event{{ '' if g.events == 1 else 's' }}{% if g.planned %}, {{ g.planned }} planned{% endif %}{% if g.missing %}, {{ g.missing }} without a budget{% endif %}</span></td>
-                    <td class="num">{{ money(g.plan) }}</td><td class="num">{{ money(g.budget) }}</td><td class="num pe-3">{{ money(g.actual) }}</td></tr>
+                    <td class="num d-none d-md-table-cell">{{ money(g.plan) }}</td><td class="num d-none d-md-table-cell">{{ money(g.budget) }}</td><td class="num pe-3">{{ money(g.actual) }}</td></tr>
                 {% for r in g.rows %}{% set href = url_for('bud.detail', code=r.code) if r.e else r.register %}
                 <tr class="kid row-link{{ ' text-muted' if not r.e }}" onclick="location.href='{{ href }}'" data-date="{{ r.date }}" data-name="{{ r.name }}" data-budget="{{ r.budget if r.budget is not none else '' }}" data-actual="{{ r.actual if r.actual is not none else '' }}" data-plan="{{ r.plan if r.plan is not none else '' }}">
                 <td class="ps-4">{% if r.e %}<a href="{{ href }}">{{ r.name }}</a> <span class="small text-muted">{{ r.code }}</span>{% if r.unplanned %} <span class="small text-warning" title="Not tied to a line in the annual plan">not in plan</span>{% endif %}{% else %}{{ r.name }}{% endif %}</td>
                 <td class="text-nowrap">{{ r.date }}</td>
                 <td>{{ badge(r) }}</td>
-                <td class="num">{{ money(r.plan) }}</td><td class="num">{{ money(r.budget) }}</td><td class="num pe-3">{{ money(r.actual) }}</td></tr>
+                <td class="num d-none d-md-table-cell">{{ money(r.plan) }}</td><td class="num d-none d-md-table-cell">{{ money(r.budget) }}</td><td class="num pe-3">{{ money(r.actual) }}</td></tr>
                 {% endfor %}
                 {% if g.other or g.other_plan %}<tr class="kid fixed text-muted"><td class="ps-4" colspan="3">{% set other_label = 'Other, not tied to an event' if g.rows else 'Program income and costs (no events)' %}{% if plan_on %}<a class="text-muted" href="{{ url_for('plan.detail', year=year, program=g.code) }}">{{ other_label }}</a>{% else %}{{ other_label }}{% endif %}</td>
-                    <td class="num">{{ money(g.other_plan) if g.other_plan else '' }}</td><td></td><td class="num pe-3">{{ money(g.other) if g.other else '' }}</td></tr>{% endif %}
+                    <td class="num d-none d-md-table-cell">{{ money(g.other_plan) if g.other_plan else '' }}</td><td class="d-none d-md-table-cell"></td><td class="num pe-3">{{ money(g.other) if g.other else '' }}</td></tr>{% endif %}
             </tbody>
             {% else %}<tbody><tr><td colspan="6" class="text-muted ps-3">No events or plan for {{ year }}.</td></tr></tbody>{% endfor %}
             <tfoot></tfoot>
         </table>
     </div></div>
+    {% if funds %}<h2 class="h6 text-muted mt-4">Open funds requests, {{ names.get(only, only) }}</h2>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <tbody>{% for r in funds %}<tr class="row-link" onclick="location.href='{{ url_for('fr.detail', req_id=r.id) }}'"><td class="ps-3"><a href="{{ url_for('fr.detail', req_id=r.id) }}">{{ r.id }}</a></td><td>{{ r.payee_name }}</td><td class="small text-muted">{{ r.event_name or 'Program' }}</td><td class="num pe-3">{{ money(r.net) }}</td></tr>{% endfor %}</tbody>
+    </table></div></div>{% endif %}
     <p class="form-text mt-3">Each program lists its registered events and the events in its annual plan that are not registered yet (Register adds them). Actuals are each event's QuickBooks project{% if s.as_of %}, as of {{ s.as_of }}{% endif %}; "Other" is money on the program's accounts not tagged to an event, so each program matches the Annual Plan.</p>
 
     {% elif view == 'detail' %}
@@ -82,6 +90,7 @@
             <div class="d-flex flex-wrap gap-2 no-print">
                 {% if e.id %}<button class="btn btn-sm btn-outline-light" data-copy="{{ qbo_name }}" onclick="copyText(this)" title="{{ qbo_name }}">Copy QuickBooks name</button>
                 <button class="btn btn-sm btn-outline-light" data-bs-toggle="collapse" data-bs-target="#editEvent">Edit event</button>{% endif %}
+                {% if e.id %}<a class="btn btn-sm btn-outline-light" href="{{ url_for('fr.new', event=code) }}">Request funds</a>{% endif %}
                 {% if b and b.files_url %}<a class="btn btn-sm btn-outline-light" href="{{ b.files_url }}" target="_blank" rel="noopener">Files</a>{% endif %}
                 {% if b %}<button class="btn btn-sm btn-outline-secondary" onclick="window.print()">Print</button>{% endif %}
                 {% if budgets_on %}<a class="btn btn-sm btn-accent" href="{{ url_for('bud.edit', code=code) }}">{{ 'Edit budget' if b else 'Create budget' }}</a>{% endif %}
@@ -100,7 +109,7 @@
             </form>
             <form method="post" action="{{ url_for('delete_event', event_id=e.id) }}" class="collapse mt-3" id="deleteEvent">
                 <div class="small mb-1">Type <b>{{ e.event_name }}</b> to delete this event. Its budget and plan line stay.</div>
-                <div class="d-flex flex-wrap gap-2"><input class="form-control w-auto" name="delete_user_name" placeholder="Your name" required>
+                <div class="d-flex flex-wrap gap-2"><input type="hidden" name="delete_user_name" value="{{ session.get('who', '') }}">
                     <input class="form-control w-auto" id="delInput" autocomplete="off" placeholder="Event name" data-name="{{ e.event_name }}" oninput="document.getElementById('delBtn').disabled = this.value !== this.dataset.name">
                     <button class="btn btn-danger" id="delBtn" disabled>Delete</button></div>
             </form>
@@ -168,7 +177,7 @@
         {% else %}
         <form method="post" action="{{ url_for('bud.approve', code=code) }}" class="row g-2 align-items-end">
             <div class="col-6 col-md-3"><label class="form-label small">Board meeting date</label><input type="date" name="approved" class="form-control form-control-sm" value="{{ today }}" required></div>
-            <div class="col-6 col-md-3"><label class="form-label small">Your name</label><input name="who" class="form-control form-control-sm" value="{{ who }}" required></div>
+            <input type="hidden" name="who" value="{{ session.get('who', '') }}">
             <div class="col-12 col-md-3"><button class="btn btn-sm btn-accent w-100">Record board approval</button></div>
         </form>
         <div class="form-text">For the treasurer or secretary, after the board approves this budget in a meeting.</div>
@@ -194,7 +203,7 @@
         </table></div></div>
         <div class="card p-3"><div class="row g-2 align-items-end">
             <div class="col-6 col-md-3"><label class="form-label">Board meeting date</label><input type="date" name="approved" class="form-control" value="{{ today }}" required></div>
-            <div class="col-6 col-md-3"><label class="form-label">Your name</label><input name="who" class="form-control" value="{{ who }}" required></div>
+            <input type="hidden" name="who" value="{{ session.get('who', '') }}">
             <div class="col-12 col-md-3"><button class="btn btn-accent w-100">Record approval</button></div>
         </div></div>
     </form>
@@ -217,7 +226,7 @@
         <div class="card p-3 mb-3"><div class="row g-2">
             <div class="col-md-4"><label class="form-label">Event chair</label><input name="chair" class="form-control" value="{{ form.get('chair', '') }}"></div>
             <div class="col-md-4"><label class="form-label">Location</label><input name="location" class="form-control" value="{{ form.get('location', '') }}"></div>
-            <div class="col-md-4"><label class="form-label">Your name</label><input name="entered_by" class="form-control" value="{{ who }}" required></div>
+            <input type="hidden" name="entered_by" value="{{ session.get('who', '') }}">
         </div></div>
         {% set starter = {'Income': ['Entry fees', 'Weekend memberships'], 'Expense': ['Site rental', 'SCCA insurance and sanction fees', 'Worker points', 'Trophies', 'Supplies']} %}
         {% for section, key in [('Income', 'inc'), ('Expense', 'exp')] %}

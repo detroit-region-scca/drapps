@@ -12,11 +12,8 @@
             <div class="card-body">
                 <form action="{{ url_for('index') }}" method="POST" id="createEventForm">
                     <div class="row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label">Your Name</label>
-                            <input type="text" class="form-control" name="your_name" placeholder="e.g. John Doe" value="{{ (form_data.get('your_name') if form_data else '') or session.get('who', '') }}" required>
-                        </div>
-                        <div class="col-md-5">
+                        <input type="hidden" name="your_name" value="{{ session.get('who', '') }}">
+                        <div class="col-md-6">
                             <label class="form-label">Program Name</label>
                             <select class="form-select" name="program" required>
                                 <option value="" {% if not form_data or not form_data.get('program') %}selected{% endif %} disabled>Select...</option>
@@ -27,7 +24,8 @@
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Event Date</label>
-                            <input type="date" class="form-control" name="date" value="{{ form_data.get('date', '') if form_data else '' }}" required onkeydown="return false" onclick="this.showPicker()">
+                            {% set ym = form_data.get('month', '') if form_data else '' %}<input type="date" class="form-control" name="date" value="{{ form_data.get('date', '') if form_data else '' }}" required onkeydown="return false" onclick="this.showPicker()"{% if ym %} min="{{ ym }}-01" max="{{ form_data.month_end }}"{% endif %}>
+                            {% if ym %}<div class="form-text">Planned for {{ ym }}; pick the day.</div>{% endif %}
                         </div>
                         <div class="col-md-8">
                             <label class="form-label">Event Description</label>

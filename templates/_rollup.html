@@ -24,7 +24,7 @@
         const saveOpen = () => store(`${key}:open`, groups().filter(b => b.classList.contains('open')).map(b => b.dataset.grp));
         const open = new Set(store(`${key}:open`) || []);
         for (const b of groups()) {
-            b.classList.toggle('open', open.has(b.dataset.grp));
+            b.classList.toggle('open', open.has(b.dataset.grp) || 'open' in b.dataset);    // data-open: the page wants it open
             b.querySelector('.grp-row').addEventListener('click', e => {
                 if (e.target.closest('a, button')) return;
                 b.classList.toggle('open');

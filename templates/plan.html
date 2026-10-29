@@ -5,7 +5,6 @@
 {% block app_name %}Annual Plan{% endblock %}
 {% block nav %}
     {{ tab('plan.home', 'Plan vs actual', view != 'checks') }}
-    {{ tab('plan.checks', 'Books check' ~ (' (' ~ n_exceptions ~ ')' if n_exceptions else ''), view == 'checks') }}
 {% endblock %}
 {% block style %}
         .pline input[readonly], .pline .locked { background-color: var(--bg); color: var(--muted); }
@@ -137,7 +136,7 @@
         <div class="card p-3 mb-3"><div class="row g-2">
             <div class="col-md-4"><label class="form-label">Program director</label><input name="director" class="form-control" value="{{ info.director or '' }}"></div>
             <div class="col-md-4"><label class="form-label">Email</label><input name="email" type="email" class="form-control" value="{{ info.email or '' }}"></div>
-            <div class="col-md-4"><label class="form-label">Your name</label><input name="entered_by" class="form-control" value="{{ who }}" required></div>
+            <input type="hidden" name="entered_by" value="{{ session.get('who', '') }}">
         </div></div>
         <div class="card p-3 mb-3">
             <div class="row g-2 d-none d-md-flex text-muted small mb-1"><div class="col-md-5">Event or item</div><div class="col-md-2">Month</div><div class="col-md-2 text-end">Expected profit</div><div class="col-md-2">Note</div></div>
@@ -183,6 +182,8 @@
     </div>
 
 {% elif view == 'checks' %}
+    <div class="crumbs"><a href="{{ url_for('treasurer') }}">Treasurer</a> / Books check</div>
+    <div class="page-title">Books check</div>
     <p class="text-muted">What the nightly QuickBooks check found{% if as_of %} on {{ as_of }}{% endif %}. Fix it in QuickBooks or the apps and it drops off the next night, or mark it as looked at.</p>
     {% for kind, items in groups %}
     <h2 class="h6 text-muted mt-4">{{ kind }} ({{ items|length }})</h2>
@@ -195,7 +196,7 @@
         </tr>
         <tr class="collapse" id="rv{{ loop.index }}{{ kind|length }}"><td colspan="4" class="ps-3 pe-3">
             <form method="post" class="row g-2 align-items-end"><input type="hidden" name="key" value="{{ e.key }}">
-                <div class="col-sm-4"><label class="form-label small">Your name</label><input name="who" class="form-control form-control-sm" value="{{ who }}"></div>
+                <input type="hidden" name="who" value="{{ session.get('who', '') }}">
                 <div class="col-sm-6"><label class="form-label small">Why it's OK <span class="text-muted">(optional)</span></label><input name="note" class="form-control form-control-sm" placeholder="e.g. event cancelled"></div>
                 <div class="col-sm-2"><button class="btn btn-sm btn-accent w-100">Hide it</button></div></form>
         </td></tr>{% endfor %}</tbody>

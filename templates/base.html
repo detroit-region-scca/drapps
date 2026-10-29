@@ -47,6 +47,8 @@
         .crumbs a { color: var(--muted); }
         .section-label { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: .5rem; }
         .row-link { cursor: pointer; }
+        .list-group-item { background: var(--surface); color: var(--text); border-color: var(--border); }
+        .list-group-item-action:hover, .list-group-item-action:focus { background: var(--surface-2); color: var(--text); }
         .filter .btn { border-color: var(--border); }
         .filter .btn.active { background: var(--surface-2); border-color: var(--accent); color: var(--text); }
         @media print { .app-bar, .no-print, .alert { display: none !important; } body { background: #fff; color: #000; } .card { border-color: #ccc; } }
@@ -67,7 +69,8 @@
         <span class="navbar-brand"><span class="dot"></span>{% block app_name %}{{ title }}{% endblock %}</span>
         {% if request.endpoint == 'home' %}
         {# The launcher has no sections, so no menu: just log out. #}
-        <a class="btn btn-link btn-logout text-decoration-none ms-auto me-3 px-0" href="{{ url_for('audit_log') }}">Audit log</a>
+        <a class="btn btn-link btn-logout text-decoration-none ms-auto me-3 px-0" href="{{ url_for('name') }}" title="Not you? Change the name">{{ session.get('who', '') }}</a>
+        <a class="btn btn-link btn-logout text-decoration-none me-3 px-0" href="{{ url_for('audit_log') }}">Audit log</a>
         <form action="{{ url_for('logout') }}" method="POST" class="m-0">
             <button type="submit" class="btn btn-link btn-logout text-decoration-none px-0">Log out</button>
         </form>
@@ -75,7 +78,7 @@
         {% if years is defined and years %}
         {# One year picker, same place in every app that is organized by year. #}
         <form method="get" action="{{ request.path }}" class="year-pick m-0 ms-auto me-2 d-lg-none no-print">
-            {% for k, v in request.args.items() if k == 'status' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+            {% for k, v in request.args.items() if k in ('status', 'program') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
             <select name="year" class="form-select form-select-sm" aria-label="Year" onchange="this.form.submit()">{% for y in years %}<option {% if y|string == year|string %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
         </form>
         {% endif %}
@@ -86,10 +89,11 @@
             <ul class="navbar-nav me-auto gap-lg-1">{% block nav %}{% endblock %}</ul>
         {% if years is defined and years %}
                 <form method="get" action="{{ request.path }}" class="year-pick m-0 me-2 d-none d-lg-block no-print">
-            {% for k, v in request.args.items() if k == 'status' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+            {% for k, v in request.args.items() if k in ('status', 'program') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
             <select name="year" class="form-select form-select-sm" aria-label="Year" onchange="this.form.submit()">{% for y in years %}<option {% if y|string == year|string %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
         </form>
         {% endif %}
+            <a class="btn btn-link btn-logout text-decoration-none px-lg-2 px-0 d-block text-start" href="{{ url_for('name') }}" title="Not you? Change the name">{{ session.get('who', '') }}</a>
             <a class="btn btn-link btn-logout text-decoration-none px-lg-2 px-0 d-block text-start{% if request.endpoint == 'audit_log' %} text-light{% endif %}" href="{{ url_for('audit_log') }}">Audit log</a>
             <form action="{{ url_for('logout') }}" method="POST" class="m-0">
                 <button type="submit" class="btn btn-link btn-logout text-decoration-none px-lg-2 px-0">Log out</button>

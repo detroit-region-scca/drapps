@@ -76,7 +76,7 @@ def plan_name(item):
 def register_url(year, program, ln):
     """The Add event page filled in from a plan line, and tied to it once saved."""
     return url_for('index', program=program, event_name=plan_name(ln['item']), plan_line=f"{ln['sort']:g}",
-                   date=f"{year}-{ln['month']:02d}-01" if ln['month'] else '')
+                   month=f"{year}-{ln['month']:02d}" if ln['month'] else '')
 
 
 @bp.route('/')
@@ -90,9 +90,14 @@ def home():
     buds = B.budgets() if B.enabled() else {}
     qbo = B.qbo_actuals() if B.enabled() else {}
     plan = P.plan(year) if P.enabled() else {}
+    # ?program=RX: one program's view (a director's page): its events, plan, totals and open funds requests.
+    only = request.args.get('program', '')
+    if only:
+        plan = {k: v for k, v in plan.items() if k == only}
     plan_by_code = {ln['event_code']: ln['net'] for x in plan.values() for ln in x['lines'] if ln['event_code']}
     rows = []
-    year_events = sorted((e for e in events if e.get('date', '').startswith(year)), key=lambda e: e.get('date', ''))
+    year_events = sorted((e for e in events if e.get('date', '').startswith(year) and (not only or e.get('program_code') == only)),
+                         key=lambda e: e.get('date', ''))
     codes = {_code(e) for e in year_events}
     for e in year_events:
         b = buds.get(_code(e))
@@ -126,6 +131,8 @@ def home():
     # season's fees), so a program's actual here matches the Annual Plan. Programs with QuickBooks money but no events
     # (Operations: membership, storage, insurance) get a group too, so the page total is the region total.
     prog_act = P.actuals(year)[0] if P.enabled() and int(year) <= date.today().year else {}
+    if only:
+        prog_act = {k: v for k, v in prog_act.items() if k == only}
     names = dict(programs, OPS='Operations')
     groups = []
     for pc in sorted({r['program'] for r in rows} | {pc for pc, a in prog_act.items() if abs(a['net']) >= 0.5}
@@ -143,8 +150,9 @@ def home():
                        'other_plan': round(gplan - sum(r['plan'] or 0 for r in g), 2) if gplan is not None else None})
     summary['other'] = sum(g['other'] for g in groups)
     summary['actual'] = round(summary['actual'] + summary['other'], 2)
+    funds = [r for r in F.requests() if r['status'] == 'Submitted' and r['program'] == only] if only and F.enabled() else []
     return render_template('bud.html', **_ctx(view='list', groups=groups, year=year, years=years, s=summary,
-                                              programs=programs, plan_on=P.enabled()))
+                                              programs=programs, plan_on=P.enabled(), only=only, names=names, funds=funds))
 
 
 @bp.route('/event/<path:code>')
@@ -209,6 +217,10 @@ def approve_many():
         flash(f'Board approval on {approved} recorded for {len(codes)} budget{"s" if len(codes) != 1 else ""}.', 'success')
         return redirect(url_for('bud.home', year=year))
     plan = P.plan(year) if P.enabled() else {}
+    # ?program=RX: one program's view (a director's page): its events, plan, totals and open funds requests.
+    only = request.args.get('program', '')
+    if only:
+        plan = {k: v for k, v in plan.items() if k == only}
     plan_by_code = {ln['event_code']: ln['net'] for x in plan.values() for ln in x['lines'] if ln['event_code']}
     rows = [{'b': b, 'status': _status(b), 'surplus': ((b['totals'].get('budget') or {}).get('surplus')), 'plan': plan_by_code.get(code)}
             for code, b in B.budgets().items() if str(b.get('date', '')).startswith(year) and _status(b) != 'approved']

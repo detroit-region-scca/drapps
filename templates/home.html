@@ -8,7 +8,30 @@
         .app-tile .what { color: var(--muted); font-size: .8rem; margin-top: .25rem; line-height: 1.3; }
 {% endblock %}
 {% block content %}
-    {% if not session.get('authenticated') %}
+    {% if view == 'name' %}
+    <div class="card mx-auto mt-4" style="max-width: 380px;"><div class="card-body p-4">
+        <div class="page-title">Your name</div>
+        <p class="text-muted small">Everything you do in the apps is signed with it, so the treasurer and the audit log know who did what.</p>
+        <form method="post"><input type="hidden" name="next" value="{{ next_url }}">
+            <input class="form-control mb-3" name="name" required autofocus autocomplete="name" value="{{ session.get('who', '') }}" placeholder="First and last name">
+            <button class="btn btn-accent w-100">Continue</button></form>
+    </div></div>
+    {% elif view == 'treasurer' %}
+    <div class="crumbs"><a href="{{ url_for('home') }}">Apps</a> / Treasurer</div>
+    <div class="page-title mb-3">Treasurer</div>
+    <div class="list-group">
+        {% if jobs.pay is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('fr.home') }}">
+            <span>Funds requests ready to pay<div class="small text-muted">All approvals in</div></span><span class="fw-semibold">{{ jobs.pay[0] }}{% if jobs.pay[0] %} · ${{ '{:,.2f}'.format(jobs.pay[1]) }}{% endif %}</span></a>
+        <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('fr.home') }}">
+            <span>Funds requests waiting on approvals<div class="small text-muted">Chair, board or second signer</div></span><span class="fw-semibold">{{ jobs.approvals }}</span></a>{% endif %}
+        {% if jobs.budgets is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('bud.approve_many', year=year) }}">
+            <span>Record board approvals of budgets<div class="small text-muted">{{ year }} budgets not approved, or changed since</div></span><span class="fw-semibold">{{ jobs.budgets }}</span></a>{% endif %}
+        {% if jobs.books is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('plan.checks') }}">
+            <span>Books check<div class="small text-muted">What the nightly QuickBooks sync found</div></span><span class="fw-semibold">{{ jobs.books }}</span></a>{% endif %}
+        {% if wp_enabled %}<a class="list-group-item list-group-item-action" href="{{ url_for('wp.month_end') }}">Worker points month end<div class="small text-muted">Post the month's points to QuickBooks</div></a>{% endif %}
+        <a class="list-group-item list-group-item-action" href="{{ url_for('export_events') }}">Export events (CSV)</a>
+    </div>
+    {% elif not session.get('authenticated') %}
     <div class="d-flex justify-content-center align-items-center" style="min-height: 80vh;">
         <div class="card w-100" style="max-width: 380px;">
             <div class="card-body p-4">
@@ -16,6 +39,8 @@
                 <p class="text-center text-muted small mb-4">Events, Worker Points, Funds Requests, Annual Plan</p>
                 <form action="{{ url_for('login') }}" method="POST">
                     <input type="hidden" name="next" value="{{ next_url }}">
+                    <label for="name" class="form-label">Your name</label>
+                    <input class="form-control mb-3" id="name" name="name" required autocomplete="name" value="{{ session.get('who', '') }}" placeholder="First and last name">
                     <label for="password" class="form-label">Password</label>
                     <input type="password" class="form-control mb-3" id="password" name="password" required autofocus>
                     <button type="submit" class="btn btn-accent w-100">Log in</button>
@@ -67,6 +92,15 @@
             </a>
         </div>
         {% endif %}
+        <div class="col-6 col-md-4 col-lg">
+            <a class="app-tile" href="{{ url_for('treasurer') }}" style="--tile: #9aa3ad;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#9aa3ad" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 10h18L12 4z"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20.5h18"/>
+                </svg>
+                <div class="name">Treasurer</div>
+                <div class="what">Payments, approvals, books check, month end</div>
+            </a>
+        </div>
     </div>
     {% endif %}
 {% endblock %}

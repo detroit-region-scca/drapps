@@ -54,7 +54,7 @@
                 <div class="col-md-8"><label class="form-label">Event</label>
                     <select name="event_code" class="form-select" id="eventSel">
                         <option value="">Not for one event (pick the program)</option>
-                        {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" {% if form.get('event_code') == c %}selected{% endif %}>{{ e.date }} · {{ e.program_code }} · {{ e.event_name }} {{ c }}</option>{% endfor %}
+                        {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" {% if (form.get('event_code') or pick) == c %}selected{% endif %}>{{ e.date }} · {{ e.program_code }} · {{ e.event_name }} {{ c }}</option>{% endfor %}
                     </select></div>
                 <div class="col-md-4" id="programBox"><label class="form-label">Program</label>
                     <select name="program" class="form-select">
@@ -181,13 +181,13 @@
                     <div class="mt-1"><button type="button" class="btn btn-link btn-sm p-0" onclick="document.getElementById('paidRef').value='Region card'">Paid on the region card</button></div></div>
                 <div class="col-sm-4"><label class="form-label small" for="paidDate">Date paid</label><input type="date" name="paid_date" id="paidDate" class="form-control" value="{{ today }}"></div>
                 <div class="col-sm-3"><label class="form-label small" for="paidAmt">Amount</label><input name="paid_amount" id="paidAmt" class="form-control text-end" inputmode="decimal" value="{{ '%.2f'|format(r.net) }}"></div>
-                <div class="col-sm-8"><label class="form-label small" for="paidWho">Your name</label><input name="entered_by" id="paidWho" class="form-control" value="{{ who }}"></div>
-                <div class="col-sm-4 d-flex align-items-end"><button class="btn btn-accent w-100">Mark paid</button></div>
+                <input type="hidden" name="entered_by" value="{{ session.get('who', '') }}">
+                <div class="col-sm-5 d-flex align-items-end"><button class="btn btn-accent w-100">Mark paid</button></div>
             </div>
             <div class="form-text">Book it in QBO to the event's project as usual; this records that it was paid.</div>
         </form>{% endif %}</div>
         <div class="col-lg-4"><form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">
-            <input type="hidden" name="action" value="reject"><input type="hidden" name="entered_by" value="{{ who }}">
+            <input type="hidden" name="action" value="reject"><input type="hidden" name="entered_by" value="{{ session.get('who', '') }}">
             <div class="section-label">Reject</div>
             <label class="form-label small" for="rejNote">Why</label>
             <input name="note" id="rejNote" class="form-control mb-2" placeholder="Duplicate, no receipt…">

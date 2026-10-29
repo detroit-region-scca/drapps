@@ -170,6 +170,7 @@ def new():
     if request.method == 'GET':
         last = session.get('fr_submitter', {})
         return render_template('fr.html', **_ctx(view='new', events=events, programs=load_programs(), form={}, last=last,
+                                                 pick=request.args.get('event', ''),
                                                  rows=[{}] * 3))
     f = request.form
     errors = []
@@ -220,9 +221,8 @@ def new():
     req = {'event_code': f.get('event_code', '') if ev else '', 'event_name': ev['event_name'] if ev else '', 'program': program,
            **{f'submitter_{k}': v for k, v in sub.items()}, **{f'payee_{k}': v for k, v in payee.items()},
            'method': F.METHODS[method], 'total': total, 'advances': advances, 'net': round(total - advances, 2),
-           'notes': f.get('notes', '').strip(), 'entered_by': sub['name']}
+           'notes': f.get('notes', '').strip(), 'entered_by': session.get('who') or sub['name']}
     rid = F.create(req, lines, receipts)
-    session['who'] = sub['name']
     session['fr_submitter'] = sub
     n_files = sum(1 for r in receipts if r and r.filename)
     log_audit_event('FUNDS_REQUESTED', sub['name'], {'id': rid, 'payee': payee['name'], 'net': req['net'], 'event_code': req['event_code']})
