@@ -1,0 +1,5 @@
+{# Shared pieces for every app; import with: {% from '_ui.html' import tab, money with context %} #}
+{# A nav tab: active on its own page and its sub-pages (wp.redeem covers wp.redeem_detail), or when told. #}
+{% macro tab(endpoint, label, active=none) %}<li class="nav-item"><a class="nav-link{% if active or (active is none and (request.endpoint == endpoint or request.endpoint.startswith(endpoint ~ '_'))) %} active{% endif %}" href="{{ url_for(endpoint) }}">{{ label }}</a></li>{% endmacro %}
+{# Money: a dot for no value, red with a minus for a loss. places=0 for whole dollars. #}
+{% macro money(v, places=2) %}{% if v is none %}<span class="text-muted">·</span>{% else %}<span class="{{ 'text-danger' if v < 0 else '' }}">{{ '-' if v < 0 }}${{ ('{:,.' ~ places ~ 'f}').format(v|abs) }}</span>{% endif %}{% endmacro %}

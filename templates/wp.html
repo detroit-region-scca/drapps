@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
+{% from '_ui.html' import tab, money with context %}
 {% block body_class %}app-wp{% endblock %}
 {% block app_name %}Worker Points{% endblock %}
-{% macro tab(endpoint, label) %}<li class="nav-item"><a class="nav-link{% if request.endpoint == endpoint or request.endpoint.startswith(endpoint ~ '_') %} active{% endif %}" href="{{ url_for(endpoint) }}">{{ label }}</a></li>{% endmacro %}
 {% block nav %}
     {{ tab('wp.home', 'Overview') }}
     {{ tab('wp.event', 'Enter workers') }}
@@ -14,7 +14,6 @@
 {% macro type_badge(t) %}<span class="badge rounded-pill {{ {'Earned': 'text-bg-success', 'Used': 'text-bg-info', 'Allocation': 'text-bg-primary', 'Forfeit': 'text-bg-danger'}.get(t, 'text-bg-secondary') }}">{{ t }}</span>{% endmacro %}
 {% macro pts(v) %}<span class="{{ 'text-danger' if v < 0 else '' }}">{{ '%+g'|format(v) }}</span>{% endmacro %}
 {% block style %}
-        .member-row { cursor: pointer; }
         .row-remove { color: var(--muted); text-decoration: none; }
         .row-remove:hover { color: #dc3545; }
 {% endblock %}
@@ -29,7 +28,7 @@
         <table class="table table-hover mb-0">
             <thead><tr><th class="ps-3">Member</th><th>Name</th><th>Expires</th><th class="num">Points</th><th class="num pe-3">Value</th></tr></thead>
             <tbody>
-            {% for m in hits %}<tr class="member-row" onclick="location.href='{{ url_for('wp.member', member_id=m.member) }}'"><td class="ps-3"><a href="{{ url_for('wp.member', member_id=m.member) }}">{{ m.member }}</a></td><td>{{ m.first }} {{ m.last }}{% if m.life %} <span class="badge text-bg-secondary">LIFE</span>{% endif %}</td><td>{{ m.exp }}</td><td class="num">{{ '%.1f'|format(m.balance) }}</td><td class="num pe-3">${{ '{:,.2f}'.format(m.balance * point_value) }}</td></tr>
+            {% for m in hits %}<tr class="row-link" onclick="location.href='{{ url_for('wp.member', member_id=m.member) }}'"><td class="ps-3"><a href="{{ url_for('wp.member', member_id=m.member) }}">{{ m.member }}</a></td><td>{{ m.first }} {{ m.last }}{% if m.life %} <span class="badge text-bg-secondary">LIFE</span>{% endif %}</td><td>{{ m.exp }}</td><td class="num">{{ '%.1f'|format(m.balance) }}</td><td class="num pe-3">${{ '{:,.2f}'.format(m.balance * point_value) }}</td></tr>
             {% else %}<tr><td colspan="5" class="text-muted ps-3">No member matches "{{ q }}". <a href="{{ url_for('wp.new_member') }}">Add a member</a></td></tr>{% endfor %}
             </tbody>
         </table>
@@ -119,7 +118,7 @@
     <div class="card mb-4"><div class="card-body p-0 table-responsive">
         <table class="table table-hover mb-0">
             <thead><tr><th class="ps-3">Request</th><th>Member</th><th>For</th><th>Pay to</th><th class="num pe-3">Points</th></tr></thead>
-            <tbody>{% for r in pending %}<tr class="member-row" onclick="location.href='{{ url_for('wp.redeem_detail', rid=r.id) }}'"><td class="ps-3 text-nowrap"><a href="{{ url_for('wp.redeem_detail', rid=r.id) }}">{{ r.id }}</a><div class="small text-muted">{{ r.requested }}</div></td><td>{{ r.name }}</td><td>{{ r.for }}</td><td>{{ r.payee }}</td><td class="num pe-3">{{ '%g'|format(r.points) }}<div class="small text-muted">${{ '{:,.2f}'.format(r.amount) }}</div></td></tr>
+            <tbody>{% for r in pending %}<tr class="row-link" onclick="location.href='{{ url_for('wp.redeem_detail', rid=r.id) }}'"><td class="ps-3 text-nowrap"><a href="{{ url_for('wp.redeem_detail', rid=r.id) }}">{{ r.id }}</a><div class="small text-muted">{{ r.requested }}</div></td><td>{{ r.name }}</td><td>{{ r.for }}</td><td>{{ r.payee }}</td><td class="num pe-3">{{ '%g'|format(r.points) }}<div class="small text-muted">${{ '{:,.2f}'.format(r.amount) }}</div></td></tr>
             {% else %}<tr><td colspan="5" class="text-muted ps-3">Nothing waiting.</td></tr>{% endfor %}</tbody>
         </table>
     </div></div>

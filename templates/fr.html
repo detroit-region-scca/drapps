@@ -1,26 +1,20 @@
 {% extends 'base.html' %}
+{% from '_ui.html' import tab, money with context %}
 {% block body_class %}app-fr{% endblock %}
 {% block app_name %}Funds Requests{% endblock %}
-{% macro tab(endpoint, label) %}<li class="nav-item"><a class="nav-link{% if request.endpoint == endpoint %} active{% endif %}" href="{{ url_for(endpoint) }}">{{ label }}</a></li>{% endmacro %}
 {% block nav %}
-    {{ tab('fr.home', 'Requests') }}
+    {{ tab('fr.home', 'Requests', request.endpoint != 'fr.new') }}
     {{ tab('fr.new', 'New request') }}
 {% endblock %}
 {% macro status_badge(s) %}<span class="badge rounded-pill {{ {'Submitted': 'text-bg-warning', 'Paid': 'text-bg-success', 'Rejected': 'text-bg-danger'}.get(s, 'text-bg-secondary') }}">{{ 'Waiting' if s == 'Submitted' else s }}</span>{% endmacro %}
-{% macro money(v) %}${{ '{:,.2f}'.format(v or 0) }}{% endmacro %}
 {% block style %}
         body.app-fr { --accent: #3ecf8e; }
-        .section-label { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: .5rem; }
         .method-opt { border: 1px solid var(--border); border-radius: 10px; padding: .75rem 1rem; cursor: pointer; height: 100%; }
         .method-opt:has(input:checked) { border-color: var(--accent); background: var(--surface-2); }
         .method-opt input { margin-right: .5rem; }
         .row-remove { color: var(--muted); text-decoration: none; }
         .row-remove:hover { color: #dc3545; }
-        .req-row { cursor: pointer; }
         @media (max-width: 767.98px) { .line { border-bottom: 1px solid var(--border); } }
-        .filter .btn { border-color: var(--border); }
-        .filter .btn.active { background: var(--surface-2); border-color: var(--accent); color: var(--text); }
-        @media print { .app-bar, .no-print, .alert { display: none !important; } body { background: #fff; color: #000; } .card { border-color: #999; } }
 {% endblock %}
 {% block content %}
     {% if view == 'list' %}
@@ -37,7 +31,7 @@
         <table class="table table-hover mb-0">
             <thead><tr><th class="ps-3">Request</th><th>Submitted</th><th>Pay to</th><th>For</th><th>Status</th><th class="num pe-3">Amount</th></tr></thead>
             <tbody>
-            {% for r in reqs %}<tr class="req-row" onclick="location.href='{{ url_for('fr.detail', req_id=r.id) }}'">
+            {% for r in reqs %}<tr class="row-link" onclick="location.href='{{ url_for('fr.detail', req_id=r.id) }}'">
                 <td class="ps-3 text-nowrap"><a href="{{ url_for('fr.detail', req_id=r.id) }}">{{ r.id }}</a></td>
                 <td class="text-nowrap">{{ r.submitted }}<div class="small text-muted">{{ r.submitter_name }}</div></td>
                 <td>{{ r.payee_name }}<div class="small text-muted">{{ r.method }}</div></td>

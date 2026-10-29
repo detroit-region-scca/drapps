@@ -45,9 +45,11 @@
         .page-title { font-size: 1.35rem; font-weight: 600; margin-bottom: .25rem; }
         .crumbs { font-size: .85rem; color: var(--muted); margin-bottom: .5rem; }
         .crumbs a { color: var(--muted); }
-        .accordion-button { background-color: var(--surface-2); color: #fff; border-color: var(--border); }
-        .accordion-button:not(.collapsed) { background-color: #0d6efd; color: #fff; }
-        .accordion-item { border-color: var(--border); }
+        .section-label { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: .5rem; }
+        .row-link { cursor: pointer; }
+        .filter .btn { border-color: var(--border); }
+        .filter .btn.active { background: var(--surface-2); border-color: var(--accent); color: var(--text); }
+        @media print { .app-bar, .no-print, .alert { display: none !important; } body { background: #fff; color: #000; } .card { border-color: #ccc; } }
         .modal-content { background-color: var(--surface); border-color: var(--border); }
         {% block style %}{% endblock %}
     </style>
