@@ -216,8 +216,15 @@ def edit(year, program):
             for ln in last['lines'] if not P.placeholder(ln['item'])]
         info = (p or {}).get('info') or {k: last['info'].get(k, '') for k in ('director', 'email')}
         copied = bool(lines)
+    # Registered events with no plan line yet start as lines of their own, already tied, so the director only
+    # adds the expected profit (the budget's surplus when there is one).
+    reg = _event_actuals(program, year)
+    taken = {ln['event_code'] for ln in lines if ln['event_code']}
+    added = [{'item': x['e'].get('event_name', ''), 'month': int(x['e']['date'][5:7]), 'net': x['budget'], 'note': '', 'event_code': x['code']}
+             for x in reg if x['code'] not in taken and str(x['e'].get('date', ''))[5:7].isdigit()]
+    lines = sorted(list(lines) + added, key=lambda ln: ln['month'] or 13) if added else lines
     return render_template('plan.html', **_ctx(view='edit', year=year, prev=prev, program=program, name=names[program], info=info,
-                                               lines=lines, copied=copied, ref=_reference(program, prev), reg=_event_actuals(program, year)))
+                                               lines=lines, copied=copied, added=len(added), ref=_reference(program, prev), reg=reg))
 
 
 def _reference(program, year):
