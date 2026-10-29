@@ -5,14 +5,13 @@ approves it in the minutes. The top of the page charts profit against the plan t
 the nightly QuickBooks sync (tools/qbo_nightly.py) found for the treasurer.
 """
 import os
-import re
 from datetime import date
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 
 import bud_store as B
 import plan_store as P
-from bud import plan_name as register_name, register_url
+from bud import register_url
 from utils import load_events, load_programs, log_audit_event, login_required
 
 bp = Blueprint('plan', __name__, url_prefix='/plan')
@@ -165,7 +164,7 @@ def detail(year, program):
     prev = str(int(year) - 1)
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
                                                a=act.get(program), as_of=as_of, events=_event_actuals(program, year),
-                                               prev=prev, prev_lines=bool(P.plan(prev).get(program, {}).get('lines'))))
+                                               prev=prev))
 
 
 @bp.route('/<year>/<program>/edit', methods=['GET', 'POST'])
@@ -206,43 +205,22 @@ def edit(year, program):
         flash(f'{names[program]} plan for {year} saved.', 'success')
         return redirect(url_for('plan.detail', year=year, program=program))
     p = P.plan(year).get(program)
-    copied = False
     if p and p['lines']:
         lines, info = p['lines'], p['info']
     else:
-        # A new plan starts blank, or from last year's items and amounts (?start=copy), which the director changes.
+        # A new plan starts blank; the director and email carry over from last year.
         last = P.plan(prev).get(program) or {'lines': [], 'info': {}}
-        lines = [] if request.args.get('start') != 'copy' else [
-            {'item': _next_year_name(ln['item'], prev, year), 'month': ln['month'], 'net': ln['net'], 'note': '', 'event_code': ''}
-            for ln in last['lines'] if not P.placeholder(ln['item'])]
+        lines = []
         info = (p or {}).get('info') or {k: last['info'].get(k, '') for k in ('director', 'email')}
-        copied = bool(lines)
     # Registered events with no plan line yet start as lines of their own, already tied, so the director only
     # adds the expected profit (the budget's surplus when there is one).
     reg = _event_actuals(program, year)
     taken = {ln['event_code'] for ln in lines if ln['event_code']}
-    added = []
-    for x in reg:
-        if x['code'] in taken or not str(x['e'].get('date', ''))[5:7].isdigit():
-            continue
-        # A line copied from last year that is clearly this event ("Son of Sno*Drift XXVIII" for XXIX) becomes
-        # its line: tied, renamed, last year's amount kept.
-        scored = sorted(((P.match_score(ln['item'], ln['month'], x['e']), i) for i, ln in enumerate(lines) if not ln['event_code']), reverse=True)
-        if copied and scored and scored[0][0] >= 5 and (len(scored) < 2 or scored[1][0] < scored[0][0]):
-            lines[scored[0][1]].update(item=x['e'].get('event_name', ''), event_code=x['code'])
-            continue
-        added.append({'item': x['e'].get('event_name', ''), 'month': int(x['e']['date'][5:7]), 'net': x['budget'], 'note': '',
-                      'event_code': x['code']})
+    added = [{'item': x['e'].get('event_name', ''), 'month': int(x['e']['date'][5:7]), 'net': x['budget'], 'note': '', 'event_code': x['code']}
+             for x in reg if x['code'] not in taken and str(x['e'].get('date', ''))[5:7].isdigit()]
     lines = sorted(list(lines) + added, key=lambda ln: ln['month'] or 13) if added else lines
     return render_template('plan.html', **_ctx(view='edit', year=year, prev=prev, program=program, name=names[program], info=info,
-                                               lines=lines, copied=copied, added=len(added), ref=_reference(program, prev), reg=reg))
-
-
-def _next_year_name(item, prev, year):
-    """Last year's line name for this year: "2026-01-RX " numbering dropped, "2026" read as the new year
-    ("June 2026 Sunday Funday (2026 RX #5)" becomes "June 2027 Sunday Funday (2027 RX #5)")."""
-    name = re.sub(r'\s*\(?#DR\w+\)?', '', register_name(item))    # last year's event code
-    return re.sub(rf'\b{prev}\b', year, name).strip()
+                                               lines=lines, added=len(added), ref=_reference(program, prev), reg=reg))
 
 
 def _reference(program, year):

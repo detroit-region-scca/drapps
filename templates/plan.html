@@ -35,7 +35,7 @@
         <button class="btn btn-sm btn-outline-secondary no-print" onclick="window.print()">Print for the board</button>
     </div>
     {% if future %}
-    <div class="alert alert-info">Plans for {{ year }}: <b>{{ sent }} of {{ rows|length }}</b> programs are in. Directors: open your program below, then start from last year's plan or a blank one.</div>
+    <div class="alert alert-info">Plans for {{ year }}: <b>{{ sent }} of {{ rows|length }}</b> programs are in. Directors: open your program below and press Start the {{ year }} plan.</div>
     {% else %}
     <div class="card p-3 mb-4 viz">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
@@ -91,8 +91,7 @@
             <div class="d-flex gap-2 no-print">
                 <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">Print</button>
                 {% if p.lines %}<a class="btn btn-sm btn-accent" href="{{ url_for('plan.edit', year=year, program=program) }}">Edit the plan</a>
-                {% else %}{% if prev_lines %}<a class="btn btn-sm btn-accent" href="{{ url_for('plan.edit', year=year, program=program, start='copy') }}">Start from the {{ prev }} plan</a>{% endif %}
-                <a class="btn btn-sm {{ 'btn-outline-light' if prev_lines else 'btn-accent' }}" href="{{ url_for('plan.edit', year=year, program=program) }}">Start a blank plan</a>{% endif %}
+                {% else %}<a class="btn btn-sm btn-accent" href="{{ url_for('plan.edit', year=year, program=program) }}">Start the {{ year }} plan</a>{% endif %}
             </div>
         </div>
         {% if p.info.notes %}<div class="mt-2" style="white-space: pre-wrap;">{{ p.info.notes }}</div>{% endif %}
@@ -130,7 +129,6 @@
     <div class="page-title">{{ name }} plan for {{ year }}</div>
     <p class="text-muted">List each event or item you expect, the month, and about how much it will make. Use a minus sign for a cost or a loss, like <b>-500</b>. Rough numbers are fine.</p>
     {% if added %}<div class="alert alert-info py-2">{{ added }} registered event{{ ' is' if added == 1 else 's are' }} already filled in below. Add the profit you expect{{ ' (the budget\'s surplus is there when it has one)' }}, or remove a line that should not be in the plan.</div>{% endif %}
-    {% if copied %}<div class="alert alert-info py-2">This starts from your {{ prev }} plan. Change what's different, remove what's not happening, and save. <a href="{{ url_for('plan.edit', year=year, program=program) }}">Start blank instead</a></div>{% endif %}
     <div class="row g-3">
     <div class="col-lg-8">
     <form method="post" id="planForm">
