@@ -5,8 +5,8 @@ import random
 import logging
 import hmac
 import csv
+from urllib.parse import quote
 import io
-from collections import defaultdict
 from dotenv import load_dotenv
 from filelock import FileLock
 from datetime import datetime
@@ -87,7 +87,7 @@ def logout():
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
-    """Login form, or once signed in the apps: Event Register, Worker Points, Funds Requests, Event Budgets."""
+    """Login form, or once signed in the apps: Events, Worker Points, Funds Requests, Annual Plan."""
     if request.method == 'POST':
         # The create-event form used to post to '/'; a page left open from before keeps working.
         return index()
@@ -137,8 +137,9 @@ def _link_plan_line(event, sort, who):
         flash('The event was created, but tying it to the annual plan failed. Do it from the Annual Plan page.', 'warning')
 
 
-@app.route('/events', methods=['GET', 'POST'])
+@app.route('/events/new', methods=['GET', 'POST'])
 def index():
+    """Add event: register an event and get its #DR code. The list of events is the Events page (bud.home)."""
     if not session.get('authenticated'):
         # Before loading anything: an anonymous request should not cost a Sheets read.
         return redirect(url_for('home', next=request.full_path.rstrip('?')))
@@ -176,8 +177,8 @@ def index():
             log_audit_event('EVENT_CREATED', creator_name, new_event)
             send_new_event_email(new_event)
         _link_plan_line(new_event, request.form.get('plan_line', ''), creator_name)
-        flash('Event created successfully!', 'success')
-        return redirect(url_for('index', new_event_id=new_event['id']))
+        flash(f"Registered {new_event['custom_tag'] or new_event['unique_code']}.", 'success')
+        return redirect(url_for('bud.detail', code=new_event['custom_tag'] or new_event['unique_code']))
 
     # GET request
     lock = FileLock(DATA_LOCK_FILE)
@@ -185,18 +186,6 @@ def index():
         events = load_events()
     programs = load_programs()
     recommended_msr_name = None
-
-    this_year = str(datetime.now().year)
-    new_event = next((e for e in events if e['id'] == request.args.get('new_event_id')), None)
-    year = request.args.get('year') or ((new_event or {}).get('date') or '')[:4] or this_year
-    years = sorted({(e.get('date') or '')[:4] for e in events if (e.get('date') or '')[:4].isdigit()} | {this_year, year}, reverse=True)
-
-    grouped_events = defaultdict(list)
-    for event in (e for e in events if (e.get('date') or '').startswith(year)):
-        grouped_events[event['program_code']].append(event)
-
-    sorted_grouped_events = {code: sorted(evs, key=lambda e: e.get('date', ''))
-                             for code, evs in sorted(grouped_events.items(), key=lambda kv: programs.get(kv[0], kv[0]))}
 
     scca_region_acronym = os.environ.get("SCCA_REGION_ACRONYM", "SCCA")
     scca_region_name = os.environ.get("SCCA_REGION_NAME", "SCCA")
@@ -214,13 +203,11 @@ def index():
                            title=f"{scca_region_name} Event Registration",
                            events=events, programs=programs,
                            recommended_msr_name=recommended_msr_name,
-                           grouped_events=sorted_grouped_events,
                            scca_region_acronym=scca_region_acronym,
                            scca_region_name=scca_region_name,
                            program_directors_text=program_directors_text,
                            form_data=form_data,
                            tag_error=tag_error,
-                           year=year, years=years, q=request.args.get('q', ''),
                            budgets=_budget_codes(),
                            open_plan=_open_plan_lines(events))
 
@@ -231,7 +218,7 @@ def audit_log():
     lock = FileLock(f"{AUDIT_FILE}.lock")
     with lock:
         logs = load_audit_logs()
-    apps = [label for label, _ in audit_view.APPS.values()]
+    apps = list(dict.fromkeys(label for label, _ in audit_view.APPS.values()))
     actions = sorted({log.get('action', '') for log in logs if log.get('action')})
     app_filter, action_filter = request.args.get('app', ''), request.args.get('action', '')
     if app_filter:
@@ -254,6 +241,14 @@ def audit_log():
     return render_template('audit.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Audit Log", logs=logs,
                            apps=apps, actions=actions, app_filter=app_filter, action_filter=action_filter, limit=limit_param)
 
+@app.route('/budgets/', defaults={'rest': ''})
+@app.route('/budgets/<path:rest>')
+def old_budgets(rest):
+    """Event Budgets became Events; old links keep working."""
+    qs = request.query_string.decode()
+    return redirect(f"/events/{quote(rest, safe='/')}" + (f"?{qs}" if qs else ''), 301)
+
+
 @app.route('/delete/<event_id>', methods=['POST'])
 @login_required
 def delete_event(event_id):
@@ -270,7 +265,7 @@ def delete_event(event_id):
             flash('Event deleted successfully.', 'danger')
         else:
             flash('Event not found.', 'warning')
-    return redirect(url_for('index', year=((event_to_delete or {}).get('date') or '')[:4] or None))
+    return redirect(url_for('bud.home', year=((event_to_delete or {}).get('date') or '')[:4] or None))
 
 @app.route('/edit/<event_id>', methods=['POST'])
 @login_required
@@ -282,7 +277,7 @@ def edit_event(event_id):
 
         if not event_to_edit:
             flash('Event not found.', 'warning')
-            return redirect(url_for('index'))
+            return redirect(url_for('bud.home'))
 
         original_event = event_to_edit.copy()
 
@@ -296,11 +291,11 @@ def edit_event(event_id):
         if custom_tag:
             if custom_tag == event_to_edit.get('unique_code'):
                 flash(f"Error: Tag '{custom_tag}' is already the generated code for this event.", "danger")
-                return redirect(url_for('index', year=original_event['date'][:4] or None))
+                return redirect(url_for('bud.detail', code=original_event.get('custom_tag') or original_event['unique_code']))
                 
             if not is_tag_unique(custom_tag, events, exclude_event_id=event_id):
                 flash(f"Error: Tag '{custom_tag}' is already in use by another event.", "danger")
-                return redirect(url_for('index', year=original_event['date'][:4] or None))
+                return redirect(url_for('bud.detail', code=original_event.get('custom_tag') or original_event['unique_code']))
 
         event_to_edit['custom_tag'] = custom_tag
         
@@ -315,8 +310,8 @@ def edit_event(event_id):
             'updated': event_to_edit
         })
     
-    flash('Event updated successfully!', 'success')
-    return redirect(url_for('index', year=event_to_edit['date'][:4] or None))
+    flash('Event updated.', 'success')
+    return redirect(url_for('bud.detail', code=event_to_edit.get('custom_tag') or event_to_edit['unique_code']))
 
 @app.route('/export')
 @login_required

@@ -5,13 +5,13 @@ approves it in the minutes. The top of the page charts profit against the plan t
 the nightly QuickBooks sync (tools/qbo_nightly.py) found for the treasurer.
 """
 import os
-import re
 from datetime import date
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 
 import bud_store as B
 import plan_store as P
+from bud import register_url
 from utils import load_events, load_programs, log_audit_event, login_required
 
 bp = Blueprint('plan', __name__, url_prefix='/plan')
@@ -159,9 +159,8 @@ def detail(year, program):
         ln['actual'] = (qbo.get(ln['event_code']) or {}).get('totals', {}).get('surplus') if ln['event_code'] else None
         ln['budget'] = _budget_surplus(ln['event_code']) if ln['event_code'] else None
         if not ln['event_code'] and program != OPS:
-            # "Register event" opens the Event Register filled in from this line, tied to it once saved.
-            ln['register'] = url_for('index', year=year, program=program, event_name=re.sub(r'^\d{4}-\d{2}-\w+\s+', '', ln['item']),
-                                     date=f"{year}-{ln['month']:02d}-01" if ln['month'] else '', plan_line=f"{ln['sort']:g}")
+            # "Register event" opens Add event filled in from this line, tied to it once saved.
+            ln['register'] = register_url(year, program, ln)
     prev = str(int(year) - 1)
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
                                                a=act.get(program), as_of=as_of, events=_event_actuals(program, year),
@@ -214,16 +213,11 @@ def edit(year, program):
         last = P.plan(prev).get(program) or {'lines': [], 'info': {}}
         lines = [] if request.args.get('start') != 'copy' else [
             {'item': ln['item'], 'month': ln['month'], 'net': ln['net'], 'note': '', 'event_code': ''}
-            for ln in last['lines'] if not _placeholder(ln['item'])]
+            for ln in last['lines'] if not P.placeholder(ln['item'])]
         info = (p or {}).get('info') or {k: last['info'].get(k, '') for k in ('director', 'email')}
         copied = bool(lines)
     return render_template('plan.html', **_ctx(view='edit', year=year, prev=prev, program=program, name=names[program], info=info,
                                                lines=lines, copied=copied, ref=_reference(program, prev), reg=_event_actuals(program, year)))
-
-
-def _placeholder(item):
-    """A stand-in line from an old plan ("2026-01-RX Sample Event 5", "Event 12"), not worth copying forward."""
-    return bool(re.search(r'\bsample event\b', item or '', re.I) or re.fullmatch(r'(\d{4}-\d{2}-\w+\s+)?event\s*\d+', (item or '').strip(), re.I))
 
 
 def _reference(program, year):

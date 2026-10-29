@@ -281,3 +281,8 @@ def link(year, program, sort, code):
         ws.batch_update(updates, value_input_option='RAW')
         refresh()
         return True
+
+
+def placeholder(item):
+    """A stand-in line from an old plan ("2026-01-RX Sample Event 5", "Event 12"), not worth copying forward."""
+    return bool(re.search(r'\bsample event\b', item or '', re.I) or re.fullmatch(r'(\d{4}-\d{2}-\w+\s+)?event\s*\d+', (item or '').strip(), re.I))

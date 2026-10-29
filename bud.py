@@ -1,4 +1,7 @@
-"""Event Budgets: the region budget form (last year, budget, actual) per event, kept in the Event Budgets sheet (bud_store)."""
+"""Events: every event of the year in one list, from the annual plan line through registration, budget and board
+approval to QuickBooks actuals. The event page holds the event's details, its budget (the region budget form, kept
+in the Event Budgets sheet, bud_store), funds requests and actuals. Registering a new event is the "Add event" page
+(app.index)."""
 import os
 import re
 from datetime import date
@@ -10,13 +13,14 @@ import fr_store as F
 import plan_store as P
 from utils import load_events, load_programs, log_audit_event, login_required
 
-bp = Blueprint('bud', __name__, url_prefix='/budgets')
+bp = Blueprint('bud', __name__, url_prefix='/events')
 
 SECTIONS = (('Income', 'inc'), ('Expense', 'exp'))
 
 
 def _ctx(**kw):
-    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Event Budgets", who=session.get('who', ''), **kw)
+    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Events", who=session.get('who', ''), budgets_on=B.enabled(),
+                months=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], **kw)
 
 
 def _guard():
@@ -64,69 +68,119 @@ def _funds(code):
     return [r for r in F.requests() if r['event_code'] == code and r['status'] != 'Rejected']
 
 
+def plan_name(item):
+    """A plan line's item without the old "2027-01-RR " numbering, as an event name."""
+    return re.sub(r'^\d{4}-\d{2}-\w+\s+', '', item or '')
+
+
+def register_url(year, program, ln):
+    """The Add event page filled in from a plan line, and tied to it once saved."""
+    return url_for('index', program=program, event_name=plan_name(ln['item']), plan_line=f"{ln['sort']:g}",
+                   date=f"{year}-{ln['month']:02d}-01" if ln['month'] else '')
+
+
 @bp.route('/')
 @login_required
 def home():
-    if (g := _guard()):
-        return g
-    years = sorted({e.get('date', '')[:4] for e in load_events() if e.get('date')}, reverse=True)
+    events = load_events()
+    plan_years = P.years() if P.enabled() else []
+    years = sorted({e.get('date', '')[:4] for e in events if e.get('date', '')[:4].isdigit()} | set(plan_years) | {str(date.today().year)},
+                   reverse=True)
     year = request.args.get('year') or str(date.today().year)
-    buds = B.budgets()
-    qbo = B.qbo_actuals()
+    buds = B.budgets() if B.enabled() else {}
+    qbo = B.qbo_actuals() if B.enabled() else {}
     plan = P.plan(year) if P.enabled() else {}
     plan_by_code = {ln['event_code']: ln['net'] for x in plan.values() for ln in x['lines'] if ln['event_code']}
     rows = []
-    for e in sorted((e for e in load_events() if e.get('date', '').startswith(year)), key=lambda e: e.get('date', '')):
+    year_events = sorted((e for e in events if e.get('date', '').startswith(year)), key=lambda e: e.get('date', ''))
+    codes = {_code(e) for e in year_events}
+    for e in year_events:
         b = buds.get(_code(e))
         t = b['totals'] if b else {}
         q = qbo.get(_code(e))
-        rows.append({'e': e, 'code': _code(e), 'b': b, 'status': _status(b), 'budget': (t.get('budget') or {}).get('surplus'),
-                     'actual': q['totals']['surplus'] if q else None, 'plan': plan_by_code.get(_code(e))})
-    summary = {'events': len(rows), 'missing': sum(1 for r in rows if not r['b']),
-               'budget': sum(r['budget'] or 0 for r in rows), 'actual': sum(r['actual'] or 0 for r in rows),
-               'with_actuals': sum(1 for r in rows if r['actual'] is not None),
+        pc = e.get('program_code', '')
+        rows.append({'e': e, 'code': _code(e), 'program': pc, 'date': e.get('date', ''), 'name': e.get('event_name', ''),
+                     'b': b, 'status': _status(b), 'budget': (t.get('budget') or {}).get('surplus'),
+                     'actual': q['totals']['surplus'] if q else None, 'plan': plan_by_code.get(_code(e)),
+                     'unplanned': bool(plan.get(pc, {}).get('lines')) and _code(e) not in plan_by_code})
+    # Plan lines with a month and no registered event yet: the events the director expects but has not registered.
+    # A line with no month (supplies, trophies) is program spending, not an event, and stays on the "other" row,
+    # as do lines for months already past (planned, never registered).
+    today = date.today()
+    first = 1 if int(year) > today.year else 13 if int(year) < today.year else today.month
+    for pc, p in plan.items():
+        if pc == 'OPS':
+            continue
+        for ln in p['lines']:
+            if ln['month'] and ln['month'] >= first and ln['event_code'] not in codes and not P.placeholder(ln['item']):
+                rows.append({'e': None, 'code': '', 'program': pc, 'date': f"{year}-{ln['month']:02d}", 'name': plan_name(ln['item']),
+                             'b': None, 'status': 'planned', 'budget': None, 'actual': None, 'plan': ln['net'],
+                             'register': register_url(year, pc, ln)})
+    rows.sort(key=lambda r: r['date'])
+    evs = [r for r in rows if r['e']]
+    summary = {'events': len(evs), 'missing': sum(1 for r in evs if not r['b']), 'planned': len(rows) - len(evs),
+               'budget': sum(r['budget'] or 0 for r in evs), 'actual': sum(r['actual'] or 0 for r in evs),
                'as_of': next((q['as_of'] for q in qbo.values()), '')}
     programs = load_programs()
     # QuickBooks money on a program's accounts that is not in any of its event projects (season trophies, last
-    # season's fees), so a program's actual here matches the Annual Plan.
+    # season's fees), so a program's actual here matches the Annual Plan. Programs with QuickBooks money but no events
+    # (Operations: membership, storage, insurance) get a group too, so the page total is the region total.
     prog_act = P.actuals(year)[0] if P.enabled() and int(year) <= date.today().year else {}
+    names = dict(programs, OPS='Operations')
     groups = []
-    for pc in sorted({r['e'].get('program_code', '') for r in rows}, key=lambda pc: programs.get(pc, pc)):
-        g = [r for r in rows if r['e'].get('program_code', '') == pc]
-        events = sum(r['actual'] or 0 for r in g)
-        other = round(prog_act[pc]['net'] - events, 2) if pc in prog_act else 0
-        groups.append({'code': pc, 'name': programs.get(pc, pc or 'Other'), 'rows': g, 'other': other if abs(other) >= 0.5 else 0,
-                       'budget': sum(r['budget'] or 0 for r in g), 'actual': round(events + other, 2) if abs(other) >= 0.5 else events,
-                       'missing': sum(1 for r in g if not r['b'])})
-    # Programs with QuickBooks money but no events that year (Operations: membership, storage, insurance), so the
-    # page total is the region total on the Annual Plan.
-    for pc, a in prog_act.items():
-        if pc not in {g['code'] for g in groups} and abs(a['net']) >= 0.5:
-            groups.append({'code': pc, 'name': programs.get(pc, 'Operations' if pc == 'OPS' else pc), 'rows': [], 'other': a['net'],
-                           'budget': 0, 'actual': a['net'], 'missing': 0})
-    # Plan: the program's whole plan, as on the Annual Plan; lines not tied to one of these events sit on the other row.
-    for g in groups:
-        g['plan'] = (plan.get(g['code']) or {}).get('net') if plan.get(g['code'], {}).get('lines') else None
-        g['other_plan'] = round(g['plan'] - sum(r['plan'] or 0 for r in g['rows']), 2) if g['plan'] is not None else None
+    for pc in sorted({r['program'] for r in rows} | {pc for pc, a in prog_act.items() if abs(a['net']) >= 0.5}
+                     | {pc for pc, p in plan.items() if p.get('lines')}, key=lambda pc: (pc == 'OPS', names.get(pc, pc))):
+        g = [r for r in rows if r['program'] == pc]
+        events_net = sum(r['actual'] or 0 for r in g)
+        other = round(prog_act[pc]['net'] - events_net, 2) if pc in prog_act else 0
+        other = other if abs(other) >= 0.5 else 0
+        gp = plan.get(pc, {})
+        gplan = gp.get('net') if gp.get('lines') else None
+        groups.append({'code': pc, 'name': names.get(pc, pc or 'Other'), 'rows': g, 'other': other,
+                       'events': sum(1 for r in g if r['e']), 'planned': sum(1 for r in g if not r['e']),
+                       'missing': sum(1 for r in g if r['e'] and not r['b']),
+                       'budget': sum(r['budget'] or 0 for r in g), 'actual': round(events_net + other, 2), 'plan': gplan,
+                       'other_plan': round(gplan - sum(r['plan'] or 0 for r in g), 2) if gplan is not None else None})
     summary['other'] = sum(g['other'] for g in groups)
     summary['actual'] = round(summary['actual'] + summary['other'], 2)
-    return render_template('bud.html', **_ctx(view='list', groups=groups, year=year, years=years or [year], s=summary,
+    return render_template('bud.html', **_ctx(view='list', groups=groups, year=year, years=years, s=summary,
                                               programs=programs, plan_on=P.enabled()))
 
 
 @bp.route('/event/<path:code>')
 @login_required
 def detail(code):
-    if (g := _guard()):
-        return g
     e = _event(code)
-    b = B.get(code)
+    b = B.get(code) if B.enabled() else None
     if not e and not b:
         flash('Event not found.', 'warning')
         return redirect(url_for('bud.home'))
     return render_template('bud.html', **_ctx(view='detail', code=code, e=e or {}, b=b, funds=_funds(code),
-                                              q=B.qbo_actuals().get(code), plan=_plan_line(code), status=_status(b),
-                                              today=date.today().isoformat()))
+                                              q=B.qbo_actuals().get(code) if B.enabled() else None, plan=_plan_line(code),
+                                              status=_status(b), today=date.today().isoformat(), programs=load_programs(),
+                                              open_lines=_open_lines(e)))
+
+
+def _open_lines(e):
+    """Plan lines this event could be tied to (its program and year, not tied to another event)."""
+    if not e or not P.enabled() or not e.get('date'):
+        return []
+    return P.open_lines(e['date'][:4], e.get('program_code'), load_events())
+
+
+@bp.route('/event/<path:code>/tie', methods=['POST'])
+@login_required
+def tie(code):
+    """Tie the event to one of its program's annual plan lines."""
+    e = _event(code)
+    sort = request.form.get('plan_line', '')
+    who = request.form.get('who', '').strip() or session.get('who', '') or 'Unknown'
+    if e and sort:
+        if P.link(e['date'][:4], e['program_code'], float(sort), code):
+            item = (P.line_for(code) or {}).get('item', '')
+            log_audit_event('PLAN_LINKED', who, {'event_code': code, 'year': e['date'][:4], 'program': e['program_code'], 'item': item})
+            flash(f'Tied to the annual plan line "{item}".', 'success')
+    return redirect(url_for('bud.detail', code=code))
 
 
 @bp.route('/approve', methods=['GET', 'POST'])
@@ -192,7 +246,7 @@ def edit(code):
         return g
     e = _event(code)
     if not e:
-        flash('Register the event in Event Register first; budgets hang off its #DR code.', 'warning')
+        flash('Add the event first; budgets hang off its #DR code.', 'warning')
         return redirect(url_for('bud.home'))
     b = B.get(code)
     if request.method == 'POST':

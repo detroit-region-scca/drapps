@@ -144,6 +144,6 @@ def exceptions(requests, payments, events, projects, today, since=None):
                 f"{code} ran {(today - d).days} days ago and nothing is booked to {p['project']}", code)
     for p in projects:
         if p['code'] not in codes and p.get('active', True) and p['lines']:
-            add(f"projev:{p['code']}", 'QuickBooks project not in Event Register', '', p['project'], None,
+            add(f"projev:{p['code']}", 'QuickBooks project not in Events', '', p['project'], None,
                 f"{p['code']} is not a registered event code", p['code'])
     return out

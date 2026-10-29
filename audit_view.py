@@ -8,7 +8,7 @@ from markupsafe import Markup, escape
 
 # action prefix -> (app label, badge colour)
 APPS = {'EVENT': ('Events', 'primary'), 'WP': ('Worker Points', 'warning'), 'FUNDS': ('Funds Requests', 'success'),
-        'BUDGET': ('Budgets', 'info'), 'PLAN': ('Annual Plan', 'light'), 'LOGIN': ('Login', 'secondary')}
+        'BUDGET': ('Events', 'primary'), 'PLAN': ('Annual Plan', 'light'), 'LOGIN': ('Login', 'secondary')}
 
 
 def app_of(action):
