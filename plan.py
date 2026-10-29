@@ -158,8 +158,10 @@ def detail(year, program):
     for ln in p['lines']:
         ln['actual'] = (qbo.get(ln['event_code']) or {}).get('totals', {}).get('surplus') if ln['event_code'] else None
         ln['budget'] = _budget_surplus(ln['event_code']) if ln['event_code'] else None
+    prev = str(int(year) - 1)
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
-                                               a=act.get(program), as_of=as_of, events=_event_actuals(program, year)))
+                                               a=act.get(program), as_of=as_of, events=_event_actuals(program, year),
+                                               prev=prev, prev_lines=bool(P.plan(prev).get(program, {}).get('lines'))))
 
 
 @bp.route('/<year>/<program>/edit', methods=['GET', 'POST'])
@@ -201,14 +203,15 @@ def edit(year, program):
         return redirect(url_for('plan.detail', year=year, program=program))
     p = P.plan(year).get(program)
     copied = False
-    if p and (p['lines'] or p['info']):
+    if p and p['lines']:
         lines, info = p['lines'], p['info']
     else:
-        # A new year starts from last year's plan: same items and amounts, which the director changes.
+        # A new plan starts blank, or from last year's items and amounts (?start=copy), which the director changes.
         last = P.plan(prev).get(program) or {'lines': [], 'info': {}}
-        lines = [{'item': ln['item'], 'month': ln['month'], 'net': ln['net'], 'note': '', 'event_code': ''}
-                 for ln in last['lines'] if not _placeholder(ln['item'])]
-        info = {k: last['info'].get(k, '') for k in ('director', 'email')}
+        lines = [] if request.args.get('start') != 'copy' else [
+            {'item': ln['item'], 'month': ln['month'], 'net': ln['net'], 'note': '', 'event_code': ''}
+            for ln in last['lines'] if not _placeholder(ln['item'])]
+        info = (p or {}).get('info') or {k: last['info'].get(k, '') for k in ('director', 'email')}
         copied = bool(lines)
     return render_template('plan.html', **_ctx(view='edit', year=year, prev=prev, program=program, name=names[program], info=info,
                                                lines=lines, copied=copied, ref=_reference(program, prev), reg=_event_actuals(program, year)))
