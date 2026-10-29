@@ -29,7 +29,7 @@
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Events</div><div class="value">{{ s.events }}</div></div></div>
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">No budget yet</div><div class="value {{ 'text-warning' if s.missing }}">{{ s.missing }}</div></div></div>
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Budgeted surplus</div><div class="value">{{ money(s.budget) }}</div></div></div>
-        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Actual surplus, QuickBooks</div><div class="value">{{ money(s.actual) }}</div><div class="small text-muted">{{ s.with_actuals }} events{% if s.other %}, plus {{ money(s.other) }} not tied to an event{% endif %}. Same as the Annual Plan.</div></div></div>
+        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Actual surplus, QuickBooks</div><div class="value">{{ money(s.actual) }}</div>{% if s.as_of %}<div class="small text-muted">as of {{ s.as_of }}</div>{% endif %}</div></div>
     </div>
     <div class="d-flex justify-content-end gap-2 mb-2"><a class="btn btn-sm btn-outline-light" href="{{ url_for('bud.approve_many', year=year) }}">Record board approvals</a><button class="btn btn-sm btn-outline-secondary" data-toggle-all="budTable">Expand or collapse all</button></div>
     <div class="card"><div class="card-body p-0 table-responsive">
