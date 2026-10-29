@@ -104,7 +104,7 @@
                 <thead><tr><th class="ps-3">Month</th><th>Event or item</th><th class="num">Plan</th><th class="num">Budget</th><th class="num pe-3">Actual</th></tr></thead>
                 <tbody>{% for ln in p.lines %}<tr>
                     <td class="ps-3 text-muted">{{ months[ln.month - 1] if ln.month else '' }}</td>
-                    <td>{{ ln.item }}{% if ln.note %}<div class="small text-muted">{{ ln.note }}</div>{% endif %}</td>
+                    <td>{{ ln.item }}{% if ln.register %} <a class="small ms-1 no-print text-nowrap" href="{{ ln.register }}">Register event</a>{% endif %}{% if ln.note %}<div class="small text-muted">{{ ln.note }}</div>{% endif %}</td>
                     <td class="num">{{ money(ln.net) }}</td><td class="num">{{ money(ln.budget) }}</td><td class="num pe-3">{% if ln.event_code %}<a href="{{ url_for('bud.detail', code=ln.event_code) }}">{{ money(ln.actual) }}</a>{% else %}<span class="text-muted">·</span>{% endif %}</td>
                 </tr>{% else %}<tr><td colspan="5" class="ps-3 text-muted">No plan yet.</td></tr>{% endfor %}
                 {% if p.lines %}<tr class="total-row"><td class="ps-3" colspan="2">Program total</td><td class="num">{{ money(p.net) }}</td><td class="num">{{ money(p.lines|selectattr('budget')|sum(attribute='budget') or none) }}</td><td class="num pe-3">{{ money(a.net if a else none) }}</td></tr>{% endif %}

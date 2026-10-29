@@ -75,7 +75,7 @@
         {% if years is defined and years %}
         {# One year picker, same place in every app that is organized by year. #}
         <form method="get" action="{{ request.path }}" class="year-pick m-0 ms-auto me-2 d-lg-none no-print">
-            {% for k, v in request.args.items() if k != 'year' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+            {% for k, v in request.args.items() if k == 'status' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
             <select name="year" class="form-select form-select-sm" aria-label="Year" onchange="this.form.submit()">{% for y in years %}<option {% if y|string == year|string %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
         </form>
         {% endif %}
@@ -86,7 +86,7 @@
             <ul class="navbar-nav me-auto gap-lg-1">{% block nav %}{% endblock %}</ul>
         {% if years is defined and years %}
                 <form method="get" action="{{ request.path }}" class="year-pick m-0 me-2 d-none d-lg-block no-print">
-            {% for k, v in request.args.items() if k != 'year' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+            {% for k, v in request.args.items() if k == 'status' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
             <select name="year" class="form-select form-select-sm" aria-label="Year" onchange="this.form.submit()">{% for y in years %}<option {% if y|string == year|string %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
         </form>
         {% endif %}

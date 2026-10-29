@@ -209,13 +209,15 @@
                 if (ln.month && month) s += ln.month === month ? 2 : Math.abs(ln.month - month) === 1 ? 1 : 0;
                 return s;
             }
-            let picked = false;
+            let want = {{ ((form_data or {}).get('plan_line') or '')|string|tojson }};    // from a plan line's "Register event"
+            let picked = !!want;
             function update() {
                 const prog = form.program.value, d = form.date.value, name = form.event_name.value;
                 const lines = open[`${d.slice(0, 4)}|${prog}`] || [];
                 box.classList.toggle('d-none', !lines.length);
                 if (!lines.length) { sel.innerHTML = ''; return; }
-                const month = Number(d.slice(5, 7)) || null, keep = picked ? sel.value : null;
+                const month = Number(d.slice(5, 7)) || null, keep = picked ? (want || sel.value) : null;
+                want = '';
                 const scored = lines.map(ln => [score(ln, name, month), ln]).sort((x, y) => y[0] - x[0]);
                 const best = scored[0][0] >= 3 && (scored.length < 2 || scored[1][0] < scored[0][0]) ? scored[0][1] : null;
                 sel.innerHTML = '<option value="">Not in the plan</option>' + lines.map(ln =>

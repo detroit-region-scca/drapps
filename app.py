@@ -203,6 +203,11 @@ def index():
     program_directors_text = os.environ.get("PROGRAM_DIRECTORS_TEXT", "For use by SCCA program directors")
 
     form_data = session.pop('form_data', {})
+    if not form_data and request.args.get('plan_line'):
+        # Arrived from an annual plan line's "Register event": fill the form in from it.
+        form_data = {k: request.args[k] for k in ('program', 'date', 'event_name', 'plan_line') if request.args.get(k)}
+        if form_data.get('date'):
+            flash('Filled in from the annual plan. The day is a placeholder (the 1st); set the real date.', 'info')
     tag_error = session.pop('tag_error', None)
 
     return render_template('index.html', 
