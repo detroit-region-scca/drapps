@@ -146,7 +146,7 @@
         <div class="card p-3 mb-3">
             <div class="row g-2 d-none d-md-flex text-muted small mb-1"><div class="col-md-5">Event or item</div><div class="col-md-2">Month</div><div class="col-md-2 text-end">Expected profit</div><div class="col-md-2">Note</div></div>
             <div class="lines">
-            {% for ln in (lines or [{}, {}, {}]) %}
+            {% for ln in (lines or [{'net': none}, {'net': none}, {'net': none}]) %}
                 <div class="row g-2 pline mb-2 pb-2">
                     <div class="col-12 col-md-5"><input name="item" class="form-control form-control-sm" placeholder="Event or item" value="{{ ln.item or '' }}"></div>
                     <div class="col-4 col-md-2"><select name="month" class="form-select form-select-sm"><option value=""></option>{% for m in months %}<option value="{{ loop.index }}" {% if ln.month == loop.index %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
