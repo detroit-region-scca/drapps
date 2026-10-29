@@ -99,6 +99,12 @@ def home():
         groups.append({'code': pc, 'name': programs.get(pc, pc or 'Other'), 'rows': g, 'other': other if abs(other) >= 0.5 else 0,
                        'budget': sum(r['budget'] or 0 for r in g), 'actual': round(events + other, 2) if abs(other) >= 0.5 else events,
                        'funds': sum(r['funds'] for r in g), 'missing': sum(1 for r in g if not r['b'])})
+    # Programs with QuickBooks money but no events that year (Operations: membership, storage, insurance), so the
+    # page total is the region total on the Annual Plan.
+    for pc, a in prog_act.items():
+        if pc not in {g['code'] for g in groups} and abs(a['net']) >= 0.5:
+            groups.append({'code': pc, 'name': programs.get(pc, 'Operations' if pc == 'OPS' else pc), 'rows': [], 'other': a['net'],
+                           'budget': 0, 'actual': a['net'], 'funds': 0, 'missing': 0})
     summary['other'] = sum(g['other'] for g in groups)
     summary['actual'] = round(summary['actual'] + summary['other'], 2)
     return render_template('bud.html', **_ctx(view='list', groups=groups, year=year, years=years or [year], s=summary,
