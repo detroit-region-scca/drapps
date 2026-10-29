@@ -8,6 +8,8 @@
     {{ tab('plan.checks', 'Books check' ~ (' (' ~ n_exceptions ~ ')' if n_exceptions else ''), view == 'checks') }}
 {% endblock %}
 {% block style %}
+        .pline input[readonly], .pline .locked { background-color: var(--bg); color: var(--muted); }
+        .pline .locked { pointer-events: none; }
         body.app-plan { --accent: #4fd1c5; }
         .total-row td { font-weight: 600; border-top: 2px solid var(--border); }
         .row-remove { color: var(--muted); text-decoration: none; }
@@ -142,8 +144,8 @@
             <div class="lines">
             {% for ln in (lines or [{'net': none}, {'net': none}, {'net': none}]) %}
                 <div class="row g-2 pline mb-2 pb-2">
-                    <div class="col-12 col-md-5"><input name="item" class="form-control form-control-sm" placeholder="Event or item" value="{{ ln.item or '' }}"></div>
-                    <div class="col-4 col-md-2"><select name="month" class="form-select form-select-sm"><option value=""></option>{% for m in months %}<option value="{{ loop.index }}" {% if ln.month == loop.index %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
+                    <div class="col-12 col-md-5"><input name="item" class="form-control form-control-sm" placeholder="Event or item" value="{{ ln.item or '' }}"{% if ln.event_code and reg %} readonly title="The registered event's name; change it on the event's page"{% endif %}></div>
+                    <div class="col-4 col-md-2"><select name="month" class="form-select form-select-sm{{ ' locked' if ln.event_code and reg }}"><option value=""></option>{% for m in months %}<option value="{{ loop.index }}" {% if ln.month == loop.index %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
                     <div class="col-4 col-md-2"><input name="net" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0" value="{{ '' if ln.net is none or ln.net == '' else ('%.0f'|format(ln.net) if ln.net == ln.net|round else ln.net) }}"></div>
                     <div class="col-3 col-md-2"><input name="note" class="form-control form-control-sm" placeholder="Note" value="{{ ln.note or '' }}"></div>
                     <div class="col-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)">✕</button></div>
@@ -298,7 +300,7 @@
     function addLine() {
         const box = form.querySelector('.lines');
         const row = box.querySelector('.pline').cloneNode(true);
-        row.querySelectorAll('input, select').forEach(i => i.value = '');
+        row.querySelectorAll('input, select').forEach(i => { i.value = ''; i.readOnly = false; i.classList.remove('locked'); });
         box.appendChild(row);
         row.querySelector('[name=item]').focus();
     }
@@ -309,14 +311,15 @@
     }
     if (form) {
         form.addEventListener('input', total);
-        // Picking a registered event fills in the line's name and month when they are still empty.
+        // A line tied to a registered event takes the event's name and month, locked; untying it frees them again.
         form.addEventListener('change', e => {
             if (e.target.name !== 'code') return;
             const opt = e.target.selectedOptions[0], row = e.target.closest('.pline');
-            if (!opt || !opt.value) return;
             const item = row.querySelector('[name=item]'), month = row.querySelector('[name=month]');
-            if (!item.value.trim()) item.value = opt.dataset.name;
-            if (!month.value) month.value = opt.dataset.month;
+            const tied = !!(opt && opt.value);
+            if (tied) { item.value = opt.dataset.name; month.value = opt.dataset.month; }
+            item.readOnly = tied;
+            month.classList.toggle('locked', tied);
         });
         total();
     }

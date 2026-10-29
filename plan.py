@@ -181,8 +181,13 @@ def edit(year, program):
         who = f.get('entered_by', '').strip() or session.get('who', '') or 'Unknown'
         session['who'] = who
         lines, errors = [], []
+        reg_events = {x['code']: x['e'] for x in _event_actuals(program, year)}
         for item, month, net, note, code in zip(f.getlist('item'), f.getlist('month'), f.getlist('net'), f.getlist('note'), f.getlist('code')):
             item, note, v = item.strip(), note.strip(), _money(net)
+            if code in reg_events:
+                # A line tied to a registered event takes the event's name and month; the event is the record.
+                ev = reg_events[code]
+                item, month = ev.get('event_name', '') or item, str(int(ev['date'][5:7])) if str(ev.get('date', ''))[5:7].isdigit() else month
             if not item and v is None and not note:
                 continue
             if v == 'bad':
