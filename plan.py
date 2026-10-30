@@ -87,7 +87,7 @@ def _kids(year, program, p, program_actual, future):
         x = events.pop(ln['event_code'], None) if ln['event_code'] else None
         kids.append({'name': ln['item'], 'date': x['e']['date'] if x else (f"{year}-{ln['month']:02d}" if ln['month'] else ''),
                      'code': ln['event_code'] if x else '', 'plan': ln['net'], 'budget': x['budget'] if x else None,
-                     'actual': x['net'] if x else None})
+                     'actual': x['net'] if x else None, 'line': ln})
     for code, x in events.items():
         kids.append({'name': x['e'].get('event_name', ''), 'date': x['e']['date'], 'code': code, 'plan': None, 'budget': x['budget'],
                      'actual': x['net']})
@@ -173,6 +173,8 @@ def detail(year, program):
             # "Register event" opens Add event filled in from this line, tied to it once saved.
             ln['register'] = register_url(year, program, ln)
     prev = str(int(year) - 1)
+    # One list: each plan line with its event, then registered events not in the plan, then the program's other money.
+    rows = _kids(year, program, p, (act.get(program) or {}).get('net'), int(year) > date.today().year)
     # Plan against QuickBooks account by account, with last year's actual beside it for a future plan.
     accts = P.by_account(p['lines'], act.get(program))
     last = {r['account']: r['actual'] for r in P.by_account([], P.actuals(prev)[0].get(program))}
@@ -181,7 +183,7 @@ def detail(year, program):
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
                                                a=act.get(program), as_of=as_of, events=_event_actuals(program, year),
                                                prev=prev, prev_lines=bool(P.plan(prev).get(program, {}).get('lines')),
-                                               accts=accts, future=int(year) > date.today().year, now_year=date.today().year))
+                                               accts=accts, future=int(year) > date.today().year, now_year=date.today().year, rows=rows))
 
 
 @bp.route('/<year>/<program>/edit', methods=['GET', 'POST'])

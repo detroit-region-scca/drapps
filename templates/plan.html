@@ -100,35 +100,31 @@
     </div>
     <div class="row g-3">
         <div class="col-lg-7">
-            <h2 class="h6 text-muted">Plan</h2>
+            <h2 class="h6 text-muted">Plan, events and actuals</h2>
             <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-                <thead><tr><th class="ps-3">Month</th><th>Event or item</th><th class="num">Plan</th><th class="num">Budget</th><th class="num pe-3">Actual</th></tr></thead>
-                <tbody>{% for ln in p.lines %}<tr>
-                    <td class="ps-3 text-muted">{{ months[ln.month - 1] if ln.month else '' }}</td>
-                    <td>{{ ln.item }}{% if ln.account %} <span class="small text-muted">· {{ ln.account }}</span>{% endif %}{% if ln.register %} <a class="small ms-1 no-print text-nowrap" href="{{ ln.register }}">Register event</a>{% endif %}{% if ln.note %}<div class="small text-muted">{{ ln.note }}</div>{% endif %}</td>
-                    <td class="num">{{ money(ln.net) }}</td><td class="num">{{ money(ln.budget) }}</td><td class="num pe-3">{% if ln.event_code %}<a href="{{ url_for('bud.detail', code=ln.event_code) }}">{{ money(ln.actual) }}</a>{% else %}<span class="text-muted">·</span>{% endif %}</td>
-                </tr>{% else %}<tr><td colspan="5" class="ps-3 text-muted">No plan yet.</td></tr>{% endfor %}
-                {% if p.lines %}<tr class="total-row"><td class="ps-3" colspan="2">Program total</td><td class="num">{{ money(p.net) }}</td><td class="num">{{ money(p.lines|selectattr('budget')|sum(attribute='budget') or none) }}</td><td class="num pe-3">{{ money(a.net if a else none) }}</td></tr>{% endif %}
+                <thead><tr><th class="ps-3">When</th><th>Event or item</th><th class="num">Plan</th><th class="num">Budget</th><th class="num pe-3">Actual</th></tr></thead>
+                <tbody>{% for k in rows %}{% set ln = k.line or {} %}<tr class="{{ 'text-muted' if k.other }}">
+                    <td class="ps-3 text-muted text-nowrap">{% if k.date %}{{ months[k.date[5:7]|int - 1] }}{% if k.date|length > 7 %} {{ k.date[8:10]|int }}{% endif %}{% endif %}</td>
+                    <td>{% if k.code %}<a href="{{ url_for('bud.detail', code=k.code) }}">{{ k.name }}</a> <span class="small text-muted">{{ k.code }}</span>{% else %}{{ k.name }}{% endif %}
+                        {% if k.code and not k.line %} <span class="small text-warning">not in plan</span>{% endif %}
+                        {% if ln.account %} <span class="small text-muted">· {{ ln.account }}</span>{% endif %}
+                        {% if ln.register %} <a class="small ms-1 no-print text-nowrap" href="{{ ln.register }}">Register event</a>{% endif %}
+                        {% if ln.note %}<div class="small text-muted">{{ ln.note }}</div>{% endif %}</td>
+                    <td class="num">{{ money(k.plan) }}</td><td class="num">{{ money(k.budget) }}</td><td class="num pe-3">{{ money(k.actual) }}</td>
+                </tr>{% else %}<tr><td colspan="5" class="ps-3 text-muted">No plan or events yet.</td></tr>{% endfor %}
+                {% if rows %}<tr class="total-row"><td class="ps-3" colspan="2">Program total</td><td class="num">{{ money(p.net if p.lines else none) }}</td>
+                    <td class="num">{{ money(rows|selectattr('budget')|sum(attribute='budget') or none) }}</td><td class="num pe-3">{{ money(a.net if a else none) }}</td></tr>{% endif %}
                 </tbody></table></div></div>
+            {% if as_of %}<p class="small text-muted">Actuals from QuickBooks as of {{ as_of }}. "Other" is money on the program's accounts not tagged to an event.</p>{% endif %}
         </div>
         <div class="col-lg-5">
-            {% if accts %}<h2 class="h6 text-muted">By QuickBooks account</h2>
+            {% set by_acct = p.lines|selectattr('account')|list %}
+            {% if accts %}<h2 class="h6 text-muted">{{ 'Plan and actual by QuickBooks account' if by_acct else 'QuickBooks, by account' }}</h2>
             <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table table-sm mb-0">
-                <thead><tr><th class="ps-3">Account</th><th class="num">Plan</th><th class="num pe-3">{{ (prev ~ (' so far' if prev|int == now_year else ' actual')) if future else 'Actual' }}</th></tr></thead>
-                <tbody>{% for r in accts %}<tr><td class="ps-3">{{ r.account or 'No QuickBooks account' }}{% if not r.account %}<div class="small text-muted">{{ r['items']|join(', ') }}</div>{% endif %}</td>
-                    <td class="num">{{ cents(r.plan) }}</td><td class="num pe-3">{{ cents(r.last if future else r.actual) }}</td></tr>{% endfor %}</tbody>
+                <thead><tr><th class="ps-3">Account</th>{% if by_acct %}<th class="num">Plan</th>{% endif %}<th class="num pe-3">{{ (prev ~ (' so far' if prev|int == now_year else ' actual')) if future else 'Actual' }}</th></tr></thead>
+                <tbody>{% for r in accts if by_acct or r.account %}<tr><td class="ps-3">{{ r.account or 'No QuickBooks account' }}{% if not r.account %}<div class="small text-muted">{{ r['items']|join(', ') }}</div>{% endif %}</td>
+                    {% if by_acct %}<td class="num">{{ cents(r.plan) }}</td>{% endif %}<td class="num pe-3">{{ cents(r.last if future else r.actual) }}</td></tr>{% endfor %}</tbody>
             </table></div></div>{% endif %}
-            <h2 class="h6 text-muted">QuickBooks{% if as_of %}, as of {{ as_of }}{% endif %}</h2>
-            {% if a %}
-            <div class="card mb-3"><div class="card-body p-0"><table class="table table-sm mb-0">
-                <tbody>{% for ln in a.lines %}<tr><td class="ps-3">{{ ln.account }}</td><td class="num pe-3">{{ cents(ln.amount if ln.section == 'Income' else -ln.amount) }}</td></tr>{% endfor %}
-                <tr class="total-row"><td class="ps-3">Profit (loss)</td><td class="num pe-3">{{ cents(a.net) }}</td></tr></tbody></table></div></div>
-            {% else %}<p class="text-muted small">Nothing booked to {{ name }} accounts for {{ year }}.</p>{% endif %}
-            {% if events %}
-            <h2 class="h6 text-muted">Registered events</h2>
-            <div class="card mb-3"><div class="card-body p-0"><table class="table table-sm mb-0"><tbody>
-                {% for x in events %}<tr><td class="ps-3 text-muted text-nowrap">{{ x.e.date[5:] }}</td><td><a href="{{ url_for('bud.detail', code=x.code) }}">{{ x.e.event_name }}</a></td><td class="num pe-3">{{ money(x.net) }}</td></tr>{% endfor %}
-            </tbody></table></div></div>{% endif %}
         </div>
     </div>
 
