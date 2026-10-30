@@ -180,10 +180,28 @@ def detail(year, program):
     last = {r['account']: r['actual'] for r in P.by_account([], P.actuals(prev)[0].get(program))}
     for r in accts:
         r['last'] = last.get(r['account'])
+    # A program planned by account rather than by event (Operations): one table grouped by account.
+    by_account = bool(p['lines']) and all(not ln['event_code'] for ln in p['lines']) and any(ln.get('account') for ln in p['lines'])
+    groups = _account_groups(p['lines'], accts) if by_account else []
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
                                                a=act.get(program), as_of=as_of, events=_event_actuals(program, year),
                                                prev=prev, prev_lines=bool(P.plan(prev).get(program, {}).get('lines')),
-                                               accts=accts, future=int(year) > date.today().year, now_year=date.today().year, rows=rows))
+                                               accts=accts, future=int(year) > date.today().year, now_year=date.today().year, rows=rows,
+                                               groups=groups, last_net=(P.actuals(prev)[0].get(program) or {}).get('net')))
+
+
+def _account_groups(lines, accts):
+    """Plan lines grouped under their QuickBooks account, in reading order: income, running costs (largest first),
+    equipment bought (Capital Equipment accounts, not an expense), then money set aside with no account. Accounts with
+    actuals but no plan line are included so nothing is hidden."""
+    out = []
+    for r in accts:
+        acc = r['account']
+        kind = 'none' if not acc else 'capital' if acc.startswith('Capital Equipment') else \
+            'income' if (r['plan'] or 0) > 0 or (r['plan'] is None and (r['actual'] or r['last'] or 0) > 0) else 'cost'
+        out.append(dict(r, kind=kind, lines=[ln for ln in lines if (ln.get('account') or '') == acc]))
+    order = {'income': 0, 'cost': 1, 'capital': 2, 'none': 3}
+    return sorted(out, key=lambda g: (order[g['kind']], -abs(g['plan'] or 0), -abs(g['actual'] or g['last'] or 0)))
 
 
 @bp.route('/<year>/<program>/edit', methods=['GET', 'POST'])
