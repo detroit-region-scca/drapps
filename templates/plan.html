@@ -105,13 +105,19 @@
                 <thead><tr><th class="ps-3">Month</th><th>Event or item</th><th class="num">Plan</th><th class="num">Budget</th><th class="num pe-3">Actual</th></tr></thead>
                 <tbody>{% for ln in p.lines %}<tr>
                     <td class="ps-3 text-muted">{{ months[ln.month - 1] if ln.month else '' }}</td>
-                    <td>{{ ln.item }}{% if ln.register %} <a class="small ms-1 no-print text-nowrap" href="{{ ln.register }}">Register event</a>{% endif %}{% if ln.note %}<div class="small text-muted">{{ ln.note }}</div>{% endif %}</td>
+                    <td>{{ ln.item }}{% if ln.account %} <span class="small text-muted">· {{ ln.account }}</span>{% endif %}{% if ln.register %} <a class="small ms-1 no-print text-nowrap" href="{{ ln.register }}">Register event</a>{% endif %}{% if ln.note %}<div class="small text-muted">{{ ln.note }}</div>{% endif %}</td>
                     <td class="num">{{ money(ln.net) }}</td><td class="num">{{ money(ln.budget) }}</td><td class="num pe-3">{% if ln.event_code %}<a href="{{ url_for('bud.detail', code=ln.event_code) }}">{{ money(ln.actual) }}</a>{% else %}<span class="text-muted">·</span>{% endif %}</td>
                 </tr>{% else %}<tr><td colspan="5" class="ps-3 text-muted">No plan yet.</td></tr>{% endfor %}
                 {% if p.lines %}<tr class="total-row"><td class="ps-3" colspan="2">Program total</td><td class="num">{{ money(p.net) }}</td><td class="num">{{ money(p.lines|selectattr('budget')|sum(attribute='budget') or none) }}</td><td class="num pe-3">{{ money(a.net if a else none) }}</td></tr>{% endif %}
                 </tbody></table></div></div>
         </div>
         <div class="col-lg-5">
+            {% if accts %}<h2 class="h6 text-muted">By QuickBooks account</h2>
+            <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table table-sm mb-0">
+                <thead><tr><th class="ps-3">Account</th><th class="num">Plan</th><th class="num pe-3">{{ (prev ~ (' so far' if prev|int == now_year else ' actual')) if future else 'Actual' }}</th></tr></thead>
+                <tbody>{% for r in accts %}<tr><td class="ps-3">{{ r.account or 'No QuickBooks account' }}{% if not r.account %}<div class="small text-muted">{{ r['items']|join(', ') }}</div>{% endif %}</td>
+                    <td class="num">{{ cents(r.plan) }}</td><td class="num pe-3">{{ cents(r.last if future else r.actual) }}</td></tr>{% endfor %}</tbody>
+            </table></div></div>{% endif %}
             <h2 class="h6 text-muted">QuickBooks{% if as_of %}, as of {{ as_of }}{% endif %}</h2>
             {% if a %}
             <div class="card mb-3"><div class="card-body p-0"><table class="table table-sm mb-0">
@@ -151,6 +157,10 @@
                     <div class="col-4 col-md-2"><input name="net" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0" value="{{ '' if ln.net is none or ln.net == '' else ('%.0f'|format(ln.net) if ln.net == ln.net|round else ln.net) }}"></div>
                     <div class="col-3 col-md-2"><input name="note" class="form-control form-control-sm" placeholder="Note" value="{{ ln.note or '' }}"></div>
                     <div class="col-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)">✕</button></div>
+                    <div class="col-12 col-md-5"><select name="account" class="form-select form-select-sm text-muted" title="The QuickBooks account this is booked to" aria-label="QuickBooks account">
+                        <option value="">QuickBooks account: not set</option>{% for sec, acc in accounts %}<option {{ 'selected' if ln.account == acc }}>{{ acc }}</option>{% endfor %}
+                        {% if ln.account and ln.account not in accounts|map(attribute=1)|list %}<option selected>{{ ln.account }}</option>{% endif %}
+                    </select></div>
                     {% if reg %}<div class="col-12 col-md-5"><select name="code" class="form-select form-select-sm text-muted" title="The registered event this line became">
                         <option value="">Registered event: none yet</option>{% for x in reg %}<option value="{{ x.code }}" data-name="{{ x.e.event_name }}" data-month="{{ x.e.date[5:7]|int }}" {% if ln.event_code == x.code %}selected{% endif %}>{{ x.e.date[5:] }} · {{ x.e.event_name }} {{ x.code }}</option>{% endfor %}
                     </select></div>{% else %}<input type="hidden" name="code" value="{{ ln.event_code or '' }}">{% endif %}

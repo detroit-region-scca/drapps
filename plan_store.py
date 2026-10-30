@@ -20,12 +20,12 @@ from filelock import FileLock
 import qbo_logic
 from storage import DATA_DIR, open_book, worksheet
 
-PLAN_COLS = ['year', 'program', 'item', 'month', 'net', 'event_code', 'note', 'sort']
+PLAN_COLS = ['year', 'program', 'item', 'month', 'net', 'event_code', 'note', 'sort', 'account']    # account: the QuickBooks account it is booked to
 PROG_COLS = ['year', 'program', 'director', 'email', 'notes', 'updated', 'updated_by']
 EXC_COLS = ['key', 'kind', 'date', 'name', 'amount', 'detail', 'link', 'as_of']
 CACHE_SECONDS = 15
 SAVE_LOCK = os.path.join(DATA_DIR, 'plan_save.lock')
-RANGES = ['Plan!A:H', 'Programs!A:G', 'QBO Programs!A:F', 'QBO Status!A:C', 'QBO Exceptions!A:H', 'Reviewed!A:D', 'QBO Monthly!A:E']
+RANGES = ['Plan!A:I', 'Programs!A:G', 'QBO Programs!A:F', 'QBO Status!A:C', 'QBO Exceptions!A:H', 'Reviewed!A:D', 'QBO Monthly!A:E']
 
 _lock = threading.Lock()
 _cache = {}
@@ -70,7 +70,7 @@ def _snapshot():
         ln['year'], ln['program'], ln['item'], ln['note'] = str(ln['year']), str(ln['program']), str(ln['item']), str(ln['note'])
         ln['net'], ln['sort'] = _num(ln['net']), _num(ln['sort']) or 0
         ln['month'] = int(ln['month']) if _num(ln['month']) else None
-        ln['event_code'] = str(ln['event_code'])
+        ln['event_code'], ln['account'] = str(ln['event_code']), str(ln['account'])
     progs = _rows(vr[1], PROG_COLS)
     for p in progs:
         p.update({k: str(p[k]) for k in PROG_COLS})
@@ -169,9 +169,9 @@ def save(year, program, info, lines):
         if len(rows) + 1 > lw.row_count:
             lw.add_rows(len(rows) + 1 - lw.row_count + 200)
         if rows:
-            lw.update(rows, f'A2:H{len(rows) + 1}', value_input_option='RAW')
+            lw.update(rows, f'A2:I{len(rows) + 1}', value_input_option='RAW')
         if lw.row_count > len(rows) + 1:
-            lw.batch_clear([f'A{len(rows) + 2}:H{lw.row_count}'])
+            lw.batch_clear([f'A{len(rows) + 2}:I{lw.row_count}'])
         refresh()
 
 
@@ -315,3 +315,27 @@ def outstanding():
     rows.sort(key=lambda r: r['date'])
     _cache['outstanding'] = (time.time(), rows)
     return rows
+
+
+def accounts(program, years):
+    """The QuickBooks accounts a program's money has been booked to in these years: [(section, account)], income first."""
+    seen = {}
+    for y in years:
+        for ln in (actuals(y)[0].get(program) or {}).get('lines', []):
+            seen.setdefault(ln['account'], ln['section'])
+    return sorted(((sec, acc) for acc, sec in seen.items()), key=lambda x: (x[0] != 'Income', x[1]))
+
+
+def by_account(lines, actual):
+    """Plan against actual per QuickBooks account: [{'account', 'plan', 'actual', 'items'}]. Plan is the sum of the
+    lines booked to it (profit sign: income +, cost -); actual is QuickBooks' amount with the same sign. Lines with no
+    account (a reserve, a purchase with no account yet) are listed under ''."""
+    rows = {}
+    for ln in lines:
+        r = rows.setdefault(ln.get('account') or '', {'account': ln.get('account') or '', 'plan': 0.0, 'actual': None, 'items': []})
+        r['plan'] = round(r['plan'] + (ln['net'] or 0), 2)
+        r['items'].append(ln['item'])
+    for a in (actual or {}).get('lines', []):
+        r = rows.setdefault(a['account'], {'account': a['account'], 'plan': None, 'actual': None, 'items': []})
+        r['actual'] = round((r['actual'] or 0) + (a['amount'] if a['section'] == 'Income' else -a['amount']), 2)
+    return sorted(rows.values(), key=lambda r: (r['account'] == '', -(abs(r['plan'] or 0) + abs(r['actual'] or 0))))

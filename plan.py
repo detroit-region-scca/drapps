@@ -173,9 +173,15 @@ def detail(year, program):
             # "Register event" opens Add event filled in from this line, tied to it once saved.
             ln['register'] = register_url(year, program, ln)
     prev = str(int(year) - 1)
+    # Plan against QuickBooks account by account, with last year's actual beside it for a future plan.
+    accts = P.by_account(p['lines'], act.get(program))
+    last = {r['account']: r['actual'] for r in P.by_account([], P.actuals(prev)[0].get(program))}
+    for r in accts:
+        r['last'] = last.get(r['account'])
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
                                                a=act.get(program), as_of=as_of, events=_event_actuals(program, year),
-                                               prev=prev, prev_lines=bool(P.plan(prev).get(program, {}).get('lines'))))
+                                               prev=prev, prev_lines=bool(P.plan(prev).get(program, {}).get('lines')),
+                                               accts=accts, future=int(year) > date.today().year, now_year=date.today().year))
 
 
 @bp.route('/<year>/<program>/edit', methods=['GET', 'POST'])
@@ -193,7 +199,8 @@ def edit(year, program):
         session['who'] = who
         lines, errors = [], []
         reg_events = {x['code']: x['e'] for x in _event_actuals(program, year)}
-        for item, month, net, note, code in zip(f.getlist('item'), f.getlist('month'), f.getlist('net'), f.getlist('note'), f.getlist('code')):
+        for item, month, net, note, code, account in zip(f.getlist('item'), f.getlist('month'), f.getlist('net'), f.getlist('note'), f.getlist('code'),
+                                                         f.getlist('account') or [''] * len(f.getlist('item'))):
             item, note, v = item.strip(), note.strip(), _money(net)
             if code in reg_events:
                 # A line tied to a registered event takes the event's name and month; the event is the record.
@@ -206,7 +213,8 @@ def edit(year, program):
                 continue
             if code and code in [ln['event_code'] for ln in lines]:
                 errors.append(f'{code} is picked on two lines; an event goes with one plan line.')
-            lines.append({'item': item or 'Other', 'month': int(month) if month.isdigit() else '', 'net': v, 'note': note, 'event_code': code})
+            lines.append({'item': item or 'Other', 'month': int(month) if month.isdigit() else '', 'net': v, 'note': note, 'event_code': code,
+                          'account': account})
         # Director and email come from the officials directory; the form does not set them.
         d_name, d_mail = O.director(program)
         info = {'director': d_name, 'email': d_mail, 'notes': f.get('notes', '').strip(),
@@ -216,7 +224,7 @@ def edit(year, program):
                 flash(msg, 'danger')
             return render_template('plan.html', **_ctx(view='edit', year=year, prev=prev, program=program, name=names[program],
                                                        info=info, lines=lines, ref=_reference(program, prev),
-                                                       reg=_event_actuals(program, year))), 400
+                                                       reg=_event_actuals(program, year), accounts=_accounts(program, year))), 400
         P.save(year, program, info, lines)
         total = round(sum(ln['net'] or 0 for ln in lines), 2)
         log_audit_event('PLAN_SAVED', who, {'year': year, 'program': program, 'lines': len(lines), 'net': total})
@@ -253,7 +261,14 @@ def edit(year, program):
                       'event_code': x['code']})
     lines = sorted(list(lines) + added, key=lambda ln: ln['month'] or 13) if added else lines
     return render_template('plan.html', **_ctx(view='edit', year=year, prev=prev, program=program, name=names[program], info=info,
-                                               lines=lines, copied=copied, added=len(added), ref=_reference(program, prev), reg=reg))
+                                               lines=lines, copied=copied, added=len(added), ref=_reference(program, prev), reg=reg,
+                                               accounts=_accounts(program, year)))
+
+
+def _accounts(program, year):
+    """The QuickBooks accounts this program's money goes to (from the last three years), for the plan form."""
+    y = int(year)
+    return P.accounts(program, [str(y - 2), str(y - 1), str(y)])
 
 
 def _reference(program, year):
