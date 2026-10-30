@@ -9,15 +9,24 @@ def keys(items, done=True):
     return [i['key'] for i in items if i['done'] == done]
 
 
-def test_chair_submitting_with_approved_budget_is_ready():
-    items = L.review(req(), 'approved', 1000, 200, chair='Patrick Smith')
+CHAIR = L.add('', 'chair', 'Pat Smith', '2026-10-01', 'by email link')
+
+
+def test_director_approval_by_email_with_approved_budget_is_ready():
+    items = L.review(req(approvals=CHAIR), 'approved', 1000, 200)
     assert L.ready(items) and keys(items) == ['receipt', 'chair', 'budget', 'overrun']
 
 
+def test_a_typed_name_never_approves():
+    # The login is a shared password and a typed name: submitting as the director is not an approval.
+    items = L.review(req(sub='Pat Smith'), 'approved', 1000, 0)
+    assert keys(items, False) == ['chair']
+
+
 def test_someone_else_needs_chair_and_receipt():
-    items = L.review(req(sub='Lee Brown', receipts=''), 'approved', 1000, 0, chair='Pat Smith')
+    items = L.review(req(sub='Lee Brown', receipts=''), 'approved', 1000, 0)
     assert keys(items, False) == ['receipt', 'chair']
-    assert L.waiting_on(items) == ['receipt', 'chair approval']
+    assert L.waiting_on(items) == ['receipt', 'director approval']
 
 
 def test_same_last_name_is_not_the_chair():
@@ -26,30 +35,30 @@ def test_same_last_name_is_not_the_chair():
 
 
 def test_no_budget_or_changed_budget_holds_for_board():
-    assert 'budget' in keys(L.review(req(), None, chair='Pat Smith'), False)
-    assert 'budget' in keys(L.review(req(), 'changed', 1000, chair='Pat Smith'), False)
+    assert 'budget' in keys(L.review(req(approvals=CHAIR), None), False)
+    assert 'budget' in keys(L.review(req(approvals=CHAIR), 'changed', 1000), False)
 
 
 def test_over_110_percent_needs_board_and_board_approval_clears_it():
-    r = req(net=300)
-    assert 'overrun' in keys(L.review(r, 'approved', 1000, 801, chair='Pat Smith'), False)
-    assert L.ready(L.review(r, 'approved', 1000, 800, chair='Pat Smith'))
-    r['approvals'] = L.add('', 'board', 'Board', '2026-11-12', 'minutes')
-    assert L.ready(L.review(r, 'approved', 1000, 5000, chair='Pat Smith'))
+    r = req(net=300, approvals=CHAIR)
+    assert 'overrun' in keys(L.review(r, 'approved', 1000, 801), False)
+    assert L.ready(L.review(r, 'approved', 1000, 800))
+    r['approvals'] = L.add(CHAIR, 'board', 'Board', '2026-11-12', 'minutes')
+    assert L.ready(L.review(r, 'approved', 1000, 5000))
 
 
 def test_non_event_uses_the_annual_plan():
-    r = req(code='')
-    assert 'budget' in keys(L.review(r, director='Pat Smith'), False)
-    assert L.ready(L.review(r, plan_ok=True, director='Pat Smith'))
+    r = req(code='', approvals=CHAIR)
+    assert 'budget' in keys(L.review(r), False)
+    assert L.ready(L.review(r, plan_ok=True))
 
 
 def test_over_limit_needs_second_signer():
-    r = req(net=2600)
-    items = L.review(r, 'approved', 5000, 0, chair='Pat Smith')
+    r = req(net=2600, approvals=CHAIR)
+    items = L.review(r, 'approved', 5000, 0)
     assert keys(items, False) == ['second']
     r['approvals'] = L.add(r['approvals'], 'second', 'Alex Example', '2026-10-29')
-    assert L.ready(L.review(r, 'approved', 5000, 0, chair='Pat Smith'))
+    assert L.ready(L.review(r, 'approved', 5000, 0))
 
 
 def test_points_redemption_only_needs_second_signer_when_large():

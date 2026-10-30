@@ -164,15 +164,8 @@
         <ul class="list-unstyled mb-2">{% for i in items %}
             <li class="mb-1"><span class="{{ 'text-success' if i.done else 'text-warning' }}" aria-hidden="true">{{ '✓' if i.done else '○' }}</span> {{ i.label }}{% if i.by %} <span class="small text-muted">{{ i.by }}</span>{% endif %}</li>{% endfor %}
         </ul>
-        {% if not ready %}<details class="no-print"><summary class="small">Record an approval given in person or at a board meeting</summary>
-            <form method="post" action="{{ url_for('fr.approve', req_id=r.id) }}" class="row g-2 mt-1">
-                <div class="col-sm-4"><select name="role" class="form-select form-select-sm" aria-label="Who approved">{% for k, v in roles.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
-                <div class="col-sm-3"><input name="name" class="form-control form-control-sm" placeholder="Their name" aria-label="Their name"></div>
-                <div class="col-sm-3"><input name="note" class="form-control form-control-sm" placeholder="Board: meeting date" aria-label="Note"></div>
-                <div class="col-sm-2"><button class="btn btn-sm btn-outline-light w-100">Record</button></div>
-            </form>
-            <form method="post" action="{{ url_for('fr.ask', req_id=r.id) }}" class="mt-2"><button class="btn btn-link btn-sm p-0">Email the approval links again</button></form>
-        </details>{% endif %}
+        {% if not ready %}<div class="small text-muted no-print">Approvals only come from the emailed links, sent to each official's own address, so no one can approve inside the app.
+            <form method="post" action="{{ url_for('fr.ask', req_id=r.id) }}" class="d-inline"><button class="btn btn-link btn-sm p-0 align-baseline">Email the approval links again</button></form></div>{% endif %}
     </div>{% endif %}
     <div class="row g-3 no-print">
         <div class="col-lg-8">{% if not ready %}<div class="card p-3 h-100 text-muted"><div class="section-label">Mark paid</div>Waiting on the approvals above. Region policy: no payment until they are in.</div>{% else %}<form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">
@@ -219,7 +212,9 @@
         {% if msg %}<div class="alert alert-info mb-0">{{ msg }}</div>
         {% else %}
         <div class="mb-2">Approving as {{ role|lower }}{% if name %} ({{ name }}){% endif %}.</div>
-        <form method="post" class="mb-3"><input type="hidden" name="action" value="approve"><button class="btn btn-accent px-4">Approve</button></form>
+        <form method="post" class="mb-3 d-flex flex-wrap gap-2 align-items-end"><input type="hidden" name="action" value="approve">
+            {% if role_key == 'board' %}<div><label class="form-label small" for="meeting">Board meeting that approved it</label><input type="date" name="meeting" id="meeting" class="form-control" required></div>{% endif %}
+            <button class="btn btn-accent px-4">{{ 'Confirm board approval' if role_key == 'board' else 'Approve' }}</button></form>
         <form method="post" class="d-flex gap-2"><input type="hidden" name="action" value="reject">
             <input name="note" class="form-control" placeholder="Reason to reject" aria-label="Reason to reject"><button class="btn btn-outline-danger">Reject</button></form>
         {% endif %}

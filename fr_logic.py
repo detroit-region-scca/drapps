@@ -9,12 +9,16 @@ Policy (Detroit Region policies, Financial Policy II.A, and Bylaws Article VIII)
 
 Approvals are kept on the request as "role|name|date|note" entries joined by "; ".
 A board approval (with the meeting date) covers both budget items.
+
+Every approval comes from an emailed link sent to the official's address in the read-only officials list (fr.py). The
+app login is one shared password and a typed name, so nothing typed into the app (a name, an approval) can stand in
+for one: a director's own request is approved from the director's inbox like anyone else's.
 """
 import re
 
 SECOND_SIGNER_LIMIT = 2500.00
 OVERRUN = 1.10
-ROLES = {'chair': 'Event chair or program director', 'second': 'Second signer (RE or ARE)', 'board': 'Board'}
+ROLES = {'chair': 'Program director', 'second': 'Second signer (RE or ARE)', 'board': 'Board (confirmed by the RE or ARE)'}
 
 
 def parse(text):
@@ -48,7 +52,7 @@ def is_points(r):
     return r.get('event_name') == 'Worker points redemption'
 
 
-def review(r, budget_status=None, budget_expense=None, spent=0.0, plan_ok=False, chair='', director=''):
+def review(r, budget_status=None, budget_expense=None, spent=0.0, plan_ok=False):
     """What the request still needs: [{'key', 'label', 'done', 'by'}] in order.
 
     budget_status: 'approved', 'changed', 'budget' or None (the event's budget, see bud._status)
@@ -67,15 +71,8 @@ def review(r, budget_status=None, budget_expense=None, spent=0.0, plan_ok=False,
     net = r.get('net') or 0
     if not is_points(r):
         item('receipt', 'Receipt or invoice attached', r.get('receipts_url'))
-        sub = r.get('submitter_name')
-        if 'chair' in got:
-            item('chair', 'Approved by the event chair or program director', True, by(got['chair']))
-        elif chair and same_person(sub, chair):
-            item('chair', 'Approved by the event chair or program director', True, f'{sub}, the event chair, submitted it')
-        elif director and same_person(sub, director):
-            item('chair', 'Approved by the event chair or program director', True, f'{sub}, the program director, submitted it')
-        else:
-            item('chair', 'Approved by the event chair or program director', False)
+        c = got.get('chair')
+        item('chair', 'Approved by the program director', c, by(c) if c else '')
         board = got.get('board')
         if r.get('event_code'):
             ok = budget_status == 'approved'
@@ -101,6 +98,6 @@ def ready(items):
 
 def waiting_on(items):
     """Short names for what is missing, for the list and emails."""
-    names = {'receipt': 'receipt', 'chair': 'chair approval', 'budget': 'board (budget)', 'overrun': 'board (over budget)',
+    names = {'receipt': 'receipt', 'chair': 'director approval', 'budget': 'board (budget)', 'overrun': 'board (over budget)',
              'second': 'second signer'}
     return [names[i['key']] for i in items if not i['done']]

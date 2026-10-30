@@ -82,7 +82,7 @@ class Approvals:
         spent = ((self.qbo.get(code) or {}).get('totals', {}).get('expense') or 0.0) if code else 0.0
         spent += sum(x['net'] for x in self.reqs if code and x['event_code'] == code and x['status'] == 'Submitted' and x['id'] != r['id'])
         plan = self._plan(r['submitted'][:4]).get(r['program'], {})
-        return FL.review(r, status, expense, round(spent, 2), bool(plan.get('lines')), (b or {}).get('chair', ''), self.director(r)[0])
+        return FL.review(r, status, expense, round(spent, 2), bool(plan.get('lines')))
 
 
 def _serializer():
@@ -95,27 +95,38 @@ def _link(rid, role, name, mail):
 
 
 def ask_approvals(rid, roles=None):
-    """Email whoever still has to approve: the program director for the chair approval, the RE and ARE over the limit."""
+    """Email whoever still has to approve, at their address in the read-only officials list: the program director, the
+    RE and ARE as second signers over the limit, and the RE and ARE to confirm a board approval when the budget or
+    annual plan does not cover the request. Approving is only possible from these links."""
     r = F.get(rid)
     if not r or r['status'] != 'Submitted':
         return []
     a = Approvals()
-    missing = {i['key'] for i in a.items(r) if not i['done']} & set(roles or ('chair', 'second'))
+    missing = {i['key'] for i in a.items(r) if not i['done']}
+    if missing & {'budget', 'overrun'}:
+        missing.add('board')
+    missing &= set(roles or ('chair', 'second', 'board'))
     to = []
     if 'chair' in missing:
         name, mail = a.director(r)
         if mail:
             to.append(('chair', name, mail))
-    if 'second' in missing:
-        to += [('second', n, m) for n, m in O.signers()]
+    for role in ('second', 'board'):
+        if role in missing:
+            to += [(role, n, m) for n, m in O.signers()]
+    why = {'chair': 'Region policy asks the program director to approve each expense before the treasurer pays.',
+           'second': f'It is over ${FL.SECOND_SIGNER_LIMIT:,.0f}, so the bylaws ask the RE or ARE to approve it as second signer.',
+           'board': 'Its event budget or annual plan does not cover it yet, so it needs the board. If the board approved it, '
+                    'confirm with the meeting date; if not, please put it on the next board agenda.'}
     for role, name, mail in to:
         body = '\n'.join([
-            f"{r['submitter_name']} asked the region to pay {r['payee_name']} ${r['net']:,.2f} ({rid}).",
+            f"{r['submitter_name']} asked the region to pay {r['payee_name'] or '(payee not given)'} ${r['net']:,.2f} ({rid}).",
             f"For: {r['event_name'] or 'program ' + r['program']} {r['event_code']}", '',
             *[f"  {ln['date']}  {ln['description']}  ${ln['amount']:,.2f}" for ln in r['lines']], '',
-            f"Region policy asks the {FL.ROLES[role].lower()} to approve it before the treasurer pays.",
-            f"Approve or reject (no password needed): {_link(rid, role, name, mail)}"])
-        send_mail(f"Please approve funds request {rid}: {r['payee_name']} ${r['net']:,.2f}", body, mail)
+            why[role],
+            f"Approve or reject (no password needed; the link only works for you): {_link(rid, role, name, mail)}"])
+        subject = ('Board approval for' if role == 'board' else 'Please approve') + f" funds request {rid}: {r['payee_name']} ${r['net']:,.2f}"
+        send_mail(subject, body, mail)
     return [m for _, _, m in to]
 
 
@@ -257,35 +268,13 @@ def _approved(rid, role, who, note=''):
                   f"{request.url_root.rstrip('/')}{url_for('fr.detail', req_id=rid)}")
 
 
-@bp.route('/<req_id>/approve', methods=['POST'])
-@login_required
-def approve(req_id):
-    """Record an approval given outside the app (in person, by text, in the board minutes)."""
-    if (g := _guard()):
-        return g
-    F.refresh()
-    r = F.get(req_id)
-    role, note = request.form.get('role'), request.form.get('note', '').strip()
-    name = request.form.get('name', '').strip()
-    if not r or r['status'] != 'Submitted' or role not in FL.ROLES or not name:
-        flash('Pick who approved it and enter their name.', 'danger')
-        return redirect(url_for('fr.detail', req_id=req_id))
-    if role == 'board' and not note:
-        flash('Give the board meeting date or minutes for a board approval.', 'danger')
-        return redirect(url_for('fr.detail', req_id=req_id))
-    who = session.get('who') or name
-    _approved(req_id, role, name, note if role == 'board' else f'recorded by {who}' + (f': {note}' if note else ''))
-    flash(f'Approval recorded on {req_id}.', 'success')
-    return redirect(url_for('fr.detail', req_id=req_id))
-
-
 @bp.route('/<req_id>/ask', methods=['POST'])
 @login_required
 def ask(req_id):
     if (g := _guard()):
         return g
     sent = ask_approvals(req_id)
-    flash(f"Asked {', '.join(sent)} again." if sent else 'Nobody to email: no director email on the annual plan, or no signers set.',
+    flash(f"Emailed {', '.join(sorted(set(sent)))}." if sent else 'Nobody to email: this program has no director in the officials list. Ask the treasurer.',
           'success' if sent else 'warning')
     return redirect(url_for('fr.detail', req_id=req_id))
 
@@ -333,9 +322,16 @@ def approve_link(token):
             send_mail(f"Funds request {r['id']} rejected by {who}", note)
             msg = "Rejected. The treasurer has been told."
         else:
-            _approved(r['id'], t['role'], who, f"by email link ({t['email']})")
+            note = f"by email link ({t['email']})"
+            if t['role'] == 'board':
+                try:
+                    note = f"board meeting {date.fromisoformat(request.form.get('meeting', '')).isoformat()}, confirmed {note}"
+                except ValueError:
+                    flash('Give the date of the board meeting that approved it.', 'danger')
+                    return redirect(request.url)
+            _approved(r['id'], t['role'], who, note)
             msg = 'Approved. Thank you; the treasurer has it from here.'
-    return render_template('fr.html', **_ctx(view='link', r=r, role=FL.ROLES[t['role']], name=t['name'], msg=msg))
+    return render_template('fr.html', **_ctx(view='link', r=r, role=FL.ROLES[t['role']], role_key=t['role'], name=t['name'], msg=msg))
 
 
 @bp.route('/<req_id>/close', methods=['POST'])
