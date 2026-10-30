@@ -14,6 +14,7 @@ import bud_store as B
 import fr_logic as FL
 import fr_store as F
 import officials as O
+from officer import current as officer_current, officer_required
 import plan_store as P
 from utils import load_events, load_programs, log_audit_event, login_required, send_mail
 
@@ -24,7 +25,7 @@ ADDR = ('address', 'city')
 
 def _ctx(**kw):
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Funds Requests", who=session.get('who', ''),
-                categories=F.CATEGORIES, methods=F.METHODS, **kw)
+                categories=F.CATEGORIES, methods=F.METHODS, officer=officer_current(), **kw)
 
 
 def _guard():
@@ -349,6 +350,7 @@ def approve_link(token):
 
 @bp.route('/<req_id>/close', methods=['POST'])
 @login_required
+@officer_required
 def close(req_id):
     if (g := _guard()):
         return g
@@ -357,8 +359,7 @@ def close(req_id):
     if not r:
         flash('Funds request not found.', 'warning')
         return redirect(url_for('fr.home'))
-    who = request.form.get('entered_by', '').strip() or session.get('who', '') or 'Unknown'
-    session['who'] = who
+    who = officer_current()['name']      # an officer signed in by email, not the typed app name
     action = request.form.get('action')
     if action == 'paid':
         if not FL.ready(Approvals().items(r)):

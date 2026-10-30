@@ -169,6 +169,11 @@
         {% if not ready %}<div class="small text-muted no-print">Approvals only come from the emailed links, sent to each official's own address, so no one can approve inside the app.
             <form method="post" action="{{ url_for('fr.ask', req_id=r.id) }}" class="d-inline"><button class="btn btn-link btn-sm p-0 align-baseline">Email the approval links again</button></form></div>{% endif %}
     </div>{% endif %}
+    {% if not officer %}
+    <div class="card p-3 text-muted no-print"><div class="section-label">Pay or reject</div>
+        {% if ready %}Every approval is in.{% else %}Waiting on the approvals above.{% endif %} Marking it paid or rejecting it is for the treasurer, RE or ARE, signed in by an emailed link:
+        <a href="{{ url_for('officer.signin', next=request.path) }}">officer sign-in</a>. Approvers can reject from their email link.</div>
+    {% else %}
     <div class="row g-3 no-print">
         <div class="col-lg-8">{% if not ready %}<div class="card p-3 h-100 text-muted"><div class="section-label">Mark paid</div>Waiting on the approvals above. Region policy: no payment until they are in.</div>{% else %}<form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">
             <input type="hidden" name="action" value="paid">
@@ -179,26 +184,27 @@
                     <div class="mt-1"><button type="button" class="btn btn-link btn-sm p-0" onclick="document.getElementById('paidRef').value='Region card'">Paid on the region card</button></div></div>
                 <div class="col-sm-4"><label class="form-label small" for="paidDate">Date paid</label><input type="date" name="paid_date" id="paidDate" class="form-control" value="{{ today }}"></div>
                 <div class="col-sm-3"><label class="form-label small" for="paidAmt">Amount</label><input name="paid_amount" id="paidAmt" class="form-control text-end" inputmode="decimal" value="{{ '%.2f'|format(r.net) }}"></div>
-                <input type="hidden" name="entered_by" value="{{ session.get('who', '') }}">
+                
                 <div class="col-sm-5 d-flex align-items-end"><button class="btn btn-accent w-100">Mark paid</button></div>
             </div>
-            <div class="form-text">Book it in QBO to the event's project as usual; this records that it was paid.</div>
+            <div class="form-text">This only records the payment here, as {{ officer.name }}. Book it in QuickBooks to the event's project yourself, as usual.</div>
         </form>{% endif %}</div>
         <div class="col-lg-4"><form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">
-            <input type="hidden" name="action" value="reject"><input type="hidden" name="entered_by" value="{{ session.get('who', '') }}">
+            <input type="hidden" name="action" value="reject">
             <div class="section-label">Reject</div>
             <label class="form-label small" for="rejNote">Why</label>
             <input name="note" id="rejNote" class="form-control mb-2" placeholder="Duplicate, no receipt…">
             <button class="btn btn-outline-danger">Reject</button>
         </form></div>
     </div>
+    {% endif %}
     {% else %}
     <div class="card p-3">
         {% if r.status == 'Paid' %}<div>Paid {{ r.paid_date }} · {{ r.paid_ref }} · {{ money(r.paid_amount) }} · recorded by {{ r.closed_by }}</div>
         {% else %}<div>Rejected by {{ r.closed_by }}: {{ r.closed_note }}</div>{% endif %}
         {% if r.status == 'Paid' and r.closed_note %}<div class="text-muted small">{{ r.closed_note }}</div>{% endif %}
         {% for a in approvals %}<div class="text-muted small">{{ roles[a.role] }}: {{ a.name }}, {{ a.date }}{% if a.note %} ({{ a.note }}){% endif %}</div>{% endfor %}
-        <form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Reopen {{ r.id }}?')">Reopen</button></form>
+        {% if officer %}<form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Reopen {{ r.id }}?')">Reopen</button></form>{% endif %}
     </div>
     {% endif %}
 
