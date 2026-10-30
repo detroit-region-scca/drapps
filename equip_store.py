@@ -25,7 +25,7 @@ TASK_COLS = ['id', 'task', 'about', 'due', 'repeat_months', 'cost', 'owner', 'no
              'qbo_check', 'account']
 # QuickBooks accounts Operations money is booked to; a bill or item on any other account (a program's) is not Operations'.
 ACCOUNTS = ['Operations Professional Services', 'Operations Storage', 'Operations Repair & Maintenance', 'Operations Supplies',
-            'Operations Travel', 'Operations Treasurer', 'Operations Miscellaneous', 'Capital Equipment:Race Equipment',
+            'Operations Travel', 'Operations Miscellaneous', 'Capital Equipment:Race Equipment',
             'Capital Equipment:Rallycross Equipment', 'Capital Equipment:Solo Equipment', 'Capital Equipment:Equipment in Storage']
 STORAGE_ACCOUNT = 'Operations Storage'
 # How often, as people say it (the sheet keeps months; blank = once).
