@@ -94,6 +94,19 @@ def _link(rid, role, name, mail):
     return f"{request.url_root.rstrip('/')}{url_for('fr.approve_link', token=token)}"
 
 
+def approvers(r):
+    """Who gets the approval email for each approval item: {item key: [names]}, from the read-only officials list.
+    An empty list means nobody would be emailed."""
+    name, mail = O.director(r['program'])
+    signers = [n for n, m in O.signers()]
+    return {'chair': [name] if mail else [], 'second': signers, 'budget': signers, 'overrun': signers}
+
+
+def directors():
+    """{program code: director name} for the request form."""
+    return {p: O.director(p)[0] for p in dict(load_programs(), OPS='Operations') if O.director(p)[1]}
+
+
 def ask_approvals(rid, roles=None):
     """Email whoever still has to approve, at their address in the read-only officials list: the program director, the
     RE and ARE as second signers over the limit, and the RE and ARE to confirm a board approval when the budget or
@@ -179,7 +192,7 @@ def new():
     events = _events()
     if request.method == 'GET':
         last = session.get('fr_submitter', {})
-        return render_template('fr.html', **_ctx(view='new', events=events, programs=dict(load_programs(), OPS='Operations'), form={}, last=last,
+        return render_template('fr.html', **_ctx(view='new', events=events, programs=dict(load_programs(), OPS='Operations'), directors=directors(), signers=[n for n, m in O.signers()], form={}, last=last,
                                                  pick=request.args.get('event', ''), events_js=_events_js(events, request.args.get('event', '')),
                                                  rows=[{}] * 3))
     f = request.form
@@ -225,7 +238,7 @@ def new():
             flash(e, 'danger')
         rows = [{'date': d, 'description': desc, 'category': c, 'amount': a}
                 for d, desc, c, a in zip(f.getlist('line_date'), f.getlist('line_desc'), f.getlist('line_cat'), f.getlist('line_amount'))]
-        return render_template('fr.html', **_ctx(view='new', events=events, programs=dict(load_programs(), OPS='Operations'), form=f, last={},
+        return render_template('fr.html', **_ctx(view='new', events=events, programs=dict(load_programs(), OPS='Operations'), directors=directors(), signers=[n for n, m in O.signers()], form=f, last={},
                                                  events_js=_events_js(events, f.get('event_code', '')),
                                                  rows=rows or [{}])), 400
     total = round(sum(ln['amount'] for ln in lines), 2)
@@ -253,7 +266,7 @@ def detail(req_id):
         return redirect(url_for('fr.home'))
     items = Approvals().items(r) if r['status'] == 'Submitted' else []
     return render_template('fr.html', **_ctx(view='detail', r=r, today=date.today().isoformat(), items=items, ready=FL.ready(items),
-                                             approvals=FL.parse(r.get('approvals')), roles=FL.ROLES))
+                                             approvals=FL.parse(r.get('approvals')), roles=FL.ROLES, approvers=approvers(r)))
 
 
 def _approved(rid, role, who, note=''):

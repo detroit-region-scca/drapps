@@ -58,7 +58,8 @@
                         <option value="">Select…</option>
                         {% set chosen_prog = form.get('program') or (chosen_ev.program_code if chosen_ev else '') %}
                         {% for code, name in programs.items() %}<option value="{{ code }}" {% if chosen_prog == code %}selected{% endif %}>{{ name }}</option>{% endfor %}
-                    </select></div>
+                    </select>
+                    <div class="form-text" id="approverNote" data-directors='{{ (directors or {})|tojson }}' data-signers="{{ (signers or [])|join(' or ') }}"></div></div>
                 <div class="col-md-8"><label class="form-label" for="eventSel">Event</label>
                     <select name="event_code" class="form-select" id="eventSel" data-chosen="{{ chosen or '' }}">
                         <option value="">Not for one event</option>
@@ -162,7 +163,8 @@
     {% if items %}<div class="card p-3 mb-3">
         <div class="section-label">Approvals</div>
         <ul class="list-unstyled mb-2">{% for i in items %}
-            <li class="mb-1"><span class="{{ 'text-success' if i.done else 'text-warning' }}" aria-hidden="true">{{ '✓' if i.done else '○' }}</span> {{ i.label }}{% if i.by %} <span class="small text-muted">{{ i.by }}</span>{% endif %}</li>{% endfor %}
+            <li class="mb-1"><span class="{{ 'text-success' if i.done else 'text-warning' }}" aria-hidden="true">{{ '✓' if i.done else '○' }}</span> {{ i.label }}{% if i.by %} <span class="small text-muted">{{ i.by }}</span>{% endif %}
+                {% if not i.done and i.key in approvers %}<div class="small ms-3 {{ 'text-muted' if approvers[i.key] else 'text-warning' }}">{% if approvers[i.key] %}Approval email goes to {{ approvers[i.key]|join(' or ') }}{% if i.key in ('budget', 'overrun') %}, to confirm the board approved it{% endif %}.{% else %}No one gets an approval email: this program has no director in the officials list. Ask the treasurer.{% endif %}</div>{% endif %}</li>{% endfor %}
         </ul>
         {% if not ready %}<div class="small text-muted no-print">Approvals only come from the emailed links, sent to each official's own address, so no one can approve inside the app.
             <form method="post" action="{{ url_for('fr.ask', req_id=r.id) }}" class="d-inline"><button class="btn btn-link btn-sm p-0 align-baseline">Email the approval links again</button></form></div>{% endif %}
@@ -256,6 +258,17 @@
         if (keep && allEvents.some(e => e.c === keep && e.p === progSel.value)) evSel.value = keep;
     }
     if (progSel) { progSel.addEventListener('change', fillEvents); fillEvents(); }
+    // Who will get the approval email, so the submitter knows who to nudge.
+    const note = document.getElementById('approverNote');
+    function showApprover() {
+        if (!note || !progSel) return;
+        const d = JSON.parse(note.dataset.directors || '{}')[progSel.value];
+        note.className = 'form-text' + (progSel.value && !d ? ' text-warning' : '');
+        note.textContent = !progSel.value ? '' : d
+            ? `Approval email goes to ${d}` + (note.dataset.signers ? `. Over $2,500, also to ${note.dataset.signers} as second signer.` : '.')
+            : 'No director is listed for this program, so no approval email can go out. Ask the treasurer.';
+    }
+    if (progSel) { progSel.addEventListener('change', showApprover); showApprover(); }
     function syncForm() {
         const self = document.querySelector('[name=method]:checked')?.value === 'reimburse';
         document.getElementById('payeeBox').classList.toggle('d-none', self);
