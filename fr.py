@@ -178,11 +178,12 @@ def home():
     counts = {s: sum(1 for r in reqs if r['status'] == s) for s in ('Submitted', 'Paid', 'Rejected')}
     shown = reqs if status == 'All' else [r for r in reqs if r['status'] == status]
     a = Approvals()
-    for r in shown:
+    for r in reqs:
         if r['status'] == 'Submitted':
             r['waiting'] = FL.waiting_on(a.items(r))
     return render_template('fr.html', **_ctx(view='list', reqs=shown, status=status, counts=counts, year=year, years=years,
-                                             open_total=sum(r['net'] for r in reqs if r['status'] == 'Submitted')))
+                                             open_total=sum(r['net'] for r in reqs if r['status'] == 'Submitted'),
+                                             n_ready=sum(1 for r in reqs if r['status'] == 'Submitted' and not r.get('waiting'))))
 
 
 @bp.route('/new', methods=['GET', 'POST'])

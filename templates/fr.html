@@ -6,7 +6,7 @@
     {{ tab('fr.home', 'Requests', request.endpoint != 'fr.new') }}
     {{ tab('fr.new', 'New request') }}
 {% endblock %}
-{% macro status_badge(s) %}<span class="badge rounded-pill {{ {'Submitted': 'text-bg-warning', 'Paid': 'text-bg-success', 'Rejected': 'text-bg-danger'}.get(s, 'text-bg-secondary') }}">{{ 'Waiting' if s == 'Submitted' else s }}</span>{% endmacro %}
+{% macro status_badge(s) %}<span class="badge rounded-pill {{ {'Submitted': 'text-bg-warning', 'Paid': 'text-bg-success', 'Rejected': 'text-bg-danger'}.get(s, 'text-bg-secondary') }}">{{ 'Open' if s == 'Submitted' else s }}</span>{% endmacro %}
 {% block style %}
         body.app-fr { --accent: #3ecf8e; }
         .method-opt { border: 1px solid var(--border); border-radius: 10px; padding: .75rem 1rem; cursor: pointer; height: 100%; }
@@ -20,13 +20,13 @@
     {% if view == 'list' %}
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="btn-group filter" role="group">
-            {% for s, label in [('Submitted', 'Waiting'), ('Paid', 'Paid'), ('Rejected', 'Rejected'), ('All', 'All')] %}
+            {% for s, label in [('Submitted', 'Open'), ('Paid', 'Paid'), ('Rejected', 'Rejected'), ('All', 'All')] %}
             <a class="btn btn-sm btn-outline-light{% if status == s %} active{% endif %}" href="{{ url_for('fr.home', status=s, year=year) }}">{{ label }}{% if s in counts %} <span class="text-muted">{{ counts[s] }}</span>{% endif %}</a>
             {% endfor %}
         </div>
         <a class="btn btn-sm btn-accent" href="{{ url_for('fr.new') }}">New funds request</a>
     </div>
-    {% if counts.Submitted %}<p class="text-muted">{{ counts.Submitted }} waiting to be paid, {{ money(open_total) }} in all.</p>{% endif %}
+    {% if counts.Submitted %}<p class="text-muted">{{ counts.Submitted }} not paid yet, {{ money(open_total) }} in all{% if n_ready %}: {{ n_ready }} ready to pay{% endif %}{% if counts.Submitted - n_ready > 0 %}, {{ counts.Submitted - n_ready }} waiting on an approval{% endif %}.</p>{% endif %}
     <div class="card"><div class="card-body p-0 table-responsive">
         <table class="table table-hover mb-0">
             <thead><tr><th class="ps-3">Request</th><th>Submitted</th><th>Pay to</th><th>For</th><th>Status</th><th class="num pe-3">Amount</th></tr></thead>
@@ -36,7 +36,7 @@
                 <td class="text-nowrap">{{ r.submitted }}<div class="small text-muted">{{ r.submitter_name }}</div></td>
                 <td>{{ r.payee_name }}<div class="small text-muted">{{ r.method }}</div></td>
                 <td>{{ r.event_name or r.program }} <span class="small text-muted">{{ r.event_code }}</span></td>
-                <td>{% if r.status == 'Submitted' %}{% if r.waiting %}<span class="badge rounded-pill text-bg-warning">Waiting</span><div class="small text-muted">{{ r.waiting|join(', ') }}</div>{% else %}<span class="badge rounded-pill text-bg-info">Ready to pay</span>{% endif %}{% else %}{{ status_badge(r.status) }}{% endif %}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
+                <td>{% if r.status == 'Submitted' %}{% if r.waiting %}<span class="badge rounded-pill text-bg-warning">Needs approval</span><div class="small text-muted">{{ r.waiting|join(', ') }}</div>{% else %}<span class="badge rounded-pill text-bg-info">Ready to pay</span>{% endif %}{% else %}{{ status_badge(r.status) }}{% endif %}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
                 <td class="num pe-3">{{ money(r.net) }}</td></tr>
             {% else %}<tr><td colspan="6" class="text-muted ps-3">Nothing here.</td></tr>{% endfor %}
             </tbody>
