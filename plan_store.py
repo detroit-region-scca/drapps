@@ -21,11 +21,11 @@ import qbo_logic
 from storage import DATA_DIR, open_book, worksheet
 
 PLAN_COLS = ['year', 'program', 'item', 'month', 'net', 'event_code', 'note', 'sort', 'account']    # account: the QuickBooks account it is booked to
-PROG_COLS = ['year', 'program', 'director', 'email', 'notes', 'updated', 'updated_by', 'submitted', 'submitted_by']
+PROG_COLS = ['year', 'program', 'director', 'email', 'notes', 'updated', 'updated_by', 'submitted', 'submitted_by', 'approved', 'approved_by']
 EXC_COLS = ['key', 'kind', 'date', 'name', 'amount', 'detail', 'link', 'as_of']
 CACHE_SECONDS = 15
 SAVE_LOCK = os.path.join(DATA_DIR, 'plan_save.lock')
-RANGES = ['Plan!A:I', 'Programs!A:I', 'QBO Programs!A:F', 'QBO Status!A:C', 'QBO Exceptions!A:H', 'Reviewed!A:D', 'QBO Monthly!A:E']
+RANGES = ['Plan!A:I', 'Programs!A:K', 'QBO Programs!A:F', 'QBO Status!A:C', 'QBO Exceptions!A:H', 'Reviewed!A:D', 'QBO Monthly!A:E']
 
 _lock = threading.Lock()
 _cache = {}
@@ -141,6 +141,26 @@ def mark_reviewed(key, who, note=''):
         refresh()
 
 
+def set_approved(year, program, approved, who):
+    """Record (or clear, with approved='') the board meeting date that approved one program's plan for a year."""
+    year = str(year)
+    with FileLock(SAVE_LOCK), _lock:
+        refresh()
+        progs = _snapshot()[1]
+        at = next((i for i, p in enumerate(progs) if p['year'] == year and p['program'] == program), None)
+        if at is None:
+            raise ValueError('That plan has not been saved yet.')
+        _ws('Programs').update([[approved, who if approved else '']], f'J{at + 2}:K{at + 2}', value_input_option='RAW')
+        refresh()
+
+
+def plan_status(info):
+    """'approved', 'changed' (edited after the board approved it), 'in', 'draft' or '' (nothing saved)."""
+    if info.get('approved'):
+        return 'changed' if info.get('updated', '') > info['approved'] else 'approved'
+    return 'in' if info.get('submitted') else 'draft' if info.get('updated') else ''
+
+
 def _cell(v):
     if v is None:
         return ''
@@ -156,7 +176,8 @@ def save(year, program, info, lines, submit=False):
         all_lines, progs = _snapshot()[:2]
         old = next((p for p in progs if p['year'] == year and p['program'] == program), {})
         info = dict(info, year=year, program=program, updated=date.today().isoformat(),
-                    submitted=old.get('submitted', ''), submitted_by=old.get('submitted_by', ''))
+                    submitted=old.get('submitted', ''), submitted_by=old.get('submitted_by', ''),
+                    approved=old.get('approved', ''), approved_by=old.get('approved_by', ''))
         if submit and not info['submitted']:
             info.update(submitted=date.today().isoformat(), submitted_by=info.get('updated_by', ''))
         pw = _ws('Programs')

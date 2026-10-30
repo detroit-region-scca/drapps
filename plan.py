@@ -13,6 +13,7 @@ import bud_store as B
 import officials as O
 import plan_store as P
 from bud import register_url
+from officer import current as officer_current, officer_required
 from utils import load_events, load_programs, log_audit_event, login_required
 
 bp = Blueprint('plan', __name__, url_prefix='/plan')
@@ -27,7 +28,7 @@ def _programs():
 
 
 def _ctx(**kw):
-    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Annual Plan", who=session.get('who', ''),
+    return dict(officer=officer_current(), plan_status=P.plan_status, title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Annual Plan", who=session.get('who', ''),
                 months=MONTHS, n_exceptions=len(P.exceptions()), **kw)
 
 
@@ -233,6 +234,32 @@ def _account_groups(lines, accts):
         out.append(dict(r, kind=kind, lines=[ln for ln in lines if (ln.get('account') or '') == acc]))
     order = {'income': 0, 'cost': 1, 'capital': 2, 'none': 3}
     return sorted(out, key=lambda g: (order[g['kind']], -abs(g['plan'] or 0), -abs(g['actual'] or g['last'] or 0)))
+
+
+@bp.route('/<year>/<program>/approve', methods=['POST'])
+@login_required
+@officer_required
+def approve(year, program):
+    """Record the board meeting that approved this plan (or clear it). Officers only, signed in by email."""
+    if (g := _guard()):
+        return g
+    year = _year(year)
+    who = officer_current()['name']
+    approved = request.form.get('approved', '').strip()
+    if approved:
+        try:
+            approved = date.fromisoformat(approved).isoformat()
+        except ValueError:
+            flash('The meeting date must be a date.', 'danger')
+            return redirect(url_for('plan.detail', year=year, program=program))
+    try:
+        P.set_approved(year, program, approved, who)
+    except ValueError as e:
+        flash(str(e), 'warning')
+        return redirect(url_for('plan.detail', year=year, program=program))
+    log_audit_event('PLAN_APPROVED' if approved else 'PLAN_UNAPPROVED', who, {'year': year, 'program': program, 'approved': approved})
+    flash(f'Board approval recorded: {approved}.' if approved else 'Board approval cleared.', 'success')
+    return redirect(url_for('plan.detail', year=year, program=program))
 
 
 @bp.route('/<year>/<program>/edit', methods=['GET', 'POST'])
