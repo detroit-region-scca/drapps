@@ -8,6 +8,7 @@
     {{ tab('equip.costs', 'Bills', request.endpoint == 'equip.costs' or (request.endpoint == 'equip.task' and bill)) }}
     {{ tab('equip.items', 'Locations', request.endpoint in ('equip.items', 'equip.item', 'equip.places', 'equip.place')) }}
     {{ tab('equip.documents', 'Documents') }}
+    <li class="nav-item"><a class="nav-link" href="{{ url_for('plan.detail', year=budget_year, program='OPS') }}" title="The {{ budget_year }} Operations plan and budget, in the Annual Plan app">Budget</a></li>
     {{ tab('equip.plan', 'Replacement') }}
 {% endblock %}
 {% macro due_badge(t) -%}
@@ -110,7 +111,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
         <div><div class="page-title m-0">{{ money(total, 0) }} a year <span class="h6 text-muted">about {{ money(total / 12, 0) }} a month</span></div>
             <div class="text-muted small">Everything the region pays on a schedule, whether or not it's used. The last column says what QuickBooks shows for each one.
-                These bills are the Budget column of the <a href="{{ url_for('plan.detail', year=plan_year, program='OPS') }}">{{ plan_year }} Operations plan</a>, by QuickBooks account.</div></div>
+                These bills make up the <a href="{{ url_for('plan.detail', year=budget_year, program='OPS') }}">{{ budget_year }} Operations budget</a>, by QuickBooks account.</div></div>
         {{ editbar(none, url_for('equip.task', bill=1, back=request.path), 'Add a bill') }}
     </div>
     {% for cat, rows in cats %}

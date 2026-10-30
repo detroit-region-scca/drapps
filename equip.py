@@ -26,7 +26,13 @@ SOON_DAYS = 90
 
 def _ctx(**kw):
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Operations", editor=session.get('equip_editor'),
-                categories=E.CATEGORIES, statuses=E.STATUSES, cost_categories=E.COST_CATEGORIES, every_label=E.every_label, accounts=E.ACCOUNTS, **kw)
+                categories=E.CATEGORIES, statuses=E.STATUSES, cost_categories=E.COST_CATEGORIES, every_label=E.every_label, accounts=E.ACCOUNTS, budget_year=budget_year(), **kw)
+
+
+def budget_year():
+    """The Operations budget people are working on: next year's from September (when plans are built), else this year's."""
+    today = date.today()
+    return today.year + 1 if today.month >= 9 else today.year
 
 
 def _guard():
