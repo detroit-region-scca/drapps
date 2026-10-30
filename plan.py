@@ -122,18 +122,6 @@ def _chart(year, plan, as_of):
             'actual': {c: r2(v) for c, v in actual.items()}, 'last': last, 'as_of': as_of}
 
 
-OPS_BUDGET_FROM = 2027      # the first year Operations was budgeted from its records; earlier years had no such budget
-
-
-def _ops_budget_total(year, p):
-    """Operations' budget for the year: what its records say it costs (equip_store.budget) plus the plan's income."""
-    import equip_store as E
-    if not E.enabled() or int(year) < OPS_BUDGET_FROM:
-        return None
-    income = sum(ln['net'] or 0 for ln in p['lines'] if (ln['net'] or 0) > 0)
-    return round(income + sum(r['amount'] for r in E.budget(year, E.items(), E.places(), E.tasks()).values()), 2)
-
-
 def summary(year, plan=None, act=None):
     """Each program's plan, budgeted and actual profit for a year, with its lines and events; and the totals.
     Shared by the Annual Plan page and the treasurer's report."""
@@ -148,8 +136,7 @@ def summary(year, plan=None, act=None):
         kids = _kids(year, code, p, an, future)
         budgets = [k['budget'] for k in kids if k['budget'] is not None]
         if code == OPS and pn is not None:
-            ob = _ops_budget_total(year, p)
-            budgets = [ob] if ob is not None else []
+            budgets = [pn]      # Operations has one budget: its plan
         rows.append({'code': code, 'name': name, 'plan': pn, 'actual': an, 'info': (p or {}).get('info', {}),
                      'budget': round(sum(budgets), 2) if budgets else None, 'diff': _diff(an, pn), 'kids': kids})
     return rows, {k: round(sum(r[k] or 0 for r in rows), 2) for k in ('plan', 'budget', 'actual')}
@@ -202,7 +189,7 @@ def detail(year, program):
     # Operations has no events, so its Budget column comes from the Operations records instead: the bills and the
     # replacement list, by QuickBooks account (equip_store.budget).
     ops_budget = None
-    if by_account and program == OPS and int(year) >= OPS_BUDGET_FROM:
+    if by_account and program == OPS and int(year) >= 2027:      # 2027 was the first budget built from the records
         import equip_store as E
         if E.enabled():
             ops_budget = E.budget(year, E.items(), E.places(), E.tasks())
@@ -211,11 +198,11 @@ def detail(year, program):
     groups = _account_groups(p['lines'], accts) if by_account else []
     for g in groups:
         b = (ops_budget or {}).get(g['account'] or '')
-        g['budget'], g['budget_items'] = (b['amount'], b['items']) if b else (None, [])
-        if ops_budget is not None and g['kind'] == 'income':
-            g['budget'] = g['plan']      # income has no records behind it: the plan's figure, so the totals compare
+        g['records'], g['budget_items'] = (b['amount'], b['items']) if b else (None, [])
+        # The budget is the plan; the records only show what it is made of, and flag a line the bills no longer match.
+        g['drift'] = g['records'] is not None and abs((g['records'] or 0) - (g['plan'] or 0)) >= 1
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
-                                               ops_budget=ops_budget is not None, budget_total=sum(g['budget'] or 0 for g in groups),
+                                               ops_budget=ops_budget is not None,
                                                a=act.get(program), as_of=as_of, events=_event_actuals(program, year),
                                                prev=prev, prev_lines=bool(P.plan(prev).get(program, {}).get('lines')),
                                                accts=accts, future=int(year) > date.today().year, now_year=date.today().year, rows=rows,

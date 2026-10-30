@@ -85,7 +85,7 @@
     <div class="card p-3 mb-3">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
             <div>
-                <div class="page-title m-0">{{ name }} plan for {{ year }}</div>
+                <div class="page-title m-0">{{ name }} {{ 'budget' if program == 'OPS' else 'plan' }} for {{ year }}</div>
                 <div class="text-muted small">{% set d = officials.director(program) %}{% if d[0] %}Director: {{ d[0] }}{% if d[1] %} · {{ d[1] }}{% endif %}{% endif %}
                     {% set st = plan_status(p.info) %}
                     {% if st == 'approved' %}<br><span class="badge rounded-pill text-bg-success">Board approved {{ p.info.approved }}</span> recorded by {{ p.info.approved_by }}
@@ -96,7 +96,7 @@
             </div>
             <div class="d-flex gap-2 no-print">
                 <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">Print</button>
-                {% if p.lines %}<a class="btn btn-sm btn-accent" href="{{ url_for('plan.edit', year=year, program=program) }}">Edit the plan</a>
+                {% if p.lines %}<a class="btn btn-sm btn-accent" href="{{ url_for('plan.edit', year=year, program=program) }}">Edit the {{ 'budget' if program == 'OPS' else 'plan' }}</a>
                 {% else %}{% if prev_lines %}<a class="btn btn-sm btn-accent" href="{{ url_for('plan.edit', year=year, program=program, start='copy') }}">Start from the {{ prev }} plan</a>{% endif %}
                 <a class="btn btn-sm {{ 'btn-outline-light' if prev_lines else 'btn-accent' }}" href="{{ url_for('plan.edit', year=year, program=program) }}">Start a blank plan</a>{% endif %}
             </div>
@@ -108,19 +108,21 @@
             {% if groups %}
             {% set actual_label = (prev ~ (' so far' if prev|int == now_year else ' actual')) if future else ('Actual so far' if year|int == now_year else 'Actual') %}
             {% set heads = {'income': 'Income', 'cost': 'Running costs', 'capital': 'Equipment to buy (Capital Equipment: bought property, not an expense)', 'none': 'Set aside (not in QuickBooks)'} %}
-            <h2 class="h6 text-muted">Plan and actual by QuickBooks account</h2>
+            <h2 class="h6 text-muted">{{ 'Budget' if program == 'OPS' else 'Plan' }} and actual by QuickBooks account</h2>
             <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-                {% set ncol = 4 if ops_budget else 3 %}
-                <thead><tr><th class="ps-3">Account and plan lines</th><th class="num">Plan</th>{% if ops_budget %}<th class="num"><a href="{{ url_for('equip.costs') }}" title="From the Operations records: bills and the replacement list">Budget</a></th>{% endif %}<th class="num pe-3">{{ actual_label }}</th></tr></thead>
+                {% set ncol = 3 %}
+                <thead><tr><th class="ps-3">{{ 'Account' if ops_budget else 'Account and plan lines' }}</th><th class="num">{{ 'Budget' if ops_budget else 'Plan' }}</th><th class="num pe-3">{{ actual_label }}</th></tr></thead>
                 <tbody>{% for g in groups %}{% if loop.first or g.kind != loop.previtem.kind %}<tr><td colspan="{{ ncol }}" class="ps-3 pt-3 small text-uppercase text-muted" style="letter-spacing:.05em">{{ heads[g.kind] }}</td></tr>{% endif %}
-                    <tr class="fw-semibold"><td class="ps-3">{{ g.account or 'Kept in savings (money market)' }}</td><td class="num">{{ money(g.plan) }}</td>{% if ops_budget %}<td class="num">{{ money(g.budget) }}</td>{% endif %}<td class="num pe-3">{{ money(g.last if future else g.actual) }}</td></tr>
-                    {% if ops_budget and g.budget_items %}<tr class="small text-muted"><td class="ps-4" colspan="{{ ncol }}">{% for what, amt in g.budget_items %}{{ what.split("(")[0].strip() }} {{ money(amt) }}{{ ' · ' if not loop.last }}{% endfor %}</td></tr>
+                    <tr class="fw-semibold"><td class="ps-3">{{ g.account or 'Kept in savings (money market)' }}</td><td class="num">{{ money(g.plan) }}</td><td class="num pe-3">{{ money(g.last if future else g.actual) }}</td></tr>
+                    {% if ops_budget and g.budget_items %}<tr class="small text-muted"><td class="ps-4" colspan="{{ ncol }}">{% for what, amt in g.budget_items %}{{ what.split("(")[0].strip() }} {{ money(amt) }}{{ ' · ' if not loop.last }}{% endfor %}
+                        {% if g.drift %}<div class="text-warning">The Operations records now add up to {{ money(g.records) }}; edit the budget to match, or update the records.</div>{% endif %}</td></tr>
+                    {% elif ops_budget and g.drift %}<tr class="small"><td class="ps-4 text-warning" colspan="{{ ncol }}">The Operations records now add up to {{ money(g.records) }}.</td></tr>
                     {% elif g.lines|length > 1 or (g.lines and g.lines[0].item not in (g.account or '')) or (g.lines and g.lines[0].note) %}{% for ln in g.lines %}<tr class="small">
-                        <td class="ps-4">{{ ln.item }}{% if ln.note %}<div class="text-muted">{{ ln.note }}</div>{% endif %}</td><td class="num">{{ money(ln.net) if g.lines|length > 1 else '' }}</td>{% if ops_budget %}<td></td>{% endif %}<td class="pe-3"></td></tr>{% endfor %}{% endif %}
+                        <td class="ps-4">{{ ln.item }}{% if ln.note %}<div class="text-muted">{{ ln.note }}</div>{% endif %}</td><td class="num">{{ money(ln.net) if g.lines|length > 1 else '' }}</td><td class="pe-3"></td></tr>{% endfor %}{% endif %}
                 {% endfor %}
-                <tr class="total-row"><td class="ps-3">Program total</td><td class="num">{{ money(p.net) }}</td>{% if ops_budget %}<td class="num">{{ money(budget_total) }}</td>{% endif %}<td class="num pe-3">{{ money(a.net if a and not future else (last_net if future else none)) }}</td></tr>
+                <tr class="total-row"><td class="ps-3">{{ 'Total' if ops_budget else 'Program total' }}</td><td class="num">{{ money(p.net) }}</td><td class="num pe-3">{{ money(a.net if a and not future else (last_net if future else none)) }}</td></tr>
                 </tbody></table></div></div>
-            {% if ops_budget %}<p class="small text-muted mb-1">Budget is what the <a href="{{ url_for('equip.costs') }}">Operations records</a> say each account costs for the year: every bill, the equipment the <a href="{{ url_for('equip.plan') }}">replacement list</a> buys this year, and the monthly set-aside. Income comes from the plan.</p>{% endif %}
+            {% if ops_budget %}<p class="small text-muted mb-1">Operations has one budget. Under each account are the <a href="{{ url_for('equip.costs') }}">bills</a> and <a href="{{ url_for('equip.plan') }}">equipment</a> from the Operations records that make it up; a line turns amber when the records no longer match.</p>{% endif %}
             {% if as_of %}<p class="small text-muted">Actuals from QuickBooks as of {{ as_of }}. Equipment bought shows in QuickBooks as property, not as an expense, so it has no actual here.</p>{% endif %}
             {% else %}
             <h2 class="h6 text-muted">Plan, events and actuals</h2>
@@ -168,14 +170,14 @@
             <div class="col-6 col-md-4"><label class="form-label small">Board meeting date</label><input type="date" name="approved" class="form-control form-control-sm" required></div>
             <div class="col-6 col-md-4"><button class="btn btn-sm btn-accent w-100">Record board approval</button></div>
         </form>
-        {% else %}<div class="small text-muted">After the board approves this plan, the RE, ARE or treasurer records the meeting date here: <a href="{{ url_for('officer.signin', next=request.path) }}">officer sign-in</a>.</div>{% endif %}
+        {% else %}<div class="small text-muted">After the board approves this {{ 'budget' if program == 'OPS' else 'plan' }}, the RE, ARE or treasurer records the meeting date here: <a href="{{ url_for('officer.signin', next=request.path) }}">officer sign-in</a>.</div>{% endif %}
         {% endif %}
     </div>
     {% endif %}
 
 {% elif view == 'edit' %}
     <div class="crumbs"><a href="{{ url_for('plan.home', year=year) }}">Annual Plan {{ year }}</a> / <a href="{{ url_for('plan.detail', year=year, program=program) }}">{{ name }}</a> / Edit</div>
-    <div class="page-title">{{ name }} plan for {{ year }}</div>
+    <div class="page-title">{{ name }} {{ 'budget' if program == 'OPS' else 'plan' }} for {{ year }}</div>
     <p class="text-muted">List each event or item you expect, the month, and about how much it will make. Use a minus sign for a cost or a loss, like <b>-500</b>. Rough numbers are fine.</p>
     {% if copied %}<div class="alert alert-info py-2">This starts from your {{ prev }} plan. Change what's different, remove what's not happening, and save. <a href="{{ url_for('plan.edit', year=year, program=program) }}">Start blank instead</a></div>{% endif %}
     {% if added %}<div class="alert alert-info py-2">{{ added }} registered event{{ ' is' if added == 1 else 's are' }} already filled in below. Add the profit you expect{{ ' (the budget\'s surplus is there when it has one)' }}, or remove a line that should not be in the plan.</div>{% endif %}
@@ -219,7 +221,7 @@
         </div>
         <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('plan.detail', year=year, program=program) }}">Cancel</a>{% if info.submitted %}<button class="btn btn-accent px-4" name="action" value="save">Save changes</button>
             {% else %}<button class="btn btn-outline-light px-4" name="action" value="draft">Save draft</button>
-            <button class="btn btn-accent px-4" name="action" value="submit" onclick="return confirm('Turn in the plan? You can still change it afterward.')">Turn in the plan</button>{% endif %}</div>
+            <button class="btn btn-accent px-4" name="action" value="submit" onclick="return confirm('Turn it in? You can still change it afterward.')">Turn in the {{ 'budget' if program == 'OPS' else 'plan' }}</button>{% endif %}</div>
         {% if not info.submitted %}<div class="form-text text-end mt-1">Save a draft as often as you like. The plan counts as in only when you turn it in.</div>{% endif %}
     </form>
     </div>
