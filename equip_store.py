@@ -19,10 +19,15 @@ from filelock import FileLock
 from storage import DATA_DIR, open_book, worksheet
 
 ITEM_COLS = ['id', 'name', 'program', 'category', 'place', 'year', 'quantity', 'cost', 'life_years', 'vin', 'plate',
-             'condition', 'status', 'notes', 'docs_url', 'updated', 'updated_by', 'replace_cost', 'replace_year', 'nickname', 'seen']
+             'condition', 'status', 'notes', 'docs_url', 'updated', 'updated_by', 'replace_cost', 'replace_year', 'nickname', 'seen', 'account']
 PLACE_COLS = ['id', 'name', 'address', 'cost_month', 'cost_year', 'account_holder', 'access', 'notes', 'updated', 'updated_by', 'qbo_check']
 TASK_COLS = ['id', 'task', 'about', 'due', 'repeat_months', 'cost', 'owner', 'notes', 'last_done', 'done_by', 'category', 'paid_how', 'auto',
-             'qbo_check']
+             'qbo_check', 'account']
+# QuickBooks accounts Operations money is booked to; a bill or item on any other account (a program's) is not Operations'.
+ACCOUNTS = ['Operations Professional Services', 'Operations Storage', 'Operations Repair & Maintenance', 'Operations Supplies',
+            'Operations Travel', 'Operations Treasurer', 'Operations Miscellaneous', 'Capital Equipment:Race Equipment',
+            'Capital Equipment:Rallycross Equipment', 'Capital Equipment:Solo Equipment', 'Capital Equipment:Equipment in Storage']
+STORAGE_ACCOUNT = 'Operations Storage'
 # How often, as people say it (the sheet keeps months; blank = once).
 FREQUENCIES = [('', 'Once'), (1, 'Monthly'), (3, 'Every 3 months'), (6, 'Every 6 months'), (12, 'Yearly'), (24, 'Every 2 years'),
                (36, 'Every 3 years')]
@@ -34,12 +39,12 @@ LABELS = {
     'Property': ['ID', 'Name', 'Program', 'Category', 'Kept at', 'Year bought', 'Quantity', 'Cost when bought', 'Useful life (years)',
                  'VIN or serial', 'Plate', 'Condition', 'Status', 'Notes', 'Documents link', 'Last updated', 'Updated by',
                  'Replacement cost estimate', 'Replace or buy in (year)', 'Also called (for things other items are kept in)',
-                 'Location last confirmed'],
+                 'Location last confirmed', 'QuickBooks account (for equipment to buy)'],
     'Storage': ['ID', 'Name', 'Address', 'Cost per month', 'Cost per year', 'Account in the name of / paid how', 'Access', 'Notes',
                 'Last updated', 'Updated by', 'Checked against QuickBooks'],
     'Recurring costs and to-dos': ['ID', 'What', 'For', 'Next due', 'Repeats every (months; blank = once)', 'Cost each time', 'Who',
                                    'Notes', 'Last done', 'Done by', 'Cost category', 'Paid how', 'Charged automatically (yes or blank)',
-                                   'Checked against QuickBooks'],
+                                   'Checked against QuickBooks', 'QuickBooks account'],
     'Documents': ['ID', 'Item or place ID', 'For', 'Drive folder', 'Documents needed (comma list; file names start with these words)', 'Notes'],
 }
 NUMERIC = {'year', 'quantity', 'cost', 'life_years', 'cost_month', 'cost_year', 'repeat_months', 'replace_cost', 'replace_year'}
@@ -231,13 +236,13 @@ def recurring_costs(places_rows, tasks_rows):
         if per:
             rows.append({'what': p['name'], 'category': 'Storage', 'every': 1 if p['cost_month'] else 12, 'per_year': round(per, 2),
                          'each': p['cost_month'] or p['cost_year'], 'next': '', 'paid_how': p['account_holder'], 'owner': '', 'kind': 'place',
-                         'id': p['id'], 'qbo': p.get('qbo_check', ''), 'notes': p['notes']})
+                         'id': p['id'], 'qbo': p.get('qbo_check', ''), 'notes': p['notes'], 'account': STORAGE_ACCOUNT})
     for t in tasks_rows:
         if t['repeat_months'] and t['cost']:
             rows.append({'what': t['task'], 'category': t.get('category') or 'Other', 'every': t['repeat_months'],
                          'per_year': round(t['cost'] * 12 / t['repeat_months'], 2), 'each': t['cost'], 'next': t['due'],
                          'paid_how': t.get('paid_how', ''), 'owner': t['owner'], 'kind': 'task', 'id': t['id'], 'qbo': t.get('qbo_check', ''),
-                         'notes': t['notes']})
+                         'notes': t['notes'], 'account': t.get('account', '')})
     return sorted(rows, key=lambda r: -r['per_year'])
 
 
@@ -297,6 +302,37 @@ def locations(items_rows, places_rows):
             other.setdefault(target, []).append(entry(i))
     return (places_out, sorted(people.items()), sorted(other.items()),
             [entry(i) for i in order([i for i in live if where[i['id']][0] == 'unknown'])])
+
+
+def budget(year, items_rows, places_rows, tasks_rows, today=None):
+    """What the Operations records say a year costs, by QuickBooks account, for the Budget column of the Operations
+    annual plan (the way an event budget fills it for a program): every bill on an Operations account for a full year,
+    equipment the replacement list buys that year on its Capital Equipment account, and the monthly replacement
+    set-aside under '' (kept in savings). {account: {'amount': cost as a negative number, 'items': [(what, amount)]}}."""
+    out = {}
+
+    def add(acc, what, amount):
+        r = out.setdefault(acc, {'amount': 0.0, 'items': []})
+        r['amount'] = round(r['amount'] - amount, 2)
+        r['items'].append((what, round(amount, 2)))
+    for c in recurring_costs(places_rows, tasks_rows):
+        if c['account'] in ACCOUNTS:
+            add(c['account'], c['what'], c['per_year'])
+    live = [i for i in items_rows if i['status'] != 'Gone']
+    rp = reserve_plan(live, today)
+    for r in rp['near']:
+        if str(r['year']) == str(year):
+            add(r['it'].get('account') or 'Capital Equipment (no account set)', r['it']['name'], r['cost'])
+    monthly = rp['monthly_without_big'] if rp['big_total'] else rp['monthly']
+    if monthly and int(year) >= int(rp['start_label'][-4:]):
+        add('', f"Replacement set-aside, {money_word(monthly)} a month", monthly * 12)
+    for r in out.values():
+        r['items'].sort(key=lambda x: -x[1])
+    return out
+
+
+def money_word(v):
+    return f"${v:,.0f}"
 
 
 def every_label(months):

@@ -26,7 +26,7 @@ SOON_DAYS = 90
 
 def _ctx(**kw):
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Operations", editor=session.get('equip_editor'),
-                categories=E.CATEGORIES, statuses=E.STATUSES, cost_categories=E.COST_CATEGORIES, every_label=E.every_label, **kw)
+                categories=E.CATEGORIES, statuses=E.STATUSES, cost_categories=E.COST_CATEGORIES, every_label=E.every_label, accounts=E.ACCOUNTS, **kw)
 
 
 def _guard():
@@ -363,7 +363,7 @@ def costs():
         r['how_often'] = E.every_label(r['every'])
     cats = [(c, [r for r in rows if r['category'] == c]) for c in E.COST_CATEGORIES]
     return render_template('equip.html', **_ctx(view='costs', cats=[(c, r) for c, r in cats if r], total=sum(r['per_year'] for r in rows),
-                                                today=date.today().isoformat()))
+                                                today=date.today().isoformat(), plan_year=date.today().year + 1))
 
 
 @bp.route('/costs')

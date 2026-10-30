@@ -106,14 +106,17 @@
             {% set heads = {'income': 'Income', 'cost': 'Running costs', 'capital': 'Equipment to buy (Capital Equipment: bought property, not an expense)', 'none': 'Set aside (not in QuickBooks)'} %}
             <h2 class="h6 text-muted">Plan and actual by QuickBooks account</h2>
             <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-                <thead><tr><th class="ps-3">Account and plan lines</th><th class="num">Plan</th><th class="num pe-3">{{ actual_label }}</th></tr></thead>
-                <tbody>{% for g in groups %}{% if loop.first or g.kind != loop.previtem.kind %}<tr><td colspan="3" class="ps-3 pt-3 small text-uppercase text-muted" style="letter-spacing:.05em">{{ heads[g.kind] }}</td></tr>{% endif %}
-                    <tr class="fw-semibold"><td class="ps-3">{{ g.account or 'Kept in savings (money market)' }}</td><td class="num">{{ money(g.plan) }}</td><td class="num pe-3">{{ money(g.last if future else g.actual) }}</td></tr>
-                    {% if g.lines|length > 1 or (g.lines and g.lines[0].item not in (g.account or '')) or (g.lines and g.lines[0].note) %}{% for ln in g.lines %}<tr class="small">
-                        <td class="ps-4">{{ ln.item }}{% if ln.note %}<div class="text-muted">{{ ln.note }}</div>{% endif %}</td><td class="num">{{ money(ln.net) if g.lines|length > 1 else '' }}</td><td class="pe-3"></td></tr>{% endfor %}{% endif %}
+                {% set ncol = 4 if ops_budget else 3 %}
+                <thead><tr><th class="ps-3">Account and plan lines</th><th class="num">Plan</th>{% if ops_budget %}<th class="num"><a href="{{ url_for('equip.costs') }}" title="From the Operations records: bills and the replacement list">Budget</a></th>{% endif %}<th class="num pe-3">{{ actual_label }}</th></tr></thead>
+                <tbody>{% for g in groups %}{% if loop.first or g.kind != loop.previtem.kind %}<tr><td colspan="{{ ncol }}" class="ps-3 pt-3 small text-uppercase text-muted" style="letter-spacing:.05em">{{ heads[g.kind] }}</td></tr>{% endif %}
+                    <tr class="fw-semibold"><td class="ps-3">{{ g.account or 'Kept in savings (money market)' }}</td><td class="num">{{ money(g.plan) }}</td>{% if ops_budget %}<td class="num">{{ money(g.budget) }}</td>{% endif %}<td class="num pe-3">{{ money(g.last if future else g.actual) }}</td></tr>
+                    {% if ops_budget and g.budget_items %}<tr class="small text-muted"><td class="ps-4" colspan="{{ ncol }}">{% for what, amt in g.budget_items %}{{ what.split("(")[0].strip() }} {{ money(amt) }}{{ ' · ' if not loop.last }}{% endfor %}</td></tr>
+                    {% elif g.lines|length > 1 or (g.lines and g.lines[0].item not in (g.account or '')) or (g.lines and g.lines[0].note) %}{% for ln in g.lines %}<tr class="small">
+                        <td class="ps-4">{{ ln.item }}{% if ln.note %}<div class="text-muted">{{ ln.note }}</div>{% endif %}</td><td class="num">{{ money(ln.net) if g.lines|length > 1 else '' }}</td>{% if ops_budget %}<td></td>{% endif %}<td class="pe-3"></td></tr>{% endfor %}{% endif %}
                 {% endfor %}
-                <tr class="total-row"><td class="ps-3">Program total</td><td class="num">{{ money(p.net) }}</td><td class="num pe-3">{{ money(a.net if a and not future else (last_net if future else none)) }}</td></tr>
+                <tr class="total-row"><td class="ps-3">Program total</td><td class="num">{{ money(p.net) }}</td>{% if ops_budget %}<td class="num">{{ money(budget_total) }}</td>{% endif %}<td class="num pe-3">{{ money(a.net if a and not future else (last_net if future else none)) }}</td></tr>
                 </tbody></table></div></div>
+            {% if ops_budget %}<p class="small text-muted mb-1">Budget is what the <a href="{{ url_for('equip.costs') }}">Operations records</a> say each account costs for the year: every bill, the equipment the <a href="{{ url_for('equip.plan') }}">replacement list</a> buys this year, and the monthly set-aside. Income comes from the plan.</p>{% endif %}
             {% if as_of %}<p class="small text-muted">Actuals from QuickBooks as of {{ as_of }}. Equipment bought shows in QuickBooks as property, not as an expense, so it has no actual here.</p>{% endif %}
             {% else %}
             <h2 class="h6 text-muted">Plan, events and actuals</h2>

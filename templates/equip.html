@@ -109,7 +109,8 @@
     {% elif view == 'costs' %}
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
         <div><div class="page-title m-0">{{ money(total, 0) }} a year <span class="h6 text-muted">about {{ money(total / 12, 0) }} a month</span></div>
-            <div class="text-muted small">Everything the region pays on a schedule, whether or not it's used. The last column says what QuickBooks shows for each one.</div></div>
+            <div class="text-muted small">Everything the region pays on a schedule, whether or not it's used. The last column says what QuickBooks shows for each one.
+                These bills are the Budget column of the <a href="{{ url_for('plan.detail', year=plan_year, program='OPS') }}">{{ plan_year }} Operations plan</a>, by QuickBooks account.</div></div>
         {{ editbar(none, url_for('equip.task', bill=1, back=request.path), 'Add a bill') }}
     </div>
     {% for cat, rows in cats %}
@@ -118,7 +119,7 @@
         <thead><tr><th class="ps-3" style="width: 30%">Bill</th><th>How often</th><th class="num">Each time</th><th class="num">A year</th><th class="pe-3" style="width: 34%">QuickBooks</th></tr></thead>
         <tbody>{% for r in rows %}<tr>
             <td class="ps-3">{% if editor %}<a href="{{ url_for('equip.place', place_id=r.id, edit=1, back=request.path) if r.kind == 'place' else url_for('equip.task', task_id=r.id, back=request.path) }}">{{ r.what }}</a>{% else %}{{ r.what }}{% endif %}
-                <div class="small text-muted">{{ r.paid_how }}</div></td>
+                <div class="small text-muted">{{ r.paid_how }}{% if r.account %} · {{ r.account }}{% endif %}</div></td>
             <td class="small text-nowrap">{{ r.how_often }}{% if r.next %}<div class="text-muted">next {{ r.next }}</div>{% endif %}</td>
             <td class="num">{{ money(r.each, 2) }}</td>
             <td class="num">{{ money(r.per_year, 0) }}</td>
@@ -205,6 +206,8 @@
             <div class="col-6 col-md-2"><label class="form-label small">Useful life (years)</label><input name="life_years" class="form-control" inputmode="numeric" value="{{ '%g'|format(it.life_years) if it.life_years else '' }}"></div>
             <div class="col-6 col-md-3"><label class="form-label small">Replace or buy in (year)</label><input name="replace_year" class="form-control" inputmode="numeric" value="{{ '%d'|format(it.replace_year) if it.replace_year else '' }}" placeholder="blank = bought + life"></div>
             <div class="col-6 col-md-3"><label class="form-label small">Replacement cost estimate</label><input name="replace_cost" class="form-control" inputmode="decimal" value="{{ it.replace_cost or '' }}"></div>
+            <div class="col-md-6"><label class="form-label small">QuickBooks account when bought</label><input name="account" class="form-control" list="acctNames" value="{{ it.account or '' }}">
+                <datalist id="acctNames">{% for a in accounts if a.startswith('Capital') %}<option value="{{ a }}">{% endfor %}</datalist></div>
             <div class="col-md-4"><label class="form-label small">VIN or serial</label><input name="vin" class="form-control" value="{{ it.vin or '' }}"></div>
             <div class="col-6 col-md-2"><label class="form-label small">Plate</label><input name="plate" class="form-control" value="{{ it.plate or '' }}"></div>
             <div class="col-6 col-md-2"><label class="form-label small">Status</label><select name="status" class="form-select">{% for s in statuses %}<option {{ 'selected' if s == (it.status or 'In use') }}>{{ s }}</option>{% endfor %}</select></div>
@@ -300,6 +303,8 @@
         <div class="col-md-5"><label class="form-label small">Paid how</label><input name="paid_how" class="form-control" value="{{ t.paid_how or '' }}" placeholder="Region card, check, funds request…"></div>
         <div class="col-md-3 d-flex align-items-end"><input type="hidden" name="auto" value=""><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="auto" value="yes" id="auto" {{ 'checked' if (t.auto or '')|lower in ('yes', 'y', 'true', '1') }}><label class="form-check-label" for="auto">Charges the card on its own (no one has to do anything)</label></div></div>
         <div class="col-12"><label class="form-label small">Notes</label><input name="notes" class="form-control" value="{{ t.notes or '' }}"></div>
+        <div class="col-md-6"><label class="form-label small">QuickBooks account (puts it in the Operations budget)</label><input name="account" class="form-control" list="acctNames" value="{{ t.account or '' }}">
+            <datalist id="acctNames">{% for a in accounts %}<option value="{{ a }}">{% endfor %}</datalist></div>
         <div class="col-12"><label class="form-label small">Checked against QuickBooks (start with Matches, Corrected, Estimate or Differs)</label><input name="qbo_check" class="form-control" value="{{ t.qbo_check or '' }}"></div>
     </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ back or url_for('equip.costs' if bill else 'equip.tasks') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
 
