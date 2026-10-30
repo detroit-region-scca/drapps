@@ -150,20 +150,28 @@ def pdf_bytes(inv, region='Detroit Region SCCA'):
     p.add_page()
     L, W = 54, 612 - 108
     navy, grey = (20, 40, 80), (110, 110, 110)
+    # The region logo (static/drscca-logo.png, 700x471) at the top left, the region's name and address beside it.
+    logo = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'drscca-logo.png')
+    lh = 68
+    tx = L
+    if os.path.exists(logo):
+        p.image(logo, x=L, y=48, h=lh)
+        tx = L + lh * 700 / 471 + 14
     p.set_text_color(*navy)
-    p.set_font('Helvetica', 'B', 20)
-    p.set_xy(L, 54)
-    p.cell(W / 2, 24, region)
+    p.set_font('Helvetica', 'B', 17)
+    p.set_xy(tx, 50)
+    p.cell(W / 2, 20, region)
     p.set_font('Helvetica', 'B', 26)
     p.set_xy(L + W / 2, 50)
     p.cell(W / 2, 30, 'INVOICE', align='R')
     p.set_font('Helvetica', '', 9.5)
     p.set_text_color(*grey)
-    y = 82
-    for t in ['Sports Car Club of America, Detroit Region', *REMIT['lines'], f"{REMIT['email']} · {REMIT['web']}"]:
-        p.set_xy(L, y)
-        p.cell(W / 2, 13, t.replace('·', '-'))
-        y += 13
+    y = 72
+    for t in ['Sports Car Club of America', *REMIT['lines'], f"{REMIT['email']} - {REMIT['web']}"]:
+        p.set_xy(tx, y)
+        p.cell(W / 2, 12.5, t)
+        y += 12.5
+    y = max(y, 48 + lh)
     p.set_text_color(0, 0, 0)
     y2 = 88
     for k, v in (('Invoice #', inv['id']), ('Date', inv['created']), ('Due', inv['due'])):
