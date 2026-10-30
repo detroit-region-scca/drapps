@@ -215,8 +215,11 @@
     <p class="text-muted">Replacements and planned purchases at estimated cost when bought. For planning only; the region gets no tax benefit from depreciation.</p>
     <div class="card p-3 mb-4">
         <p class="mb-2"><b>Buy soon:</b> {% for y, c in by_year.items() %}{{ money(c, 0) }} in {{ y }}{{ ' and ' if not loop.last }}{% else %}nothing{% endfor %}. These go straight into those years' budgets.</p>
-        <p class="mb-0"><b>Save for later:</b> {{ money(rp.monthly, 0) }} a month from {{ rp.start_label }} covers everything after that.{% if rp.big_total %}
-            Or, if the board sets aside {{ money(rp.big_total, 0) }} from savings now for the big items marked below, only {{ money(rp.monthly_without_big, 0) }} a month.{% endif %}</p>
+        <p class="mb-1"><b>Save for later,</b> two ways to pay for the same items:</p>
+        <ul class="mb-0">
+            <li>Save {{ money(rp.monthly, 0) }} a month from {{ rp.start_label }}, or</li>
+            {% if rp.big_total %}<li>Move {{ money(rp.big_total, 0) }} from savings now for the big items marked below, <b>plus</b> {{ money(rp.monthly_without_big, 0) }} a month for the rest.</li>{% endif %}
+        </ul>
     </div>
     <h2 class="h6 text-muted">Buy soon</h2>
     <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
