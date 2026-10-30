@@ -1,8 +1,11 @@
-"""Reads and writes the region's equipment records: three tabs on the Registry sheet (REGISTRY_SHEET_ID).
+"""Reads and writes the Operations records (property, storage, recurring costs and to-dos): three tabs on the
+Registry sheet (REGISTRY_SHEET_ID).
 
   Equipment Items   one row per asset or group of like items (a vehicle, a trailer, 14 loaner helmets, pylons)
   Equipment Places  where things are kept, what it costs, whose name the account is in, how to get in
-  Equipment Tasks   what has to be done and when (insurance renewal, registrations, inspections), who does it
+  Equipment Tasks   what has to be done or paid and when: renewals, registrations, inspections, subscriptions.
+                    A repeating one with a cost is a recurring cost; one charged automatically (auto = yes) is
+                    counted in the costs but kept off the to-do list.
 
 The sheet stays usable by hand. Only equipment committee members signed in through an emailed link can change
 anything in the app (see equip.py).
@@ -19,7 +22,8 @@ from storage import DATA_DIR, open_book, worksheet
 ITEM_COLS = ['id', 'name', 'program', 'category', 'place', 'year', 'quantity', 'cost', 'life_years', 'vin', 'plate',
              'condition', 'status', 'notes', 'docs_url', 'updated', 'updated_by']
 PLACE_COLS = ['id', 'name', 'address', 'cost_month', 'cost_year', 'account_holder', 'access', 'notes', 'updated', 'updated_by']
-TASK_COLS = ['id', 'task', 'about', 'due', 'repeat_months', 'cost', 'owner', 'notes', 'last_done', 'done_by']
+TASK_COLS = ['id', 'task', 'about', 'due', 'repeat_months', 'cost', 'owner', 'notes', 'last_done', 'done_by', 'category', 'paid_how', 'auto']
+COST_CATEGORIES = ['Insurance', 'Storage', 'Vehicles', 'Safety', 'Software and web', 'Administration', 'Travel', 'Other']
 TABS = {'Equipment Items': ITEM_COLS, 'Equipment Places': PLACE_COLS, 'Equipment Tasks': TASK_COLS}
 NUMERIC = {'year', 'quantity', 'cost', 'life_years', 'cost_month', 'cost_year', 'repeat_months'}
 CATEGORIES = ['Vehicle', 'Trailer', 'Timing', 'Safety', 'Course', 'Hospitality', 'Promotion', 'Tools', 'Other']
@@ -103,12 +107,16 @@ def save(tab, row):
 
 
 def create_tabs():
-    """Make the three tabs with their headers if they are not there yet (first run)."""
+    """Make the three tabs with their headers if they are not there yet, and bring older headers up to date."""
     book = open_book(os.environ['REGISTRY_SHEET_ID'])
-    have = {w.title for w in book.worksheets()}
+    have = {w.title: w for w in book.worksheets()}
     for title, cols in TABS.items():
         if title not in have:
             book.add_worksheet(title, rows=300, cols=len(cols)).update([cols], 'A1', value_input_option='RAW')
+        elif have[title].row_values(1) != cols:
+            if have[title].col_count < len(cols):
+                have[title].add_cols(len(cols) - have[title].col_count)
+            have[title].update([cols], 'A1', value_input_option='RAW')
     refresh()
 
 
@@ -149,6 +157,27 @@ def next_due(t):
     m += int(t['repeat_months'])
     y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
     return f'{y}-{m:02d}-{min(d, 28):02d}'
+
+
+def is_auto(t):
+    return str(t.get('auto', '')).strip().lower() in ('yes', 'y', 'true', '1')
+
+
+def recurring_costs(places_rows, tasks_rows):
+    """Everything paid on a schedule, one row each: storage places and repeating tasks with a cost.
+    [{'what', 'category', 'every', 'per_year', 'next', 'paid_how', 'owner', 'kind', 'id'}], biggest first."""
+    rows = []
+    for p in places_rows:
+        per = (p['cost_month'] or 0) * 12 + (p['cost_year'] or 0)
+        if per:
+            rows.append({'what': p['name'], 'category': 'Storage', 'every': 1 if p['cost_month'] else 12, 'per_year': round(per, 2),
+                         'next': '', 'paid_how': p['account_holder'], 'owner': '', 'kind': 'place', 'id': p['id']})
+    for t in tasks_rows:
+        if t['repeat_months'] and t['cost']:
+            rows.append({'what': t['task'], 'category': t.get('category') or 'Other', 'every': t['repeat_months'],
+                         'per_year': round(t['cost'] * 12 / t['repeat_months'], 2), 'next': t['due'], 'paid_how': t.get('paid_how', ''),
+                         'owner': t['owner'], 'kind': 'task', 'id': t['id']})
+    return sorted(rows, key=lambda r: -r['per_year'])
 
 
 def fixed_cost_year(places_rows, tasks_rows):

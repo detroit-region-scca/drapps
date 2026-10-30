@@ -1,13 +1,14 @@
 {% extends 'base.html' %}
 {% from '_ui.html' import tab, money with context %}
 {% block body_class %}app-equip{% endblock %}
-{% block app_name %}Equipment{% endblock %}
+{% block app_name %}Operations{% endblock %}
 {% block nav %}
     {{ tab('equip.home', 'Overview') }}
-    {{ tab('equip.items', 'Items', request.endpoint in ('equip.items', 'equip.item')) }}
+    {{ tab('equip.costs', 'Costs') }}
+    {{ tab('equip.items', 'Property', request.endpoint in ('equip.items', 'equip.item')) }}
     {{ tab('equip.places', 'Storage', request.endpoint in ('equip.places', 'equip.place')) }}
     {{ tab('equip.tasks', 'To do', request.endpoint in ('equip.tasks', 'equip.task')) }}
-    {{ tab('equip.plan', 'Replacement plan') }}
+    {{ tab('equip.plan', 'Replacement') }}
 {% endblock %}
 {% macro due_badge(t) -%}
     {% if not t.due %}<span class="badge rounded-pill text-bg-secondary">No date</span>
@@ -23,6 +24,7 @@
 {%- endmacro %}
 {% block style %}
         body.app-equip { --accent: #ff9f6b; }
+        a.card.stat { color: var(--text); }
 {% endblock %}
 {% block content %}
     {% if editor and view != 'signin' %}<div class="small text-muted mb-2 no-print">Editing as {{ editor.name }}.
@@ -31,7 +33,7 @@
     {% if view == 'home' %}
     <div class="row g-3 mb-4">
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Due in 90 days</div><div class="value {{ 'text-warning' if due }}">{{ due|length }}</div></div></div>
-        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Fixed cost a year</div><div class="value">{{ money(storage + recurring, 0) }}</div><div class="small text-muted">storage {{ money(storage, 0) }} + renewals {{ money(recurring, 0) }}</div></div></div>
+        <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.costs') }}"><div class="label">Recurring costs a year</div><div class="value">{{ money(storage + recurring, 0) }}</div><div class="small text-muted">storage {{ money(storage, 0) }} + everything else {{ money(recurring, 0) }}</div></a></div>
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Set aside a year</div><div class="value">{{ money(reserve, 0) }}</div><div class="small text-muted">to replace on schedule</div></div></div>
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Items</div><div class="value">{{ n_items }}</div><div class="small text-muted">{{ n_capital }} over $2,500 · {{ money(value, 0) }} cost</div></div></div>
     </div>
@@ -61,6 +63,21 @@
             <td class="num pe-3">{% if p.cost_month %}{{ money(p.cost_month, 0) }}/mo{% elif p.cost_year %}{{ money(p.cost_year, 0) }}/yr{% else %}free{% endif %}</td></tr>
         {% endfor %}</tbody>
     </table></div></div>
+
+    {% elif view == 'costs' %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div><div class="page-title m-0">{{ money(total, 0) }} a year</div><div class="text-muted small">Everything the region pays on a schedule, used or not. Storage comes from Storage; the rest from To do (anything that repeats and has a cost).</div></div>
+        {{ editbar(none, url_for('equip.task'), 'Add a cost') }}
+    </div>
+    {% for cat, rows in cats %}
+    <h2 class="h6 text-muted mt-3">{{ cat }} · {{ money(rows|sum(attribute='per_year'), 0) }} a year</h2>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <tbody>{% for r in rows %}<tr class="row-link" onclick="location.href='{{ url_for('equip.place', place_id=r.id) if r.kind == 'place' else url_for('equip.tasks') ~ '?all=1#' ~ r.id }}'">
+            <td class="ps-3">{{ r.what }}<div class="small text-muted">{% if r.paid_how %}{{ r.paid_how }}{% endif %}{% if r.owner %}{{ ' · ' if r.paid_how }}{{ r.owner }}{% endif %}</div></td>
+            <td class="small text-nowrap">{% if r.every == 1 %}Monthly{% elif r.every == 12 %}Yearly{% else %}Every {{ '%g'|format(r.every) }} months{% endif %}{% if r.next %}<div class="text-muted">next {{ r.next }}</div>{% endif %}</td>
+            <td class="num pe-3">{{ money(r.per_year, 0) }}</td></tr>{% endfor %}</tbody>
+    </table></div></div>
+    {% endfor %}
 
     {% elif view == 'items' %}
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
@@ -160,7 +177,9 @@
     {% endif %}
 
     {% elif view == 'tasks' %}
-    <div class="d-flex justify-content-end mb-3">{{ editbar(none, url_for('equip.task'), 'Add a to-do') }}</div>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div class="small">{% if n_auto %}<a href="{{ url_for('equip.tasks', all=none if show_auto else '1') }}">{{ 'Hide' if show_auto else 'Show' }} the {{ n_auto }} charged automatically</a>{% endif %}</div>
+        {{ editbar(none, url_for('equip.task'), 'Add a to-do') }}</div>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
         <thead><tr><th class="ps-3">To do</th><th>Due</th><th>Repeats</th><th class="num">Cost</th><th class="pe-3"></th></tr></thead>
         <tbody>{% for t in tasks %}<tr id="{{ t.id }}">
@@ -184,6 +203,9 @@
         <div class="col-6 col-md-3"><label class="form-label small">Repeats every (months)</label><input name="repeat_months" class="form-control" inputmode="numeric" value="{{ '%g'|format(t.repeat_months) if t.repeat_months else '' }}" placeholder="12; blank = once"></div>
         <div class="col-6 col-md-3"><label class="form-label small">Cost</label><input name="cost" class="form-control" inputmode="decimal" value="{{ t.cost or '' }}"></div>
         <div class="col-6 col-md-3"><label class="form-label small">Who does it</label><input name="owner" class="form-control" value="{{ t.owner or '' }}"></div>
+        <div class="col-6 col-md-3"><label class="form-label small">Cost category</label><select name="category" class="form-select"><option value=""></option>{% for c in cost_categories %}<option {{ 'selected' if c == t.category }}>{{ c }}</option>{% endfor %}</select></div>
+        <div class="col-6 col-md-5"><label class="form-label small">Paid how</label><input name="paid_how" class="form-control" value="{{ t.paid_how or '' }}" placeholder="Region card, check, …"></div>
+        <div class="col-md-4 d-flex align-items-end"><input type="hidden" name="auto" value=""><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="auto" value="yes" id="auto" {{ 'checked' if (t.auto or '')|lower in ('yes', 'y', 'true', '1') }}><label class="form-check-label" for="auto">Charged automatically (not a to-do)</label></div></div>
         <div class="col-12"><label class="form-label small">Notes</label><input name="notes" class="form-control" value="{{ t.notes or '' }}"></div>
     </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ url_for('equip.tasks') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
 
@@ -198,7 +220,7 @@
     {% elif view == 'signin' %}
     <div class="card p-4 mx-auto" style="max-width: 30rem;">
         <div class="page-title">Sign in to edit</div>
-        <p class="text-muted small">Anyone can look. Changes are limited to the equipment committee: enter your committee email and we'll send a sign-in link to it.</p>
+        <p class="text-muted small">Anyone can look. Changes are limited to the equipment committee and the treasurer: enter your email and we'll send a sign-in link to it.</p>
         <form method="post"><input type="hidden" name="next" value="{{ nxt }}">
             <input type="email" name="email" class="form-control mb-3" required autofocus placeholder="you@example.com">
             <button class="btn btn-accent w-100">Email me a link</button></form>

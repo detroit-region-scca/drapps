@@ -1,9 +1,10 @@
-"""Equipment: the region's vehicles, trailers and gear, where they are kept, and what has to be done when
-(insurance, registrations, inspections), on one page. Records live in the Registry sheet (equip_store).
+"""Operations: everything the region pays for or looks after between events. Recurring costs (insurance,
+storage, subscriptions, registrations, inspections), property (vehicles, trailers, gear), where it is kept, and
+what is due when, on one page. Records live in the Registry sheet (equip_store).
 
 Everyone signed in can look. Only equipment committee members (role "Equipment" in the read-only officials list,
 plus the treasurer) can change anything, and only after signing in through a link emailed to that address, so the
-shared app password alone cannot change the region's equipment records.
+shared app password alone cannot change the region's records.
 """
 import os
 from datetime import date, timedelta
@@ -16,20 +17,20 @@ import equip_store as E
 import officials as O
 from utils import log_audit_event, login_required, send_mail
 
-bp = Blueprint('equip', __name__, url_prefix='/equipment')
+bp = Blueprint('equip', __name__, url_prefix='/operations')
 
 LINK_DAYS = 30
 SOON_DAYS = 90
 
 
 def _ctx(**kw):
-    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Equipment", editor=session.get('equip_editor'),
-                categories=E.CATEGORIES, statuses=E.STATUSES, **kw)
+    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Operations", editor=session.get('equip_editor'),
+                categories=E.CATEGORIES, statuses=E.STATUSES, cost_categories=E.COST_CATEGORIES, **kw)
 
 
 def _guard():
     if not E.enabled():
-        flash('Equipment needs the Google Sheets storage (STORAGE_BACKEND=sheets and REGISTRY_SHEET_ID).', 'warning')
+        flash('Operations needs the Google Sheets storage (STORAGE_BACKEND=sheets and REGISTRY_SHEET_ID).', 'warning')
         return redirect(url_for('home'))
     return None
 
@@ -45,7 +46,7 @@ def editor_required(f):
         ed = session.get('equip_editor')
         if not ed or ed.get('email', '').lower() not in editors():
             session.pop('equip_editor', None)
-            flash('Changing equipment records needs a sign-in link from your committee email.', 'warning')
+            flash('Making changes needs a sign-in link sent to your committee email.', 'warning')
             return redirect(url_for('equip.signin', next=request.full_path.rstrip('?')))
         return f(*a, **kw)
     return wrapped
@@ -69,8 +70,8 @@ def signin():
         if mail in eds:
             token = _serializer().dumps({'email': mail, 'name': eds[mail], 'next': nxt if nxt.startswith('/') else ''})
             link = f"{request.url_root.rstrip('/')}{url_for('equip.signin_link', token=token)}"
-            send_mail('Your sign-in link for DRSCCA Equipment',
-                      f"Use this link to make changes in the region's equipment records (good for {LINK_DAYS} days, on the device "
+            send_mail('Your sign-in link for DRSCCA Operations',
+                      f"Use this link to make changes in the region's Operations records (good for {LINK_DAYS} days, on the device "
                       f"you open it on):\n\n{link}\n\nIf you did not ask for it, ignore this email.", mail)
         # Same answer either way, so the page does not reveal who is on the committee.
         flash('If that address is on the equipment committee, a sign-in link is on its way.', 'info')
@@ -90,7 +91,7 @@ def signin_link(token):
         abort(403)
     session['equip_editor'] = {'email': t['email'], 'name': t['name']}
     log_audit_event('EQUIP_SIGNIN', t['name'], {'email': t['email']})
-    flash(f"Signed in to edit equipment as {t['name']}.", 'success')
+    flash(f"Signed in to make changes as {t['name']}.", 'success')
     return redirect(t.get('next') or url_for('equip.home'))
 
 
@@ -109,13 +110,14 @@ def home():
     today = date.today()
     tasks, places, items = E.tasks(), E.places(), [i for i in E.items() if i['status'] != 'Gone']
     soon = (today + timedelta(days=SOON_DAYS)).isoformat()
-    due = [t for t in tasks if t['due'] and t['due'] <= soon]
+    todo = [t for t in tasks if not E.is_auto(t)]
+    due = [t for t in todo if t['due'] and t['due'] <= soon]
     storage, recurring = E.fixed_cost_year(places, tasks)
     plan, reserve = E.replacement_plan(items, today)
     big = sorted([i for i in items if i['category'] in ('Vehicle', 'Trailer')], key=lambda i: (i['category'], i['name']))
     for i in big:
         i['lc'] = E.lifecycle(i, today)
-    return render_template('equip.html', **_ctx(view='home', today=today.isoformat(), due=due, undated=[t for t in tasks if not t['due']],
+    return render_template('equip.html', **_ctx(view='home', today=today.isoformat(), due=due, undated=[t for t in todo if not t['due'] and not t['last_done']],
                                                 storage=storage, recurring=recurring, reserve=reserve, plan=plan, big=big, places=places,
                                                 n_items=len(items), value=sum(i['cost'] or 0 for i in items),
                                                 n_capital=sum(1 for i in items if E.is_capital(i))))
@@ -229,7 +231,10 @@ def _save_place(p):
 def tasks():
     if (g := _guard()):
         return g
-    return render_template('equip.html', **_ctx(view='tasks', tasks=E.tasks(), today=date.today().isoformat()))
+    rows = E.tasks()
+    show_auto = request.args.get('all') == '1'
+    return render_template('equip.html', **_ctx(view='tasks', tasks=[t for t in rows if show_auto or not E.is_auto(t)], show_auto=show_auto,
+                                                n_auto=sum(1 for t in rows if E.is_auto(t)), today=date.today().isoformat()))
 
 
 @bp.route('/tasks/new', methods=['GET', 'POST'])
@@ -265,6 +270,8 @@ def _save_task(t):
     for k in E.TASK_COLS:
         if k in f:
             row[k] = f.get(k, '').strip()
+    if 'auto' in f:
+        row['auto'] = 'yes' if 'yes' in f.getlist('auto') else ''    # a hidden blank field sits before the checkbox
     if not row.get('task'):
         flash('Say what has to be done.', 'danger')
         return redirect(request.url)
@@ -272,6 +279,18 @@ def _save_task(t):
     log_audit_event('EQUIP_TASK_SAVED', _who(), {'id': tid, 'task': row['task'], 'due': row.get('due', '')})
     flash('Saved.', 'success')
     return redirect(url_for('equip.tasks'))
+
+
+@bp.route('/costs')
+@login_required
+def costs():
+    """Every recurring cost on one page, by category, with the yearly total."""
+    if (g := _guard()):
+        return g
+    rows = E.recurring_costs(E.places(), E.tasks())
+    cats = [(c, [r for r in rows if r['category'] == c]) for c in E.COST_CATEGORIES]
+    return render_template('equip.html', **_ctx(view='costs', cats=[(c, r) for c, r in cats if r], total=sum(r['per_year'] for r in rows),
+                                                today=date.today().isoformat()))
 
 
 @bp.route('/plan')
@@ -289,4 +308,4 @@ def plan():
 def overdue_count():
     """For the Treasurer page."""
     today = date.today().isoformat()
-    return sum(1 for t in E.tasks() if t['due'] and t['due'] < today) if E.enabled() else 0
+    return sum(1 for t in E.tasks() if t['due'] and t['due'] < today and not E.is_auto(t)) if E.enabled() else 0

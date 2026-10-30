@@ -363,6 +363,14 @@ def audit_log():
     return render_template('audit.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Audit Log", logs=logs,
                            apps=apps, actions=actions, app_filter=app_filter, action_filter=action_filter, limit=limit_param)
 
+@app.route('/equipment/', defaults={'rest': ''})
+@app.route('/equipment/<path:rest>')
+def old_equipment(rest):
+    """Equipment became Operations; old links keep working."""
+    qs = request.query_string.decode()
+    return redirect(f"/operations/{quote(rest, safe='/')}" + (f"?{qs}" if qs else ''), 301)
+
+
 @app.route('/budgets/', defaults={'rest': ''})
 @app.route('/budgets/<path:rest>')
 def old_budgets(rest):

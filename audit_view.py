@@ -8,7 +8,7 @@ from markupsafe import Markup, escape
 
 # action prefix -> (app label, badge colour)
 APPS = {'EVENT': ('Events', 'primary'), 'WP': ('Worker Points', 'warning'), 'FUNDS': ('Funds Requests', 'success'),
-        'BUDGET': ('Events', 'primary'), 'PLAN': ('Annual Plan', 'light'), 'EQUIP': ('Equipment', 'warning'), 'LOGIN': ('Login', 'secondary')}
+        'BUDGET': ('Events', 'primary'), 'PLAN': ('Annual Plan', 'light'), 'EQUIP': ('Operations', 'warning'), 'LOGIN': ('Login', 'secondary')}
 
 
 def app_of(action):
@@ -86,11 +86,11 @@ def describe(log):
     if a == 'EQUIP_PLACE_SAVED':
         return Markup('{} updated storage place {}').format(who, _link('equip.place', g('name', ''), place_id=g('id', '')))
     if a == 'EQUIP_TASK_SAVED':
-        return Markup('{} saved the equipment to-do "{}" (due {})').format(who, g('task', ''), g('due', '') or 'no date')
+        return Markup('{} saved the Operations to-do "{}" (due {})').format(who, g('task', ''), g('due', '') or 'no date')
     if a == 'EQUIP_TASK_DONE':
         return Markup('{} marked done: {}{}').format(who, g('task', ''), f" (next due {g('next')})" if g('next') else '')
     if a == 'EQUIP_SIGNIN':
-        return Markup('{} signed in to edit equipment').format(who)
+        return Markup('{} signed in to make changes in Operations').format(who)
     if a == 'FUNDS_REOPENED':
         return Markup('{} reopened {}').format(who, _link('fr.detail', g('id', ''), req_id=g('id', '')))
     if a == 'BUDGET_SAVED':
