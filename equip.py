@@ -114,11 +114,12 @@ def home():
     due = [t for t in todo if t['due'] and t['due'] <= soon]
     storage, recurring = E.fixed_cost_year(places, tasks)
     plan, reserve = E.replacement_plan(items, today)
+    rp = E.reserve_plan(items, today)
     big = sorted([i for i in items if i['category'] in ('Vehicle', 'Trailer')], key=lambda i: (i['category'], i['name']))
     for i in big:
         i['lc'] = E.lifecycle(i, today)
     return render_template('equip.html', **_ctx(view='home', today=today.isoformat(), due=due, undated=[t for t in todo if not t['due'] and not t['last_done']],
-                                                storage=storage, recurring=recurring, reserve=reserve, plan=plan, big=big, places=places,
+                                                storage=storage, recurring=recurring, reserve=reserve, rp=rp, plan=plan, big=big, places=places,
                                                 n_items=len(items), value=sum(i['cost'] or 0 for i in items),
                                                 n_capital=sum(1 for i in items if E.is_capital(i))))
 
@@ -300,9 +301,12 @@ def plan():
     if (g := _guard()):
         return g
     rows = [i for i in E.items() if i['status'] != 'Gone']
-    plan, reserve = E.replacement_plan(rows)
-    missing = [i for i in rows if E.is_capital(i) and not E.lifecycle(i)]
-    return render_template('equip.html', **_ctx(view='plan', plan=plan, reserve=reserve, missing=missing))
+    rp = E.reserve_plan(rows)
+    missing = [i for i in rows if E.is_capital(i) and not E.lifecycle(i) and i['status'] != 'Retire']
+    by_year = {}
+    for r in rp['near']:
+        by_year[r['year']] = by_year.get(r['year'], 0) + r['cost']
+    return render_template('equip.html', **_ctx(view='plan', rp=rp, by_year=by_year, missing=missing))
 
 
 def overdue_count():

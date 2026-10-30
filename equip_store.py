@@ -20,14 +20,14 @@ from filelock import FileLock
 from storage import DATA_DIR, open_book, worksheet
 
 ITEM_COLS = ['id', 'name', 'program', 'category', 'place', 'year', 'quantity', 'cost', 'life_years', 'vin', 'plate',
-             'condition', 'status', 'notes', 'docs_url', 'updated', 'updated_by']
+             'condition', 'status', 'notes', 'docs_url', 'updated', 'updated_by', 'replace_cost', 'replace_year']
 PLACE_COLS = ['id', 'name', 'address', 'cost_month', 'cost_year', 'account_holder', 'access', 'notes', 'updated', 'updated_by']
 TASK_COLS = ['id', 'task', 'about', 'due', 'repeat_months', 'cost', 'owner', 'notes', 'last_done', 'done_by', 'category', 'paid_how', 'auto']
 COST_CATEGORIES = ['Insurance', 'Storage', 'Vehicles', 'Safety', 'Software and web', 'Administration', 'Travel', 'Other']
 TABS = {'Equipment Items': ITEM_COLS, 'Equipment Places': PLACE_COLS, 'Equipment Tasks': TASK_COLS}
-NUMERIC = {'year', 'quantity', 'cost', 'life_years', 'cost_month', 'cost_year', 'repeat_months'}
+NUMERIC = {'year', 'quantity', 'cost', 'life_years', 'cost_month', 'cost_year', 'repeat_months', 'replace_cost', 'replace_year'}
 CATEGORIES = ['Vehicle', 'Trailer', 'Timing', 'Safety', 'Course', 'Hospitality', 'Promotion', 'Tools', 'Other']
-STATUSES = ['In use', 'Needs repair', 'Retire', 'Gone']
+STATUSES = ['In use', 'Needs repair', 'Planned', 'Retire', 'Gone']
 CAPITAL = 2500.0        # the tax preparer's suggested threshold for a long-lived asset (May 2026)
 CACHE_SECONDS = 15
 LOCK = os.path.join(DATA_DIR, 'equipment.lock')
@@ -59,7 +59,7 @@ def _snapshot():
     hit = _cache.get('snap')
     if hit and time.time() - hit[0] < CACHE_SECONDS:
         return hit[1]
-    res = open_book(os.environ['REGISTRY_SHEET_ID']).values_batch_get([f"'{t}'!A:Q" for t in TABS],
+    res = open_book(os.environ['REGISTRY_SHEET_ID']).values_batch_get([f"'{t}'!A:Z" for t in TABS],
                                                                      params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     snap = {}
     for (title, cols), vr in zip(TABS.items(), res.get('valueRanges', [])):
@@ -127,26 +127,64 @@ def is_capital(it):
 
 
 def lifecycle(it, today=None):
-    """Straight-line view for planning (no tax use): yearly depreciation, value left now, year to replace."""
+    """Straight-line view for planning (no tax use): yearly depreciation, value left now, year to replace.
+    A replacement year set on the item wins over year bought + useful life."""
     today = today or date.today()
     cost, life, year = it['cost'], it['life_years'], it['year']
-    if not (cost and life and year):
-        return None
-    used = max(0, min(life, today.year - int(year)))
-    return {'per_year': round(cost / life, 2), 'left': round(cost * (1 - used / life), 2), 'replace': int(year + life)}
+    out = None
+    if cost and life and year:
+        used = max(0, min(life, today.year - int(year)))
+        out = {'per_year': round(cost / life, 2), 'left': round(cost * (1 - used / life), 2), 'replace': int(year + life)}
+    if it.get('replace_year'):
+        out = dict(out or {'per_year': None, 'left': None}, replace=int(it['replace_year']))
+    return out
+
+
+def replace_cost(it):
+    """What replacing it will cost: the estimate when there is one, else what it cost."""
+    return it.get('replace_cost') or it['cost'] or 0
+
+
+def reserve_plan(rows, today=None, near_years=2, big=20000.0, big_within=5):
+    """How to pay for replacements and planned purchases.
+
+    near:  due this year or next: too close to save for, so budget them outright in that year's plan.
+    later: due after that: set money aside each month, item by item, so each is paid for by July of its year
+           (cost / months left). The monthly total is front-loaded when big items come due soon, as it should be.
+    big:   later items due within big_within years that cost at least `big`: the board could fund these from
+           savings instead; monthly_without_big is what is left to set aside then.
+    """
+    today = today or date.today()
+    # From October on, plans are for next year: start saving next January.
+    start = date(today.year + 1, 1, 1) if today.month >= 10 else date(today.year, today.month, 1)
+    near, later = [], []
+    for it in rows:
+        lc = lifecycle(it, today)
+        if it['status'] == 'Gone' or not lc or lc['replace'] < start.year or not replace_cost(it):
+            continue
+        row = {'it': it, 'year': lc['replace'], 'cost': replace_cost(it)}
+        if lc['replace'] < start.year + near_years:
+            near.append(row)
+        else:
+            months = (lc['replace'] - start.year) * 12 + 6 - (start.month - 1)
+            row['monthly'] = round(row['cost'] / max(months, 1), 2)
+            row['big'] = row['cost'] >= big and lc['replace'] < start.year + big_within
+            later.append(row)
+    near.sort(key=lambda r: (r['year'], -r['cost']))
+    later.sort(key=lambda r: (r['year'], -r['cost']))
+    monthly = round(sum(r['monthly'] for r in later), 2)
+    return {'start': start.isoformat()[:7], 'near': near, 'later': later, 'monthly': monthly,
+            'big_total': round(sum(r['cost'] for r in later if r['big']), 2),
+            'monthly_without_big': round(sum(r['monthly'] for r in later if not r['big']), 2)}
 
 
 def replacement_plan(rows, today=None, horizon=20):
-    """{year: [items due for replacement]} for this year onward, plus the even yearly reserve that covers them."""
-    today = today or date.today()
+    """{year: [items due]} for the overview, and the monthly set-aside from reserve_plan as a yearly figure."""
+    rp = reserve_plan(rows, today)
     plan = {}
-    for it in rows:
-        lc = lifecycle(it, today)
-        if lc and it['status'] != 'Gone' and today.year <= lc['replace'] <= today.year + horizon:
-            plan.setdefault(lc['replace'], []).append(it)
-    total = sum(it['cost'] or 0 for v in plan.values() for it in v)
-    years = (max(plan) - today.year + 1) if plan else 1
-    return dict(sorted(plan.items())), round(total / years, 2) if plan else 0.0
+    for r in rp['near'] + rp['later']:
+        plan.setdefault(r['year'], []).append(r['it'])
+    return dict(sorted(plan.items())), round(rp['monthly'] * 12, 2)
 
 
 def next_due(t):
