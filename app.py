@@ -109,7 +109,7 @@ def _officials():
 @login_required
 def officials_page():
     """Who holds which region role, read-only: the treasurer keeps the list on the server."""
-    return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Officials", view='officials',
+    return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Officials", app_name='Officials', view='officials',
                            people=officials.all(), programs=load_programs())
 
 
@@ -135,7 +135,7 @@ def treasurer():
     import inv
     jobs['equipment'] = equip.overdue_count()
     jobs['invoices'] = inv.open_counts()
-    return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Treasurer", view='treasurer', jobs=jobs,
+    return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Treasurer", app_name='Treasurer', view='treasurer', jobs=jobs,
                            year=year, wp_enabled=wp_store.enabled())
 
 

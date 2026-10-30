@@ -17,22 +17,19 @@
             <button class="btn btn-accent w-100">Continue</button></form>
     </div></div>
     {% elif view == 'officials' %}
-    <div class="crumbs"><a href="{{ url_for('home') }}">Apps</a> / Officials</div>
     <div class="page-title">Region officials</div>
     <p class="text-muted small">Funds request approvals go only to these people and addresses. The list can't be changed in the apps; the treasurer keeps it.</p>
     {% if people %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
         <tbody>{% for o in people %}<tr><td class="ps-3">{{ o.title }}</td><td>{{ o.name }}</td><td class="pe-3"><a href="mailto:{{ o.email }}">{{ o.email }}</a></td></tr>{% endfor %}</tbody>
     </table></div></div>{% else %}<p class="text-warning">No officials list on this server, so no approval emails are sent.</p>{% endif %}
     {% elif view == 'treasurer' %}
-    <div class="crumbs"><a href="{{ url_for('home') }}">Apps</a> / Treasurer</div>
-    <div class="page-title mb-3">Treasurer</div>
     <div class="list-group">
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('treasurer_report') }}">
             <span>Treasurer's report<div class="small text-muted">This month's report for the board, ready to print</div></span><span class="text-muted">›</span></a>
         {% if jobs.pay is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('fr.home') }}">
             <span>Funds requests ready to pay<div class="small text-muted">All approvals in</div></span><span class="fw-semibold">{{ jobs.pay[0] }}{% if jobs.pay[0] %} · ${{ '{:,.2f}'.format(jobs.pay[1]) }}{% endif %}</span></a>
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('fr.home') }}">
-            <span>Funds requests waiting on approvals<div class="small text-muted">Chair, board or second signer</div></span><span class="fw-semibold">{{ jobs.approvals }}</span></a>{% endif %}
+            <span>Funds requests waiting on approvals<div class="small text-muted">Director, board or second signer</div></span><span class="fw-semibold">{{ jobs.approvals }}</span></a>{% endif %}
         {% if jobs.budgets is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('bud.approve_many', year=year) }}">
             <span>Record board approvals of budgets<div class="small text-muted">{{ year }} budgets not approved, or changed since</div></span><span class="fw-semibold">{{ jobs.budgets }}</span></a>{% endif %}
         {% if jobs.books is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('plan.checks') }}">

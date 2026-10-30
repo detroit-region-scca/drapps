@@ -4,7 +4,7 @@
 {% block app_name %}Worker Points{% endblock %}
 {% block nav %}
     {{ tab('wp.home', 'Overview') }}
-    {{ tab('wp.event', 'Enter workers') }}
+    {{ tab('wp.event', 'Workers') }}
     {{ tab('wp.redeem', 'Redemptions') }}
     {{ tab('wp.allocations', 'Allocations') }}
     {{ tab('wp.forfeits', 'Forfeits') }}
@@ -20,9 +20,9 @@
 {% endblock %}
 {% block content %}
     {% if view == 'home' %}
-    <form class="d-flex gap-2 mb-4" method="get" role="search">
-        <input class="form-control form-control-lg" name="q" value="{{ q }}" placeholder="Find a member by name or SCCA number" autofocus>
-        <button class="btn btn-accent px-4">Search</button>
+    <form class="d-flex gap-2 mb-3" method="get" role="search" style="max-width: 30rem">
+        <input class="form-control form-control-sm" type="search" name="q" value="{{ q }}" placeholder="Find a member by name or SCCA number" aria-label="Find a member" autofocus>
+        <button class="btn btn-sm btn-accent">Search</button>
     </form>
     {% if q %}
     <div class="card mb-4"><div class="card-body p-0 table-responsive">

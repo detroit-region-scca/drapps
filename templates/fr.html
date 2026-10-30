@@ -24,7 +24,7 @@
             <a class="btn btn-sm btn-outline-light{% if status == s %} active{% endif %}" href="{{ url_for('fr.home', status=s, year=year) }}">{{ label }}{% if s in counts %} <span class="text-muted">{{ counts[s] }}</span>{% endif %}</a>
             {% endfor %}
         </div>
-        <a class="btn btn-accent" href="{{ url_for('fr.new') }}">New funds request</a>
+        <a class="btn btn-sm btn-accent" href="{{ url_for('fr.new') }}">New funds request</a>
     </div>
     {% if counts.Submitted %}<p class="text-muted">{{ counts.Submitted }} waiting to be paid, {{ money(open_total) }} in all.</p>{% endif %}
     <div class="card"><div class="card-body p-0 table-responsive">

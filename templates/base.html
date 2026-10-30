@@ -25,6 +25,8 @@
         .app-bar .navbar-brand .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); margin-right: .5rem; }
         .app-bar .nav-link { color: var(--muted); border-radius: 8px; padding: .4rem .75rem !important; }
         .app-bar .nav-link:hover { color: var(--text); }
+        .app-bar .nav-link, .app-bar .navbar-brand, .app-bar .btn-logout { white-space: nowrap; }
+        @media (min-width: 992px) { .app-bar .nav-link { padding: .4rem .6rem !important; } }
         .app-bar .nav-link.active { color: var(--text); background: var(--surface-2); box-shadow: inset 0 -2px 0 var(--accent); }
         .app-bar .btn-logout { color: var(--muted); }
         .app-bar .year-pick .form-select { width: auto; padding-top: .25rem; padding-bottom: .25rem; }
@@ -72,7 +74,7 @@
             <span>Apps</span>
         </a>
         {% endif %}
-        <span class="navbar-brand"><span class="dot"></span>{% block app_name %}{{ title }}{% endblock %}</span>
+        <span class="navbar-brand"><span class="dot"></span>{% block app_name %}{{ app_name or title }}{% endblock %}</span>
         {% if request.endpoint == 'home' %}
         {# The launcher has no sections, so no menu: just log out. #}
         <a class="btn btn-link btn-logout text-decoration-none ms-auto me-3 px-0" href="{{ url_for('name') }}" title="Not you? Change the name">{{ session.get('who', '') }}</a>

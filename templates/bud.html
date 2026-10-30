@@ -28,7 +28,6 @@
     </div>
     <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
         <div class="d-flex gap-2">
-            <a class="btn btn-sm btn-accent" href="{{ url_for('index', program=only or none) }}">Add event</a>
             <form method="get" class="m-0"><input type="hidden" name="year" value="{{ year }}">
                 <select name="program" class="form-select form-select-sm w-auto" aria-label="Program" onchange="this.form.submit()">
                     <option value="">All programs</option>{% for pc, nm in names.items() %}<option value="{{ pc }}" {{ 'selected' if pc == only }}>{{ nm }}</option>{% endfor %}
@@ -36,6 +35,7 @@
         </div>
         <div class="d-flex flex-wrap gap-2">
             <button class="btn btn-sm btn-outline-secondary" data-toggle-all="budTable">Expand or collapse all</button>
+            <a class="btn btn-sm btn-accent" href="{{ url_for('index', program=only or none) }}">Add event</a>
         </div>
     </div>
     <div class="card"><div class="card-body p-0 table-responsive">
