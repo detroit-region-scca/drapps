@@ -173,7 +173,7 @@ def reserve_plan(rows, today=None, near_years=2, big=20000.0, big_within=5):
     near.sort(key=lambda r: (r['year'], -r['cost']))
     later.sort(key=lambda r: (r['year'], -r['cost']))
     monthly = round(sum(r['monthly'] for r in later), 2)
-    return {'start': start.isoformat()[:7], 'near': near, 'later': later, 'monthly': monthly,
+    return {'start': start.isoformat()[:7], 'start_label': start.strftime('%B %Y'), 'near': near, 'later': later, 'monthly': monthly,
             'big_total': round(sum(r['cost'] for r in later if r['big']), 2),
             'monthly_without_big': round(sum(r['monthly'] for r in later if not r['big']), 2)}
 

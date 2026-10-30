@@ -34,7 +34,7 @@
     <div class="row g-3 mb-4">
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Due in 90 days</div><div class="value {{ 'text-warning' if due }}">{{ due|length }}</div></div></div>
         <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.costs') }}"><div class="label">Recurring costs a year</div><div class="value">{{ money(storage + recurring, 0) }}</div><div class="small text-muted">storage {{ money(storage, 0) }} + everything else {{ money(recurring, 0) }}</div></a></div>
-        <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.plan') }}"><div class="label">Set aside a month</div><div class="value">{{ money(rp.monthly, 0) }}</div><div class="small text-muted">{% if rp.big_total %}or {{ money(rp.monthly_without_big, 0) }} if {{ money(rp.big_total, 0) }} comes from savings{% else %}to replace on schedule{% endif %}</div></a></div>
+        <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.plan') }}"><div class="label">Save for replacements</div><div class="value">{{ money(rp.monthly, 0) }}<span class="h6 text-muted"> /mo</span></div><div class="small text-muted">see Replacement</div></a></div>
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Items</div><div class="value">{{ n_items }}</div><div class="small text-muted">{{ n_capital }} over $2,500 · {{ money(value, 0) }} cost</div></div></div>
     </div>
 
@@ -213,24 +213,23 @@
 
     {% elif view == 'plan' %}
     <p class="text-muted">Replacements and planned purchases at estimated cost when bought. For planning only; the region gets no tax benefit from depreciation.</p>
-    <div class="row g-3 mb-4">
-        <div class="col-md-4"><div class="card stat p-3 h-100"><div class="label">Budget outright, {{ by_year.keys()|list|join(' and ') or 'next two years' }}</div><div class="value">{{ money(rp.near|sum(attribute='cost'), 0) }}</div>
-            <div class="small text-muted">{% for y, c in by_year.items() %}{{ y }}: {{ money(c, 0) }}{{ ' · ' if not loop.last }}{% endfor %}</div></div></div>
-        <div class="col-md-4"><div class="card stat p-3 h-100"><div class="label">Set aside each month from {{ rp.start }}</div><div class="value">{{ money(rp.monthly, 0) }}</div><div class="small text-muted">{{ money(rp.monthly * 12, 0) }} a year, until the big items are bought</div></div></div>
-        {% if rp.big_total %}<div class="col-md-4"><div class="card stat p-3 h-100"><div class="label">Or fund the big ones from savings</div><div class="value">{{ money(rp.monthly_without_big, 0) }}<span class="h6 text-muted"> /mo</span></div><div class="small text-muted">after reserving {{ money(rp.big_total, 0) }} now</div></div></div>{% endif %}
+    <div class="card p-3 mb-4">
+        <p class="mb-2"><b>Buy soon:</b> {% for y, c in by_year.items() %}{{ money(c, 0) }} in {{ y }}{{ ' and ' if not loop.last }}{% else %}nothing{% endfor %}. These go straight into those years' budgets.</p>
+        <p class="mb-0"><b>Save for later:</b> {{ money(rp.monthly, 0) }} a month from {{ rp.start_label }} covers everything after that.{% if rp.big_total %}
+            Or, if the board sets aside {{ money(rp.big_total, 0) }} from savings now for the big items marked below, only {{ money(rp.monthly_without_big, 0) }} a month.{% endif %}</p>
     </div>
-    <h2 class="h6 text-muted">This year and next: budget outright</h2>
+    <h2 class="h6 text-muted">Buy soon</h2>
     <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
         <tbody>{% for r in rp.near %}<tr class="row-link" onclick="location.href='{{ url_for('equip.item', item_id=r.it.id) }}'"><td class="ps-3">{{ r.year }}</td><td><a href="{{ url_for('equip.item', item_id=r.it.id) }}">{{ r.it.name }}</a>{% if r.it.status == 'Planned' %} <span class="small text-muted">new</span>{% endif %}</td><td class="num pe-3">{{ money(r.cost, 0) }}</td></tr>{% else %}<tr><td class="ps-3 text-muted">Nothing.</td></tr>{% endfor %}</tbody>
     </table></div></div>
-    <h2 class="h6 text-muted">Later: set aside monthly, each paid for by July of its year</h2>
+    <h2 class="h6 text-muted">Save for later</h2>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
         <thead><tr><th class="ps-3">Year</th><th>Item</th><th class="num">Estimated cost</th><th class="num pe-3">A month</th></tr></thead>
-        <tbody>{% for r in rp.later %}<tr class="row-link" onclick="location.href='{{ url_for('equip.item', item_id=r.it.id) }}'"><td class="ps-3">{{ r.year }}</td><td><a href="{{ url_for('equip.item', item_id=r.it.id) }}">{{ r.it.name }}</a>{% if r.big %} <span class="small text-muted">could come from savings</span>{% endif %}</td>
+        <tbody>{% for r in rp.later %}<tr class="row-link" onclick="location.href='{{ url_for('equip.item', item_id=r.it.id) }}'"><td class="ps-3">{{ r.year }}</td><td><a href="{{ url_for('equip.item', item_id=r.it.id) }}">{{ r.it.name }}</a>{% if r.big %} <span class="small text-muted">· big item</span>{% endif %}</td>
             <td class="num">{{ money(r.cost, 0) }}</td><td class="num pe-3">{{ money(r.monthly, 0) }}</td></tr>{% else %}<tr><td class="ps-3 text-muted" colspan="4">Nothing.</td></tr>{% endfor %}
         {% if rp.later %}<tr class="fw-semibold"><td class="ps-3" colspan="2">Total</td><td class="num">{{ money(rp.later|sum(attribute='cost'), 0) }}</td><td class="num pe-3">{{ money(rp.monthly, 0) }}</td></tr>{% endif %}</tbody>
     </table></div></div>
-    <p class="small text-muted mt-2">A month = estimated cost spread over the months from {{ rp.start }} to July of the year it is due. It is highest while big items are close and drops after they are bought.</p>
+    <p class="small text-muted mt-2">A month = estimated cost spread over the months from {{ rp.start_label }} to July of the year it is due. It is highest while big items are close and drops after they are bought.</p>
     {% if missing %}<p class="small mt-3"><b>Over $2,500 with no replacement year</b>, so not in the plan: {% for i in missing %}<a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}</a>{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
 
     {% elif view == 'signin' %}
