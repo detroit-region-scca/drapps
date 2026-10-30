@@ -8,7 +8,9 @@ import json
 import os
 import threading
 
-PATH = os.environ.get('OFFICIALS_FILE', '/run/secrets/officials.json')
+# In the container the file is mounted at /run/secrets; the nightly sync on the host reads it where it lives.
+PATH = os.environ.get('OFFICIALS_FILE') or ('/run/secrets/officials.json' if os.path.exists('/run/secrets/officials.json')
+                                           else os.environ.get('OFFICIALS_HOST', '/run/secrets/officials.json'))
 
 _lock = threading.Lock()
 _cache = {}
@@ -40,3 +42,25 @@ def director(program):
 def signers():
     """[(name, email)] who can be the second signer on a check over the limit: the RE and the ARE."""
     return [(o['name'], o['email']) for o in all() if o.get('role') in ('RE', 'ARE') and o.get('email')]
+
+
+def mirror_to_sheet():
+    """Write a readable copy to the Officials tab of the Operations sheet (nightly), so the list is in the shared drive
+    too. The app never reads this copy: editing it changes nothing about who approves."""
+    from storage import open_book
+    sheet = os.environ.get('OPERATIONS_SHEET_ID')
+    rows = all()
+    if not sheet or not rows:
+        return 0
+    book = open_book(sheet)
+    try:
+        ws = book.worksheet('Officials')
+    except Exception:
+        ws = book.add_worksheet('Officials', rows=100, cols=5)
+    out = [['Role', 'Title', 'Name', 'Email', 'Program'],
+           *[[o.get('role', ''), o.get('title', ''), o['name'], o.get('email', ''), o.get('program', '')] for o in rows],
+           [], ['Copy for reference, refreshed nightly. The app sends approval emails only from the list the treasurer keeps on the server; '
+                'changing this tab does not change who approves.']]
+    ws.clear()
+    ws.update(out, 'A1', value_input_option='RAW')
+    return len(rows)

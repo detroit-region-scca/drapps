@@ -193,8 +193,9 @@ class SheetStore:
     def append_audit(self, entry):
         self.files.append_audit(entry)
         try:
-            self._ws('Audit').append_row([entry['timestamp'], entry['action'], entry['user'], json.dumps(entry['details'])],
-                                         value_input_option='RAW')
+            import audit_view    # here, not at the top: audit_view imports flask helpers the storage layer does not need
+            self._ws('Audit').append_row([entry['timestamp'], entry['action'], entry['user'], json.dumps(entry['details']),
+                                          audit_view.plain(entry)], value_input_option='RAW')
         except Exception as e:
             logger.error(f"Audit entry kept locally only (Sheets write failed): {e}")
         self._cache.pop('audit', None)

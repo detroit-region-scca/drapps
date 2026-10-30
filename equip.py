@@ -4,7 +4,8 @@ what is due when, on one page. Records live in the Registry sheet (equip_store).
 
 Everyone signed in can look. Only equipment committee members (role "Equipment" in the read-only officials list,
 plus the treasurer) can change anything, and only after signing in through a link emailed to that address, so the
-shared app password alone cannot change the region's records.
+shared app password alone cannot change the region's records. The records are a plain spreadsheet in the shared
+drive (equip_store), so the region can keep them up by hand without the app.
 """
 import os
 from datetime import date, timedelta
@@ -30,7 +31,7 @@ def _ctx(**kw):
 
 def _guard():
     if not E.enabled():
-        flash('Operations needs the Google Sheets storage (STORAGE_BACKEND=sheets and REGISTRY_SHEET_ID).', 'warning')
+        flash('Operations needs the Google Sheets storage (STORAGE_BACKEND=sheets and OPERATIONS_SHEET_ID).', 'warning')
         return redirect(url_for('home'))
     return None
 
@@ -174,7 +175,7 @@ def _save_item(it):
         return redirect(request.url)
     row.update(updated=date.today().isoformat(), updated_by=_who())
     new = not row.get('id')
-    rid = E.save('Equipment Items', row)
+    rid = E.save('Property', row)
     log_audit_event('EQUIP_ITEM_SAVED', _who(), {'id': rid, 'name': row['name'], 'new': new})
     flash(f"Saved {row['name']}.", 'success')
     return redirect(url_for('equip.item', item_id=rid))
@@ -221,7 +222,7 @@ def _save_place(p):
         flash('Give the place a name.', 'danger')
         return redirect(request.url)
     row.update(updated=date.today().isoformat(), updated_by=_who())
-    pid = E.save('Equipment Places', row)
+    pid = E.save('Storage', row)
     log_audit_event('EQUIP_PLACE_SAVED', _who(), {'id': pid, 'name': row['name']})
     flash(f"Saved {row['name']}.", 'success')
     return redirect(url_for('equip.place', place_id=pid))
@@ -264,7 +265,7 @@ def _save_task(t):
         row.update(last_done=date.today().isoformat(), done_by=_who())
         nxt = E.next_due(t)
         row['due'] = nxt
-        E.save('Equipment Tasks', row)
+        E.save('Recurring costs and to-dos', row)
         log_audit_event('EQUIP_TASK_DONE', _who(), {'id': t['id'], 'task': t['task'], 'next': nxt})
         flash(f"Marked done: {t['task']}." + (f" Next due {nxt}." if nxt else ''), 'success')
         return redirect(url_for('equip.tasks'))
@@ -276,7 +277,7 @@ def _save_task(t):
     if not row.get('task'):
         flash('Say what has to be done.', 'danger')
         return redirect(request.url)
-    tid = E.save('Equipment Tasks', row)
+    tid = E.save('Recurring costs and to-dos', row)
     log_audit_event('EQUIP_TASK_SAVED', _who(), {'id': tid, 'task': row['task'], 'due': row.get('due', '')})
     flash('Saved.', 'success')
     return redirect(url_for('equip.tasks'))

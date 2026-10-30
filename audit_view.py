@@ -3,6 +3,8 @@
 Everything shown comes from what people typed (names, notes), so it is escaped here and the template
 only marks the result safe.
 """
+import re
+
 from flask import url_for
 from markupsafe import Markup, escape
 
@@ -34,6 +36,15 @@ def _link(endpoint, label, **kw):
         return Markup('<a href="{}">{}</a>').format(url_for(endpoint, **kw), label)
     except Exception:
         return escape(label)
+
+
+def plain(log):
+    """describe() as plain text, for the "What happened" column of the Audit tab (the sheet must read on its own)."""
+    try:
+        return ' '.join(re.sub(r'<[^>]+>', '', str(describe(log))).replace('&amp;', '&').replace('&#39;', "'").replace('&#34;', '"')
+                        .replace('&quot;', '"').replace('&lt;', '<').replace('&gt;', '>').split())
+    except Exception:
+        return ''
 
 
 def describe(log):

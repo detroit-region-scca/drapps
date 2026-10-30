@@ -1,14 +1,13 @@
-"""Reads and writes the Operations records (property, storage, recurring costs and to-dos): three tabs on the
-Registry sheet (REGISTRY_SHEET_ID).
+"""Reads and writes the Operations records: the DRSCCA Operations spreadsheet (OPERATIONS_SHEET_ID) in the DRSCCA
+Apps shared drive, Operations folder. Plain tab names and column headers, so the region can keep it up by hand.
 
-  Equipment Items   one row per asset or group of like items (a vehicle, a trailer, 14 loaner helmets, pylons)
-  Equipment Places  where things are kept, what it costs, whose name the account is in, how to get in
-  Equipment Tasks   what has to be done or paid and when: renewals, registrations, inspections, subscriptions.
-                    A repeating one with a cost is a recurring cost; one charged automatically (auto = yes) is
-                    counted in the costs but kept off the to-do list.
+  Property                     one row per asset or group of like items (a vehicle, a trailer, 14 loaner helmets)
+  Storage                      where things are kept, what it costs, whose name the account is in, how to get in
+  Recurring costs and to-dos   what has to be done or paid and when: renewals, registrations, inspections, subscriptions.
+                               A repeating one with a cost is a recurring cost; one charged automatically (yes) is
+                               counted in the costs but kept off the to-do list.
 
-The sheet stays usable by hand. Only equipment committee members signed in through an emailed link can change
-anything in the app (see equip.py).
+Only equipment committee members signed in through an emailed link can change anything in the app (see equip.py).
 """
 import os
 import threading
@@ -24,7 +23,17 @@ ITEM_COLS = ['id', 'name', 'program', 'category', 'place', 'year', 'quantity', '
 PLACE_COLS = ['id', 'name', 'address', 'cost_month', 'cost_year', 'account_holder', 'access', 'notes', 'updated', 'updated_by']
 TASK_COLS = ['id', 'task', 'about', 'due', 'repeat_months', 'cost', 'owner', 'notes', 'last_done', 'done_by', 'category', 'paid_how', 'auto']
 COST_CATEGORIES = ['Insurance', 'Storage', 'Vehicles', 'Safety', 'Software and web', 'Administration', 'Travel', 'Other']
-TABS = {'Equipment Items': ITEM_COLS, 'Equipment Places': PLACE_COLS, 'Equipment Tasks': TASK_COLS}
+TABS = {'Property': ITEM_COLS, 'Storage': PLACE_COLS, 'Recurring costs and to-dos': TASK_COLS}
+# What people see as the header row (the app reads and writes by column position).
+LABELS = {
+    'Property': ['ID', 'Name', 'Program', 'Category', 'Kept at', 'Year bought', 'Quantity', 'Cost when bought', 'Useful life (years)',
+                 'VIN or serial', 'Plate', 'Condition', 'Status', 'Notes', 'Documents link', 'Last updated', 'Updated by',
+                 'Replacement cost estimate', 'Replace or buy in (year)'],
+    'Storage': ['ID', 'Name', 'Address', 'Cost per month', 'Cost per year', 'Account in the name of / paid how', 'Access', 'Notes',
+                'Last updated', 'Updated by'],
+    'Recurring costs and to-dos': ['ID', 'What', 'For', 'Next due', 'Repeats every (months; blank = once)', 'Cost each time', 'Who',
+                                   'Notes', 'Last done', 'Done by', 'Cost category', 'Paid how', 'Charged automatically (yes or blank)'],
+}
 NUMERIC = {'year', 'quantity', 'cost', 'life_years', 'cost_month', 'cost_year', 'repeat_months', 'replace_cost', 'replace_year'}
 CATEGORIES = ['Vehicle', 'Trailer', 'Timing', 'Safety', 'Course', 'Hospitality', 'Promotion', 'Tools', 'Other']
 STATUSES = ['In use', 'Needs repair', 'Planned', 'Retire', 'Gone']
@@ -37,11 +46,11 @@ _cache = {}
 
 
 def enabled():
-    return bool(os.environ.get('REGISTRY_SHEET_ID')) and os.environ.get('STORAGE_BACKEND') == 'sheets'
+    return bool(os.environ.get('OPERATIONS_SHEET_ID')) and os.environ.get('STORAGE_BACKEND') == 'sheets'
 
 
 def _ws(title):
-    return worksheet(os.environ['REGISTRY_SHEET_ID'], title)
+    return worksheet(os.environ['OPERATIONS_SHEET_ID'], title)
 
 
 def refresh():
@@ -59,7 +68,7 @@ def _snapshot():
     hit = _cache.get('snap')
     if hit and time.time() - hit[0] < CACHE_SECONDS:
         return hit[1]
-    res = open_book(os.environ['REGISTRY_SHEET_ID']).values_batch_get([f"'{t}'!A:Z" for t in TABS],
+    res = open_book(os.environ['OPERATIONS_SHEET_ID']).values_batch_get([f"'{t}'!A:Z" for t in TABS],
                                                                      params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     snap = {}
     for (title, cols), vr in zip(TABS.items(), res.get('valueRanges', [])):
@@ -73,15 +82,15 @@ def _snapshot():
 
 
 def items():
-    return _snapshot()['Equipment Items']
+    return _snapshot()['Property']
 
 
 def places():
-    return _snapshot()['Equipment Places']
+    return _snapshot()['Storage']
 
 
 def tasks():
-    return sorted(_snapshot()['Equipment Tasks'], key=lambda t: t['due'] or '9999')
+    return sorted(_snapshot()['Recurring costs and to-dos'], key=lambda t: t['due'] or '9999')
 
 
 def _cell(v):
@@ -95,7 +104,7 @@ def save(tab, row):
         ws = _ws(tab)
         ids = ws.col_values(1)
         if not row.get('id'):
-            prefix = {'Equipment Items': 'EQ', 'Equipment Places': 'PL', 'Equipment Tasks': 'TK'}[tab]
+            prefix = {'Property': 'EQ', 'Storage': 'PL', 'Recurring costs and to-dos': 'TK'}[tab]
             nums = [int(v[len(prefix) + 1:]) for v in ids if v.startswith(prefix + '-') and v[len(prefix) + 1:].isdigit()]
             row = dict(row, id=f'{prefix}-{max(nums, default=0) + 1:03d}')
             ws.append_row([_cell(row.get(c)) for c in cols], value_input_option='RAW')
@@ -107,16 +116,16 @@ def save(tab, row):
 
 
 def create_tabs():
-    """Make the three tabs with their headers if they are not there yet, and bring older headers up to date."""
-    book = open_book(os.environ['REGISTRY_SHEET_ID'])
+    """Make the tabs with their plain headers if they are not there yet, and bring older headers up to date."""
+    book = open_book(os.environ['OPERATIONS_SHEET_ID'])
     have = {w.title: w for w in book.worksheets()}
-    for title, cols in TABS.items():
+    for title, labels in LABELS.items():
         if title not in have:
-            book.add_worksheet(title, rows=300, cols=len(cols)).update([cols], 'A1', value_input_option='RAW')
-        elif have[title].row_values(1) != cols:
-            if have[title].col_count < len(cols):
-                have[title].add_cols(len(cols) - have[title].col_count)
-            have[title].update([cols], 'A1', value_input_option='RAW')
+            book.add_worksheet(title, rows=300, cols=len(labels)).update([labels], 'A1', value_input_option='RAW')
+        elif have[title].row_values(1) != labels:
+            if have[title].col_count < len(labels):
+                have[title].add_cols(len(labels) - have[title].col_count)
+            have[title].update([labels], 'A1', value_input_option='RAW')
     refresh()
 
 
