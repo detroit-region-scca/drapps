@@ -11,6 +11,7 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 import bud_store as B
 import fr_store as F
 import plan_store as P
+from officer import current as officer_current, officer_required
 from utils import load_events, load_programs, log_audit_event, login_required
 
 bp = Blueprint('bud', __name__, url_prefix='/events')
@@ -19,7 +20,7 @@ SECTIONS = (('Income', 'inc'), ('Expense', 'exp'))
 
 
 def _ctx(**kw):
-    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Events", who=session.get('who', ''), budgets_on=B.enabled(),
+    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Events", who=session.get('who', ''), budgets_on=B.enabled(), officer=officer_current(),
                 months=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], **kw)
 
 
@@ -195,6 +196,7 @@ def tie(code):
 
 @bp.route('/approve', methods=['GET', 'POST'])
 @login_required
+@officer_required
 def approve_many():
     """After a board meeting: tick the budgets the board approved and record them all with one meeting date."""
     if (g := _guard()):
@@ -202,8 +204,7 @@ def approve_many():
     year = request.args.get('year') or str(date.today().year)
     if request.method == 'POST':
         f = request.form
-        who = f.get('who', '').strip() or session.get('who', '') or 'Unknown'
-        session['who'] = who
+        who = officer_current()['name']
         codes = [c for c in f.getlist('code') if B.get(c)]
         try:
             approved = date.fromisoformat(f.get('approved', '')).isoformat()
@@ -232,14 +233,14 @@ def approve_many():
 
 @bp.route('/event/<path:code>/approve', methods=['POST'])
 @login_required
+@officer_required
 def approve(code):
     if (g := _guard()):
         return g
     if not B.get(code):
         flash('There is no budget to approve.', 'warning')
         return redirect(url_for('bud.detail', code=code))
-    who = request.form.get('who', '').strip() or session.get('who', '') or 'Unknown'
-    session['who'] = who
+    who = officer_current()['name']
     approved = request.form.get('approved', '').strip()
     if approved:
         try:

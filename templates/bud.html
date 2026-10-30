@@ -183,7 +183,7 @@
             <input type="hidden" name="who" value="{{ session.get('who', '') }}">
             <div class="col-12 col-md-3"><button class="btn btn-sm btn-accent w-100">Record board approval</button></div>
         </form>
-        <div class="form-text">For the treasurer or secretary, after the board approves this budget in a meeting.</div>
+        <div class="form-text">Only the RE, ARE or treasurer can record this, signed in by an emailed link{% if officer %} (you are: {{ officer.name }}){% else %}: <a href="{{ url_for('officer.signin', next=request.path) }}">sign in</a>{% endif %}.</div>
         {% endif %}
     </div>
     {% endif %}
@@ -191,7 +191,7 @@
     {% elif view == 'approve' %}
     <div class="crumbs"><a href="{{ url_for('bud.home', year=year) }}">Budgets</a> / Record board approvals</div>
     <div class="page-title">Record board approvals, {{ year }}</div>
-    <p class="text-muted">Tick the budgets the board approved, enter the meeting date, and save.</p>
+    <p class="text-muted">Tick the budgets the board approved, enter the meeting date, and save. Recorded as {{ officer.name }} (signed in by email).</p>
     {% if rows %}
     <form method="post">
         <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0">

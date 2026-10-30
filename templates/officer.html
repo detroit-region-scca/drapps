@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block app_name %}Officer sign-in{% endblock %}
+{% block content %}
+    <div class="card p-4 mx-auto" style="max-width: 30rem;">
+        <div class="page-title">Officer sign-in</div>
+        <p class="text-muted small">Recording a board decision, like a board-approved event budget, is limited to the RE, ARE and treasurer. Enter your email and we'll send a sign-in link to it.</p>
+        <form method="post"><input type="hidden" name="next" value="{{ nxt }}">
+            <input type="email" name="email" class="form-control mb-3" required autofocus placeholder="you@example.com">
+            <button class="btn btn-accent w-100">Email me a link</button></form>
+    </div>
+{% endblock %}

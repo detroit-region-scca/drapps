@@ -32,6 +32,7 @@ from fr import bp as fr_bp  # noqa: E402
 from bud import bp as bud_bp  # noqa: E402
 from plan import bp as plan_bp  # noqa: E402
 from equip import bp as equip_bp  # noqa: E402
+from officer import bp as officer_bp  # noqa: E402
 from inv import bp as inv_bp  # noqa: E402
 import wp_store  # noqa: E402
 import fr_store  # noqa: E402
@@ -45,6 +46,7 @@ app.register_blueprint(bud_bp)
 app.register_blueprint(plan_bp)
 app.register_blueprint(equip_bp)
 app.register_blueprint(inv_bp)
+app.register_blueprint(officer_bp)
 app.config['MAX_CONTENT_LENGTH'] = 40 * 1024 * 1024  # funds request receipts
 
 # Mandatory Secret Key in Production
