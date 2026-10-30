@@ -6,7 +6,8 @@
     {{ tab('equip.home', 'Overview') }}
     {{ tab('equip.tasks', 'To do', request.endpoint == 'equip.tasks' or (request.endpoint == 'equip.task' and not bill)) }}
     {{ tab('equip.costs', 'Bills', request.endpoint == 'equip.costs' or (request.endpoint == 'equip.task' and bill)) }}
-    {{ tab('equip.items', 'Property and storage', request.endpoint in ('equip.items', 'equip.item', 'equip.places', 'equip.place')) }}
+    {{ tab('equip.items', 'Locations', request.endpoint in ('equip.items', 'equip.item', 'equip.places', 'equip.place')) }}
+    {{ tab('equip.documents', 'Documents') }}
     {{ tab('equip.plan', 'Replacement') }}
 {% endblock %}
 {% macro due_badge(t) -%}
@@ -29,6 +30,27 @@
 {% macro qbo(text) -%}
     {% if text %}<span class="{{ 'text-success' if text.startswith(('Matches', 'Corrected')) else 'text-muted' if text.startswith('Estimate') else 'text-warning' }}">{{ text }}</span>{% else %}<span class="text-muted">Not checked</span>{% endif %}
 {%- endmacro %}
+{% macro item_line(e) -%}
+    <li><a href="{{ url_for('equip.item', item_id=e.it.id) }}">{{ e.it.name }}</a>{% if e.it.quantity and e.it.quantity > 1 %} <span class="text-muted">× {{ '%g'|format(e.it.quantity) }}</span>{% endif %}
+        {% if e.it.status not in ('In use',) %}<span class="small text-muted">· {{ e.it.status|lower }}</span>{% endif %}
+        {% if e.it.seen %}<span class="small text-muted">· confirmed {{ e.it.seen }}</span>{% endif %}
+        {% if e.inside %}<ul class="where-inside">{% for k in e.inside %}{{ item_line(k) }}{% endfor %}</ul>{% endif %}</li>
+{%- endmacro %}
+{% macro where_list(entries) -%}
+    <ul class="where mb-0">{% for e in entries %}{{ item_line(e) }}{% endfor %}</ul>
+{%- endmacro %}
+{% macro docs_box(d) -%}
+    {% if d %}<div class="card p-3 mb-3">
+        <div class="d-flex justify-content-between flex-wrap gap-2"><h2 class="h6 m-0">Documents</h2>{% if d.folder %}<a class="small" href="{{ d.folder }}" target="_blank" rel="noopener">Open the Drive folder</a>{% endif %}</div>
+        {% if d.error %}<div class="small text-warning mt-2">Couldn't read Drive just now.</div>{% endif %}
+        <ul class="small mb-0 mt-2 list-unstyled">
+            {% for doc, files in d.have %}<li><span class="text-success">✓</span> {{ doc }}: {% for f in files %}<a href="{{ f.webViewLink }}" target="_blank" rel="noopener">{{ f.name }}</a>{{ ', ' if not loop.last }}{% endfor %}</li>{% endfor %}
+            {% for doc in d.missing %}<li><span class="text-warning">✗</span> {{ doc }}: <span class="text-warning">missing</span></li>{% endfor %}
+            {% for f in d.others %}<li><span class="text-muted">·</span> <a href="{{ f.webViewLink }}" target="_blank" rel="noopener">{{ f.name }}</a></li>{% endfor %}
+        </ul>
+        {% if d.notes %}<div class="small text-muted mt-2">{{ d.notes }}</div>{% endif %}
+    </div>{% endif %}
+{%- endmacro %}
 {% macro editbar(edit_url, new_url=none, new_label='') -%}
     <div class="d-flex flex-wrap gap-2 align-items-center no-print">
         {% if editor %}{% if edit_url %}<a class="btn btn-sm btn-accent" href="{{ edit_url }}">Edit</a>{% endif %}
@@ -39,6 +61,11 @@
 {% block style %}
         body.app-equip { --accent: #ff9f6b; }
         a.card.stat { color: var(--text); }
+        ul.where { list-style: none; padding-left: 0; }
+        ul.where > li { padding: .45rem 1rem; border-top: 1px solid var(--border, rgba(255,255,255,.08)); }
+        ul.where > li:first-child { border-top: 0; }
+        ul.where-inside { list-style: none; padding-left: 1.1rem; margin: .25rem 0 0; border-left: 2px solid rgba(255,159,107,.35); }
+        ul.where-inside li { padding: .1rem 0 .1rem .5rem; font-size: .92rem; }
 {% endblock %}
 {% block content %}
     {% if editor and view != 'signin' %}<div class="small text-muted mb-2 no-print">Editing as {{ editor.name }}.
@@ -50,13 +77,16 @@
         <a class="btn btn-sm btn-outline-light no-print" href="{{ url_for('equip.one_pager') }}" target="_blank">One-page PDF</a>
     </div>
     <div class="row g-3 mb-4">
-        <div class="col-md-4"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.tasks') }}"><div class="label">To do</div>
+        <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.tasks') }}"><div class="label">To do</div>
             <div class="value">{{ due|length }} <span class="h6 text-muted">in the next 90 days</span></div>
             <div class="small {{ 'text-danger' if late else 'text-muted' }}">{% if late %}{{ late }} overdue{% else %}nothing overdue{% endif %}{% if undated %} · {{ undated|length }} with no date{% endif %}</div></a></div>
-        <div class="col-md-4"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.costs') }}"><div class="label">Bills</div>
+        <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.costs') }}"><div class="label">Bills</div>
             <div class="value">{{ money(bills_year, 0) }} <span class="h6 text-muted">a year</span></div>
             <div class="small text-muted">about {{ money(bills_year / 12, 0) }} a month, {{ n_bills }} bills</div></a></div>
-        <div class="col-md-4"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.plan') }}"><div class="label">Save for replacements</div>
+        <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.documents') }}"><div class="label">Documents</div>
+            <div class="value {{ 'text-warning' if docs_missing }}">{{ docs_missing }} <span class="h6 text-muted">missing</span></div>
+            <div class="small text-muted">{{ docs_total - docs_missing }} of {{ docs_total }} titles, registrations, cards and agreements in Drive</div></a></div>
+        <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.plan') }}"><div class="label">Save for replacements</div>
             <div class="value">{{ money(rp.monthly, 0) }} <span class="h6 text-muted">a month</span></div>
             <div class="small text-muted">from {{ rp.start_label }}, so vehicles and gear can be replaced when they wear out</div></a></div>
     </div>
@@ -96,20 +126,55 @@
     </table></div></div>
     {% endfor %}
 
-    {% elif view == 'items' %}
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2" id="storage">
-        <h2 class="h6 text-muted m-0">Where things are kept</h2>
-        {{ editbar(none, url_for('equip.place'), 'Add a place') }}
+    {% elif view == 'where' %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div class="text-muted small">Where all {{ n_live }} things are (planned purchases are on Replacement): each storage place, what's in each trailer and motorhome, and who has the rest. <a href="{{ url_for('equip.items', by='category') }}">List by category</a></div>
+        {{ editbar(none, url_for('equip.item'), 'Add an item') }}
     </div>
-    <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table table-hover mb-0">
-        <thead><tr><th class="ps-3">Place</th><th>Account in the name of</th><th class="num">Items</th><th class="num pe-3">Cost</th></tr></thead>
-        <tbody>{% for p in places %}<tr class="row-link" onclick="location.href='{{ url_for('equip.place', place_id=p.id) }}'">
-            <td class="ps-3"><a href="{{ url_for('equip.place', place_id=p.id) }}">{{ p.name }}</a><div class="small text-muted">{{ p.address }}</div></td>
-            <td class="small">{{ p.account_holder }}</td><td class="num">{{ p.n }}</td>
-            <td class="num pe-3">{% if p.cost_month %}{{ money(p.cost_month, 0) }}/mo{% elif p.cost_year %}{{ money(p.cost_year, 0) }}/yr{% else %}free{% endif %}</td></tr>{% endfor %}</tbody>
+    {% for p, entries in where %}
+    <div class="card mb-3">
+        <div class="d-flex flex-wrap justify-content-between gap-2 px-3 pt-3 pb-2">
+            <div><a class="h6 m-0" href="{{ url_for('equip.place', place_id=p.id) }}">{{ p.name }}</a> <span class="small text-muted">{{ p.address }}</span></div>
+            <div class="small text-muted">{% if p.cost_month %}{{ money(p.cost_month, 0) }}/mo{% elif p.cost_year %}{{ money(p.cost_year, 0) }}/yr{% else %}free{% endif %} · {{ p.account_holder }}</div>
+        </div>
+        {% if entries %}{{ where_list(entries) }}{% else %}<div class="px-3 pb-3 small text-muted">Nothing listed here.</div>{% endif %}
+    </div>
+    {% endfor %}
+    {% if people %}<h2 class="h6 text-muted mt-4">With people</h2>
+    <div class="card mb-3">{% for person, entries in people %}<div class="px-3 pt-2 fw-semibold">{{ person }}</div>{{ where_list(entries) }}{% endfor %}</div>{% endif %}
+    {% if other %}<h2 class="h6 text-muted mt-4">Somewhere else</h2>
+    <div class="card mb-3">{% for place, entries in other %}<div class="px-3 pt-2 fw-semibold">{{ place }}</div>{{ where_list(entries) }}{% endfor %}</div>{% endif %}
+    {% if unknown %}<h2 class="h6 text-warning mt-4">Not sure where</h2><div class="card mb-3">{{ where_list(unknown) }}</div>{% endif %}
+    <p class="small text-muted">To record a move, open the item and use "Where is it now?". Storage places are added with <a href="{{ url_for('equip.place') }}">Add a place</a>.</p>
+
+    {% elif view == 'documents' %}
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+        <div><div class="page-title m-0">{% if n_missing %}{{ n_missing }} documents missing{% else %}Every document is in Drive{% endif %}</div>
+            <div class="text-muted small">Each vehicle, trailer and storage place has a folder in Drive (Operations › Documents). Put scans or photos in its folder and start the file name with what it is,
+                for example "Title - front.jpg", "Registration 2026.pdf", "Insurance card 2026-27.pdf" or "Agreement 2026.pdf". The list updates within a few minutes.</div></div>
+        <div class="d-flex gap-2 no-print">{% if root %}<a class="btn btn-sm btn-outline-light" href="{{ root }}" target="_blank" rel="noopener">Open Documents in Drive</a>{% endif %}
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('equip.documents', fresh=1) }}">Check again</a></div>
+    </div>
+    {% if error %}<div class="alert alert-warning small">Couldn't read Drive just now, so nothing shows as there or missing. Try again in a minute.</div>{% endif %}
+    {% for kind, rows in kinds %}
+    <h2 class="h6 text-muted mt-3">{{ kind }}</h2>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <thead><tr><th class="ps-3" style="width: 28%">For</th><th>Have</th><th>Missing</th><th class="pe-3 text-end">Folder</th></tr></thead>
+        <tbody>{% for r in rows %}<tr>
+            <td class="ps-3">{% if r.for_id.startswith('EQ') %}<a href="{{ url_for('equip.item', item_id=r.for_id) }}">{{ r.for_name }}</a>{% elif r.for_id.startswith('PL') %}<a href="{{ url_for('equip.place', place_id=r.for_id) }}">{{ r.for_name }}</a>{% else %}{{ r.for_name }}{% endif %}
+                {% if r.notes %}<div class="small text-muted">{{ r.notes }}</div>{% endif %}</td>
+            <td class="small">{% for doc, files in r.have %}<div><span class="text-success">✓</span> {% for f in files %}<a href="{{ f.webViewLink }}" target="_blank" rel="noopener">{{ f.name }}</a>{{ ', ' if not loop.last }}{% endfor %}</div>{% endfor %}
+                {% for f in r.others %}<div class="text-muted">· <a class="text-muted" href="{{ f.webViewLink }}" target="_blank" rel="noopener">{{ f.name }}</a></div>{% endfor %}
+                {% if not r.have and not r.others %}<span class="text-muted">nothing yet</span>{% endif %}</td>
+            <td class="small text-warning">{{ r.missing|join(', ') }}</td>
+            <td class="pe-3 text-end small"><a href="{{ r.folder }}" target="_blank" rel="noopener">Open</a></td></tr>{% endfor %}</tbody>
     </table></div></div>
+    {% endfor %}
+
+    {% elif view == 'items' %}
+    <div class="small mb-3"><a href="{{ url_for('equip.items') }}">‹ Back to where things are</a></div>
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <h2 class="h6 text-muted m-0">Property <span class="small">· <a href="{{ url_for('equip.items', gone=none if show_gone else '1') }}">{{ 'hide' if show_gone else 'show' }} items that are gone</a></span></h2>
+        <h2 class="h6 text-muted m-0">Property by category <span class="small">· <a href="{{ url_for('equip.items', gone=none if show_gone else '1') }}">{{ 'hide' if show_gone else 'show' }} items that are gone</a></span></h2>
         {{ editbar(none, url_for('equip.item'), 'Add an item') }}
     </div>
     {% for cat, rows in groups %}
@@ -124,15 +189,16 @@
     {% endfor %}
 
     {% elif view == 'item' %}
-    <div class="crumbs"><a href="{{ url_for('equip.items') }}">Property and storage</a> / {{ it.name or 'New item' }}</div>
+    <div class="crumbs"><a href="{{ url_for('equip.items') }}">Where things are</a> / {{ it.name or 'New item' }}</div>
     {% if edit %}
     <form method="post" class="card p-3">
         <div class="row g-2">
             <div class="col-md-8"><label class="form-label small">Name</label><input name="name" class="form-control" value="{{ it.name or '' }}" required></div>
             <div class="col-6 col-md-2"><label class="form-label small">Program</label><input name="program" class="form-control" value="{{ it.program or '' }}" placeholder="Solo, RX…"></div>
             <div class="col-6 col-md-2"><label class="form-label small">Category</label><select name="category" class="form-select">{% for c in categories %}<option {{ 'selected' if c == it.category }}>{{ c }}</option>{% endfor %}</select></div>
-            <div class="col-md-4"><label class="form-label small">Kept at</label><input name="place" class="form-control" list="placeNames" value="{{ it.place or '' }}">
-                <datalist id="placeNames">{% for p in places %}<option value="{{ p.name }}">{% endfor %}</datalist></div>
+            <div class="col-md-4"><label class="form-label small">Kept at (a place, a trailer, or "With" a person)</label><input name="place" class="form-control" list="placeNames" value="{{ it.place or '' }}">
+                <datalist id="placeNames">{% for n in locations %}<option value="{{ n }}">{% endfor %}</datalist></div>
+            {% if it.category in ('Vehicle', 'Trailer') or it.nickname %}<div class="col-md-4"><label class="form-label small">Also called (what people say when things are kept in it)</label><input name="nickname" class="form-control" value="{{ it.nickname or '' }}" placeholder="Race Trailer"></div>{% endif %}
             <div class="col-4 col-md-2"><label class="form-label small">Year bought</label><input name="year" class="form-control" inputmode="numeric" value="{{ '%d'|format(it.year) if it.year else '' }}"></div>
             <div class="col-4 col-md-2"><label class="form-label small">Quantity</label><input name="quantity" class="form-control" inputmode="numeric" value="{{ '%g'|format(it.quantity) if it.quantity else '' }}"></div>
             <div class="col-4 col-md-2"><label class="form-label small">Cost</label><input name="cost" class="form-control" inputmode="decimal" value="{{ it.cost or '' }}"></div>
@@ -162,16 +228,26 @@
             {% if it.vin %}<dt class="col-sm-3">VIN or serial</dt><dd class="col-sm-9">{{ it.vin }}</dd>{% endif %}
             {% if it.plate %}<dt class="col-sm-3">Plate</dt><dd class="col-sm-9">{{ it.plate }}</dd>{% endif %}
             <dt class="col-sm-3">Lifecycle</dt><dd class="col-sm-9">{% if lc and lc.per_year %}{{ money(lc.per_year, 0) }} a year over {{ '%g'|format(it.life_years) }} years; about {{ money(lc.left, 0) }} of value left. {% endif %}{% if lc %}{{ 'Buy' if it.status == 'Planned' else 'Replace' }} in {{ lc.replace }}{% if it.replace_cost %}, estimated {{ money(it.replace_cost, 0) }}{% endif %}.{% else %}<span class="text-muted">Add the year bought, cost and useful life, or a replacement year, to see it.</span>{% endif %}</dd>
-            {% if it.docs_url %}<dt class="col-sm-3">Documents</dt><dd class="col-sm-9"><a href="{{ it.docs_url }}" target="_blank" rel="noopener">Open</a></dd>{% endif %}
+            {% if it.nickname %}<dt class="col-sm-3">Also called</dt><dd class="col-sm-9">{{ it.nickname }}</dd>{% endif %}
             {% if it.notes %}<dt class="col-sm-3">Notes</dt><dd class="col-sm-9" style="white-space: pre-wrap">{{ it.notes }}</dd>{% endif %}
             {% if it.updated %}<dt class="col-sm-3">Updated</dt><dd class="col-sm-9 text-muted">{{ it.updated }} by {{ it.updated_by }}</dd>{% endif %}
         </dl>
     </div>
+    <div class="card p-3 mb-3">
+        <h2 class="h6 m-0">Where is it now?</h2>
+        <div class="small mt-1">{{ it.place or 'Not recorded' }}{% if it.seen %} <span class="text-muted">· last confirmed {{ it.seen }}</span>{% else %} <span class="text-muted">· never confirmed</span>{% endif %}</div>
+        {% if editor %}<form method="post" class="d-flex flex-wrap gap-2 mt-2 no-print"><input type="hidden" name="action" value="located">
+            <input name="place" class="form-control form-control-sm" style="max-width: 22rem" list="whereNames" value="{{ it.place or '' }}" placeholder="Wixom storage unit, Race Trailer, With Matt Wolfe">
+            <datalist id="whereNames">{% for n in locations %}<option value="{{ n }}">{% endfor %}</datalist>
+            <button class="btn btn-sm btn-accent">Confirm or move</button></form>
+        {% else %}<div class="small text-muted mt-1 no-print">Moved it? <a href="{{ url_for('equip.signin', next=request.path) }}">Sign in</a> to record where it is.</div>{% endif %}
+    </div>
+    {{ docs_box(docs) }}
     {% if tasks %}<h2 class="h6 text-muted">To do for this</h2><ul>{% for t in tasks %}<li>{{ t.task }}: {{ t.due or 'no date' }}</li>{% endfor %}</ul>{% endif %}
     {% endif %}
 
     {% elif view == 'place' %}
-    <div class="crumbs"><a href="{{ url_for('equip.items') }}#storage">Property and storage</a> / {{ p.name or 'New place' }}</div>
+    <div class="crumbs"><a href="{{ url_for('equip.items') }}">Where things are</a> / {{ p.name or 'New place' }}</div>
     {% if edit %}
     <form method="post" class="card p-3"><input type="hidden" name="back" value="{{ back }}"><div class="row g-2">
         <div class="col-md-6"><label class="form-label small">Name</label><input name="name" class="form-control" value="{{ p.name or '' }}" required></div>
@@ -194,6 +270,7 @@
             {% if p.notes %}<dt class="col-sm-3">Notes</dt><dd class="col-sm-9" style="white-space: pre-wrap">{{ p.notes }}</dd>{% endif %}
         </dl>
     </div>
+    {{ docs_box(docs) }}
     <h2 class="h6 text-muted">Kept here ({{ held|length }})</h2>
     <ul>{% for i in held %}<li><a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}</a>{% if i.quantity and i.quantity > 1 %} × {{ '%g'|format(i.quantity) }}{% endif %}</li>{% else %}<li class="text-muted">Nothing listed.</li>{% endfor %}</ul>
     {% endif %}

@@ -50,3 +50,21 @@ def test_fixed_cost_year():
     places = [{'cost_month': 100.0, 'cost_year': None}, {'cost_month': None, 'cost_year': 1200.0}]
     tasks = [{'cost': 3600.0, 'repeat_months': 12.0}, {'cost': 1000.0, 'repeat_months': 24.0}, {'cost': 50.0, 'repeat_months': None}]
     assert E.fixed_cost_year(places, tasks) == (2400.0, 4100.0)
+
+
+def test_locations_nest_contents_under_trailers():
+    item = lambda id_, name, place, cat='Other', nick='': dict(id=id_, name=name, place=place, category=cat, nickname=nick, status='In use')
+    rows = [item('1', '22 race trailer', 'Thistle Hill', 'Trailer', 'Race Trailer'), item('2', 'Cones', 'Race Trailer'),
+            item('3', 'Laptop', 'With Matt Wolfe'), item('4', 'Banner', ''), item('5', 'Flags', 'Garage')]
+    places = [{'id': 'PL-1', 'name': 'Thistle Hill Farm'}]
+    where, people, other, unknown = E.locations(rows, places)
+    (place, entries), = where
+    assert place['name'] == 'Thistle Hill Farm' and entries[0]['it']['id'] == '1' and entries[0]['inside'][0]['it']['id'] == '2'
+    assert people == [('Matt Wolfe', [{'it': rows[2], 'inside': []}])]
+    assert other[0][0] == 'Garage' and unknown[0]['it']['id'] == '4'
+
+
+def test_documents_match_by_file_name():
+    import equip_docs as D
+    assert D.matches('Title', 'Title - front.jpg') and D.matches('Agreement', 'Lease 2026.pdf')
+    assert D.matches('Insurance card', 'Insurance card 2026-27.pdf') and not D.matches('Registration', 'Title.jpg')

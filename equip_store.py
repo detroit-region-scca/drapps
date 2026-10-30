@@ -19,7 +19,7 @@ from filelock import FileLock
 from storage import DATA_DIR, open_book, worksheet
 
 ITEM_COLS = ['id', 'name', 'program', 'category', 'place', 'year', 'quantity', 'cost', 'life_years', 'vin', 'plate',
-             'condition', 'status', 'notes', 'docs_url', 'updated', 'updated_by', 'replace_cost', 'replace_year']
+             'condition', 'status', 'notes', 'docs_url', 'updated', 'updated_by', 'replace_cost', 'replace_year', 'nickname', 'seen']
 PLACE_COLS = ['id', 'name', 'address', 'cost_month', 'cost_year', 'account_holder', 'access', 'notes', 'updated', 'updated_by', 'qbo_check']
 TASK_COLS = ['id', 'task', 'about', 'due', 'repeat_months', 'cost', 'owner', 'notes', 'last_done', 'done_by', 'category', 'paid_how', 'auto',
              'qbo_check']
@@ -27,17 +27,20 @@ TASK_COLS = ['id', 'task', 'about', 'due', 'repeat_months', 'cost', 'owner', 'no
 FREQUENCIES = [('', 'Once'), (1, 'Monthly'), (3, 'Every 3 months'), (6, 'Every 6 months'), (12, 'Yearly'), (24, 'Every 2 years'),
                (36, 'Every 3 years')]
 COST_CATEGORIES = ['Insurance', 'Storage', 'Vehicles', 'Safety', 'Software and web', 'Administration', 'Travel', 'Other']
-TABS = {'Property': ITEM_COLS, 'Storage': PLACE_COLS, 'Recurring costs and to-dos': TASK_COLS}
+DOC_COLS = ['id', 'for_id', 'for_name', 'folder', 'needed', 'notes']
+TABS = {'Property': ITEM_COLS, 'Storage': PLACE_COLS, 'Recurring costs and to-dos': TASK_COLS, 'Documents': DOC_COLS}
 # What people see as the header row (the app reads and writes by column position).
 LABELS = {
     'Property': ['ID', 'Name', 'Program', 'Category', 'Kept at', 'Year bought', 'Quantity', 'Cost when bought', 'Useful life (years)',
                  'VIN or serial', 'Plate', 'Condition', 'Status', 'Notes', 'Documents link', 'Last updated', 'Updated by',
-                 'Replacement cost estimate', 'Replace or buy in (year)'],
+                 'Replacement cost estimate', 'Replace or buy in (year)', 'Also called (for things other items are kept in)',
+                 'Location last confirmed'],
     'Storage': ['ID', 'Name', 'Address', 'Cost per month', 'Cost per year', 'Account in the name of / paid how', 'Access', 'Notes',
                 'Last updated', 'Updated by', 'Checked against QuickBooks'],
     'Recurring costs and to-dos': ['ID', 'What', 'For', 'Next due', 'Repeats every (months; blank = once)', 'Cost each time', 'Who',
                                    'Notes', 'Last done', 'Done by', 'Cost category', 'Paid how', 'Charged automatically (yes or blank)',
                                    'Checked against QuickBooks'],
+    'Documents': ['ID', 'Item or place ID', 'For', 'Drive folder', 'Documents needed (comma list; file names start with these words)', 'Notes'],
 }
 NUMERIC = {'year', 'quantity', 'cost', 'life_years', 'cost_month', 'cost_year', 'repeat_months', 'replace_cost', 'replace_year'}
 CATEGORIES = ['Vehicle', 'Trailer', 'Timing', 'Safety', 'Course', 'Hospitality', 'Promotion', 'Tools', 'Other']
@@ -98,6 +101,10 @@ def tasks():
     return sorted(_snapshot()['Recurring costs and to-dos'], key=lambda t: t['due'] or '9999')
 
 
+def documents():
+    return _snapshot()['Documents']
+
+
 def _cell(v):
     return '' if v is None else v if isinstance(v, (int, float)) else str(v)
 
@@ -109,7 +116,7 @@ def save(tab, row):
         ws = _ws(tab)
         ids = ws.col_values(1)
         if not row.get('id'):
-            prefix = {'Property': 'EQ', 'Storage': 'PL', 'Recurring costs and to-dos': 'TK'}[tab]
+            prefix = {'Property': 'EQ', 'Storage': 'PL', 'Recurring costs and to-dos': 'TK', 'Documents': 'DC'}[tab]
             nums = [int(v[len(prefix) + 1:]) for v in ids if v.startswith(prefix + '-') and v[len(prefix) + 1:].isdigit()]
             row = dict(row, id=f'{prefix}-{max(nums, default=0) + 1:03d}')
             ws.append_row([_cell(row.get(c)) for c in cols], value_input_option='RAW')
@@ -232,6 +239,64 @@ def recurring_costs(places_rows, tasks_rows):
                          'paid_how': t.get('paid_how', ''), 'owner': t['owner'], 'kind': 'task', 'id': t['id'], 'qbo': t.get('qbo_check', ''),
                          'notes': t['notes']})
     return sorted(rows, key=lambda r: -r['per_year'])
+
+
+def locations(items_rows, places_rows):
+    """Where everything is. Each item's "Kept at" is a storage place, another item (a trailer or motorhome, by name or
+    "also called"), "With <person>", or free text. Returns (places, people, other, unknown):
+      places  [(place, [entries])]   entries are {'it', 'inside': [entries]} so trailer contents nest under the trailer
+      people  [(person, [entries])]
+      other   [(text, [entries])]    kept somewhere that is not a known place or item
+      unknown [entries]              no location at all
+    """
+    live = [i for i in items_rows if i['status'] not in ('Gone', 'Planned')]      # planned purchases are nowhere yet
+    by_name = {}
+    for i in live:
+        for n in (i['name'], i.get('nickname')):
+            if n:
+                by_name[n.strip().lower()] = i
+    pl = {p['name'].strip().lower(): p for p in places_rows}
+
+    def resolve(text):
+        t = (text or '').strip()
+        low = t.lower()
+        if not t:
+            return 'unknown', None
+        if low.startswith('with '):
+            return 'person', t[5:].strip()
+        if low in pl:
+            return 'place', pl[low]
+        for k, p in pl.items():
+            if k.startswith(low) or low.startswith(k):
+                return 'place', p
+        if low in by_name:
+            return 'in', by_name[low]
+        return 'other', t
+
+    where = {i['id']: resolve(i['place']) for i in live}
+    kids = {}
+    for i in live:
+        kind, target = where[i['id']]
+        if kind == 'in' and target['id'] != i['id']:
+            kids.setdefault(target['id'], []).append(i)
+
+    def entry(i, depth=0):
+        inside = sorted(kids.get(i['id'], []), key=lambda x: x['name'].lower()) if depth < 3 else []
+        return {'it': i, 'inside': [entry(k, depth + 1) for k in inside]}
+
+    def order(rows):      # vehicles and trailers first, then the rest by name
+        return sorted(rows, key=lambda i: (i['category'] not in ('Vehicle', 'Trailer'), i['name'].lower()))
+
+    places_out = [(p, [entry(i) for i in order([i for i in live if where[i['id']] == ('place', p)])]) for p in places_rows]
+    people, other = {}, {}
+    for i in order(live):
+        kind, target = where[i['id']]
+        if kind == 'person':
+            people.setdefault(target, []).append(entry(i))
+        elif kind == 'other':
+            other.setdefault(target, []).append(entry(i))
+    return (places_out, sorted(people.items()), sorted(other.items()),
+            [entry(i) for i in order([i for i in live if where[i['id']][0] == 'unknown'])])
 
 
 def every_label(months):

@@ -118,7 +118,10 @@ def home():
     big = sorted([i for i in items if i['category'] in ('Vehicle', 'Trailer')], key=lambda i: (i['category'], i['name']))
     for i in big:
         i['lc'] = E.lifecycle(i, today)
+    import equip_docs as D
+    docs = D.status(E.documents())
     return render_template('equip.html', **_ctx(view='home', today=today.isoformat(), due=due, undated=[t for t in todo if not t['due'] and not t['last_done']],
+                                                docs_missing=sum(len(r['missing']) for r in docs), docs_total=sum(len(D.needed(r)) for r in docs),
                                                 late=sum(1 for t in due if t['due'] < today.isoformat()), bills_year=sum(b['per_year'] for b in bills),
                                                 n_bills=len(bills), rp=rp, big=big))
 
@@ -126,19 +129,35 @@ def home():
 @bp.route('/items')
 @login_required
 def items():
+    """Property, by where it is (the default) or by category."""
     if (g := _guard()):
         return g
     rows = E.items()
+    places = E.places()
+    if request.args.get('by') != 'category':
+        where, people, other, unknown = E.locations(rows, places)
+        return render_template('equip.html', **_ctx(view='where', where=where, people=people, other=other, unknown=unknown,
+                                                    n_live=sum(1 for i in rows if i['status'] not in ('Gone', 'Planned'))))
     show_gone = request.args.get('gone') == '1'
     rows = [i for i in rows if show_gone or i['status'] != 'Gone']
     for i in rows:
         i['lc'] = E.lifecycle(i)
     groups = [(c, [i for i in rows if i['category'] == c]) for c in E.CATEGORIES + ['']]
-    places = E.places()
-    for p in places:
-        p['n'] = sum(1 for i in rows if i['place'] == p['name'] and i['status'] != 'Gone')
-    return render_template('equip.html', **_ctx(view='items', groups=[(c or 'Uncategorized', g) for c, g in groups if g], show_gone=show_gone,
-                                                places=places))
+    return render_template('equip.html', **_ctx(view='items', groups=[(c or 'Uncategorized', g) for c, g in groups if g], show_gone=show_gone))
+
+
+def _location_names():
+    """What "Kept at" can say: storage places, then the things other items are kept in, then people."""
+    rows = [i for i in E.items() if i['status'] != 'Gone']
+    held = {i['place'][5:].strip() for i in rows if i['place'].lower().startswith('with ')}
+    return ([p['name'] for p in E.places()] + sorted({i['nickname'] or i['name'] for i in rows if i['category'] in ('Vehicle', 'Trailer')})
+            + [f'With {n}' for n in sorted(held)])
+
+
+def _docs_for(rid):
+    import equip_docs as D
+    rows = [d for d in E.documents() if d['for_id'] == rid]
+    return D.status(rows)[0] if rows else None
 
 
 @bp.route('/items/new', methods=['GET', 'POST'])
@@ -157,7 +176,8 @@ def item(item_id=None):
         return editor_required(lambda: None)()
     lc = E.lifecycle(it) if it else None
     tasks = [t for t in E.tasks() if it and t['about'] == it.get('name')]
-    return render_template('equip.html', **_ctx(view='item', it=it, lc=lc, edit=edit, places=E.places(), tasks=tasks))
+    return render_template('equip.html', **_ctx(view='item', it=it, lc=lc, edit=edit, locations=_location_names(), tasks=tasks,
+                                                docs=_docs_for(it['id']) if it and not edit else None, today=date.today().isoformat()))
 
 
 def _is_editor():
@@ -169,6 +189,16 @@ def _is_editor():
 def _save_item(it):
     f = request.form
     row = dict(it or {})
+    if f.get('action') == 'located':
+        # Confirm where it is (or say where it went): the quick form on the item page.
+        place = f.get('place', '').strip()
+        row.update(place=place, seen=date.today().isoformat(), updated=date.today().isoformat(), updated_by=_who())
+        E.save('Property', row)
+        log_audit_event('EQUIP_ITEM_LOCATED', _who(), {'id': it['id'], 'name': it['name'], 'place': place, 'was': it.get('place', '')})
+        flash(f"{it['name']}: {'moved to ' + place if place != it.get('place') else 'confirmed at ' + place}.", 'success')
+        return redirect(url_for('equip.item', item_id=it['id']))
+    if 'place' in f and f.get('place', '').strip() != (it or {}).get('place', ''):
+        row['seen'] = date.today().isoformat()
     for k in E.ITEM_COLS:
         if k in f:
             row[k] = f.get(k, '').strip()
@@ -186,8 +216,26 @@ def _save_item(it):
 @bp.route('/places')
 @login_required
 def places():
-    """Storage places are listed on the Property page."""
-    return redirect(url_for('equip.items') + '#storage')
+    """Storage places are the sections of Property, by location."""
+    return redirect(url_for('equip.items'))
+
+
+@bp.route('/documents')
+@login_required
+def documents():
+    """Titles, registrations, insurance cards and agreements: which the region has in Drive and which are missing."""
+    if (g := _guard()):
+        return g
+    import equip_docs as D
+    if request.args.get('fresh'):
+        D.refresh()
+    rows = D.status(E.documents())
+    kinds = [('Insurance and region', [r for r in rows if not r['for_id']]),
+             ('Vehicles and trailers', [r for r in rows if r['for_id'].startswith('EQ')]),
+             ('Storage places', [r for r in rows if r['for_id'].startswith('PL')])]
+    return render_template('equip.html', **_ctx(view='documents', kinds=[(k, r) for k, r in kinds if r], n_missing=sum(len(r['missing']) for r in rows),
+                                                error=next((r['error'] for r in rows if r['error']), ''),
+                                                root=os.environ.get('OPERATIONS_DOCS_FOLDER_URL', '')))
 
 
 @bp.route('/places/new', methods=['GET', 'POST'])
@@ -206,7 +254,8 @@ def place(place_id=None):
         return editor_required(lambda: None)()
     held = [i for i in E.items() if p and i['place'] == p.get('name') and i['status'] != 'Gone']
     back = request.args.get('back', '')
-    return render_template('equip.html', **_ctx(view='place', p=p, edit=edit, held=held, back=back if back.startswith('/') else ''))
+    return render_template('equip.html', **_ctx(view='place', p=p, edit=edit, held=held, back=back if back.startswith('/') else '',
+                                                docs=_docs_for(p['id']) if p and not edit else None))
 
 
 @editor_required
