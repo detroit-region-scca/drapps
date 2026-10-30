@@ -53,30 +53,24 @@ def build(items, places, tasks, today=None, region='Detroit Region SCCA', drive_
         p.set_text_color(0, 0, 0)
         return y + 18
 
-    def fit(text, width):
-        """Trim text to the column width in the current font, so nothing runs into the next column."""
-        text = str(text)
-        if p.get_string_width(text) <= width:
-            return text
-        while text and p.get_string_width(text + '...') > width:
-            text = text[:-1]
-        return text.rstrip(' ,;-') + '...'
-
     def row(x, y, w, left, right='', bold=False, size=8.5, sub=''):
+        """One line item: the label (wrapping when long) with its amount on the right, and an optional grey note
+        under it (also wrapping). Nothing is cut off."""
         p.set_font('Helvetica', 'B' if bold else '', size)
-        rw = max(p.get_string_width(right) + 6, w * 0.2)
-        p.set_xy(x + w - rw, y)
-        p.cell(rw, 11, right, align='R')
+        rw = max(p.get_string_width(right) + 6, w * 0.2) if right else 0
+        if right:
+            p.set_xy(x + w - rw, y)
+            p.cell(rw, 11, right, align='R')
         p.set_xy(x, y)
-        p.cell(w - rw, 11, fit(left, w - rw - 4))
-        y += 11
+        p.multi_cell(w - rw - 4, 11, str(left), align='L', new_x='LMARGIN', new_y='NEXT')
+        y = p.get_y()
         if sub:
             p.set_font('Helvetica', '', 7.2)
             p.set_text_color(*GREY)
             p.set_xy(x + 6, y)
-            p.cell(w - 6, 9, fit(sub, w - 8))
+            p.multi_cell(w - 6, 9, str(sub), align='L', new_x='LMARGIN', new_y='NEXT')
             p.set_text_color(0, 0, 0)
-            y += 9.5
+            y = p.get_y() + 0.5
         return y + 1.5
 
     colw = (W - 18) / 2
@@ -103,7 +97,7 @@ def build(items, places, tasks, today=None, region='Detroit Region SCCA', drive_
     for i in big:
         lc = E.lifecycle(i, today)
         right = f"replace {lc['replace']}" if lc else i['status'].lower()
-        y1 = row(x1, y1, colw, i['name'][:46], right, sub=f"{i['place'] or 'no place listed'}; {i['condition'] or i['status']}")
+        y1 = row(x1, y1, colw, i['name'], right, sub=f"{i['place'] or 'no place listed'}; {i['condition'] or i['status']}")
 
     # Right column: coming up, replacement plan, where it lives.
     y2 = head(x2, y2, 'Coming up (next 6 months) and open items', colw)
@@ -114,7 +108,7 @@ def build(items, places, tasks, today=None, region='Detroit Region SCCA', drive_
         due = t['due'] or 'no date'
         late = t['due'] and t['due'] < today.isoformat()
         p.set_text_color(*(RED if late else (0, 0, 0)))
-        y2 = row(x2, y2, colw, t['task'].split('(')[0].strip()[:58], ('OVERDUE ' if late else '') + due,
+        y2 = row(x2, y2, colw, t['task'].split('(')[0].strip(), ('OVERDUE ' if late else '') + due,
                  sub=f"{t['about']}{' - ' + t['owner'] if t['owner'] else ''}{' - ' + money(t['cost']) if t['cost'] else ''}")
         p.set_text_color(0, 0, 0)
     y2 += 6
@@ -129,15 +123,7 @@ def build(items, places, tasks, today=None, region='Detroit Region SCCA', drive_
     if rp['big_total']:
         y2 = row(x2, y2, colw, f"  or {money(rp['big_total'])} from savings now, plus", f"{money(rp['monthly_without_big'])}/mo")
     for r in rp['later'][:7]:
-        y2 = row(x2, y2, colw, f"  {r['year']}  {r['it']['name'].split('(')[0].strip()[:40]}", money(r['cost']), size=8)
-    y2 += 6
-    y2 = head(x2, y2, 'Where it lives', colw)
-    p.set_font('Helvetica', '', 8)
-    p.set_xy(x2, y2)
-    p.multi_cell(colw, 10.5, 'The records are the DRSCCA Operations spreadsheet in the DRSCCA Apps shared drive (Operations folder): '
-                             'Property, Storage, Recurring costs and to-dos, and Officials. The app at drevent.drscca.org/operations '
-                             'is a convenience on top; the region can keep the sheet up by hand without it. Changes in the app: '
-                             'equipment committee and treasurer, through an emailed sign-in link.', align='L')
+        y2 = row(x2, y2, colw, f"  {r['year']}  {r['it']['name'].split('(')[0].strip()}", money(r['cost']), size=8)
     p.set_xy(L, 792 - 30)
     p.set_font('Helvetica', '', 7)
     p.set_text_color(*GREY)
