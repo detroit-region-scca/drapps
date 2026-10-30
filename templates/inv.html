@@ -98,6 +98,24 @@
     <div class="card p-3">{% if inv.status == 'Paid' %}Paid {{ inv.paid_date }}{% if inv.paid_ref %} · {{ inv.paid_ref }}{% endif %} · {{ money(inv.paid_amount) }} · recorded by {{ inv.closed_by }}{% else %}Void: {{ inv.closed_note }} ({{ inv.closed_by }}){% endif %}
         <form method="post" action="{{ url_for('inv.close', inv_id=inv.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary">Reopen</button></form></div>
     {% endif %}
+    {% if inv.status != 'Paid' %}
+    <details class="mt-3 no-print"><summary class="small text-muted">Delete this invoice</summary>
+        <form method="post" action="{{ url_for('inv.delete_request', inv_id=inv.id) }}" class="d-flex flex-wrap gap-2 mt-2" style="max-width: 36rem">
+            <input name="note" class="form-control form-control-sm" style="flex: 1 1 14rem" placeholder="Why (made by mistake, a test, a duplicate…)" required>
+            <button class="btn btn-sm btn-outline-danger">Ask to delete</button></form>
+        <div class="form-text">The treasurer gets an email to confirm; nothing is deleted until then. To cancel an invoice that was sent, void it instead.</div>
+    </details>
+    {% endif %}
+    {% endif %}
+    {% if view == 'delete' %}
+    <div class="card p-3 mx-auto" style="max-width: 34rem">
+        <div class="page-title">Delete an invoice</div>
+        {% if inv %}<div class="mb-2"><b>{{ inv.id }}</b>: {{ inv.bill_name }}, {{ money(inv.total) }}, {{ inv.status|lower }}, created {{ inv.created }}</div>
+        <div class="small text-muted mb-3">Asked by {{ t.by }}: {{ t.why }}</div>{% endif %}
+        {% if msg %}<div class="alert alert-info mb-0">{{ msg }}</div>
+        {% else %}<form method="post"><button class="btn btn-danger">Delete {{ inv.id }}</button>
+            <a class="btn btn-outline-secondary ms-2" href="{{ url_for('inv.detail', inv_id=inv.id) }}">Keep it</a></form>{% endif %}
+    </div>
     {% endif %}
 {% endblock %}
 {% block scripts %}

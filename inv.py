@@ -5,9 +5,11 @@ director sends the PDF to the customer; the treasurer marks it paid when the mon
 import os
 from datetime import date
 
-from flask import Blueprint, Response, abort, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, Response, abort, current_app, flash, redirect, render_template, request, session, url_for
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 import inv_store as I
+import officials as O
 from utils import load_events, load_programs, log_audit_event, login_required, send_mail
 
 bp = Blueprint('inv', __name__, url_prefix='/invoices')
@@ -169,6 +171,68 @@ def close(inv_id):
         I.update(inv_id, status='Open', paid_date='', paid_ref='', paid_amount='', closed_by='', closed_note='')
         log_audit_event('INVOICE_REOPENED', who, {'id': inv_id})
     return redirect(url_for('inv.detail', inv_id=inv_id))
+
+
+DELETE_DAYS = 7
+
+
+def _delete_serializer():
+    return URLSafeTimedSerializer(current_app.secret_key, salt='invoice-delete')
+
+
+def _treasurer_email():
+    return next((o['email'] for o in O.all() if o.get('role') == 'Treasurer' and o.get('email')), os.environ.get('NOTIFICATION_EMAIL', ''))
+
+
+@bp.route('/<inv_id>/delete', methods=['POST'])
+@login_required
+def delete_request(inv_id):
+    """Ask to delete an invoice. Nothing is deleted here: the treasurer gets an email with a link to confirm."""
+    if (g := _guard()):
+        return g
+    inv = I.get(inv_id)
+    if not inv:
+        abort(404)
+    if inv['status'] == 'Paid':
+        flash('A paid invoice cannot be deleted. Reopen it first if the payment was recorded by mistake.', 'warning')
+        return redirect(url_for('inv.detail', inv_id=inv_id))
+    why = request.form.get('note', '').strip()
+    if not why:
+        flash('Say why it should be deleted.', 'danger')
+        return redirect(url_for('inv.detail', inv_id=inv_id))
+    who = session.get('who', '') or 'Unknown'
+    token = _delete_serializer().dumps({'id': inv_id, 'by': who, 'why': why})
+    link = f"{request.url_root.rstrip('/')}{url_for('inv.delete_confirm', token=token)}"
+    send_mail(f"Confirm deleting invoice {inv_id}: {inv['bill_name']} {I.money(inv['total'])}",
+              f"{who} asked to delete invoice {inv_id} ({inv['bill_name']}, {I.money(inv['total'])}, {inv['status'].lower()}).\n"
+              f"Why: {why}\n\nTo delete it, open this link (good for {DELETE_DAYS} days) and confirm:\n{link}\n\n"
+              f"If it should stay, ignore this email.", _treasurer_email())
+    log_audit_event('INVOICE_DELETE_REQUESTED', who, {'id': inv_id, 'why': why})
+    flash(f'The treasurer has been asked to confirm deleting {inv_id}.', 'info')
+    return redirect(url_for('inv.detail', inv_id=inv_id))
+
+
+@bp.route('/delete/<token>', methods=['GET', 'POST'])
+def delete_confirm(token):
+    """The treasurer's emailed link: the signed token stands in for the app password, for this one invoice."""
+    if (g := _guard()):
+        return g
+    try:
+        t = _delete_serializer().loads(token, max_age=DELETE_DAYS * 86400)
+    except BadSignature:
+        return render_template('inv.html', **_ctx(view='delete', inv=None, msg='This link has expired or is not valid. Ask for the delete again.'))
+    I.refresh()
+    inv = I.get(t['id'])
+    msg = '' if inv else f"{t['id']} is already gone."
+    if inv and inv['status'] == 'Paid':
+        msg = f"{t['id']} has been marked paid since, so it was not deleted."
+    if request.method == 'POST' and not msg:
+        I.delete(t['id'])
+        log_audit_event('INVOICE_DELETED', 'Treasurer (email link)', {'id': t['id'], 'bill_name': inv['bill_name'], 'total': inv['total'],
+                                                                      'asked_by': t['by'], 'why': t['why']})
+        msg = f"{t['id']} is deleted. Its PDF is in the Drive trash if it is ever needed."
+        inv = None
+    return render_template('inv.html', **_ctx(view='delete', inv=inv, t=t, msg=msg))
 
 
 def open_counts():

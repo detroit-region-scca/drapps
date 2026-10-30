@@ -113,6 +113,27 @@ def update(inv_id, **fields):
         refresh()
 
 
+def delete(inv_id):
+    """Remove an invoice and its lines from the sheet, and move its PDF to the Drive trash (recoverable there).
+    Only after the treasurer confirms by email (inv.py)."""
+    import re
+    from storage import DRIVE, sheets_client
+    with FileLock(LOCK), _lock:
+        inv = get(inv_id)
+        ws = _ws('Invoices')
+        ws.delete_rows(ws.col_values(1).index(inv_id) + 1)
+        lw = _ws('Lines')
+        for n in sorted((i + 1 for i, v in enumerate(lw.col_values(1)) if v == inv_id), reverse=True):
+            lw.delete_rows(n)
+        refresh()
+    m = re.search(r'/d/([\w-]+)', (inv or {}).get('pdf_url') or '')
+    if m:
+        try:
+            sheets_client().http_client.session.patch(f'{DRIVE}/{m.group(1)}', params={'supportsAllDrives': 'true'}, json={'trashed': True})
+        except Exception:        # the record is gone either way; a PDF left behind is harmless
+            pass
+
+
 def setup_sheet(book):
     """Headers and the How to use tab (first run, or to bring them up to date)."""
     have = {w.title: w for w in book.worksheets()}
