@@ -283,6 +283,18 @@ def _save_task(t):
     return redirect(url_for('equip.tasks'))
 
 
+@bp.route('/one-pager.pdf')
+@login_required
+def one_pager():
+    """Operations at a glance, one printable page."""
+    if (g := _guard()):
+        return g
+    import equip_pdf
+    from flask import Response
+    data = equip_pdf.build(E.items(), E.places(), E.tasks())
+    return Response(data, mimetype='application/pdf', headers={'Content-Disposition': 'inline; filename="DRSCCA Operations at a glance.pdf"'})
+
+
 @bp.route('/costs')
 @login_required
 def costs():

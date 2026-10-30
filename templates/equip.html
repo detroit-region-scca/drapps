@@ -31,6 +31,7 @@
         <form method="post" action="{{ url_for('equip.signout') }}" class="d-inline"><button class="btn btn-link btn-sm p-0 align-baseline">Stop editing</button></form></div>{% endif %}
 
     {% if view == 'home' %}
+    <div class="d-flex justify-content-end mb-2 no-print"><a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.one_pager') }}" target="_blank">One-page PDF</a></div>
     <div class="row g-3 mb-4">
         <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Due in 90 days</div><div class="value {{ 'text-warning' if due }}">{{ due|length }}</div></div></div>
         <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.costs') }}"><div class="label">Recurring costs a year</div><div class="value">{{ money(storage + recurring, 0) }}</div><div class="small text-muted">storage {{ money(storage, 0) }} + everything else {{ money(recurring, 0) }}</div></a></div>
