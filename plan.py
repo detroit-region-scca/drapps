@@ -148,11 +148,12 @@ def home():
     plan, (act, as_of) = P.plan(year), P.actuals(year)
     future = int(year) > date.today().year
     rows, tot = summary(year, plan, act)
-    # In = a director saved it through the form (a line moved in by the treasurer is not a submitted plan).
-    sent = sum(1 for r in rows if r['info'].get('updated'))
+    # In = the director turned it in; a saved draft (or a line moved in by the treasurer) is not.
+    sent = sum(1 for r in rows if r['info'].get('submitted'))
+    drafts = sum(1 for r in rows if r['info'].get('updated') and not r['info'].get('submitted'))
     chart = None if future else _chart(year, plan, as_of)
     return render_template('plan.html', **_ctx(view='home', year=year, years=P.years(), rows=rows, tot=tot, as_of=as_of,
-                                               sent=sent, future=future, chart=chart))
+                                               sent=sent, drafts=drafts, future=future, chart=chart))
 
 
 @bp.route('/<year>/<program>')
@@ -238,17 +239,21 @@ def edit(year, program):
         # Director and email come from the officials directory; the form does not set them.
         d_name, d_mail = O.director(program)
         info = {'director': d_name, 'email': d_mail, 'notes': f.get('notes', '').strip(),
-                'updated_by': who}
+                'updated_by': who, 'submitted': (P.plan(year).get(program) or {}).get('info', {}).get('submitted', '')}
         if errors:
             for msg in errors:
                 flash(msg, 'danger')
             return render_template('plan.html', **_ctx(view='edit', year=year, prev=prev, program=program, name=names[program],
                                                        info=info, lines=lines, ref=_reference(program, prev),
                                                        reg=_event_actuals(program, year), accounts=_accounts(program, year))), 400
-        P.save(year, program, info, lines)
+        submit = f.get('action') == 'submit'
+        was_in = bool((P.plan(year).get(program) or {}).get('info', {}).get('submitted'))
+        P.save(year, program, info, lines, submit=submit)
         total = round(sum(ln['net'] or 0 for ln in lines), 2)
-        log_audit_event('PLAN_SAVED', who, {'year': year, 'program': program, 'lines': len(lines), 'net': total})
-        flash(f'{names[program]} plan for {year} saved.', 'success')
+        log_audit_event('PLAN_SUBMITTED' if submit and not was_in else 'PLAN_SAVED', who,
+                        {'year': year, 'program': program, 'lines': len(lines), 'net': total})
+        flash(f'{names[program]} plan for {year} turned in. Thank you.' if submit and not was_in else
+              f'{names[program]} plan for {year} saved.' + ('' if was_in else ' It is a draft until you turn it in.'), 'success')
         return redirect(url_for('plan.detail', year=year, program=program))
     p = P.plan(year).get(program)
     copied = False

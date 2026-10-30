@@ -1,7 +1,7 @@
 """Reads and writes the DRSCCA Annual Plan Google Sheet (PLAN_SHEET_ID) in the DRSCCA Apps Shared Drive.
 
   Plan            one row per planned event or item: year, program, item, month, net (+ profit, - cost)
-  Programs        one row per program and year: director, email, notes for the board, last update
+  Programs        one row per program and year: director, email, notes for the board, last update, turned in
   QBO Programs    the region profit and loss by account and year      } written nightly by
   QBO Monthly     profit by program and month, this year and last      }
   QBO Status      bank balances and the worker points reserve          } tools/qbo_nightly.py,
@@ -21,11 +21,11 @@ import qbo_logic
 from storage import DATA_DIR, open_book, worksheet
 
 PLAN_COLS = ['year', 'program', 'item', 'month', 'net', 'event_code', 'note', 'sort', 'account']    # account: the QuickBooks account it is booked to
-PROG_COLS = ['year', 'program', 'director', 'email', 'notes', 'updated', 'updated_by']
+PROG_COLS = ['year', 'program', 'director', 'email', 'notes', 'updated', 'updated_by', 'submitted', 'submitted_by']
 EXC_COLS = ['key', 'kind', 'date', 'name', 'amount', 'detail', 'link', 'as_of']
 CACHE_SECONDS = 15
 SAVE_LOCK = os.path.join(DATA_DIR, 'plan_save.lock')
-RANGES = ['Plan!A:I', 'Programs!A:G', 'QBO Programs!A:F', 'QBO Status!A:C', 'QBO Exceptions!A:H', 'Reviewed!A:D', 'QBO Monthly!A:E']
+RANGES = ['Plan!A:I', 'Programs!A:I', 'QBO Programs!A:F', 'QBO Status!A:C', 'QBO Exceptions!A:H', 'Reviewed!A:D', 'QBO Monthly!A:E']
 
 _lock = threading.Lock()
 _cache = {}
@@ -147,13 +147,18 @@ def _cell(v):
     return v if isinstance(v, (int, float)) else str(v)
 
 
-def save(year, program, info, lines):
-    """Replace one program's plan for one year: its Programs row upserted, its Plan rows rewritten."""
+def save(year, program, info, lines, submit=False):
+    """Replace one program's plan for one year: its Programs row upserted, its Plan rows rewritten.
+    A save is a draft unless submit=True ("turn it in"); once turned in, later saves keep it turned in."""
     year = str(year)
     with FileLock(SAVE_LOCK), _lock:
         refresh()
         all_lines, progs = _snapshot()[:2]
-        info = dict(info, year=year, program=program, updated=date.today().isoformat())
+        old = next((p for p in progs if p['year'] == year and p['program'] == program), {})
+        info = dict(info, year=year, program=program, updated=date.today().isoformat(),
+                    submitted=old.get('submitted', ''), submitted_by=old.get('submitted_by', ''))
+        if submit and not info['submitted']:
+            info.update(submitted=date.today().isoformat(), submitted_by=info.get('updated_by', ''))
         pw = _ws('Programs')
         row = [_cell(info.get(c, '')) for c in PROG_COLS]
         at = next((i for i, p in enumerate(progs) if p['year'] == year and p['program'] == program), None)

@@ -36,7 +36,7 @@
         <button class="btn btn-sm btn-outline-secondary no-print" onclick="window.print()">Print for the board</button>
     </div>
     {% if future %}
-    <div class="alert alert-info">Plans for {{ year }}: <b>{{ sent }} of {{ rows|length }}</b> programs are in. Directors: open your program below, then start from last year's plan or a blank one.</div>
+    <div class="alert alert-info">Plans for {{ year }}: <b>{{ sent }} of {{ rows|length }}</b> programs are in{% if drafts %}, {{ drafts }} more in draft{% endif %}. Directors: open your program below, then start from last year's plan or a blank one.</div>
     {% else %}
     <div class="card p-3 mb-4 viz">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
@@ -62,7 +62,7 @@
             <tbody class="grp" data-grp="{{ r.code }}">
                 <tr class="grp-row" data-name="{{ r.name }}" data-plan="{{ r.plan if r.plan is not none else '' }}" data-budget="{{ r.budget if r.budget is not none else '' }}" data-actual="{{ r.actual if r.actual is not none else '' }}" data-diff="{{ r.diff if r.diff is not none else '' }}">
                     <td class="ps-3"><span class="chev">{{ '▸' if r.kids else '' }}</span> <a href="{{ url_for('plan.detail', year=year, program=r.code) }}">{{ r.name }}</a> <span class="text-muted small fw-normal">{{ r.code }}</span></td>
-                    <td class="small fw-normal">{{ officials.director(r.code)[0] }}{% if future %}{% if r.info.updated %} <span class="badge rounded-pill text-bg-success">In {{ r.info.updated }}</span>{% else %} <span class="badge rounded-pill text-bg-warning">Waiting</span>{% endif %}{% endif %}</td>
+                    <td class="small fw-normal">{{ officials.director(r.code)[0] }}{% if future %}{% if r.info.submitted %} <span class="badge rounded-pill text-bg-success">In {{ r.info.submitted }}</span>{% elif r.info.updated %} <span class="badge rounded-pill text-bg-info">Draft</span>{% else %} <span class="badge rounded-pill text-bg-warning">Waiting</span>{% endif %}{% endif %}</td>
                     <td class="num">{{ money(r.plan) }}</td><td class="num">{{ money(r.budget) }}</td>
                     {% if not future %}<td class="num">{{ money(r.actual) }}</td><td class="num pe-3">{{ money(r.diff) }}</td>{% endif %}
                 </tr>
@@ -87,6 +87,7 @@
             <div>
                 <div class="page-title m-0">{{ name }} plan for {{ year }}</div>
                 <div class="text-muted small">{% set d = officials.director(program) %}{% if d[0] %}Director: {{ d[0] }}{% if d[1] %} · {{ d[1] }}{% endif %}{% endif %}
+                    {% if p.info.submitted %}<br><span class="badge rounded-pill text-bg-success">Turned in {{ p.info.submitted }}</span> by {{ p.info.submitted_by }}{% elif p.info.updated %}<br><span class="badge rounded-pill text-bg-info">Draft</span> not turned in yet{% endif %}
                     {% if p.info.updated %}<br>Updated {{ p.info.updated }} by {{ p.info.updated_by }}{% endif %}</div>
             </div>
             <div class="d-flex gap-2 no-print">
@@ -190,7 +191,10 @@
             <label class="form-label">Anything the board should know <span class="text-muted">(optional)</span></label>
             <textarea name="notes" class="form-control" rows="3" placeholder="New events, big purchases, price changes">{{ info.notes or '' }}</textarea>
         </div>
-        <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('plan.detail', year=year, program=program) }}">Cancel</a><button class="btn btn-accent px-4">Save plan</button></div>
+        <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('plan.detail', year=year, program=program) }}">Cancel</a>{% if info.submitted %}<button class="btn btn-accent px-4" name="action" value="save">Save changes</button>
+            {% else %}<button class="btn btn-outline-light px-4" name="action" value="draft">Save draft</button>
+            <button class="btn btn-accent px-4" name="action" value="submit" onclick="return confirm('Turn in the plan? You can still change it afterward.')">Turn in the plan</button>{% endif %}</div>
+        {% if not info.submitted %}<div class="form-text text-end mt-1">Save a draft as often as you like. The plan counts as in only when you turn it in.</div>{% endif %}
     </form>
     </div>
     <div class="col-lg-4 ref">
