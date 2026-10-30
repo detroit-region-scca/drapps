@@ -26,7 +26,7 @@ SOON_DAYS = 90
 
 def _ctx(**kw):
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Operations", editor=session.get('equip_editor'),
-                categories=E.CATEGORIES, statuses=E.STATUSES, cost_categories=E.COST_CATEGORIES, **kw)
+                categories=E.CATEGORIES, statuses=E.STATUSES, cost_categories=E.COST_CATEGORIES, every_label=E.every_label, **kw)
 
 
 def _guard():
@@ -105,7 +105,7 @@ def signout():
 @bp.route('/')
 @login_required
 def home():
-    """The one page: what is due, what it all costs a year, and the fleet at a glance."""
+    """The one page: what needs doing, what the bills come to, and the fleet at a glance."""
     if (g := _guard()):
         return g
     today = date.today()
@@ -113,16 +113,14 @@ def home():
     soon = (today + timedelta(days=SOON_DAYS)).isoformat()
     todo = [t for t in tasks if not E.is_auto(t)]
     due = [t for t in todo if t['due'] and t['due'] <= soon]
-    storage, recurring = E.fixed_cost_year(places, tasks)
-    plan, reserve = E.replacement_plan(items, today)
+    bills = E.recurring_costs(places, tasks)
     rp = E.reserve_plan(items, today)
     big = sorted([i for i in items if i['category'] in ('Vehicle', 'Trailer')], key=lambda i: (i['category'], i['name']))
     for i in big:
         i['lc'] = E.lifecycle(i, today)
     return render_template('equip.html', **_ctx(view='home', today=today.isoformat(), due=due, undated=[t for t in todo if not t['due'] and not t['last_done']],
-                                                storage=storage, recurring=recurring, reserve=reserve, rp=rp, plan=plan, big=big, places=places,
-                                                n_items=len(items), value=sum(i['cost'] or 0 for i in items),
-                                                n_capital=sum(1 for i in items if E.is_capital(i))))
+                                                late=sum(1 for t in due if t['due'] < today.isoformat()), bills_year=sum(b['per_year'] for b in bills),
+                                                n_bills=len(bills), rp=rp, big=big))
 
 
 @bp.route('/items')
@@ -136,7 +134,11 @@ def items():
     for i in rows:
         i['lc'] = E.lifecycle(i)
     groups = [(c, [i for i in rows if i['category'] == c]) for c in E.CATEGORIES + ['']]
-    return render_template('equip.html', **_ctx(view='items', groups=[(c or 'Uncategorized', g) for c, g in groups if g], show_gone=show_gone))
+    places = E.places()
+    for p in places:
+        p['n'] = sum(1 for i in rows if i['place'] == p['name'] and i['status'] != 'Gone')
+    return render_template('equip.html', **_ctx(view='items', groups=[(c or 'Uncategorized', g) for c, g in groups if g], show_gone=show_gone,
+                                                places=places))
 
 
 @bp.route('/items/new', methods=['GET', 'POST'])
@@ -184,13 +186,8 @@ def _save_item(it):
 @bp.route('/places')
 @login_required
 def places():
-    if (g := _guard()):
-        return g
-    items = E.items()
-    rows = E.places()
-    for p in rows:
-        p['n'] = sum(1 for i in items if i['place'] == p['name'] and i['status'] != 'Gone')
-    return render_template('equip.html', **_ctx(view='places', places=rows))
+    """Storage places are listed on the Property page."""
+    return redirect(url_for('equip.items') + '#storage')
 
 
 @bp.route('/places/new', methods=['GET', 'POST'])
@@ -208,7 +205,8 @@ def place(place_id=None):
     if edit and not _is_editor():
         return editor_required(lambda: None)()
     held = [i for i in E.items() if p and i['place'] == p.get('name') and i['status'] != 'Gone']
-    return render_template('equip.html', **_ctx(view='place', p=p, edit=edit, held=held))
+    back = request.args.get('back', '')
+    return render_template('equip.html', **_ctx(view='place', p=p, edit=edit, held=held, back=back if back.startswith('/') else ''))
 
 
 @editor_required
@@ -225,18 +223,24 @@ def _save_place(p):
     pid = E.save('Storage', row)
     log_audit_event('EQUIP_PLACE_SAVED', _who(), {'id': pid, 'name': row['name']})
     flash(f"Saved {row['name']}.", 'success')
-    return redirect(url_for('equip.place', place_id=pid))
+    back = f.get('back', '')
+    return redirect(back if back.startswith('/') else url_for('equip.place', place_id=pid))
 
 
 @bp.route('/tasks')
 @login_required
 def tasks():
+    """Things a person has to do, grouped by when. Bills charged automatically are on Bills, not here."""
     if (g := _guard()):
         return g
-    rows = E.tasks()
-    show_auto = request.args.get('all') == '1'
-    return render_template('equip.html', **_ctx(view='tasks', tasks=[t for t in rows if show_auto or not E.is_auto(t)], show_auto=show_auto,
-                                                n_auto=sum(1 for t in rows if E.is_auto(t)), today=date.today().isoformat()))
+    today = date.today()
+    soon = (today + timedelta(days=SOON_DAYS)).isoformat()
+    rows = [t for t in E.tasks() if not E.is_auto(t)]
+    groups = [('Overdue', [t for t in rows if t['due'] and t['due'] < today.isoformat()]),
+              ('Next 90 days', [t for t in rows if t['due'] and today.isoformat() <= t['due'] <= soon]),
+              ('Later', [t for t in rows if t['due'] and t['due'] > soon]),
+              ('No date yet', [t for t in rows if not t['due']])]
+    return render_template('equip.html', **_ctx(view='tasks', groups=[(n, g) for n, g in groups if g], today=today.isoformat()))
 
 
 @bp.route('/tasks/new', methods=['GET', 'POST'])
@@ -253,7 +257,9 @@ def task(task_id=None):
     if not _is_editor():
         return editor_required(lambda: None)()
     names = sorted({i['name'] for i in E.items() if i['category'] in ('Vehicle', 'Trailer')} | {p['name'] for p in E.places()})
-    return render_template('equip.html', **_ctx(view='task', t=t, names=names))
+    back = request.args.get('back', '')
+    return render_template('equip.html', **_ctx(view='task', t=t, names=names, frequencies=E.FREQUENCIES, back=back if back.startswith('/') else '',
+                                                bill=request.args.get('bill') == '1' or bool(t.get('cost'))))
 
 
 @editor_required
@@ -268,7 +274,8 @@ def _save_task(t):
         E.save('Recurring costs and to-dos', row)
         log_audit_event('EQUIP_TASK_DONE', _who(), {'id': t['id'], 'task': t['task'], 'next': nxt})
         flash(f"Marked done: {t['task']}." + (f" Next due {nxt}." if nxt else ''), 'success')
-        return redirect(url_for('equip.tasks'))
+        back = f.get('back', '')
+        return redirect(back if back.startswith('/') else url_for('equip.tasks'))
     for k in E.TASK_COLS:
         if k in f:
             row[k] = f.get(k, '').strip()
@@ -280,7 +287,8 @@ def _save_task(t):
     tid = E.save('Recurring costs and to-dos', row)
     log_audit_event('EQUIP_TASK_SAVED', _who(), {'id': tid, 'task': row['task'], 'due': row.get('due', '')})
     flash('Saved.', 'success')
-    return redirect(url_for('equip.tasks'))
+    back = f.get('back', '')
+    return redirect(back if back.startswith('/') else url_for('equip.tasks'))
 
 
 @bp.route('/one-pager.pdf')
@@ -295,16 +303,23 @@ def one_pager():
     return Response(data, mimetype='application/pdf', headers={'Content-Disposition': 'inline; filename="DRSCCA Operations at a glance.pdf"'})
 
 
-@bp.route('/costs')
+@bp.route('/bills')
 @login_required
 def costs():
-    """Every recurring cost on one page, by category, with the yearly total."""
+    """Every bill the region pays on a schedule (storage, insurance, subscriptions, registrations), by category."""
     if (g := _guard()):
         return g
     rows = E.recurring_costs(E.places(), E.tasks())
+    for r in rows:
+        r['how_often'] = E.every_label(r['every'])
     cats = [(c, [r for r in rows if r['category'] == c]) for c in E.COST_CATEGORIES]
     return render_template('equip.html', **_ctx(view='costs', cats=[(c, r) for c, r in cats if r], total=sum(r['per_year'] for r in rows),
                                                 today=date.today().isoformat()))
+
+
+@bp.route('/costs')
+def old_costs():
+    return redirect(url_for('equip.costs'))
 
 
 @bp.route('/plan')

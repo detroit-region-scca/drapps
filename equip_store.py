@@ -20,8 +20,12 @@ from storage import DATA_DIR, open_book, worksheet
 
 ITEM_COLS = ['id', 'name', 'program', 'category', 'place', 'year', 'quantity', 'cost', 'life_years', 'vin', 'plate',
              'condition', 'status', 'notes', 'docs_url', 'updated', 'updated_by', 'replace_cost', 'replace_year']
-PLACE_COLS = ['id', 'name', 'address', 'cost_month', 'cost_year', 'account_holder', 'access', 'notes', 'updated', 'updated_by']
-TASK_COLS = ['id', 'task', 'about', 'due', 'repeat_months', 'cost', 'owner', 'notes', 'last_done', 'done_by', 'category', 'paid_how', 'auto']
+PLACE_COLS = ['id', 'name', 'address', 'cost_month', 'cost_year', 'account_holder', 'access', 'notes', 'updated', 'updated_by', 'qbo_check']
+TASK_COLS = ['id', 'task', 'about', 'due', 'repeat_months', 'cost', 'owner', 'notes', 'last_done', 'done_by', 'category', 'paid_how', 'auto',
+             'qbo_check']
+# How often, as people say it (the sheet keeps months; blank = once).
+FREQUENCIES = [('', 'Once'), (1, 'Monthly'), (3, 'Every 3 months'), (6, 'Every 6 months'), (12, 'Yearly'), (24, 'Every 2 years'),
+               (36, 'Every 3 years')]
 COST_CATEGORIES = ['Insurance', 'Storage', 'Vehicles', 'Safety', 'Software and web', 'Administration', 'Travel', 'Other']
 TABS = {'Property': ITEM_COLS, 'Storage': PLACE_COLS, 'Recurring costs and to-dos': TASK_COLS}
 # What people see as the header row (the app reads and writes by column position).
@@ -30,9 +34,10 @@ LABELS = {
                  'VIN or serial', 'Plate', 'Condition', 'Status', 'Notes', 'Documents link', 'Last updated', 'Updated by',
                  'Replacement cost estimate', 'Replace or buy in (year)'],
     'Storage': ['ID', 'Name', 'Address', 'Cost per month', 'Cost per year', 'Account in the name of / paid how', 'Access', 'Notes',
-                'Last updated', 'Updated by'],
+                'Last updated', 'Updated by', 'Checked against QuickBooks'],
     'Recurring costs and to-dos': ['ID', 'What', 'For', 'Next due', 'Repeats every (months; blank = once)', 'Cost each time', 'Who',
-                                   'Notes', 'Last done', 'Done by', 'Cost category', 'Paid how', 'Charged automatically (yes or blank)'],
+                                   'Notes', 'Last done', 'Done by', 'Cost category', 'Paid how', 'Charged automatically (yes or blank)',
+                                   'Checked against QuickBooks'],
 }
 NUMERIC = {'year', 'quantity', 'cost', 'life_years', 'cost_month', 'cost_year', 'repeat_months', 'replace_cost', 'replace_year'}
 CATEGORIES = ['Vehicle', 'Trailer', 'Timing', 'Safety', 'Course', 'Hospitality', 'Promotion', 'Tools', 'Other']
@@ -218,13 +223,20 @@ def recurring_costs(places_rows, tasks_rows):
         per = (p['cost_month'] or 0) * 12 + (p['cost_year'] or 0)
         if per:
             rows.append({'what': p['name'], 'category': 'Storage', 'every': 1 if p['cost_month'] else 12, 'per_year': round(per, 2),
-                         'next': '', 'paid_how': p['account_holder'], 'owner': '', 'kind': 'place', 'id': p['id']})
+                         'each': p['cost_month'] or p['cost_year'], 'next': '', 'paid_how': p['account_holder'], 'owner': '', 'kind': 'place',
+                         'id': p['id'], 'qbo': p.get('qbo_check', ''), 'notes': p['notes']})
     for t in tasks_rows:
         if t['repeat_months'] and t['cost']:
             rows.append({'what': t['task'], 'category': t.get('category') or 'Other', 'every': t['repeat_months'],
-                         'per_year': round(t['cost'] * 12 / t['repeat_months'], 2), 'next': t['due'], 'paid_how': t.get('paid_how', ''),
-                         'owner': t['owner'], 'kind': 'task', 'id': t['id']})
+                         'per_year': round(t['cost'] * 12 / t['repeat_months'], 2), 'each': t['cost'], 'next': t['due'],
+                         'paid_how': t.get('paid_how', ''), 'owner': t['owner'], 'kind': 'task', 'id': t['id'], 'qbo': t.get('qbo_check', ''),
+                         'notes': t['notes']})
     return sorted(rows, key=lambda r: -r['per_year'])
+
+
+def every_label(months):
+    m = {k: v for k, v in FREQUENCIES}
+    return m.get(int(months) if months else '', f'Every {months:g} months')
 
 
 def fixed_cost_year(places_rows, tasks_rows):

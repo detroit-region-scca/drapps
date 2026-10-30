@@ -17,7 +17,7 @@ def money(v, places=0):
 
 
 def every(months):
-    return 'monthly' if months == 1 else 'yearly' if months == 12 else f'every {months:g} months'
+    return E.every_label(months).lower()
 
 
 def _layout(p, items, places, tasks, today, region, k):

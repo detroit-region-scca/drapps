@@ -4,16 +4,30 @@
 {% block app_name %}Operations{% endblock %}
 {% block nav %}
     {{ tab('equip.home', 'Overview') }}
-    {{ tab('equip.costs', 'Costs') }}
-    {{ tab('equip.items', 'Property', request.endpoint in ('equip.items', 'equip.item')) }}
-    {{ tab('equip.places', 'Storage', request.endpoint in ('equip.places', 'equip.place')) }}
-    {{ tab('equip.tasks', 'To do', request.endpoint in ('equip.tasks', 'equip.task')) }}
+    {{ tab('equip.tasks', 'To do', request.endpoint == 'equip.tasks' or (request.endpoint == 'equip.task' and not bill)) }}
+    {{ tab('equip.costs', 'Bills', request.endpoint == 'equip.costs' or (request.endpoint == 'equip.task' and bill)) }}
+    {{ tab('equip.items', 'Property and storage', request.endpoint in ('equip.items', 'equip.item', 'equip.places', 'equip.place')) }}
     {{ tab('equip.plan', 'Replacement') }}
 {% endblock %}
 {% macro due_badge(t) -%}
     {% if not t.due %}<span class="badge rounded-pill text-bg-secondary">No date</span>
     {% elif t.due < today %}<span class="badge rounded-pill text-bg-danger">Overdue</span>
     {% else %}<span class="badge rounded-pill text-bg-light">{{ t.due }}</span>{% endif %}
+{%- endmacro %}
+{% macro done_button(t) -%}
+    {% if editor and t.due %}<form method="post" action="{{ url_for('equip.task', task_id=t.id) }}" class="d-inline"><input type="hidden" name="action" value="done"><input type="hidden" name="back" value="{{ request.full_path.rstrip('?') }}"><button class="btn btn-sm btn-outline-light py-0">Done</button></form>{% endif %}
+{%- endmacro %}
+{% macro todo_rows(rows) -%}
+    {% for t in rows %}<tr id="{{ t.id }}">
+        <td class="ps-3">{% if editor %}<a href="{{ url_for('equip.task', task_id=t.id, back=request.full_path.rstrip('?')) }}">{{ t.task }}</a>{% else %}{{ t.task }}{% endif %}
+            <div class="small text-muted">{{ t.about }}{% if t.owner %} · {{ t.owner }}{% endif %}{% if t.repeat_months %} · {{ every_label(t.repeat_months)|lower }}{% endif %}{% if t.cost %} · {{ money(t.cost, 0) }}{% endif %}{% if t.notes %} · {{ t.notes }}{% endif %}</div>
+            {% if t.last_done %}<div class="small text-muted">Last done {{ t.last_done }} by {{ t.done_by }}</div>{% endif %}</td>
+        <td class="text-nowrap">{{ due_badge(t) }}</td>
+        <td class="pe-3 text-end text-nowrap no-print">{{ done_button(t) }}</td></tr>
+    {% endfor %}
+{%- endmacro %}
+{% macro qbo(text) -%}
+    {% if text %}<span class="{{ 'text-success' if text.startswith(('Matches', 'Corrected')) else 'text-muted' if text.startswith('Estimate') else 'text-warning' }}">{{ text }}</span>{% else %}<span class="text-muted">Not checked</span>{% endif %}
 {%- endmacro %}
 {% macro editbar(edit_url, new_url=none, new_label='') -%}
     <div class="d-flex flex-wrap gap-2 align-items-center no-print">
@@ -31,58 +45,71 @@
         <form method="post" action="{{ url_for('equip.signout') }}" class="d-inline"><button class="btn btn-link btn-sm p-0 align-baseline">Stop editing</button></form></div>{% endif %}
 
     {% if view == 'home' %}
-    <div class="d-flex justify-content-end mb-2 no-print"><a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.one_pager') }}" target="_blank">One-page PDF</a></div>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div class="text-muted">What the region pays for and looks after between events: bills, chores, vehicles, trailers and gear.</div>
+        <a class="btn btn-sm btn-outline-light no-print" href="{{ url_for('equip.one_pager') }}" target="_blank">One-page PDF</a>
+    </div>
     <div class="row g-3 mb-4">
-        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Due in 90 days</div><div class="value {{ 'text-warning' if due }}">{{ due|length }}</div></div></div>
-        <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.costs') }}"><div class="label">Recurring costs a year</div><div class="value">{{ money(storage + recurring, 0) }}</div><div class="small text-muted">storage {{ money(storage, 0) }} + everything else {{ money(recurring, 0) }}</div></a></div>
-        <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.plan') }}"><div class="label">Save for replacements</div><div class="value">{{ money(rp.monthly, 0) }}<span class="h6 text-muted"> /mo</span></div><div class="small text-muted">see Replacement</div></a></div>
-        <div class="col-6 col-md-3"><div class="card stat p-3 h-100"><div class="label">Items</div><div class="value">{{ n_items }}</div><div class="small text-muted">{{ n_capital }} over $2,500 · {{ money(value, 0) }} cost</div></div></div>
+        <div class="col-md-4"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.tasks') }}"><div class="label">To do</div>
+            <div class="value">{{ due|length }} <span class="h6 text-muted">in the next 90 days</span></div>
+            <div class="small {{ 'text-danger' if late else 'text-muted' }}">{% if late %}{{ late }} overdue{% else %}nothing overdue{% endif %}{% if undated %} · {{ undated|length }} with no date{% endif %}</div></a></div>
+        <div class="col-md-4"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.costs') }}"><div class="label">Bills</div>
+            <div class="value">{{ money(bills_year, 0) }} <span class="h6 text-muted">a year</span></div>
+            <div class="small text-muted">about {{ money(bills_year / 12, 0) }} a month, {{ n_bills }} bills</div></a></div>
+        <div class="col-md-4"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.plan') }}"><div class="label">Save for replacements</div>
+            <div class="value">{{ money(rp.monthly, 0) }} <span class="h6 text-muted">a month</span></div>
+            <div class="small text-muted">from {{ rp.start_label }}, so vehicles and gear can be replaced when they wear out</div></a></div>
     </div>
 
-    <h2 class="h6 text-muted">To do</h2>
+    <h2 class="h6 text-muted">Next up</h2>
     <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <tbody>{% for t in due + undated %}<tr class="row-link" onclick="location.href='{{ url_for('equip.tasks') }}#{{ t.id }}'">
-            <td class="ps-3">{{ t.task }}<div class="small text-muted">{{ t.about }}{% if t.owner %} · {{ t.owner }}{% endif %}</div></td>
-            <td class="text-nowrap">{{ due_badge(t) }}</td><td class="num pe-3">{{ money(t.cost, 0) if t.cost else '' }}</td></tr>
-        {% else %}<tr><td class="ps-3 text-muted">Nothing due in the next 90 days.</td></tr>{% endfor %}</tbody>
+        <tbody>{{ todo_rows(due + undated) }}{% if not (due or undated) %}<tr><td class="ps-3 text-muted">Nothing due in the next 90 days.</td></tr>{% endif %}</tbody>
     </table></div></div>
 
     <h2 class="h6 text-muted">Vehicles and trailers</h2>
     <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <thead><tr><th class="ps-3">Item</th><th>Kept at</th><th>Condition</th><th class="num">Value left</th><th class="num pe-3">Replace</th></tr></thead>
+        <thead><tr><th class="ps-3">Item</th><th>Kept at</th><th>Condition</th><th class="num">Value left</th><th class="num pe-3">Replace in</th></tr></thead>
         <tbody>{% for i in big %}<tr class="row-link" onclick="location.href='{{ url_for('equip.item', item_id=i.id) }}'">
             <td class="ps-3"><a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}</a> <span class="small text-muted">{{ i.program }}</span></td>
             <td>{{ i.place }}</td><td class="small">{{ i.condition or i.status }}</td>
-            <td class="num">{{ money(i.lc.left, 0) if i.lc else money(none) }}</td><td class="num pe-3">{{ i.lc.replace if i.lc else '·' }}</td></tr>
+            <td class="num">{{ money(i.lc.left, 0) if i.lc else '' }}</td><td class="num pe-3">{{ i.lc.replace if i.lc else '' }}</td></tr>
         {% else %}<tr><td class="ps-3 text-muted" colspan="5">None yet.</td></tr>{% endfor %}</tbody>
     </table></div></div>
 
-    <h2 class="h6 text-muted">Storage</h2>
-    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <tbody>{% for p in places %}<tr class="row-link" onclick="location.href='{{ url_for('equip.place', place_id=p.id) }}'">
-            <td class="ps-3"><a href="{{ url_for('equip.place', place_id=p.id) }}">{{ p.name }}</a><div class="small text-muted">{{ p.account_holder }}</div></td>
-            <td class="num pe-3">{% if p.cost_month %}{{ money(p.cost_month, 0) }}/mo{% elif p.cost_year %}{{ money(p.cost_year, 0) }}/yr{% else %}free{% endif %}</td></tr>
-        {% endfor %}</tbody>
-    </table></div></div>
-
     {% elif view == 'costs' %}
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-        <div><div class="page-title m-0">{{ money(total, 0) }} a year</div><div class="text-muted small">Everything the region pays on a schedule, used or not. Storage comes from Storage; the rest from To do (anything that repeats and has a cost).</div></div>
-        {{ editbar(none, url_for('equip.task'), 'Add a cost') }}
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+        <div><div class="page-title m-0">{{ money(total, 0) }} a year <span class="h6 text-muted">about {{ money(total / 12, 0) }} a month</span></div>
+            <div class="text-muted small">Everything the region pays on a schedule, whether or not it's used. The last column says what QuickBooks shows for each one.</div></div>
+        {{ editbar(none, url_for('equip.task', bill=1, back=request.path), 'Add a bill') }}
     </div>
     {% for cat, rows in cats %}
     <h2 class="h6 text-muted mt-3">{{ cat }} · {{ money(rows|sum(attribute='per_year'), 0) }} a year</h2>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <tbody>{% for r in rows %}<tr class="row-link" onclick="location.href='{{ url_for('equip.place', place_id=r.id) if r.kind == 'place' else url_for('equip.tasks') ~ '?all=1#' ~ r.id }}'">
-            <td class="ps-3">{{ r.what }}<div class="small text-muted">{% if r.paid_how %}{{ r.paid_how }}{% endif %}{% if r.owner %}{{ ' · ' if r.paid_how }}{{ r.owner }}{% endif %}</div></td>
-            <td class="small text-nowrap">{% if r.every == 1 %}Monthly{% elif r.every == 12 %}Yearly{% else %}Every {{ '%g'|format(r.every) }} months{% endif %}{% if r.next %}<div class="text-muted">next {{ r.next }}</div>{% endif %}</td>
-            <td class="num pe-3">{{ money(r.per_year, 0) }}</td></tr>{% endfor %}</tbody>
+        <thead><tr><th class="ps-3" style="width: 30%">Bill</th><th>How often</th><th class="num">Each time</th><th class="num">A year</th><th class="pe-3" style="width: 34%">QuickBooks</th></tr></thead>
+        <tbody>{% for r in rows %}<tr>
+            <td class="ps-3">{% if editor %}<a href="{{ url_for('equip.place', place_id=r.id, edit=1, back=request.path) if r.kind == 'place' else url_for('equip.task', task_id=r.id, back=request.path) }}">{{ r.what }}</a>{% else %}{{ r.what }}{% endif %}
+                <div class="small text-muted">{{ r.paid_how }}</div></td>
+            <td class="small text-nowrap">{{ r.how_often }}{% if r.next %}<div class="text-muted">next {{ r.next }}</div>{% endif %}</td>
+            <td class="num">{{ money(r.each, 2) }}</td>
+            <td class="num">{{ money(r.per_year, 0) }}</td>
+            <td class="small pe-3">{{ qbo(r.qbo) }}</td></tr>{% endfor %}</tbody>
     </table></div></div>
     {% endfor %}
 
     {% elif view == 'items' %}
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-        <div class="small"><a href="{{ url_for('equip.items', gone=none if show_gone else '1') }}">{{ 'Hide' if show_gone else 'Show' }} items that are gone</a></div>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2" id="storage">
+        <h2 class="h6 text-muted m-0">Where things are kept</h2>
+        {{ editbar(none, url_for('equip.place'), 'Add a place') }}
+    </div>
+    <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table table-hover mb-0">
+        <thead><tr><th class="ps-3">Place</th><th>Account in the name of</th><th class="num">Items</th><th class="num pe-3">Cost</th></tr></thead>
+        <tbody>{% for p in places %}<tr class="row-link" onclick="location.href='{{ url_for('equip.place', place_id=p.id) }}'">
+            <td class="ps-3"><a href="{{ url_for('equip.place', place_id=p.id) }}">{{ p.name }}</a><div class="small text-muted">{{ p.address }}</div></td>
+            <td class="small">{{ p.account_holder }}</td><td class="num">{{ p.n }}</td>
+            <td class="num pe-3">{% if p.cost_month %}{{ money(p.cost_month, 0) }}/mo{% elif p.cost_year %}{{ money(p.cost_year, 0) }}/yr{% else %}free{% endif %}</td></tr>{% endfor %}</tbody>
+    </table></div></div>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <h2 class="h6 text-muted m-0">Property <span class="small">· <a href="{{ url_for('equip.items', gone=none if show_gone else '1') }}">{{ 'hide' if show_gone else 'show' }} items that are gone</a></span></h2>
         {{ editbar(none, url_for('equip.item'), 'Add an item') }}
     </div>
     {% for cat, rows in groups %}
@@ -97,7 +124,7 @@
     {% endfor %}
 
     {% elif view == 'item' %}
-    <div class="crumbs"><a href="{{ url_for('equip.items') }}">Items</a> / {{ it.name or 'New item' }}</div>
+    <div class="crumbs"><a href="{{ url_for('equip.items') }}">Property and storage</a> / {{ it.name or 'New item' }}</div>
     {% if edit %}
     <form method="post" class="card p-3">
         <div class="row g-2">
@@ -143,20 +170,10 @@
     {% if tasks %}<h2 class="h6 text-muted">To do for this</h2><ul>{% for t in tasks %}<li>{{ t.task }}: {{ t.due or 'no date' }}</li>{% endfor %}</ul>{% endif %}
     {% endif %}
 
-    {% elif view == 'places' %}
-    <div class="d-flex justify-content-end mb-3">{{ editbar(none, url_for('equip.place'), 'Add a place') }}</div>
-    <div class="card"><div class="card-body p-0 table-responsive"><table class="table table-hover mb-0">
-        <thead><tr><th class="ps-3">Place</th><th>Account in the name of</th><th class="num">Items</th><th class="num pe-3">Cost</th></tr></thead>
-        <tbody>{% for p in places %}<tr class="row-link" onclick="location.href='{{ url_for('equip.place', place_id=p.id) }}'">
-            <td class="ps-3"><a href="{{ url_for('equip.place', place_id=p.id) }}">{{ p.name }}</a><div class="small text-muted">{{ p.address }}</div></td>
-            <td>{{ p.account_holder }}</td><td class="num">{{ p.n }}</td>
-            <td class="num pe-3">{% if p.cost_month %}{{ money(p.cost_month, 0) }}/mo{% elif p.cost_year %}{{ money(p.cost_year, 0) }}/yr{% else %}free{% endif %}</td></tr>{% endfor %}</tbody>
-    </table></div></div>
-
     {% elif view == 'place' %}
-    <div class="crumbs"><a href="{{ url_for('equip.places') }}">Storage</a> / {{ p.name or 'New place' }}</div>
+    <div class="crumbs"><a href="{{ url_for('equip.items') }}#storage">Property and storage</a> / {{ p.name or 'New place' }}</div>
     {% if edit %}
-    <form method="post" class="card p-3"><div class="row g-2">
+    <form method="post" class="card p-3"><input type="hidden" name="back" value="{{ back }}"><div class="row g-2">
         <div class="col-md-6"><label class="form-label small">Name</label><input name="name" class="form-control" value="{{ p.name or '' }}" required></div>
         <div class="col-md-6"><label class="form-label small">Address</label><input name="address" class="form-control" value="{{ p.address or '' }}"></div>
         <div class="col-6 col-md-3"><label class="form-label small">Cost a month</label><input name="cost_month" class="form-control" inputmode="decimal" value="{{ p.cost_month or '' }}"></div>
@@ -164,7 +181,8 @@
         <div class="col-md-6"><label class="form-label small">Account in the name of / paid how</label><input name="account_holder" class="form-control" value="{{ p.account_holder or '' }}"></div>
         <div class="col-12"><label class="form-label small">Access (who has keys; ask the treasurer for gate codes, don't write them here)</label><input name="access" class="form-control" value="{{ p.access or '' }}"></div>
         <div class="col-12"><label class="form-label small">Notes</label><textarea name="notes" class="form-control" rows="3">{{ p.notes or '' }}</textarea></div>
-    </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ url_for('equip.places') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
+        <div class="col-12"><label class="form-label small">Checked against QuickBooks (start with Matches, Corrected, Estimate or Differs)</label><input name="qbo_check" class="form-control" value="{{ p.qbo_check or '' }}"></div>
+    </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ back or url_for('equip.items') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
     {% else %}
     <div class="card p-3 mb-3">
         <div class="d-flex flex-wrap justify-content-between gap-2"><div><div class="page-title m-0">{{ p.name }}</div><div class="text-muted">{{ p.address }}</div></div>{{ editbar(url_for('equip.place', place_id=p.id, edit=1)) }}</div>
@@ -172,6 +190,7 @@
             <dt class="col-sm-3">Cost</dt><dd class="col-sm-9">{% if p.cost_month %}{{ money(p.cost_month) }} a month{% elif p.cost_year %}{{ money(p.cost_year) }} a year{% else %}free{% endif %}</dd>
             <dt class="col-sm-3">Account</dt><dd class="col-sm-9">{{ p.account_holder or '·' }}</dd>
             <dt class="col-sm-3">Access</dt><dd class="col-sm-9">{{ p.access or '·' }}</dd>
+            {% if p.qbo_check %}<dt class="col-sm-3">QuickBooks</dt><dd class="col-sm-9">{{ qbo(p.qbo_check) }}</dd>{% endif %}
             {% if p.notes %}<dt class="col-sm-3">Notes</dt><dd class="col-sm-9" style="white-space: pre-wrap">{{ p.notes }}</dd>{% endif %}
         </dl>
     </div>
@@ -181,36 +200,31 @@
 
     {% elif view == 'tasks' %}
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-        <div class="small">{% if n_auto %}<a href="{{ url_for('equip.tasks', all=none if show_auto else '1') }}">{{ 'Hide' if show_auto else 'Show' }} the {{ n_auto }} charged automatically</a>{% endif %}</div>
-        {{ editbar(none, url_for('equip.task'), 'Add a to-do') }}</div>
-    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <thead><tr><th class="ps-3">To do</th><th>Due</th><th>Repeats</th><th class="num">Cost</th><th class="pe-3"></th></tr></thead>
-        <tbody>{% for t in tasks %}<tr id="{{ t.id }}">
-            <td class="ps-3">{{ t.task }}<div class="small text-muted">{{ t.about }}{% if t.owner %} · {{ t.owner }}{% endif %}{% if t.notes %} · {{ t.notes }}{% endif %}</div>
-                {% if t.last_done %}<div class="small text-muted">Last done {{ t.last_done }} by {{ t.done_by }}</div>{% endif %}</td>
-            <td class="text-nowrap">{{ due_badge(t) }}</td>
-            <td class="small">{% if t.repeat_months == 12 %}Yearly{% elif t.repeat_months %}Every {{ '%g'|format(t.repeat_months) }} months{% else %}Once{% endif %}</td>
-            <td class="num">{{ money(t.cost, 0) if t.cost else '' }}</td>
-            <td class="pe-3 text-end text-nowrap no-print">{% if editor %}{% if t.due %}<form method="post" action="{{ url_for('equip.task', task_id=t.id) }}" class="d-inline"><input type="hidden" name="action" value="done"><button class="btn btn-sm btn-outline-light py-0">Done</button></form>{% endif %}
-                <a class="btn btn-sm btn-link py-0" href="{{ url_for('equip.task', task_id=t.id) }}">Edit</a>{% endif %}</td></tr>
-        {% endfor %}</tbody>
-    </table></div></div>
+        <div class="text-muted small">Things someone has to do. Bills that charge the card on their own are on Bills, not here.</div>
+        {{ editbar(none, url_for('equip.task', back=request.path), 'Add a to-do') }}</div>
+    {% for name, rows in groups %}
+    <h2 class="h6 mt-3 {{ 'text-danger' if name == 'Overdue' else 'text-muted' }}">{{ name }} ({{ rows|length }})</h2>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><tbody>{{ todo_rows(rows) }}</tbody></table></div></div>
+    {% else %}<p class="text-muted">Nothing to do.</p>{% endfor %}
 
     {% elif view == 'task' %}
-    <div class="crumbs"><a href="{{ url_for('equip.tasks') }}">To do</a> / {{ t.task or 'New' }}</div>
-    <form method="post" class="card p-3"><div class="row g-2">
-        <div class="col-md-8"><label class="form-label small">What has to be done</label><input name="task" class="form-control" value="{{ t.task or '' }}" required></div>
-        <div class="col-md-4"><label class="form-label small">For</label><input name="about" class="form-control" list="aboutNames" value="{{ t.about or '' }}">
+    <div class="crumbs"><a href="{{ back or url_for('equip.costs' if bill else 'equip.tasks') }}">{{ 'Bills' if bill else 'To do' }}</a> / {{ t.task or ('New bill' if bill else 'New to-do') }}</div>
+    <form method="post" class="card p-3"><input type="hidden" name="back" value="{{ back }}"><div class="row g-2">
+        <div class="col-md-8"><label class="form-label small">{{ 'What the bill is for' if bill else 'What has to be done' }}</label><input name="task" class="form-control" value="{{ t.task or '' }}" required></div>
+        <div class="col-md-4"><label class="form-label small">For (vehicle, place or group)</label><input name="about" class="form-control" list="aboutNames" value="{{ t.about or '' }}">
             <datalist id="aboutNames">{% for n in names %}<option value="{{ n }}">{% endfor %}</datalist></div>
-        <div class="col-6 col-md-3"><label class="form-label small">Due</label><input type="date" name="due" class="form-control" value="{{ t.due or '' }}"></div>
-        <div class="col-6 col-md-3"><label class="form-label small">Repeats every (months)</label><input name="repeat_months" class="form-control" inputmode="numeric" value="{{ '%g'|format(t.repeat_months) if t.repeat_months else '' }}" placeholder="12; blank = once"></div>
-        <div class="col-6 col-md-3"><label class="form-label small">Cost</label><input name="cost" class="form-control" inputmode="decimal" value="{{ t.cost or '' }}"></div>
-        <div class="col-6 col-md-3"><label class="form-label small">Who does it</label><input name="owner" class="form-control" value="{{ t.owner or '' }}"></div>
-        <div class="col-6 col-md-3"><label class="form-label small">Cost category</label><select name="category" class="form-select"><option value=""></option>{% for c in cost_categories %}<option {{ 'selected' if c == t.category }}>{{ c }}</option>{% endfor %}</select></div>
-        <div class="col-6 col-md-5"><label class="form-label small">Paid how</label><input name="paid_how" class="form-control" value="{{ t.paid_how or '' }}" placeholder="Region card, check, …"></div>
-        <div class="col-md-4 d-flex align-items-end"><input type="hidden" name="auto" value=""><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="auto" value="yes" id="auto" {{ 'checked' if (t.auto or '')|lower in ('yes', 'y', 'true', '1') }}><label class="form-check-label" for="auto">Charged automatically (not a to-do)</label></div></div>
+        <div class="col-6 col-md-3"><label class="form-label small">How often</label><select name="repeat_months" class="form-select">
+            {% for m, label in frequencies %}<option value="{{ m }}" {{ 'selected' if (t.repeat_months or '') == m or (not t.id and bill and m == 12) }}>{{ label }}</option>{% endfor %}
+            {% if t.repeat_months and t.repeat_months not in frequencies|map('first') %}<option value="{{ '%g'|format(t.repeat_months) }}" selected>Every {{ '%g'|format(t.repeat_months) }} months</option>{% endif %}</select></div>
+        <div class="col-6 col-md-3"><label class="form-label small">Next due</label><input type="date" name="due" class="form-control" value="{{ t.due or '' }}"></div>
+        <div class="col-6 col-md-3"><label class="form-label small">Amount each time</label><input name="cost" class="form-control" inputmode="decimal" value="{{ t.cost or '' }}" placeholder="$"></div>
+        <div class="col-6 col-md-3"><label class="form-label small">Category</label><select name="category" class="form-select"><option value=""></option>{% for c in cost_categories %}<option {{ 'selected' if c == t.category }}>{{ c }}</option>{% endfor %}</select></div>
+        <div class="col-md-4"><label class="form-label small">Who looks after it</label><input name="owner" class="form-control" value="{{ t.owner or '' }}"></div>
+        <div class="col-md-5"><label class="form-label small">Paid how</label><input name="paid_how" class="form-control" value="{{ t.paid_how or '' }}" placeholder="Region card, check, funds request…"></div>
+        <div class="col-md-3 d-flex align-items-end"><input type="hidden" name="auto" value=""><div class="form-check mb-2"><input class="form-check-input" type="checkbox" name="auto" value="yes" id="auto" {{ 'checked' if (t.auto or '')|lower in ('yes', 'y', 'true', '1') }}><label class="form-check-label" for="auto">Charges the card on its own (no one has to do anything)</label></div></div>
         <div class="col-12"><label class="form-label small">Notes</label><input name="notes" class="form-control" value="{{ t.notes or '' }}"></div>
-    </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ url_for('equip.tasks') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
+        <div class="col-12"><label class="form-label small">Checked against QuickBooks (start with Matches, Corrected, Estimate or Differs)</label><input name="qbo_check" class="form-control" value="{{ t.qbo_check or '' }}"></div>
+    </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ back or url_for('equip.costs' if bill else 'equip.tasks') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
 
     {% elif view == 'plan' %}
     <p class="text-muted">Replacements and planned purchases at estimated cost when bought. For planning only; the region gets no tax benefit from depreciation.</p>
