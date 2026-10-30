@@ -5,3 +5,4 @@ markupsafe
 filelock
 gspread
 google-auth
+fpdf2

@@ -83,3 +83,13 @@ def test_voided_check_is_not_an_exception():
     today = date(2026, 10, 29)
     keys = {e['key'] for e in Q.exceptions([], [chk('6038', 'Pat Smith', 0, d='2026-06-12')], [], [], today)}
     assert 'check:6038' not in keys
+
+
+def test_invoice_matched_by_payer_and_exact_amount():
+    inv = {'id': 'INV-2026-001', 'status': 'Open', 'total': 2500.0, 'created': '2026-03-01', 'bill_name': 'Example Motorsports LLC'}
+    deps = [{'id': 'Deposit 1', 'date': '2026-03-27', 'amount': 2500.0, 'description': 'Example 2026 Sponsorship', 'payer': ''},
+            {'id': 'Deposit 2', 'date': '2026-03-27', 'amount': 2500.0, 'description': 'MSR rev', 'payer': ''}]
+    m = Q.match_invoices([inv], deps)
+    assert m and m[0][1]['paid_date'] == '2026-03-27'
+    assert not Q.match_invoices([inv], [dict(deps[0], amount=2400.0)])
+    assert not Q.match_invoices([inv], [dict(deps[0], date='2026-02-01')])

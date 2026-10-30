@@ -110,12 +110,15 @@ def generate_sequence_id(program_type, date_str, existing_events):
                 
     return f"{year_prefix}-{max_seq + 1:02d}-{program_type}"
 import smtplib
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import threading
 
-def send_mail(subject, body, recipient=None):
-    """Send a plain-text email in the background (see the SMTP notes inside)."""
+def send_mail(subject, body, recipient=None, attachments=(), cc=None):
+    """Send a plain-text email in the background (see the SMTP notes inside).
+    attachments: [(filename, bytes, mime type)], e.g. an invoice PDF."""
     recipient = recipient or os.environ.get('NOTIFICATION_EMAIL', 'treasurer@drscca.org')
 
     def send_email_async():
@@ -144,7 +147,16 @@ def send_mail(subject, body, recipient=None):
         msg['From'] = from_email
         msg['To'] = recipient
         msg['Subject'] = subject
+        if cc:
+            msg['Cc'] = cc
         msg.attach(MIMEText(body, 'plain'))
+        for name, data, mime in attachments:
+            main, _, sub = (mime or 'application/octet-stream').partition('/')
+            part = MIMEBase(main, sub)
+            part.set_payload(data)
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition', 'attachment', filename=name)
+            msg.attach(part)
 
         try:
             server = smtplib.SMTP(smtp_server, smtp_port)

@@ -37,6 +37,8 @@
             <span>Record board approvals of budgets<div class="small text-muted">{{ year }} budgets not approved, or changed since</div></span><span class="fw-semibold">{{ jobs.budgets }}</span></a>{% endif %}
         {% if jobs.books is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('plan.checks') }}">
             <span>Books check<div class="small text-muted">What the nightly QuickBooks sync found</div></span><span class="fw-semibold">{{ jobs.books }}</span></a>{% endif %}
+        {% if jobs.invoices %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('inv.home') }}">
+            <span>Invoices waiting to be paid<div class="small text-muted">{{ jobs.invoices[1] }} overdue</div></span><span class="fw-semibold">{{ jobs.invoices[0] }}{% if jobs.invoices[0] %} · ${{ '{:,.2f}'.format(jobs.invoices[2]) }}{% endif %}</span></a>{% endif %}
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('equip.home') }}">
             <span>Operations to-dos overdue<div class="small text-muted">Renewals, registrations, inspections</div></span><span class="fw-semibold">{{ jobs.equipment }}</span></a>
         {% if wp_enabled %}<a class="list-group-item list-group-item-action" href="{{ url_for('wp.month_end') }}">Worker points month end<div class="small text-muted">Post the month's points to QuickBooks</div></a>{% endif %}
@@ -48,7 +50,7 @@
         <div class="card w-100" style="max-width: 380px;">
             <div class="card-body p-4">
                 <h1 class="h4 text-center mb-1">{{ title }}</h1>
-                <p class="text-center text-muted small mb-4">Events, Worker Points, Funds Requests, Annual Plan, Operations</p>
+                <p class="text-center text-muted small mb-4">Events, Worker Points, Funds Requests, Invoices, Annual Plan, Operations</p>
                 <form action="{{ url_for('login') }}" method="POST">
                     <input type="hidden" name="next" value="{{ next_url }}">
                     <label for="name" class="form-label">Your name</label>
@@ -111,6 +113,15 @@
                 </svg>
                 <div class="name">Operations</div>
                 <div class="what">Recurring costs, property, storage and what's due</div>
+            </a>
+        </div>
+        <div class="col-6 col-md-4 col-lg">
+            <a class="app-tile" href="{{ url_for('inv.home') }}" style="--tile: #6ea8ff;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#6ea8ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M6 2.5h12v19l-3-2-3 2-3-2-3 2z"/><path d="M9 7.5h6M9 11h6M9 14.5h4"/>
+                </svg>
+                <div class="name">Invoices</div>
+                <div class="what">Bill sponsors and partners in the region's name</div>
             </a>
         </div>
         <div class="col-6 col-md-4 col-lg">

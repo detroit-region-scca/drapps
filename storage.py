@@ -139,8 +139,10 @@ def drive_upload(f, parent):
     so the parent must be in a Shared Drive."""
     files = {'metadata': ('metadata', json.dumps({'name': f.filename, 'parents': [parent]}), 'application/json'),
              'file': (f.filename, f.stream, f.mimetype or 'application/octet-stream')}
-    r = sheets_client().http_client.session.post(UPLOAD, params={'uploadType': 'multipart', 'supportsAllDrives': 'true'}, files=files)
+    r = sheets_client().http_client.session.post(UPLOAD, params={'uploadType': 'multipart', 'supportsAllDrives': 'true',
+                                                                  'fields': 'id,webViewLink'}, files=files)
     r.raise_for_status()
+    return r.json()
 
 
 class SheetStore:

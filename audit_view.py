@@ -10,7 +10,7 @@ from markupsafe import Markup, escape
 
 # action prefix -> (app label, badge colour)
 APPS = {'EVENT': ('Events', 'primary'), 'WP': ('Worker Points', 'warning'), 'FUNDS': ('Funds Requests', 'success'),
-        'BUDGET': ('Events', 'primary'), 'PLAN': ('Annual Plan', 'light'), 'EQUIP': ('Operations', 'warning'), 'LOGIN': ('Login', 'secondary')}
+        'BUDGET': ('Events', 'primary'), 'PLAN': ('Annual Plan', 'light'), 'EQUIP': ('Operations', 'warning'), 'INVOICE': ('Invoices', 'info'), 'LOGIN': ('Login', 'secondary')}
 
 
 def app_of(action):
@@ -92,6 +92,14 @@ def describe(log):
                                                        f" ({g('note')})" if g('note') else '')
     if a == 'FUNDS_RECEIPTS':
         return Markup('{} added {} receipt file(s) to {}').format(who, g('files', ''), _link('fr.detail', g('id', ''), req_id=g('id', '')))
+    if a == 'INVOICE_CREATED':
+        return Markup('{} created invoice {} for {}: {}').format(who, _link('inv.detail', g('id', ''), inv_id=g('id', '')), g('bill_name', ''), _money(g('total')))
+    if a == 'INVOICE_PAID':
+        return Markup('{} marked invoice {} paid: {}').format(who, _link('inv.detail', g('id', ''), inv_id=g('id', '')), _money(g('amount')))
+    if a == 'INVOICE_VOID':
+        return Markup('{} voided invoice {}: {}').format(who, _link('inv.detail', g('id', ''), inv_id=g('id', '')), g('note', ''))
+    if a == 'INVOICE_REOPENED':
+        return Markup('{} reopened invoice {}').format(who, _link('inv.detail', g('id', ''), inv_id=g('id', '')))
     if a == 'EQUIP_ITEM_SAVED':
         return Markup('{} {} {}').format(who, 'added' if g('new') else 'updated', _link('equip.item', g('name', ''), item_id=g('id', '')))
     if a == 'EQUIP_PLACE_SAVED':

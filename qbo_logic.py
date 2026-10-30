@@ -147,3 +147,26 @@ def exceptions(requests, payments, events, projects, today, since=None):
             add(f"projev:{p['code']}", 'QuickBooks project not in Events', '', p['project'], None,
                 f"{p['code']} is not a registered event code", p['code'])
     return out
+
+
+def match_invoices(invoices, deposits):
+    """Open invoices a QuickBooks deposit paid: [(invoice, {'paid_date', 'paid_ref', 'paid_amount'})].
+
+    A deposit line matches on the exact total, dated on or after the invoice, and naming the payer (any word of
+    three letters or more from "Bill to" in the deposit's payer or description) or the invoice number. Only
+    unambiguous matches count, and a deposit line is used once.
+    """
+    out, used = [], set()
+    for inv in invoices:
+        if inv['status'] != 'Open' or not inv['total']:
+            continue
+        words = {w for w in re.findall(r'[a-z]+', inv['bill_name'].lower()) if len(w) >= 3} - {'inc', 'llc', 'the', 'and', 'company', 'corp'}
+        hits = [d for d in deposits if (d['id'], d['description'], d['amount']) not in used and abs(d['amount'] - inv['total']) < 0.005
+                and d['date'] >= inv['created'][:10]
+                and (inv['id'].lower() in (d['description'] + ' ' + d['payer']).lower()
+                     or words & set(re.findall(r'[a-z]+', (d['description'] + ' ' + d['payer']).lower())))]
+        if len(hits) == 1:
+            d = hits[0]
+            used.add((d['id'], d['description'], d['amount']))
+            out.append((inv, {'paid_date': d['date'], 'paid_ref': f"QuickBooks deposit {d['date']}", 'paid_amount': d['amount']}))
+    return out

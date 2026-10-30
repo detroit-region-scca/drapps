@@ -115,6 +115,15 @@ def main():
         P.write_tab('QBO Status', ['item', 'amount', 'as_of'], status_rows)
         P.write_tab('QBO Exceptions', P.EXC_COLS, [[e[c] if c != 'as_of' else as_of for c in P.EXC_COLS] for e in exc])
         try:
+            import inv_store
+            if inv_store.enabled():
+                for inv, paid in Q.match_invoices(inv_store.invoices(), data.get('deposits', [])):
+                    inv_store.update(inv['id'], status='Paid', closed_by=WHO, **paid)
+                    log_audit_event('INVOICE_PAID', WHO, {'id': inv['id'], 'amount': paid['paid_amount'], 'ref': paid['paid_ref']})
+                    say.append(f"invoice {inv['id']} paid by {paid['paid_ref']}")
+        except Exception as e:
+            say.append(f"invoice matching failed: {e}")
+        try:
             import officials
             say.append(f"officials copied to Drive: {officials.mirror_to_sheet()}")
         except Exception as e:      # a copy for people to read; never stop the sync over it

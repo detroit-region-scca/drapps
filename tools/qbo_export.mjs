@@ -5,6 +5,7 @@
 //   balances  bank accounts and the worker points reserve
 //   payments  checks, bill payments and card charges since PAYMENTS_SINCE
 //   outstanding  checks since PAYMENTS_SINCE the bank has not cleared yet (QuickBooks "Clr" blank; voided $0 checks left out)
+//   deposits  deposit lines since PAYMENTS_SINCE (date, amount, description, payer), to match against open invoices
 // Runs on the machine that holds the QuickBooks connection (the qbo-mcp install and its token
 // store); the web app never talks to QuickBooks. QBO_MCP_DIR points at that install. Read only.
 const dir = process.env.QBO_MCP_DIR || `${process.env.HOME}/.mcp-servers/qbo-mcp`;
@@ -110,4 +111,13 @@ twalk(tl.Rows?.Row);
 const outstanding = trows.filter(r => r[tc('Transaction Type')] === 'Check' && !r[tc('Clr')] && Math.abs(Number(r[tc('Amount')]) || 0) >= 0.005)
   .map(r => ({ date: r[tc('Date')], number: r[tc('Num')], payee: r[tc('Name')], amount: Math.abs(Number(r[tc('Amount')])) }));
 
-console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding }));
+const deposits = [];
+for (const d of await query('Deposit', `WHERE TxnDate >= '${since}'`)) {
+  for (const l of d.Line || []) {
+    if (!l.Amount) continue;
+    deposits.push({ id: `Deposit ${d.Id}`, date: d.TxnDate, amount: l.Amount, description: l.Description || '',
+                    payer: l.DepositLineDetail?.Entity?.name || '' });
+  }
+}
+
+console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding, deposits }));

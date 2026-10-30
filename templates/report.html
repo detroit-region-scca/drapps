@@ -63,6 +63,11 @@
             <td class="small">{{ 'Waiting on ' ~ r.waiting|join(', ') if r.waiting else 'Ready to pay' }}</td><td class="num pe-3">{{ money(r.net) }}</td></tr>{% endfor %}</tbody>
     </table></div></div>{% else %}<p class="text-muted">None.</p>{% endif %}</section>{% endif %}
 
+    {% if invoices_open is defined %}<section><h2>Invoices waiting to be paid ({{ invoices_open|length }}, {{ money(invoices_open|sum(attribute='total')) }})</h2>
+    {% if invoices_open %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <tbody>{% for r in invoices_open %}<tr><td class="ps-3 text-nowrap">{{ r.id }}</td><td>{{ r.bill_name }}</td><td class="small text-muted">{{ r.event_name or r.program }}</td><td class="text-nowrap">due {{ r.due }}</td><td class="num pe-3">{{ money(r.total) }}</td></tr>{% endfor %}</tbody>
+    </table></div></div>{% else %}<p class="text-muted">None.</p>{% endif %}</section>{% endif %}
+
     {% if outstanding is defined %}<section><h2>Outstanding checks ({{ outstanding|length }}, {{ money(outstanding|sum(attribute='amount')) }})</h2>
     {% if outstanding %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
         <tbody>{% for o in outstanding %}<tr><td class="ps-3">{{ o.number }}</td><td class="text-nowrap">{{ o.date }}</td><td>{{ o.payee }}</td><td class="num pe-3">{{ money(o.amount) }}</td></tr>{% endfor %}</tbody>

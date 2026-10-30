@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% from '_ui.html' import tab, money with context %}
+{% block body_class %}app-inv{% endblock %}
+{% block app_name %}Invoices{% endblock %}
+{% block nav %}
+    {{ tab('inv.home', 'Invoices', request.endpoint != 'inv.new') }}
+    {{ tab('inv.new', 'New invoice') }}
+{% endblock %}
+{% macro status_badge(r) -%}
+    {% if r.status == 'Paid' %}<span class="badge rounded-pill text-bg-success">Paid</span>
+    {% elif r.status == 'Void' %}<span class="badge rounded-pill text-bg-secondary">Void</span>
+    {% elif r.due < today %}<span class="badge rounded-pill text-bg-danger">Overdue</span>
+    {% else %}<span class="badge rounded-pill text-bg-warning">Open</span>{% endif %}
+{%- endmacro %}
+{% block style %}
+        body.app-inv { --accent: #6ea8ff; }
+{% endblock %}
+{% block content %}
+    {% if view == 'list' %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div class="text-muted">{% if open_total %}{{ money(open_total) }} waiting to be paid{% if overdue %}, {{ overdue|length }} overdue{% endif %}.{% else %}Nothing waiting to be paid.{% endif %}</div>
+        <a class="btn btn-accent" href="{{ url_for('inv.new') }}">New invoice</a>
+    </div>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table table-hover mb-0">
+        <thead><tr><th class="ps-3">Invoice</th><th>To</th><th>For</th><th>Due</th><th>Status</th><th class="num pe-3">Total</th></tr></thead>
+        <tbody>{% for r in rows %}<tr class="row-link" onclick="location.href='{{ url_for('inv.detail', inv_id=r.id) }}'">
+            <td class="ps-3 text-nowrap"><a href="{{ url_for('inv.detail', inv_id=r.id) }}">{{ r.id }}</a><div class="small text-muted">{{ r.created }}</div></td>
+            <td>{{ r.bill_name }}</td><td class="small">{{ r.event_name or programs.get(r.program, r.program) }} <span class="text-muted">{{ r.event_code }}</span></td>
+            <td class="text-nowrap">{{ r.due }}</td><td>{{ status_badge(r) }}</td><td class="num pe-3">{{ money(r.total) }}</td></tr>
+        {% else %}<tr><td colspan="6" class="ps-3 text-muted">No invoices for {{ year }} yet.</td></tr>{% endfor %}</tbody>
+    </table></div></div>
+    <p class="form-text mt-3">Every invoice is a row in the DRSCCA Invoices sheet in the shared drive, with its PDF in the PDFs folder beside it.</p>
+
+    {% elif view == 'new' %}
+    <div class="page-title">New invoice</div>
+    <p class="text-muted">For sponsorships, event services, series fees and anything else the region bills. You'll get a PDF to send to the customer from your own email.</p>
+    <form method="post" id="invForm" novalidate>
+        <div class="card p-3 mb-3"><div class="section-label">What it's for</div><div class="row g-2">
+            <div class="col-md-4"><label class="form-label" for="progSel">Program</label>
+                <select name="program" id="progSel" class="form-select" required><option value="">Select…</option>{% for c, n in programs.items() %}<option value="{{ c }}" {{ 'selected' if form.get('program') == c }}>{{ n }}</option>{% endfor %}</select></div>
+            <div class="col-md-8"><label class="form-label" for="eventSel">Event (optional)</label>
+                <select name="event_code" id="eventSel" class="form-select" data-chosen="{{ form.get('event_code', '') }}"><option value="">Not for one event</option></select></div>
+        </div></div>
+        <div class="card p-3 mb-3"><div class="section-label">Bill to</div><div class="row g-2">
+            <div class="col-md-6"><input name="bill_name" class="form-control mb-2" placeholder="Company or person" required value="{{ form.get('bill_name', '') }}">
+                <input name="bill_contact" class="form-control mb-2" placeholder="Attention (optional)" value="{{ form.get('bill_contact', '') }}">
+                <input name="bill_email" type="email" class="form-control" placeholder="Their email (optional)" value="{{ form.get('bill_email', '') }}"></div>
+            <div class="col-md-6"><textarea name="bill_address" class="form-control h-100" rows="4" placeholder="Mailing address (optional)">{{ form.get('bill_address', '') }}</textarea></div>
+        </div></div>
+        <div class="card p-3 mb-3"><div class="section-label">Lines</div>
+            <div id="lines">{% for r in rows %}
+            <div class="row g-2 mb-2 line"><div class="col-12 col-md-7"><input name="desc" class="form-control" placeholder="e.g. 2027 Solo series sponsorship" value="{{ r.description or '' }}"></div>
+                <div class="col-3 col-md-1"><input name="qty" class="form-control text-end" inputmode="decimal" placeholder="1" value="{{ r.quantity if r.quantity is string else ('%g'|format(r.quantity) if r.quantity else '') }}"></div>
+                <div class="col-6 col-md-3"><input name="price" class="form-control text-end" inputmode="decimal" placeholder="Price" value="{{ r.unit_price or '' }}"></div>
+                <div class="col-3 col-md-1 d-flex align-items-center"><a href="#" class="text-muted text-decoration-none" onclick="this.closest('.line').remove(); total(); return false;" aria-label="Remove line">✕</a></div></div>{% endfor %}
+            </div>
+            <div class="d-flex justify-content-between align-items-center"><button type="button" class="btn btn-sm btn-outline-light" onclick="addLine()">Add a line</button><div class="fw-semibold">Total <span id="total">$0.00</span></div></div>
+        </div>
+        <div class="card p-3 mb-3"><div class="row g-2">
+            <div class="col-md-3"><label class="form-label">Due</label><input type="date" name="due" class="form-control" value="{{ due }}"><div class="form-text">Blank = 30 days</div></div>
+            <div class="col-md-9"><label class="form-label">Note on the invoice (optional)</label><input name="notes" class="form-control" placeholder="e.g. Thank you for sponsoring the 2027 season." value="{{ form.get('notes', '') }}"></div>
+            <div class="col-md-6"><label class="form-label">Email me the PDF (optional)</label><input name="my_email" type="email" class="form-control" placeholder="you@example.com" value="{{ form.get('my_email', '') }}"></div>
+        </div></div>
+        <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('inv.home') }}">Cancel</a><button class="btn btn-accent px-4">Create invoice</button></div>
+    </form>
+
+    {% elif view == 'detail' %}
+    <div class="crumbs no-print"><a href="{{ url_for('inv.home') }}">Invoices</a> / {{ inv.id }}</div>
+    <div class="card p-3 mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+            <div><div class="page-title m-0">{{ inv.id }} {{ status_badge(inv) }}</div>
+                <div class="text-muted">To {{ inv.bill_name }} · {{ inv.created }} · due {{ inv.due }}</div>
+                <div class="small mt-1">{{ inv.event_name or inv.program_name }} <span class="text-muted">{{ inv.event_code }}</span> · created by {{ inv.created_by }}</div></div>
+            <div class="text-end"><div class="stat"><div class="value">{{ money(inv.total) }}</div></div>
+                <div class="d-flex gap-2 mt-2 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('inv.pdf', inv_id=inv.id) }}" target="_blank">PDF</a>
+                {% if inv.pdf_url %}<a class="btn btn-sm btn-outline-light" href="{{ inv.pdf_url }}" target="_blank" rel="noopener">In Drive</a>{% endif %}</div></div>
+        </div>
+    </div>
+    <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <thead><tr><th class="ps-3">Description</th><th class="num">Qty</th><th class="num">Price</th><th class="num pe-3">Amount</th></tr></thead>
+        <tbody>{% for ln in inv.lines %}<tr><td class="ps-3">{{ ln.description }}</td><td class="num">{{ '%g'|format(ln.quantity or 1) }}</td><td class="num">{{ money(ln.unit_price) }}</td><td class="num pe-3">{{ money(ln.amount) }}</td></tr>{% endfor %}
+        <tr class="fw-semibold"><td class="ps-3" colspan="3">Total</td><td class="num pe-3">{{ money(inv.total) }}</td></tr></tbody>
+    </table></div></div>
+    <p class="small"><span class="text-muted">Bill to:</span> {{ inv.bill_name }}{% if inv.bill_contact %}, attn {{ inv.bill_contact }}{% endif %}{% if inv.bill_email %} · <a href="mailto:{{ inv.bill_email }}?subject=Invoice {{ inv.id }} from Detroit Region SCCA">{{ inv.bill_email }}</a>{% endif %}</p>
+    {% if inv.status == 'Open' %}
+    <div class="row g-3 no-print">
+        <div class="col-lg-8"><form method="post" action="{{ url_for('inv.close', inv_id=inv.id) }}" class="card p-3 h-100"><input type="hidden" name="action" value="paid">
+            <div class="section-label">Mark paid</div><div class="row g-2">
+            <div class="col-sm-4"><input name="paid_ref" class="form-control" placeholder="Check # or deposit"></div>
+            <div class="col-sm-3"><input type="date" name="paid_date" class="form-control" value="{{ today }}"></div>
+            <div class="col-sm-2"><input name="paid_amount" class="form-control text-end" value="{{ '%.2f'|format(inv.total) }}"></div>
+            <div class="col-sm-3"><button class="btn btn-accent w-100">Mark paid</button></div></div>
+            <div class="form-text">Deposit it in QuickBooks to the program's revenue account (and the event project when there is one).</div></form></div>
+        <div class="col-lg-4"><form method="post" action="{{ url_for('inv.close', inv_id=inv.id) }}" class="card p-3 h-100"><input type="hidden" name="action" value="void">
+            <div class="section-label">Void</div><input name="note" class="form-control mb-2" placeholder="Why"><button class="btn btn-outline-danger">Void</button></form></div>
+    </div>
+    {% else %}
+    <div class="card p-3">{% if inv.status == 'Paid' %}Paid {{ inv.paid_date }}{% if inv.paid_ref %} · {{ inv.paid_ref }}{% endif %} · {{ money(inv.paid_amount) }} · recorded by {{ inv.closed_by }}{% else %}Void: {{ inv.closed_note }} ({{ inv.closed_by }}){% endif %}
+        <form method="post" action="{{ url_for('inv.close', inv_id=inv.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary">Reopen</button></form></div>
+    {% endif %}
+    {% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+    const form = document.getElementById('invForm');
+    if (form) {
+        const allEvents = {{ (events or [])|tojson }};
+        const progSel = document.getElementById('progSel'), evSel = document.getElementById('eventSel');
+        function fillEvents() {
+            const keep = evSel.value || evSel.dataset.chosen; evSel.dataset.chosen = '';
+            evSel.innerHTML = '<option value="">Not for one event</option>' + allEvents.filter(e => e.p === progSel.value).map(e =>
+                `<option value="${e.c}">${e.d} · ${e.n.replace(/[<>&"]/g, ch => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'})[ch])} ${e.c}</option>`).join('');
+            if (keep && allEvents.some(e => e.c === keep && e.p === progSel.value)) evSel.value = keep;
+        }
+        // Coming from an event page: pick its program first.
+        const pre = allEvents.find(e => e.c === evSel.dataset.chosen);
+        if (pre && !progSel.value) progSel.value = pre.p;
+        progSel.addEventListener('change', fillEvents); fillEvents();
+        const num = v => parseFloat(String(v).replace(/[$,]/g, '')) || 0;
+        window.total = () => {
+            let t = 0; form.querySelectorAll('.line').forEach(r => t += (num(r.querySelector('[name=qty]').value) || 1) * num(r.querySelector('[name=price]').value));
+            document.getElementById('total').textContent = '$' + t.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        };
+        window.addLine = () => { const box = document.getElementById('lines'); const r = box.querySelector('.line').cloneNode(true);
+            r.querySelectorAll('input').forEach(i => i.value = ''); box.appendChild(r); r.querySelector('[name=desc]').focus(); };
+        form.addEventListener('input', total); total();
+    }
+</script>
+{% endblock %}
