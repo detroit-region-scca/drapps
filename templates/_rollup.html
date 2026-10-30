@@ -21,20 +21,18 @@
     for (const t of document.querySelectorAll('table.rollup')) {
         const key = `rollup:${location.pathname}:${t.id}`;
         const groups = () => [...t.querySelectorAll('tbody.grp')];
-        const saveOpen = () => store(`${key}:open`, groups().filter(b => b.classList.contains('open')).map(b => b.dataset.grp));
-        const open = new Set(store(`${key}:open`) || []);
+        // Programs start collapsed on every visit (data-open: the page wants one open); only the sort is remembered.
+        try { localStorage.removeItem(`${key}:open`); } catch (e) { /* storage blocked */ }
         for (const b of groups()) {
-            b.classList.toggle('open', open.has(b.dataset.grp) || 'open' in b.dataset);    // data-open: the page wants it open
+            b.classList.toggle('open', 'open' in b.dataset);
             b.querySelector('.grp-row').addEventListener('click', e => {
                 if (e.target.closest('a, button')) return;
                 b.classList.toggle('open');
-                saveOpen();
             });
         }
         document.querySelectorAll(`[data-toggle-all="${t.id}"]`).forEach(btn => btn.addEventListener('click', () => {
             const expand = groups().some(b => !b.classList.contains('open'));
             groups().forEach(b => b.classList.toggle('open', expand));
-            saveOpen();
         }));
         const value = (row, k) => {
             const v = row.dataset[k] ?? '';
