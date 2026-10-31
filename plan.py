@@ -1,7 +1,8 @@
 """Annual Plan: each program's yearly plan (events and items, expected profit or cost) against QuickBooks actuals.
 
-Directors fill in their own program's plan for the next year (the template is the edit page); the board
-approves it in the minutes. The top of the page charts profit against the plan through the year, and Books check lists what
+Directors fill in their own program's plan for the next year (the template is the edit page) and turn it in. The
+board approves budgets, not plans: each event's budget and each program's budget for spending not in an event
+(Events). Operations has no events, so its plan is its budget and the board approves that. The top of the page charts profit against the plan through the year, and Books check lists what
 the nightly QuickBooks sync (tools/qbo_nightly.py) found for the treasurer.
 """
 import os
@@ -227,10 +228,14 @@ def _account_groups(lines, accts):
 @login_required
 @officer_required
 def approve(year, program):
-    """Record the board meeting that approved this plan (or clear it). Officers only, signed in by email."""
+    """Record the board meeting that approved the Operations budget (its plan), or clear it. Officers only, signed in
+    by email. Other programs' plans are not board approved; the board approves their event and program budgets."""
     if (g := _guard()):
         return g
     year = _year(year)
+    if program != 'OPS':
+        flash('The board approves budgets, not plans. Record approval on the program budget in Events.', 'warning')
+        return redirect(url_for('plan.detail', year=year, program=program))
     who = officer_current()['name']
     approved = request.form.get('approved', '').strip()
     if approved:

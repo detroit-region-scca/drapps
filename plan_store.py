@@ -155,8 +155,9 @@ def set_approved(year, program, approved, who):
 
 
 def plan_status(info):
-    """'approved', 'changed' (edited after the board approved it), 'in', 'draft' or '' (nothing saved)."""
-    if info.get('approved'):
+    """'approved', 'changed' (edited after the board approved it), 'in', 'draft' or '' (nothing saved).
+    The board approves budgets, not plans: only Operations, whose plan is its budget, can be board approved."""
+    if info.get('approved') and info.get('program') == 'OPS':
         return 'changed' if info.get('updated', '') > info['approved'] else 'approved'
     return 'in' if info.get('submitted') else 'draft' if info.get('updated') else ''
 
