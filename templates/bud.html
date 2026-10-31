@@ -30,7 +30,7 @@
         <div class="d-flex gap-2">
             <form method="get" class="m-0"><input type="hidden" name="year" value="{{ year }}">
                 <select name="program" class="form-select form-select-sm w-auto" aria-label="Program" onchange="this.form.submit()">
-                    <option value="">All programs</option>{% for pc, nm in names.items() %}<option value="{{ pc }}" {{ 'selected' if pc == only }}>{{ nm }}</option>{% endfor %}
+                    <option value="">All programs</option>{% for pc, nm in names.items() if pc != 'OPS' %}<option value="{{ pc }}" {{ 'selected' if pc == only }}>{{ nm }}</option>{% endfor %}
                 </select></form>
         </div>
         <div class="d-flex flex-wrap gap-2">
@@ -54,11 +54,7 @@
                 <td>{{ badge(r) }}</td>
                 <td class="num d-none d-md-table-cell">{{ money(r.plan) }}</td><td class="num d-none d-md-table-cell">{{ money(r.budget) }}</td><td class="num pe-3">{{ money(r.actual) }}</td></tr>
                 {% endfor %}
-                {% if g.pb_code and budgets_on %}{% set href = url_for('bud.detail', code=g.pb_code) %}
-                <tr class="kid fixed row-link" onclick="location.href='{{ href }}'"><td class="ps-4" colspan="2"><a href="{{ href }}">Program budget, not in an event</a> <span class="small text-muted">{{ g.pb_code }}</span></td>
-                    <td>{% if g.pb_status == 'approved' %}<span class="badge rounded-pill text-bg-success" title="Board approved {{ g.pb.approved }}">Approved</span>{% elif g.pb_status == 'changed' %}<span class="badge rounded-pill text-bg-info" title="Edited after the board approved it on {{ g.pb.approved }}">Changed</span>{% elif g.pb %}<span class="badge rounded-pill text-bg-primary" title="Budget in, not board approved yet">Budget</span>{% else %}<span class="badge rounded-pill text-bg-warning" title="No program budget yet">No budget</span>{% endif %}</td>
-                    <td class="num d-none d-md-table-cell">{{ money(g.other_plan) if g.other_plan else '' }}</td><td class="num d-none d-md-table-cell">{{ money(g.pb_budget) if g.pb_budget is not none else '' }}</td><td class="num pe-3">{{ money(g.other) if g.other else '' }}</td></tr>
-                {% elif g.other or g.other_plan %}<tr class="kid fixed text-muted"><td class="ps-4" colspan="3">{% set other_label = 'Other, not tied to an event' if g.rows else 'Program income and costs (no events)' %}{% if plan_on %}<a class="text-muted" href="{{ url_for('plan.detail', year=year, program=g.code) }}">{{ other_label }}</a>{% else %}{{ other_label }}{% endif %}</td>
+                {% if g.other or g.other_plan %}<tr class="kid fixed text-muted"><td class="ps-4" colspan="3">{% set other_label = 'Other, not tied to an event' if g.rows else 'Program income and costs (no events)' %}{% if plan_on %}<a class="text-muted" href="{{ url_for('plan.detail', year=year, program=g.code) }}">{{ other_label }}</a>{% else %}{{ other_label }}{% endif %}</td>
                     <td class="num d-none d-md-table-cell">{{ money(g.other_plan) if g.other_plan else '' }}</td><td class="d-none d-md-table-cell"></td><td class="num pe-3">{{ money(g.other) if g.other else '' }}</td></tr>{% endif %}
             </tbody>
             {% else %}<tbody><tr><td colspan="6" class="text-muted ps-3">No events or plan for {{ year }}.</td></tr></tbody>{% endfor %}
@@ -69,10 +65,10 @@
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
         <tbody>{% for r in funds %}<tr class="row-link" onclick="location.href='{{ url_for('fr.detail', req_id=r.id) }}'"><td class="ps-3"><a href="{{ url_for('fr.detail', req_id=r.id) }}">{{ r.id }}</a></td><td>{{ r.payee_name }}</td><td class="small text-muted">{{ r.event_name or 'Program' }}</td><td class="num pe-3">{{ money(r.net) }}</td></tr>{% endfor %}</tbody>
     </table></div></div>{% endif %}
-    <p class="form-text mt-3">Each program lists its registered events and the events in its annual plan that are not registered yet (Register adds them). Actuals are each event's QuickBooks project{% if s.as_of %}, as of {{ s.as_of }}{% endif %}; "Other" is money on the program's accounts not tagged to an event, so each program matches the Annual Plan. Each program also has one program budget for its spending that is not one event (supplies, trophies, the director's costs); the board approves it like an event budget, and funds requests not tied to an event are paid against it.</p>
+    <p class="form-text mt-3">Each program lists its registered events and the events in its annual plan that are not registered yet (Register adds them). Actuals are each event's QuickBooks project{% if s.as_of %}, as of {{ s.as_of }}{% endif %}; "Other" is money on the program's accounts not tagged to an event, so each program matches the Annual Plan.</p>
 
     {% elif view == 'detail' %}
-    <div class="crumbs no-print"><a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Events {{ (e.date or '')[:4] }}</a> / {{ code }}</div>
+    <div class="crumbs no-print">{% if e.program_budget %}<a href="{{ url_for('plan.home', year=e.date[:4]) }}">Annual Plan {{ e.date[:4] }}</a> / <a href="{{ url_for('plan.detail', year=e.date[:4], program=e.program_code) }}">{{ programs.get(e.program_code, e.program_code) }}</a> / Program budget{% else %}<a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Events {{ (e.date or '')[:4] }}</a> / {{ code }}{% endif %}</div>
     {# The QuickBooks project's own name once it exists (older projects carry older naming); else the name to give it. #}
     {% set qbo_name = q.project if q and q.project else ((e.date or '')[:4] ~ ' ' ~ (e.program_code or '') ~ ' ' ~ (e.event_name or '') ~ ' ' ~ code)|trim %}
     <div class="card p-3 mb-3">
@@ -219,7 +215,7 @@
     {% else %}<div class="card p-4 text-center text-muted">Every {{ year }} budget is recorded as approved.</div>{% endif %}
 
     {% elif view == 'edit' %}
-    <div class="crumbs"><a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Budgets</a> / <a href="{{ url_for('bud.detail', code=code) }}">{{ code }}</a> / Edit</div>
+    <div class="crumbs">{% if e.program_budget %}<a href="{{ url_for('plan.detail', year=e.date[:4], program=e.program_code) }}">Annual Plan</a>{% else %}<a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Budgets</a>{% endif %} / <a href="{{ url_for('bud.detail', code=code) }}">{{ code }}</a> / Edit</div>
     <div class="page-title">{{ e.event_name }} <span class="text-muted fs-6">{{ e.date[:4] if e.program_budget else e.date }} · {{ e.program_code }} · {{ code }}</span></div>
     {% if others and not lines %}
     <form method="get" class="d-flex flex-wrap gap-2 align-items-center my-3"><label class="text-muted" for="copy">Start from another budget</label>

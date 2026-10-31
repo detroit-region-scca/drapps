@@ -189,25 +189,22 @@ def home():
                'as_of': next((q['as_of'] for q in qbo.values()), '')}
     programs = load_programs()
     # QuickBooks money on a program's accounts that is not in any of its event projects (season trophies, last
-    # season's fees), so a program's actual here matches the Annual Plan. Programs with QuickBooks money but no events
-    # (Operations: membership, storage, insurance) get a group too, so the page total is the region total.
+    # season's fees), so a program's actual here matches the Annual Plan. Operations has no events and is not listed.
     prog_act = P.actuals(year)[0] if P.enabled() and int(year) <= date.today().year else {}
     if only:
         prog_act = {k: v for k, v in prog_act.items() if k == only}
     names = dict(programs, OPS='Operations')
     groups = []
-    for pc in sorted({r['program'] for r in rows} | {pc for pc, a in prog_act.items() if abs(a['net']) >= 0.5}
-                     | {pc for pc, p in plan.items() if p.get('lines')}, key=lambda pc: (pc == 'OPS', names.get(pc, pc))):
+    shown = ({r['program'] for r in rows} | {pc for pc, a in prog_act.items() if abs(a['net']) >= 0.5}
+             | {pc for pc, p in plan.items() if p.get('lines')}) - {'OPS'}
+    for pc in sorted(shown, key=lambda pc: names.get(pc, pc)):
         g = [r for r in rows if r['program'] == pc]
         events_net = sum(r['actual'] or 0 for r in g)
         other = round(prog_act[pc]['net'] - events_net, 2) if pc in prog_act else 0
         other = other if abs(other) >= 0.5 else 0
         gp = plan.get(pc, {})
         gplan = gp.get('net') if gp.get('lines') else None
-        pb = buds.get(program_code(pc, year)) if pc in programs else None
         groups.append({'code': pc, 'name': names.get(pc, pc or 'Other'), 'rows': g, 'other': other,
-                       'pb_code': program_code(pc, year) if pc in programs else '', 'pb': pb, 'pb_status': _status(pb),
-                       'pb_budget': ((pb['totals'].get('budget') or {}).get('surplus')) if pb else None,
                        'events': sum(1 for r in g if r['e']), 'planned': sum(1 for r in g if not r['e']),
                        'missing': sum(1 for r in g if r['e'] and not r['b']),
                        'budget': sum(r['budget'] or 0 for r in g), 'actual': round(events_net + other, 2), 'plan': gplan,

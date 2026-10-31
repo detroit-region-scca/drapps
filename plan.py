@@ -29,7 +29,7 @@ def _programs():
 
 
 def _ctx(**kw):
-    return dict(officer=officer_current(), plan_status=P.plan_status, title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Annual Plan", who=session.get('who', ''),
+    return dict(officer=officer_current(), plan_status=P.plan_status, budgets_on=B.enabled(), title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Annual Plan", who=session.get('who', ''),
                 months=MONTHS, n_exceptions=len(P.exceptions()), **kw)
 
 
@@ -169,6 +169,10 @@ def detail(year, program):
     if program not in names:
         abort(404)
     p = P.plan(year).get(program) or {'lines': [], 'net': 0.0, 'info': {}}
+    # The program's budget for spending not in an event (Events stores it like an event budget). Operations has none:
+    # its plan is its budget.
+    pb_code = None if program == 'OPS' else f"{program}-{year}"
+    pb = B.get(pb_code) if pb_code and B.enabled() else None
     act, as_of = P.actuals(year)
     qbo = B.qbo_actuals() if B.enabled() else {}
     for ln in p['lines']:
@@ -203,7 +207,8 @@ def detail(year, program):
         # The budget is the plan; the records only show what it is made of, and flag a line the bills no longer match.
         g['drift'] = g['records'] is not None and abs((g['records'] or 0) - (g['plan'] or 0)) >= 1
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
-                                               ops_budget=ops_budget is not None,
+                                               ops_budget=ops_budget is not None, pb_code=pb_code, pb=pb,
+                                               pb_status=(('changed' if pb.get('updated', '') > pb['approved'] else 'approved') if pb.get('approved') else 'budget') if pb else None,
                                                a=act.get(program), as_of=as_of, events=_event_actuals(program, year),
                                                prev=prev, prev_lines=bool(P.plan(prev).get(program, {}).get('lines')),
                                                accts=accts, future=int(year) > date.today().year, now_year=date.today().year, rows=rows,
