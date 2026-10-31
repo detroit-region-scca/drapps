@@ -127,10 +127,8 @@ def send_mail(subject, body, recipient=None, attachments=(), cc=None):
         smtp_user = os.environ.get('SMTP_USER')
         smtp_password = os.environ.get('SMTP_PASSWORD')
 
-        # SMTP_USER/SMTP_PASSWORD are optional. The lab relay on 192.168.4.114:25
-        # takes no credentials at all: it accepts this host by IP via postfix
-        # `mynetworks` and does the authenticated hop to Purelymail itself, so the
-        # provider password lives in exactly one place instead of in every app.
+        # SMTP_USER/SMTP_PASSWORD are optional: a local relay that accepts this host by IP
+        # needs none and does the authenticated hop to the mail provider itself.
         if not smtp_server:
             logger.error("SMTP_SERVER is not set. Email not sent.")
             return
@@ -138,10 +136,12 @@ def send_mail(subject, body, recipient=None, attachments=(), cc=None):
         if smtp_password:
             smtp_password = smtp_password.replace(" ", "")
 
-        # From used to be smtp_user, which is empty when relaying without
-        # credentials. SMTP_FROM is the explicit knob; the relay rewrites every
-        # sender to service@cosmoslab.dev anyway, so this only affects the header.
-        from_email = os.environ.get('SMTP_FROM') or smtp_user or 'service@cosmoslab.dev'
+        # SMTP_FROM is the explicit knob; without it the login name is used. A relay that
+        # needs no credentials has no login, so SMTP_FROM must be set in that case.
+        from_email = os.environ.get('SMTP_FROM') or smtp_user
+        if not from_email:
+            logger.error("SMTP_FROM is not set. Email not sent.")
+            return
 
         msg = MIMEMultipart()
         msg['From'] = from_email
@@ -162,7 +162,7 @@ def send_mail(subject, body, recipient=None, attachments=(), cc=None):
             server = smtplib.SMTP(smtp_server, smtp_port)
             # Only negotiate TLS and authenticate when a credential is actually
             # configured, so pointing SMTP_SERVER straight at an authenticating
-            # provider keeps working exactly as before. Against the lab relay both
+            # provider keeps working exactly as before. Against a local relay both
             # steps must be skipped: it presents the stock self-signed snakeoil
             # certificate, which starttls() rejects on modern Python, and it has no
             # SASL backend, so AUTH returns 503.

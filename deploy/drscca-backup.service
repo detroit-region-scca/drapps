@@ -1,0 +1,9 @@
+# Nightly .xlsx copy of every Google Sheet into data/backups/ (keeps 60 days).
+# Install: copy both drscca-backup.* files to ~/.config/systemd/user/, set the container
+# name below (CONTAINER_NAME in .env), then: systemctl --user daemon-reload && systemctl --user enable --now drscca-backup.timer
+[Unit]
+Description=DRSCCA apps: nightly backup of the Google Sheets
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec event-drscca python backup_sheets.py

@@ -1,8 +1,8 @@
 """Nightly safety copy of the Google Sheets the app uses: exported as .xlsx into data/backups/.
 
 The sheets in the treasurer's Drive are the record; this is a second copy on the server in case the
-Drive files are damaged or deleted. Keeps the last 60 days. Run inside the container:
-    docker exec event-drscca python backup_sheets.py
+Drive files are damaged or deleted. Keeps the last 60 days. Run inside the container (deploy/drscca-backup.* runs it nightly):
+    docker exec <container> python backup_sheets.py
 """
 import glob
 import os
@@ -14,6 +14,10 @@ from google.oauth2 import service_account
 XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'backups')
 KEEP = 60
+# Every spreadsheet the apps use; any that is not configured is skipped.
+SHEETS = (('event-registry', 'REGISTRY_SHEET_ID'), ('worker-points-ledger', 'LEDGER_SHEET_ID'),
+          ('event-budgets', 'BUDGETS_SHEET_ID'), ('funds-requests', 'FUNDS_SHEET_ID'), ('annual-plan', 'PLAN_SHEET_ID'),
+          ('operations', 'OPERATIONS_SHEET_ID'), ('invoices', 'INVOICES_SHEET_ID'))
 
 
 def main():
@@ -21,7 +25,7 @@ def main():
         os.environ['GOOGLE_SERVICE_ACCOUNT_FILE'], scopes=['https://www.googleapis.com/auth/drive.readonly'])
     s = AuthorizedSession(creds)
     os.makedirs(OUT, exist_ok=True)
-    for label, var in (('event-registry', 'REGISTRY_SHEET_ID'), ('worker-points-ledger', 'LEDGER_SHEET_ID')):
+    for label, var in SHEETS:
         sheet_id = os.environ.get(var)
         if not sheet_id:
             continue

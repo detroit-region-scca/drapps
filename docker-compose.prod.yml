@@ -1,22 +1,17 @@
 services:
   web:
-    # Per-deployment: this repo is checked out twice on bodhi and run as
-    # two instances. Each sets CONTAINER_NAME in its own gitignored .env,
-    # which compose loads from the project directory regardless of which
-    # -f file is used. Previously each checkout carried an uncommitted
-    # edit here instead, which meant a permanently dirty working tree.
+    # Per-deployment: set CONTAINER_NAME in the gitignored .env, so more than one
+    # instance (for example a demo copy) can run on the same host.
     container_name: ${CONTAINER_NAME:-drscca-event-tracker}
     build: .
     ports:
-      # Host port is per-deployment for the same reason as container_name:
-      # two instances of this repo run on one box and cannot share a port.
-      # drscca keeps the 5858 default; the demo sets HOST_PORT=5959 in its
-      # .env, which is what Caddy sends eventdemo.cosmoslab.duckdns.org to.
+      # Host port is per-deployment for the same reason (HOST_PORT in .env).
+      # Put a reverse proxy with HTTPS (Caddy, nginx, Cloudflare Tunnel) in front.
       - "${HOST_PORT:-5858}:5858"
     volumes:
       - ./data:/app/data
-      # Google service account key for STORAGE_BACKEND=sheets (data lives in the treasurer's
-      # Google Drive). Host path set per deployment in .env; /dev/null when unused.
+      # Google service account key for STORAGE_BACKEND=sheets (the data lives in the
+      # DRSCCA Apps Shared Drive). Host path set per deployment in .env.
       - ${GOOGLE_SA_KEY_HOST:-/dev/null}:/run/secrets/google-sa.json:ro
       # Region officials (who approves what): read-only, so nobody can change an approver through the app.
       # Host path per deployment in .env; /dev/null when unused.

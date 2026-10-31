@@ -1,0 +1,14 @@
+# Optional nightly QuickBooks sync (see README). Needs node, a QuickBooks connection
+# (QBO_MCP_DIR, default ~/.mcp-servers/qbo-mcp) and its env file.
+# Install: copy both drscca-qbo.* files to ~/.config/systemd/user/, fix the paths,
+# then: systemctl --user daemon-reload && systemctl --user enable --now drscca-qbo.timer
+[Unit]
+Description=DRSCCA apps: nightly QuickBooks sync (actuals, funds requests paid, books check)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/path/to/event_drscca_app
+EnvironmentFile=/path/to/qbo.env
+ExecStart=/path/to/event_drscca_app/venv/bin/python tools/qbo_nightly.py
+TimeoutStartSec=15min

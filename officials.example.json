@@ -1,0 +1,10 @@
+{
+  "_about": "Region officials: who gets approval emails. Kept on the server and mounted read-only (OFFICIALS_HOST); the app never writes it. Roles the app uses: RE, ARE, Treasurer (officer sign-in and second signer), Director with a program code from data/programs.json (approves that program's funds requests). Other roles are listed for reference.",
+  "officials": [
+    {"role": "RE", "title": "Regional Executive", "name": "First Last", "email": "re@example.org"},
+    {"role": "ARE", "title": "Assistant Regional Executive", "name": "First Last", "email": "are@example.org"},
+    {"role": "Treasurer", "title": "Treasurer", "name": "First Last", "email": "treasurer@example.org"},
+    {"role": "Director", "title": "Rallycross Director", "name": "First Last", "email": "rx@example.org", "program": "RX"},
+    {"role": "Director at Large", "title": "Director at Large", "name": "First Last", "email": "dal@example.org"}
+  ]
+}
