@@ -1,0 +1,8 @@
+# Alert when the nightly sheet backup fails. Uses the host's `notify` command; replace ExecStart
+# with whatever alerting the new host has (or drop OnFailure= from drscca-backup.service).
+[Unit]
+Description=Report a failed DRSCCA sheet backup
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'journalctl --user -u drscca-backup.service -n 30 --no-pager > /tmp/drscca-backup.log; /usr/local/bin/notify -p 2 -e /tmp/drscca-backup.log -r "the Google Sheets are still the record; only the nightly second copy is missing" drscca-backup "nightly DRSCCA sheet backup failed"'
