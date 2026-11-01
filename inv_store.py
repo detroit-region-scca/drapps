@@ -26,7 +26,7 @@ LINE_LABELS = ['Invoice #', 'Description', 'Quantity', 'Unit price', 'Amount']
 NUMERIC = {'total', 'paid_amount', 'quantity', 'unit_price', 'amount'}
 STATUSES = ['Open', 'Paid', 'Void']
 TERMS_DAYS = 30
-REMIT = {'payee': 'Detroit Region SCCA', 'lines': ['PO Box 401018', 'Redford, MI 48240-9018'], 'email': 'accounting@drscca.org', 'web': 'drscca.org'}
+REMIT = {'payee': 'Detroit Region SCCA', 'lines': ['PO Box 401018', 'Redford, MI 48240-9018'], 'email': 'treasurer@drscca.org', 'web': 'drscca.org'}
 CACHE_SECONDS = 15
 LOCK = os.path.join(DATA_DIR, 'invoices.lock')
 
