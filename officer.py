@@ -12,7 +12,7 @@ from utils import log_audit_event, login_required, send_mail
 
 bp = Blueprint('officer', __name__, url_prefix='/officer')
 
-ROLES = ('RE', 'ARE', 'Treasurer')
+ROLES = ('RE', 'ARE', 'Secretary', 'Treasurer')   # officers per bylaws Art. IV 4.2
 LINK_DAYS = 30
 
 

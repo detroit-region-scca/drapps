@@ -31,7 +31,7 @@ from utils import log_audit_event, send_mail
 
 bp = Blueprint('auth', __name__)
 
-OFFICER_ROLES = ('RE', 'ARE', 'Treasurer')
+OFFICER_ROLES = ('RE', 'ARE', 'Secretary', 'Treasurer')   # bylaws Art. IV 4.2
 CODE_MINUTES = 15
 MAX_TRIES = 5            # wrong codes before that code is dead
 MAX_SENDS_PER_HOUR = 5   # codes per address per hour
