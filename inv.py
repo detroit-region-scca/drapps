@@ -2,6 +2,7 @@
 number, a professional PDF (kept in the shared drive) and a row in the DRSCCA Invoices sheet (inv_store). The
 director sends the PDF to the customer; the treasurer marks it paid when the money is deposited.
 """
+import auth
 import os
 from datetime import date
 
@@ -55,6 +56,8 @@ def home():
         return g
     this_year = str(date.today().year)
     rows = I.invoices()
+    if auth.limited():
+        rows = [r for r in rows if auth.owns_invoice(r)]
     years = sorted({r['created'][:4] for r in rows} | {this_year}, reverse=True)
     year = request.args.get('year') if request.args.get('year') in years else this_year
     today = date.today().isoformat()

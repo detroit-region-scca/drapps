@@ -53,8 +53,8 @@ def editor_required(f):
         ed = session.get('equip_editor')
         if not ed or ed.get('email', '').lower() not in editors():
             session.pop('equip_editor', None)
-            flash('Making changes needs a sign-in link sent to your committee email.', 'warning')
-            return redirect(url_for('equip.signin', next=request.full_path.rstrip('?')))
+            flash('Changes are made by the equipment committee and the treasurer.', 'warning')
+            return redirect(url_for('equip.home'))
         return f(*a, **kw)
     return wrapped
 
@@ -68,38 +68,11 @@ def _serializer():
 
 
 @bp.route('/signin', methods=['GET', 'POST'])
-@login_required
-def signin():
-    if request.method == 'POST':
-        mail = request.form.get('email', '').strip().lower()
-        nxt = request.form.get('next', '')
-        eds = editors()
-        if mail in eds:
-            token = _serializer().dumps({'email': mail, 'name': eds[mail], 'next': nxt if nxt.startswith('/') else ''})
-            link = f"{request.url_root.rstrip('/')}{url_for('equip.signin_link', token=token)}"
-            send_mail('Your sign-in link for DRSCCA Operations',
-                      f"Use this link to make changes in the region's Operations records (good for {LINK_DAYS} days, on the device "
-                      f"you open it on):\n\n{link}\n\nIf you did not ask for it, ignore this email.", mail)
-        # Same answer either way, so the page does not reveal who is on the committee.
-        flash('If that address is on the equipment committee, a sign-in link is on its way.', 'info')
-        return redirect(url_for('equip.home'))
-    return render_template('equip.html', **_ctx(view='signin', nxt=request.args.get('next', '')))
-
-
 @bp.route('/signin/<token>')
-@login_required
-def signin_link(token):
-    try:
-        t = _serializer().loads(token, max_age=LINK_DAYS * 86400)
-    except BadSignature:
-        flash('That sign-in link has expired or is not valid. Ask for a new one.', 'warning')
-        return redirect(url_for('equip.signin'))
-    if t['email'] not in editors():
-        abort(403)
-    session['equip_editor'] = {'email': t['email'], 'name': t['name']}
-    log_audit_event('EQUIP_SIGNIN', t['name'], {'email': t['email']})
-    flash(f"Signed in to make changes as {t['name']}.", 'success')
-    return redirect(t.get('next') or url_for('equip.home'))
+def signin(token=None):
+    """Old separate sign-in: everyone now signs in once by email code, and the role comes from the officials list."""
+    flash('This needs the equipment committee or the treasurer, signed in with their own email address.', 'warning')
+    return redirect(url_for('equip.home'))
 
 
 @bp.route('/signout', methods=['POST'])

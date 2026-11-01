@@ -328,7 +328,7 @@ def delete(code):
         return redirect(url_for('bud.detail', code=code))
     if b.get('approved') and not officer_current():
         flash('The board approved this budget, so only the RE, ARE or treasurer can delete it.', 'warning')
-        return redirect(url_for('officer.signin', next=url_for('bud.detail', code=code)))
+        return redirect(url_for('bud.detail', code=code))
     who = (officer_current() or {}).get('name') or session.get('who', '') or 'Unknown'
     B.delete(code)
     log_audit_event('BUDGET_DELETED', who, {'event_code': code, 'approved': b.get('approved', ''),

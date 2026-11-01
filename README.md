@@ -22,9 +22,12 @@ The Detroit Region SCCA's web apps for directors, officers and the treasurer, in
   log and backups (see below).
 - **Who approves what** comes from `officials.json`, a file on the server mounted read-only into the
   container. Nobody can make themselves an approver through the app. Format: `officials.example.json`.
-- **Approvals happen by email.** The site uses one shared password, so anything that commits money
-  (director, second signer, board) is approved through a signed link emailed to the official, and
-  officer-only actions need an emailed sign-in link. Email goes out over SMTP.
+- **Sign-in is by emailed code** (`auth.py`), no shared password. Officials in `officials.json` get the
+  whole app (RE, ARE and treasurer also record board decisions and payments; the Equipment role edits
+  Operations). Volunteers on the Registry sheet's Volunteers tab, kept by officers on the "Who can sign
+  in" page, see the event schedule and file funds requests and invoices, seeing only their own.
+- **Approvals happen by email.** Anything that commits money (director, second signer, board) is
+  approved through a signed link emailed to the official. Email goes out over SMTP.
 - **QuickBooks is optional and one-way.** A nightly job reads QuickBooks and writes actuals, paid status
   and a books check into the sheets. The web app never talks to QuickBooks.
 
@@ -54,7 +57,7 @@ What a new host needs, in order:
 ## Configuration
 
 All settings are in `.env`; `.env.example` lists every one with a comment. The secrets are
-`FLASK_SECRET_KEY`, `APP_PASSWORD`, `SMTP_PASSWORD`, the service account key file and `officials.json`.
+`FLASK_SECRET_KEY`, `SMTP_PASSWORD`, the service account key file and `officials.json`.
 None of them belong in git. This repo is public, so never commit sheet IDs, keys, member names or emails.
 
 Programs (the codes in event numbers and funds requests) are in `data/programs.json`.

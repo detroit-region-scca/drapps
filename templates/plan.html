@@ -177,7 +177,7 @@
             <div class="col-6 col-md-4"><label class="form-label small">Board meeting date</label><input type="date" name="approved" class="form-control form-control-sm" required></div>
             <div class="col-6 col-md-4"><button class="btn btn-sm btn-accent w-100">Record board approval</button></div>
         </form>
-        {% else %}<div class="small text-muted">After the board approves this {{ 'budget' if program == 'OPS' else 'plan' }}, the RE, ARE or treasurer records the meeting date here: <a href="{{ url_for('officer.signin', next=request.path) }}">officer sign-in</a>.</div>{% endif %}
+        {% else %}<div class="small text-muted">After the board approves this {{ 'budget' if program == 'OPS' else 'plan' }}, the RE, ARE or treasurer records the meeting date here.</div>{% endif %}
         {% endif %}
     </div>
     {% endif %}

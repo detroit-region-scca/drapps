@@ -32,9 +32,9 @@ def officer_required(f):
     def wrapped(*a, **kw):
         if not current():
             session.pop('officer', None)
-            flash('Recording a board decision needs a sign-in link sent to the RE, ARE or treasurer.', 'warning')
-            back = request.form.get('back') or request.referrer or request.full_path.rstrip('?')
-            return redirect(url_for('officer.signin', next=back if back.startswith('/') or back.startswith(request.host_url) else ''))
+            flash('Recording a board decision is for the RE, ARE or treasurer.', 'warning')
+            back = request.form.get('back') or request.referrer or ''
+            return redirect(back if back.startswith('/') or back.startswith(request.host_url) else url_for('home'))
         return f(*a, **kw)
     return wrapped
 
@@ -44,39 +44,11 @@ def _serializer():
 
 
 @bp.route('/signin', methods=['GET', 'POST'])
-@login_required
-def signin():
-    if request.method == 'POST':
-        mail = request.form.get('email', '').strip().lower()
-        nxt = request.form.get('next', '')
-        if mail in officers():
-            token = _serializer().dumps({'email': mail, 'name': officers()[mail], 'next': nxt})
-            link = f"{request.url_root.rstrip('/')}{url_for('officer.signin_link', token=token)}"
-            send_mail('Your officer sign-in link for DRSCCA', f"Use this link to record board decisions in the DRSCCA apps (good for {LINK_DAYS} days, "
-                      f"on the device you open it on):\n\n{link}\n\nIf you did not ask for it, ignore this email.", mail)
-        flash('If that address belongs to the RE, ARE or treasurer, a sign-in link is on its way.', 'info')
-        return redirect(nxt if nxt.startswith('/') else url_for('home'))
-    nxt = request.args.get('next', '')
-    if nxt.startswith(request.host_url):
-        nxt = '/' + nxt[len(request.host_url):]
-    return render_template('officer.html', nxt=nxt if nxt.startswith('/') else '', title='Officer sign-in')
-
-
 @bp.route('/signin/<token>')
-@login_required
-def signin_link(token):
-    try:
-        t = _serializer().loads(token, max_age=LINK_DAYS * 86400)
-    except BadSignature:
-        flash('That sign-in link has expired or is not valid. Ask for a new one.', 'warning')
-        return redirect(url_for('officer.signin'))
-    if t['email'] not in officers():
-        abort(403)
-    session['officer'] = {'email': t['email'], 'name': t['name']}
-    log_audit_event('OFFICER_SIGNIN', t['name'], {'email': t['email']})
-    flash(f"Signed in as {t['name']} to record board decisions.", 'success')
-    nxt = t.get('next') or ''
-    return redirect(nxt if nxt.startswith('/') else url_for('home'))
+def signin(token=None):
+    """Old separate sign-in: everyone now signs in once by email code, and the role comes from the officials list."""
+    flash('This needs the RE, ARE or treasurer, signed in with their own email address.', 'warning')
+    return redirect(url_for('home'))
 
 
 @bp.route('/signout', methods=['POST'])

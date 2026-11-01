@@ -171,8 +171,7 @@
     </div>{% endif %}
     {% if not officer %}
     <div class="card p-3 text-muted no-print"><div class="section-label">Pay or reject</div>
-        {% if ready %}Every approval is in.{% else %}Waiting on the approvals above.{% endif %} Marking it paid or rejecting it is for the treasurer, RE or ARE, signed in by an emailed link:
-        <a href="{{ url_for('officer.signin', next=request.path) }}">officer sign-in</a>. Approvers can reject from their email link.</div>
+        {% if ready %}Every approval is in.{% else %}Waiting on the approvals above.{% endif %} Marking it paid or rejecting it is for the treasurer, RE or ARE. Approvers can reject from their email link.</div>
     {% else %}
     <div class="row g-3 no-print">
         <div class="col-lg-8">{% if not ready %}<div class="card p-3 h-100 text-muted"><div class="section-label">Mark paid</div>Waiting on the approvals above. Region policy: no payment until they are in.</div>{% else %}<form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">

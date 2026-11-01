@@ -56,7 +56,7 @@
     <div class="d-flex flex-wrap gap-2 align-items-center no-print">
         {% if editor %}{% if edit_url %}<a class="btn btn-sm btn-accent" href="{{ edit_url }}">Edit</a>{% endif %}
             {% if new_url %}<a class="btn btn-sm btn-outline-light" href="{{ new_url }}">{{ new_label }}</a>{% endif %}
-        {% else %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('equip.signin', next=request.path) }}">Sign in to edit</a>{% endif %}
+        {% endif %}
     </div>
 {%- endmacro %}
 {% block style %}
@@ -69,8 +69,7 @@
         ul.where-inside li { padding: .1rem 0 .1rem .5rem; font-size: .92rem; }
 {% endblock %}
 {% block content %}
-    {% if editor and view != 'signin' %}<div class="small text-muted mb-2 no-print">Editing as {{ editor.name }}.
-        <form method="post" action="{{ url_for('equip.signout') }}" class="d-inline"><button class="btn btn-link btn-sm p-0 align-baseline">Stop editing</button></form></div>{% endif %}
+    {% if not editor %}<div class="small text-muted mb-2 no-print">Changes are made by the equipment committee and the treasurer.</div>{% endif %}
 
     {% if view == 'home' %}
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
@@ -244,7 +243,7 @@
             <input name="place" class="form-control form-control-sm" style="max-width: 22rem" list="whereNames" value="{{ it.place or '' }}" placeholder="Wixom storage unit, Race Trailer, With Matt Wolfe">
             <datalist id="whereNames">{% for n in locations %}<option value="{{ n }}">{% endfor %}</datalist>
             <button class="btn btn-sm btn-accent">Confirm or move</button></form>
-        {% else %}<div class="small text-muted mt-1 no-print">Moved it? <a href="{{ url_for('equip.signin', next=request.path) }}">Sign in</a> to record where it is.</div>{% endif %}
+        {% else %}<div class="small text-muted mt-1 no-print">Moved it? Ask the equipment committee to record where it is.</div>{% endif %}
     </div>
     {{ docs_box(docs) }}
     {% if tasks %}<h2 class="h6 text-muted">To do for this</h2><ul>{% for t in tasks %}<li>{{ t.task }}: {{ t.due or 'no date' }}</li>{% endfor %}</ul>{% endif %}

@@ -8,7 +8,43 @@
         .app-tile .what { color: var(--muted); font-size: .8rem; margin-top: .25rem; line-height: 1.3; }
 {% endblock %}
 {% block content %}
-    {% if view == 'name' %}
+    {% if view == 'code' %}
+    <div class="d-flex justify-content-center align-items-center" style="min-height: 80vh;">
+        <div class="card w-100" style="max-width: 380px;"><div class="card-body p-4">
+            <h1 class="h4 text-center mb-1">Check your email</h1>
+            <p class="text-center text-muted small mb-4">{% if email %}If <strong>{{ email }}</strong> can use the apps, a 6-digit code is on its way.{% else %}Enter the code from your email.{% endif %} It works for {{ minutes }} minutes.</p>
+            <form action="{{ url_for('auth.verify') }}" method="POST">
+                <input type="hidden" name="next" value="{{ next_url }}"><input type="hidden" name="email" value="{{ email }}">
+                <input class="form-control form-control-lg text-center mb-3" name="code" value="{{ code }}" required {{ '' if code else 'autofocus' }}
+                       inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7" placeholder="123456" style="letter-spacing: .3em;">
+                <button type="submit" class="btn btn-accent w-100" {{ 'autofocus' if code }}>Sign in</button>
+            </form>
+            <div class="text-center mt-3"><a class="small" href="{{ url_for('home', next=next_url or none) }}">Use a different address or send a new code</a></div>
+        </div></div>
+    </div>
+    {% elif view == 'access' %}
+        <div class="page-title">Who can sign in</div>
+        <p class="text-muted">People sign in with a code emailed to their address. Region officials come from the officials list (kept on the server); volunteers are added here and can see the event schedule and file funds requests and invoices, seeing only their own.</p>
+        <h2 class="h6 text-muted mt-4">Volunteers</h2>
+        <div class="card mb-3"><div class="card-body">
+            <form method="post" class="row g-2 align-items-end">
+                <div class="col-md-4"><label class="form-label small">Name</label><input class="form-control" name="name" required></div>
+                <div class="col-md-4"><label class="form-label small">Email</label><input type="email" class="form-control" name="email" required></div>
+                <div class="col-md-3"><label class="form-label small">Note <span class="text-muted">(optional)</span></label><input class="form-control" name="note" placeholder="e.g. RX event chair"></div>
+                <div class="col-md-1"><button class="btn btn-accent w-100">Add</button></div>
+            </form>
+        </div></div>
+        <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+            <tbody>{% for v in vols %}<tr><td class="ps-3">{{ v.name }}</td><td>{{ v.email }}</td><td class="small text-muted">{{ v.note }}{% if v.added %} · added {{ v.added }}{% if v.added_by %} by {{ v.added_by }}{% endif %}{% endif %}</td>
+                <td class="text-end pe-3"><form method="post" class="m-0"><input type="hidden" name="action" value="remove"><input type="hidden" name="email" value="{{ v.email }}"><button class="btn btn-sm btn-outline-secondary py-0">Remove</button></form></td></tr>
+            {% else %}<tr><td class="ps-3 text-muted">No volunteers yet.</td></tr>{% endfor %}</tbody>
+        </table></div></div>
+        <h2 class="h6 text-muted">Region officials</h2>
+        <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+            <tbody>{% for o in people %}<tr><td class="ps-3">{{ o.title or o.role }}</td><td>{{ o.name }}</td><td>{{ o.email }}</td><td class="pe-3 small text-muted">{{ 'Everything, including board decisions' if o.level == 'officer' else 'Full access' }}</td></tr>{% endfor %}</tbody>
+        </table></div></div>
+        <p class="form-text mt-2">To change an official, edit the officials list on the server (ask the treasurer).</p>
+    {% elif view == 'name' %}
     <div class="card mx-auto mt-4" style="max-width: 380px;"><div class="card-body p-4">
         <div class="page-title">Your name</div>
         <p class="text-muted small">Everything you do in the apps is signed with it, so the treasurer and the audit log know who did what.</p>
@@ -40,6 +76,7 @@
             <span>Operations to-dos overdue<div class="small text-muted">Renewals, registrations, inspections</div></span><span class="fw-semibold">{{ jobs.equipment }}</span></a>
         {% if wp_enabled %}<a class="list-group-item list-group-item-action" href="{{ url_for('wp.month_end') }}">Worker points month end<div class="small text-muted">Post the month's points to QuickBooks</div></a>{% endif %}
         <a class="list-group-item list-group-item-action" href="{{ url_for('export_events') }}">Export events (CSV)</a>
+        {% if me and me.level == 'officer' %}<a class="list-group-item list-group-item-action" href="{{ url_for('auth.access') }}">Who can sign in<div class="small text-muted">Add or remove volunteers</div></a>{% endif %}
         <a class="list-group-item list-group-item-action" href="{{ url_for('officials_page') }}">Region officials<div class="small text-muted">Who approves funds requests, read-only</div></a>
     </div>
     {% elif not session.get('authenticated') %}
@@ -48,14 +85,13 @@
             <div class="card-body p-4">
                 <h1 class="h4 text-center mb-1">{{ title }}</h1>
                 <p class="text-center text-muted small mb-4">Events, Worker Points, Funds Requests, Invoices, Annual Plan, Operations</p>
-                <form action="{{ url_for('login') }}" method="POST">
+                <form action="{{ url_for('auth.send_code') }}" method="POST">
                     <input type="hidden" name="next" value="{{ next_url }}">
-                    <label for="name" class="form-label">Your name</label>
-                    <input class="form-control mb-3" id="name" name="name" required autocomplete="name" value="{{ session.get('who', '') }}" placeholder="First and last name">
-                    <label for="password" class="form-label">Password</label>
-                    <input type="password" class="form-control mb-3" id="password" name="password" required autofocus>
-                    <button type="submit" class="btn btn-accent w-100">Log in</button>
+                    <label for="email" class="form-label">Your email address</label>
+                    <input type="email" class="form-control mb-3" id="email" name="email" required autofocus autocomplete="email" value="{{ session.get('signin_email', '') }}" placeholder="you@example.com">
+                    <button type="submit" class="btn btn-accent w-100">Email me a code</button>
                 </form>
+                <p class="small text-muted mt-3 mb-0 text-center">For region officials and volunteers the treasurer has added.</p>
             </div>
         </div>
     </div>
@@ -70,7 +106,8 @@
                 <div class="what">Register events, budgets, board approval and actuals</div>
             </a>
         </div>
-        {% if wp_enabled %}
+        {% set vol = me and me.level == 'volunteer' %}
+        {% if wp_enabled and not vol %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('wp.home') }}" style="--tile: #f5b83d;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#f5b83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -92,7 +129,7 @@
             </a>
         </div>
         {% endif %}
-        {% if plan_enabled %}
+        {% if plan_enabled and not vol %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('plan.home') }}" style="--tile: #4fd1c5;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#4fd1c5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -103,6 +140,7 @@
             </a>
         </div>
         {% endif %}
+        {% if not vol %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('equip.home') }}" style="--tile: #ff9f6b;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#ff9f6b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -112,6 +150,7 @@
                 <div class="what">Recurring costs, property, storage and what's due</div>
             </a>
         </div>
+        {% endif %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('inv.home') }}" style="--tile: #6ea8ff;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#6ea8ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -121,6 +160,7 @@
                 <div class="what">Bill sponsors and partners in the region's name</div>
             </a>
         </div>
+        {% if not vol %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('treasurer') }}" style="--tile: #9aa3ad;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#9aa3ad" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -130,6 +170,7 @@
                 <div class="what">Payments, approvals, books check, month end</div>
             </a>
         </div>
+        {% endif %}
     </div>
     {% endif %}
 {% endblock %}

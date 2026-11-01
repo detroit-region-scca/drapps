@@ -4,6 +4,7 @@ A request is paid only once it has the approvals the region policies ask for (fr
 director and, over $2,500, the RE or ARE get an email with a link that approves without the app password. Their
 addresses come only from the read-only officials directory (officials.py).
 """
+import auth
 import os
 from datetime import date
 
@@ -198,6 +199,8 @@ def home():
         return g
     status = request.args.get('status', 'Submitted')
     every = F.requests()
+    if auth.limited():
+        every = [r for r in every if auth.owns_request(r)]
     this_year = str(date.today().year)
     years = sorted({r['submitted'][:4] for r in every if r['submitted'][:4].isdigit()} | {this_year}, reverse=True)
     year = request.args.get('year') if request.args.get('year') in years else this_year

@@ -58,6 +58,10 @@ app.register_blueprint(inv_bp)
 app.register_blueprint(officer_bp)
 import api  # noqa: E402
 app.before_request(api.signin_from_key)   # a valid API key signs the request in (see api.py)
+import auth  # noqa: E402
+app.before_request(auth.gate)               # email-code sign-in: who is signed in and what they may open
+app.register_blueprint(auth.bp)
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 app.register_blueprint(api.bp)
 app.config['MAX_CONTENT_LENGTH'] = 40 * 1024 * 1024  # funds request receipts
 
@@ -70,7 +74,6 @@ if is_prod and not secret:
 # Prevent session invalidation on dev restarts
 app.secret_key = secret or "dev_fallback_secret_key_change_in_prod"
 
-APP_PASSWORD = os.environ.get("APP_PASSWORD")
 PORT = int(os.environ.get("PORT", 5858))
 HOST = os.environ.get("HOST", "0.0.0.0")
 DEBUG = os.environ.get("DEBUG", "False").lower() in ("true", "1", "t")
@@ -93,28 +96,12 @@ def _safe_next(target):
 
 @app.route('/login', methods=['POST'])
 def login():
-    password = request.form.get('password') or ''
-    nxt = _safe_next(request.form.get('next'))
-    if APP_PASSWORD and hmac.compare_digest(password.encode(), APP_PASSWORD.encode()):
-        session['authenticated'] = True
-        # The name is asked once here and signs everything done in the apps (the audit log, approvals, saves).
-        if (request.form.get('name') or '').strip():
-            session['who'] = request.form['name'].strip()[:80]
-        return redirect(nxt or url_for('home'))
-    flash('Invalid password', 'danger')
-    return redirect(url_for('home', next=nxt) if nxt else url_for('home'))
-
-@app.before_request
-def ask_name():
-    """Signed in without a name (logged in before the name was asked at login): ask once."""
-    if (session.get('authenticated') and not (session.get('who') or '').strip()
-            and request.endpoint not in ('name', 'logout', 'login', 'static', 'fr.approve_link')):
-        return redirect(url_for('name', next=request.full_path.rstrip('?')))
-
+    """The shared password is gone; an old login form posting here goes to the email sign-in."""
+    return redirect(url_for('home'))
 
 @app.context_processor
 def _officials():
-    return {'officials': officials}
+    return {'officials': officials, 'me': auth.user()}
 
 
 @app.route('/officials')
@@ -212,18 +199,14 @@ def treasurer_report():
 
 
 @app.route('/name', methods=['GET', 'POST'])
-@login_required
 def name():
-    """Who is using the apps on this device; every change is signed with it."""
-    if request.method == 'POST' and (request.form.get('name') or '').strip():
-        session['who'] = request.form['name'].strip()[:80]
-        return redirect(_safe_next(request.form.get('next')) or url_for('home'))
-    return render_template('home.html', title='Your name', view='name', next_url=_safe_next(request.args.get('next')) or '')
+    """Names come from the officials and volunteers lists now; nothing to type."""
+    return redirect(url_for('home'))
 
 
 @app.route('/logout', methods=['POST'])
 def logout():
-    session.pop('authenticated', None)
+    session.clear()
     return redirect(url_for('home'))
 
 @app.route('/', methods=['GET', 'POST'])

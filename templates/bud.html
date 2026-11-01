@@ -193,7 +193,7 @@
             <input type="hidden" name="who" value="{{ session.get('who', '') }}">
             <div class="col-12 col-md-3"><button class="btn btn-sm btn-accent w-100">Record board approval</button></div>
         </form>
-        <div class="form-text">Only the RE, ARE or treasurer can record this, signed in by an emailed link{% if officer %} (you are: {{ officer.name }}){% else %}: <a href="{{ url_for('officer.signin', next=request.path) }}">sign in</a>{% endif %}.</div>
+        <div class="form-text">Only the RE, ARE or treasurer can record this{% if officer %} (you are: {{ officer.name }}){% endif %}.</div>
         {% endif %}
     </div>
     {% endif %}
