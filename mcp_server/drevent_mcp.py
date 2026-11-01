@@ -1,7 +1,7 @@
 """MCP server for the DRSCCA drevent app: a thin wrapper around its JSON API (/api/v1, see api.py).
 
 Config from the environment, or from the file named by DREVENT_ENV (default ~/.secrets/drevent-api.env):
-  DREVENT_URL      https://drevent.drscca.org
+  DREVENT_URL      https://drapps.drscca.org
   DREVENT_API_KEY  a key from the app's API_KEYS (acts as that official; full read and write for now)
 
 Receipts are local file paths on the machine running this server; they are uploaded with the request.
@@ -26,7 +26,7 @@ def _load_env():
 
 
 _load_env()
-URL = os.environ.get('DREVENT_URL', 'https://drevent.drscca.org').rstrip('/') + '/api/v1'
+URL = os.environ.get('DREVENT_URL', 'https://drapps.drscca.org').rstrip('/') + '/api/v1'
 KEY = os.environ.get('DREVENT_API_KEY', '')
 
 server = MCPServer('drevent', instructions=(

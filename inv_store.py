@@ -151,7 +151,7 @@ def setup_sheet(book):
         'Lines: the line items of each invoice, joined by Invoice #. Amount = Quantity x Unit price; the invoice Total is the sum.',
         'PDF: the invoice as sent, in the PDFs folder next to this sheet.',
         'Payment goes to Detroit Region SCCA, PO Box 401018, Redford, MI 48240-9018. Deposit it in QuickBooks to the program\'s revenue account (and the event project when there is one), then mark the invoice Paid.',
-        'The apps at drevent.drscca.org write here and make the PDFs. If they are gone, add a row here, write the invoice from the last PDF as a template, and keep the numbering going.']],
+        'The apps at drapps.drscca.org write here and make the PDFs. If they are gone, add a row here, write the invoice from the last PDF as a template, and keep the numbering going.']],
         'A1', value_input_option='RAW')
     guide.format('A1', {'textFormat': {'bold': True, 'fontSize': 14}})
     for w in book.worksheets():

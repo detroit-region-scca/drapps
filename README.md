@@ -1,7 +1,7 @@
 # DRSCCA Apps
 
 The Detroit Region SCCA's web apps for directors, officers and the treasurer, in one Flask app
-(drevent.drscca.org):
+(drapps.drscca.org):
 
 | Section | Path | What it does |
 |---|---|---|
