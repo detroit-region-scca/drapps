@@ -34,7 +34,11 @@ def load_events():
     memo = has_request_context() and request.method == 'GET'
     if memo and '_events' in g:
         return [dict(e) for e in g._events]
-    events = sorted(store.load_events(), key=lambda x: x.get('date', ''), reverse=False)
+    try:
+        raw = store.load_events(fresh=not memo)      # a POST may write the list back: read it live
+    except TypeError:                                 # the file store has no shared copy to skip
+        raw = store.load_events()
+    events = sorted(raw, key=lambda x: x.get('date', ''), reverse=False)
     if memo:
         g._events = [dict(e) for e in events]
     return events

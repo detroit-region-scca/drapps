@@ -156,19 +156,35 @@ class SheetStore:
     def _ws(self, title):
         return worksheet(self.sheet_id, title)
 
+    def _invalidate(self):
+        import sheet_cache
+        sheet_cache.invalidate(self.sheet_id)
+
     def _cached(self, key, loader):
+        import sheet_cache
         hit = self._cache.get(key)
-        if hit and time.time() - hit[0] < CACHE_SECONDS:
+        if hit and hit[0] == sheet_cache.version(self.sheet_id):
             return hit[1]
         val = loader()
-        self._cache[key] = (time.time(), val)
+        self._cache[key] = (sheet_cache.version(self.sheet_id), val)
         return val
 
-    def load_events(self):
-        # Never cached: create/edit/delete read, change and write the whole list, and gunicorn runs
-        # several workers, so a cached copy in one worker would silently undo another worker's write.
+    def _records(self, rng, fresh=False):
+        """A tab as a list of dicts keyed by its header row, as text (like get_all_records with numericise off),
+        through the shared local copy (sheet_cache)."""
+        import sheet_cache
+        res = sheet_cache.batch_get(self.sheet_id, [rng], fresh=fresh)
+        values = (res.get('valueRanges') or [{}])[0].get('values', [])
+        if not values:
+            return []
+        head = [str(h) for h in values[0]]
+        return [dict(zip(head, [str(v) for v in r] + [''] * (len(head) - len(r)))) for r in values[1:]]
+
+    def load_events(self, fresh=False):
+        # Page views read the shared local copy; anything that may write the list back (create, edit, delete
+        # read, change and write the whole list) passes fresh=True, so another worker's write is never undone.
         try:
-            rows = self._ws('Events').get_all_records(expected_headers=EVENT_COLS, numericise_ignore=['all'])
+            rows = self._records('Events!A:H', fresh=fresh)
             self._degraded = False
             return [{k: (r.get(k) or '') for k in EVENT_COLS} for r in rows if r.get('id')]
         except Exception as e:
@@ -190,6 +206,7 @@ class SheetStore:
             ws.update(rows, f"A2:H{len(rows) + 1}", value_input_option='RAW')
         if ws.row_count > len(rows) + 1:
             ws.batch_clear([f"A{len(rows) + 2}:H{ws.row_count}"])
+        self._invalidate()
         self.files.save_events(events)
 
     def append_audit(self, entry):
@@ -201,12 +218,13 @@ class SheetStore:
         except Exception as e:
             logger.error(f"Audit entry kept locally only (Sheets write failed): {e}")
         self._cache.pop('audit', None)
+        self._invalidate()
 
     def load_audit(self):
         def load():
             try:
                 out = []
-                for r in self._ws('Audit').get_all_records(numericise_ignore=['all']):
+                for r in self._records('Audit!A:E'):
                     try:
                         details = json.loads(r.get('details') or '{}')
                     except json.JSONDecodeError:
@@ -221,7 +239,7 @@ class SheetStore:
     def load_programs(self):
         def load():
             try:
-                return {str(r['code']): str(r['name']) for r in self._ws('Programs').get_all_records(numericise_ignore=['all']) if r.get('code')}
+                return {str(r['code']): str(r['name']) for r in self._records('Programs!A:B') if r.get('code')}
             except Exception as e:
                 logger.error(f"Sheets unreachable, using local programs file: {e}")
                 return self.files.load_programs()

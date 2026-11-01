@@ -19,6 +19,7 @@ import gspread
 from filelock import FileLock
 
 from storage import DATA_DIR, open_book, worksheet
+import sheet_cache as C
 
 CACHE_SECONDS = 15
 _lock = threading.Lock()
@@ -42,10 +43,10 @@ def _snapshot():
     def load():
         ranges = ['Ledger!A:L', 'Transactions!A:H', 'Allocations!A:E', 'Check!B1:B5', 'Requests!A:Q']
         try:
-            res = _book().values_batch_get(ranges, params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+            res = C.batch_get(os.environ['LEDGER_SHEET_ID'], ranges, params={'valueRenderOption': 'UNFORMATTED_VALUE'})
         except gspread.exceptions.APIError:
             # A ledger without the Requests tab (added 2026-10) still works; redemption requests just show none.
-            res = _book().values_batch_get(ranges[:4], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+            res = C.batch_get(os.environ['LEDGER_SHEET_ID'], ranges[:4], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
         vr = res.get('valueRanges', [])
         return [r.get('values', []) for r in vr] + [[]] * (5 - len(vr))
     return _cached('snapshot', load)
@@ -53,15 +54,16 @@ def _snapshot():
 
 def _cached(key, loader):
     hit = _cache.get(key)
-    if hit and time.time() - hit[0] < CACHE_SECONDS:
+    if hit and hit[0] == C.version(os.environ['LEDGER_SHEET_ID']):
         return hit[1]
     val = loader()
-    _cache[key] = (time.time(), val)
+    _cache[key] = (C.version(os.environ['LEDGER_SHEET_ID']), val)
     return val
 
 
 def _invalidate():
     _cache.clear()
+    C.invalidate(os.environ['LEDGER_SHEET_ID'])
 
 
 def _num(v):

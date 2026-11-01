@@ -14,6 +14,7 @@ from datetime import date
 from filelock import FileLock
 
 from storage import DATA_DIR, drive_folder, drive_upload, open_book, worksheet
+import sheet_cache as C
 
 REQ_COLS = ['id', 'submitted', 'status', 'event_code', 'event_name', 'program', 'submitter_name', 'submitter_email',
             'submitter_phone', 'submitter_address', 'payee_name', 'payee_address', 'payee_email', 'payee_phone', 'method',
@@ -41,13 +42,14 @@ def _ws(title):
 def refresh():
     """Drop the cached snapshot; every write path calls this first (several gunicorn workers)."""
     _cache.clear()
+    C.invalidate(os.environ['FUNDS_SHEET_ID'])
 
 
 def _snapshot():
     hit = _cache.get('snap')
-    if hit and time.time() - hit[0] < CACHE_SECONDS:
+    if hit and hit[0] == C.version(os.environ['FUNDS_SHEET_ID']):
         return hit[1]
-    res = open_book(os.environ['FUNDS_SHEET_ID']).values_batch_get(['Requests!A:AA', 'Lines!A:E'],
+    res = C.batch_get(os.environ['FUNDS_SHEET_ID'], ['Requests!A:AA', 'Lines!A:E'],
                                                                    params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], []]
     reqs = [dict(zip(REQ_COLS, [str(v) for v in r] + [''] * len(REQ_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
@@ -59,7 +61,7 @@ def _snapshot():
         ln['amount'] = _num(ln['amount'])
         ln['date'] = str(ln['date'])
     snap = (reqs, lines)
-    _cache['snap'] = (time.time(), snap)
+    _cache['snap'] = (C.version(os.environ['FUNDS_SHEET_ID']), snap)
     return snap
 
 

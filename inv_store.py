@@ -15,6 +15,7 @@ from datetime import date, timedelta
 from filelock import FileLock
 
 from storage import DATA_DIR, open_book, worksheet
+import sheet_cache as C
 
 INV_COLS = ['id', 'created', 'status', 'program', 'event_code', 'event_name', 'bill_name', 'bill_contact', 'bill_email', 'bill_address',
             'total', 'due', 'notes', 'created_by', 'pdf_url', 'paid_date', 'paid_ref', 'paid_amount', 'closed_by', 'closed_note']
@@ -43,6 +44,7 @@ def _ws(title):
 
 def refresh():
     _cache.clear()
+    C.invalidate(os.environ['INVOICES_SHEET_ID'])
 
 
 def _num(v):
@@ -54,9 +56,9 @@ def _num(v):
 
 def _snapshot():
     hit = _cache.get('snap')
-    if hit and time.time() - hit[0] < CACHE_SECONDS:
+    if hit and hit[0] == C.version(os.environ['INVOICES_SHEET_ID']):
         return hit[1]
-    res = open_book(os.environ['INVOICES_SHEET_ID']).values_batch_get(['Invoices!A:T', 'Lines!A:E'],
+    res = C.batch_get(os.environ['INVOICES_SHEET_ID'], ['Invoices!A:T', 'Lines!A:E'],
                                                                      params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], []]
     invs = [dict(zip(INV_COLS, list(r) + [''] * len(INV_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
@@ -64,7 +66,7 @@ def _snapshot():
     for row in invs + lines:
         for k in list(row):
             row[k] = _num(row[k]) if k in NUMERIC else str(row[k])
-    _cache['snap'] = (time.time(), (invs, lines))
+    _cache['snap'] = (C.version(os.environ['INVOICES_SHEET_ID']), (invs, lines))
     return invs, lines
 
 

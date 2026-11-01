@@ -19,6 +19,7 @@ from filelock import FileLock
 
 import qbo_logic
 from storage import DATA_DIR, open_book, worksheet
+import sheet_cache as C
 
 PLAN_COLS = ['year', 'program', 'item', 'month', 'net', 'event_code', 'note', 'sort', 'account']    # account: the QuickBooks account it is booked to
 PROG_COLS = ['year', 'program', 'director', 'email', 'notes', 'updated', 'updated_by', 'submitted', 'submitted_by', 'approved', 'approved_by']
@@ -41,6 +42,7 @@ def _ws(title):
 
 def refresh():
     _cache.clear()
+    C.invalidate(os.environ['PLAN_SHEET_ID'])
 
 
 def _num(v):
@@ -56,14 +58,13 @@ def _rows(values, cols):
 
 def _snapshot():
     hit = _cache.get('snap')
-    if hit and time.time() - hit[0] < CACHE_SECONDS:
+    if hit and hit[0] == C.version(os.environ['PLAN_SHEET_ID']):
         return hit[1]
-    book = open_book(os.environ['PLAN_SHEET_ID'])
     try:
-        res = book.values_batch_get(RANGES, params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        res = C.batch_get(os.environ['PLAN_SHEET_ID'], RANGES, params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     except gspread.exceptions.APIError:
         # No QBO Monthly tab until the first sync that writes it.
-        res = book.values_batch_get(RANGES[:-1], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        res = C.batch_get(os.environ['PLAN_SHEET_ID'], RANGES[:-1], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])]
     lines = _rows(vr[0], PLAN_COLS)
     for ln in lines:
@@ -82,7 +83,7 @@ def _snapshot():
     reviewed = {str(r['key']): r for r in _rows(vr[5], ['key', 'reviewed', 'by', 'note'])}
     monthly = _rows(vr[6], ['year', 'program', 'month', 'net', 'as_of']) if len(vr) > 6 else []
     snap = (lines, progs, qbo, status, exc, reviewed, monthly)
-    _cache['snap'] = (time.time(), snap)
+    _cache['snap'] = (C.version(os.environ['PLAN_SHEET_ID']), snap)
     return snap
 
 
@@ -355,16 +356,17 @@ def clean_name(item, year=None):
 def outstanding():
     """Checks the bank has not cleared yet, as of the last sync: [{date, number, payee, amount, as_of}], oldest first."""
     hit = _cache.get('outstanding')
-    if hit and time.time() - hit[0] < CACHE_SECONDS:
+    if hit and hit[0] == C.version(os.environ['PLAN_SHEET_ID']):
         return hit[1]
     try:
-        rows = _rows(_ws('QBO Outstanding').get('A:E', value_render_option='UNFORMATTED_VALUE'), ['date', 'number', 'payee', 'amount', 'as_of'])
-    except gspread.exceptions.WorksheetNotFound:
+        res = C.batch_get(os.environ['PLAN_SHEET_ID'], ["'QBO Outstanding'!A:E"], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        rows = _rows((res.get('valueRanges') or [{}])[0].get('values', []), ['date', 'number', 'payee', 'amount', 'as_of'])
+    except (gspread.exceptions.WorksheetNotFound, gspread.exceptions.APIError):
         rows = []
     for r in rows:
         r['amount'], r['date'], r['number'] = _num(r['amount']) or 0.0, str(r['date']), str(r['number'])
     rows.sort(key=lambda r: r['date'])
-    _cache['outstanding'] = (time.time(), rows)
+    _cache['outstanding'] = (C.version(os.environ['PLAN_SHEET_ID']), rows)
     return rows
 
 

@@ -16,6 +16,7 @@ import gspread
 from filelock import FileLock
 
 from storage import DATA_DIR, drive_folder, drive_upload, open_book, worksheet
+import sheet_cache as C
 
 BUD_COLS = ['event_code', 'event_name', 'program', 'date', 'chair', 'location', 'updated', 'updated_by', 'notes', 'files_url',
             'approved', 'approved_by']
@@ -39,6 +40,7 @@ def _ws(title):
 
 def refresh():
     _cache.clear()
+    C.invalidate(os.environ['BUDGETS_SHEET_ID'])
 
 
 def _num(v):
@@ -50,14 +52,13 @@ def _num(v):
 
 def _snapshot():
     hit = _cache.get('snap')
-    if hit and time.time() - hit[0] < CACHE_SECONDS:
+    if hit and hit[0] == C.version(os.environ['BUDGETS_SHEET_ID']):
         return hit[1]
-    book = open_book(os.environ['BUDGETS_SHEET_ID'])
     try:
-        res = book.values_batch_get(['Budgets!A:L', 'Lines!A:G', 'QBO Actuals!A:F'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:L', 'Lines!A:G', 'QBO Actuals!A:F'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     except gspread.exceptions.APIError:
         # No QBO Actuals tab until the first sync has run.
-        res = book.values_batch_get(['Budgets!A:L', 'Lines!A:G'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:L', 'Lines!A:G'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], [], []]
     buds = [dict(zip(BUD_COLS, [str(v) for v in r] + [''] * len(BUD_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
     lines = []
@@ -82,7 +83,7 @@ def _snapshot():
         exp = sum(ln['amount'] for ln in q['lines'] if ln['section'] == 'Expense')
         q['totals'] = {'income': round(inc, 2), 'expense': round(exp, 2), 'surplus': round(inc - exp, 2)}
     snap = (buds, lines, qbo)
-    _cache['snap'] = (time.time(), snap)
+    _cache['snap'] = (C.version(os.environ['BUDGETS_SHEET_ID']), snap)
     return snap
 
 

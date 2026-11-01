@@ -17,6 +17,7 @@ from datetime import date
 from filelock import FileLock
 
 from storage import DATA_DIR, open_book, worksheet
+import sheet_cache as C
 
 ITEM_COLS = ['id', 'name', 'program', 'category', 'place', 'year', 'quantity', 'cost', 'life_years', 'vin', 'plate',
              'condition', 'status', 'notes', 'docs_url', 'updated', 'updated_by', 'replace_cost', 'replace_year', 'nickname', 'seen', 'account']
@@ -68,6 +69,7 @@ def _ws(title):
 
 def refresh():
     _cache.clear()
+    C.invalidate(os.environ['OPERATIONS_SHEET_ID'])
 
 
 def _num(v):
@@ -79,9 +81,9 @@ def _num(v):
 
 def _snapshot():
     hit = _cache.get('snap')
-    if hit and time.time() - hit[0] < CACHE_SECONDS:
+    if hit and hit[0] == C.version(os.environ['OPERATIONS_SHEET_ID']):
         return hit[1]
-    res = open_book(os.environ['OPERATIONS_SHEET_ID']).values_batch_get([f"'{t}'!A:Z" for t in TABS],
+    res = C.batch_get(os.environ['OPERATIONS_SHEET_ID'], [f"'{t}'!A:Z" for t in TABS],
                                                                      params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     snap = {}
     for (title, cols), vr in zip(TABS.items(), res.get('valueRanges', [])):
@@ -90,7 +92,7 @@ def _snapshot():
             for k in cols:
                 r[k] = _num(r[k]) if k in NUMERIC else str(r[k])
         snap[title] = rows
-    _cache['snap'] = (time.time(), snap)
+    _cache['snap'] = (C.version(os.environ['OPERATIONS_SHEET_ID']), snap)
     return snap
 
 
@@ -134,7 +136,6 @@ def save(tab, row):
 
 def create_tabs():
     """Make the tabs with their plain headers if they are not there yet, and bring older headers up to date."""
-    book = open_book(os.environ['OPERATIONS_SHEET_ID'])
     have = {w.title: w for w in book.worksheets()}
     for title, labels in LABELS.items():
         if title not in have:
