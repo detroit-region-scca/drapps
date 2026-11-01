@@ -151,6 +151,8 @@ def send_mail(subject, body, recipient=None, attachments=(), cc=None):
         msg['From'] = from_email
         msg['To'] = recipient
         msg['Subject'] = subject
+        if os.environ.get('SMTP_REPLY_TO'):
+            msg['Reply-To'] = os.environ['SMTP_REPLY_TO']    # replies go to the shared inbox
         if cc:
             msg['Cc'] = cc
         msg.attach(MIMEText(body, 'plain'))
