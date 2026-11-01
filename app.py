@@ -47,6 +47,9 @@ app.register_blueprint(plan_bp)
 app.register_blueprint(equip_bp)
 app.register_blueprint(inv_bp)
 app.register_blueprint(officer_bp)
+import api  # noqa: E402
+app.before_request(api.signin_from_key)   # a valid API key signs the request in (see api.py)
+app.register_blueprint(api.bp)
 app.config['MAX_CONTENT_LENGTH'] = 40 * 1024 * 1024  # funds request receipts
 
 # Mandatory Secret Key in Production

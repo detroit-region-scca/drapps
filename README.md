@@ -98,3 +98,21 @@ Tests also run on GitHub for every push (`.github/workflows/test.yml`).
 - `storage.py`: Google Sheets access shared by all sections, and the event registry store.
 - `officials.py`, `officer.py`: who the officials are, and officer sign-in.
 - `utils.py`: email, dates, shared helpers. `templates/`: one Jinja template per section.
+
+## API and MCP server
+
+`/api/v1` (api.py) is a JSON API. Send `Authorization: Bearer <key>`; keys are `API_KEYS` in `.env`
+(`email:key` pairs, the email must be in the officials list, and the key acts as that official). For now a key
+has full read and write access, money actions included. Reads are JSON views of the sheets. Writes are handed
+to the app's own form pages in the same process, so every rule, email and audit entry matches the website, and
+emailed links use the real address.
+
+`mcp_server/drevent_mcp.py` wraps the API for Claude and other MCP clients (29 tools: events, budgets, plans,
+actuals, funds requests with receipt files, invoices, audit). Install and register:
+
+    python3 -m venv ~/.mcp-servers/drevent-mcp/venv
+    ~/.mcp-servers/drevent-mcp/venv/bin/pip install -r mcp_server/requirements.txt
+    claude mcp add drevent -s user -- ~/.mcp-servers/drevent-mcp/venv/bin/python -I \
+        ~/projects/event_drscca_app/mcp_server/drevent_mcp.py
+
+It reads `DREVENT_URL` and `DREVENT_API_KEY` from `~/.secrets/drevent-api.env` (or the file in `DREVENT_ENV`).
