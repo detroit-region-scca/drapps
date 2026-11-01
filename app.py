@@ -25,7 +25,9 @@ load_dotenv()
 # Configure logging to prevent silent errors
 logging.basicConfig(level=logging.INFO)
 
+from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)   # behind Caddy: links in emails use https and the public host
 
 
 @app.template_filter('wkday')
