@@ -162,6 +162,26 @@ def save(header, lines, files=()):
         refresh()
 
 
+def delete(code):
+    """Remove one budget: its Budgets row and its Lines. Its files folder stays in Drive."""
+    with FileLock(SAVE_LOCK), _lock:
+        refresh()
+        buds, all_lines, _ = _snapshot()
+        if not any(b['event_code'] == code for b in buds):
+            return False
+        keep = [ln for ln in all_lines if ln['event_code'] != code]
+        rows = [[_cell(ln.get(c)) for c in LINE_COLS] for ln in keep]
+        lw = _ws('Lines')
+        if rows:
+            lw.update(rows, f'A2:G{len(rows) + 1}', value_input_option='RAW')
+        if lw.row_count > len(rows) + 1:
+            lw.batch_clear([f'A{len(rows) + 2}:G{lw.row_count}'])
+        ws = _ws('Budgets')
+        ws.delete_rows(ws.col_values(1).index(code) + 1)
+        refresh()
+        return True
+
+
 def set_approved(codes, approved, who):
     """Record (or with approved='' clear) the date the board approved these events' budgets."""
     codes = [codes] if isinstance(codes, str) else list(codes)

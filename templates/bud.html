@@ -44,7 +44,7 @@
             {% for g in groups %}
             <tbody class="grp" data-grp="{{ g.code }}"{{ ' data-open' if only }}>
                 <tr class="grp-row" data-name="{{ g.name }}" data-date="{{ g.rows[0].date if g.rows else '' }}" data-plan="{{ g.plan if g.plan is not none else '' }}" data-budget="{{ g.budget }}" data-actual="{{ g.actual }}">
-                    <td class="ps-3" colspan="3"><span class="chev">▸</span> {% if plan_on %}<a href="{{ url_for('plan.detail', year=year, program=g.code) }}">{{ g.name }}</a>{% else %}{{ g.name }}{% endif %} <span class="text-muted small fw-normal">{{ g.code }} · {{ g.events }} event{{ '' if g.events == 1 else 's' }}{% if g.planned %}, {{ g.planned }} planned{% endif %}{% if g.missing %}, {{ g.missing }} without a budget{% endif %}</span></td>
+                    <td class="ps-3" colspan="3"><span class="chev">▸</span> {% if plan_on %}<a href="{{ url_for('plan.detail', year=year, program=g.code) }}">{{ g.name }}</a>{% else %}{{ g.name }}{% endif %} <span class="text-muted small fw-normal">{{ g.code }} · {{ g.events }} event{{ '' if g.events == 1 else 's' }}{% if g.planned %}, {{ g.planned }} planned{% endif %}{% if g.missing %}, {{ g.missing }} without a budget{% endif %}</span>{% if budgets_on and g.code in programs %} <a class="small fw-normal ms-2 no-print" href="{{ url_for('bud.detail', code=g.code ~ '-' ~ year) }}" onclick="event.stopPropagation()">Program budget</a>{% endif %}</td>
                     <td class="num d-none d-md-table-cell">{{ money(g.plan) }}</td><td class="num d-none d-md-table-cell">{{ money(g.budget) }}</td><td class="num pe-3">{{ money(g.actual) }}</td></tr>
                 {% for r in g.rows %}{% set href = url_for('bud.detail', code=r.code) if r.e else r.register %}
                 <tr class="kid row-link{{ ' text-muted' if not r.e }}" onclick="location.href='{{ href }}'" data-date="{{ r.date }}" data-name="{{ r.name }}" data-budget="{{ r.budget if r.budget is not none else '' }}" data-actual="{{ r.actual if r.actual is not none else '' }}" data-plan="{{ r.plan if r.plan is not none else '' }}">
@@ -100,6 +100,7 @@
                 {% if b and b.files_url %}<a class="btn btn-sm btn-outline-light" href="{{ b.files_url }}" target="_blank" rel="noopener">Files</a>{% endif %}
                 {% if b %}<button class="btn btn-sm btn-outline-secondary" onclick="window.print()">Print</button>{% endif %}
                 {% if budgets_on %}<a class="btn btn-sm btn-accent" href="{{ url_for('bud.edit', code=code) }}">{{ 'Edit budget' if b else 'Create budget' }}</a>{% endif %}
+                {% if b %}<button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="collapse" data-bs-target="#deleteBudget">Delete budget</button>{% endif %}
             </div>
         </div>
         {% if e.id %}
@@ -121,6 +122,10 @@
             </form>
         </div>
         {% endif %}
+        {% if b %}<div class="collapse no-print" id="deleteBudget"><hr>
+            <form method="post" action="{{ url_for('bud.delete', code=code) }}" class="d-flex flex-wrap gap-2 align-items-center">
+                <span class="small">Delete this budget{% if b.approved %} (board approved {{ b.approved }}; officers only){% endif %}? Its lines go; its files stay in Drive. This is logged.</span>
+                <button class="btn btn-sm btn-danger ms-auto">Delete budget</button></form></div>{% endif %}
     </div>
     {% if b or q %}
     <h2 class="h6 text-muted">Budget vs actual (QuickBooks{% if q %}, as of {{ q.as_of }}{% endif %})</h2>

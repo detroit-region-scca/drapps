@@ -336,6 +336,30 @@ def approve(code):
     return redirect(url_for('bud.detail', code=code))
 
 
+@bp.route('/event/<path:code>/delete', methods=['POST'])
+@login_required
+def delete(code):
+    """Delete a budget saved by mistake. Anyone signed in may delete one the board has not approved; once approved, it
+    stands for a board decision, so only an officer (signed in by email) may. Its files stay in Drive."""
+    if (g := _guard()):
+        return g
+    b = B.get(code)
+    if not b:
+        flash('There is no budget to delete.', 'warning')
+        return redirect(url_for('bud.detail', code=code))
+    if b.get('approved') and not officer_current():
+        flash('The board approved this budget, so only the RE, ARE or treasurer can delete it.', 'warning')
+        return redirect(url_for('officer.signin', next=url_for('bud.detail', code=code)))
+    who = (officer_current() or {}).get('name') or session.get('who', '') or 'Unknown'
+    B.delete(code)
+    log_audit_event('BUDGET_DELETED', who, {'event_code': code, 'approved': b.get('approved', ''),
+                                            'surplus': (b['totals'].get('budget') or {}).get('surplus'), 'lines': len(b['lines'])})
+    flash('Budget deleted. Its files, if any, are still in Drive.', 'success')
+    if (pg := program_of(code)):
+        return redirect(url_for('plan.detail', year=pg[1], program=pg[0]))
+    return redirect(url_for('bud.detail', code=code))
+
+
 @bp.route('/event/<path:code>/edit', methods=['GET', 'POST'])
 @login_required
 def edit(code):
