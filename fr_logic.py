@@ -4,8 +4,8 @@ Policy (Detroit Region policies, Financial Policy II.A, and Bylaws Article VIII)
   A.3   no expenses are paid until the event budget is approved
   A.6   the chair needs board approval to exceed the overall expense budget by more than 10%
   A.13  the event chair approves each expense, with a bill or receipt
-  A.18, A.20  other reimbursements need a board-approved budget first (for non-event spending, the program budget:
-              the annual plan's lines that are not events, which the board approves; for Operations, its whole plan)
+  A.18, A.20  other reimbursements need a board-approved budget first (for non-event spending, the program budget;
+              Operations has no events and its annual plan is its budget)
   VIII  a check over the board's limit ($2,500) needs a second signer: the RE or ARE
 
 Approvals are kept on the request as "role|name|date|note" entries joined by "; ".
@@ -53,13 +53,14 @@ def is_points(r):
     return r.get('event_name') == 'Worker points redemption'
 
 
-def review(r, budget_status=None, budget_expense=None, spent=0.0, plan_ok=False):
+def review(r, budget_status=None, budget_expense=None, spent=0.0, scope='event'):
     """What the request still needs: [{'key', 'label', 'done', 'by'}] in order.
 
-    budget_status: 'approved', 'changed', 'budget' or None: the event's budget (see bud._status) or, for a request
-    not tied to an event, its program budget (see plan_store.budget_status)
+    budget_status: 'approved', 'changed', 'budget' or None (the budget it is paid against, see bud._status)
     budget_expense: the budgeted expense total; spent: QuickBooks expenses so far plus other open requests
-    plan_ok: only for non-event requests from before program budgets (2026 and earlier): the program had a plan
+    scope: 'event' (the event's budget), 'program' (a request not tied to an event: its program's budget for the
+    year) or 'ops' (Operations, whose annual plan is its budget, and 2026 and earlier, when a program's annual plan
+    covered its spending outside events; no overrun check)
     """
     got = {}
     for a in parse(r.get('approvals')):
@@ -76,28 +77,16 @@ def review(r, budget_status=None, budget_expense=None, spent=0.0, plan_ok=False)
         c = got.get('chair')
         item('chair', 'Approved by the program director', c, by(c) if c else '')
         board = got.get('board')
-        if r.get('event_code'):
-            ok = budget_status == 'approved'
-            label = {'changed': 'Event budget approved by the board (it was changed after approval)',
-                     None: 'Event budget approved by the board (no budget yet)'}.get(budget_status, 'Event budget approved by the board')
-            item('budget', label, ok or board, by(board) if board and not ok else '')
-            if ok and budget_expense is not None:
-                cap = round(budget_expense * OVERRUN, 2)
-                within = spent + net <= cap + 0.005
-                item('overrun', f'Within 110% of budgeted expenses (${spent + net:,.2f} of ${cap:,.2f})', within or board,
-                     by(board) if board and not within else '')
-        elif plan_ok:
-            item('budget', 'Program has an annual plan', True)
-        else:
-            ok = budget_status == 'approved'
-            label = {'changed': 'Program budget approved by the board (it was changed after approval)',
-                     None: 'Program budget approved by the board (no program budget lines in the plan yet)'}.get(budget_status, 'Program budget approved by the board')
-            item('budget', label, ok or board, by(board) if board and not ok else '')
-            if ok and budget_expense is not None:
-                cap = round(budget_expense * OVERRUN, 2)
-                within = spent + net <= cap + 0.005
-                item('overrun', f'Within 110% of budgeted program costs (${spent + net:,.2f} of ${cap:,.2f})', within or board,
-                     by(board) if board and not within else '')
+        what = {'event': 'Event budget', 'program': 'Program budget', 'ops': 'Operations budget' if r.get('program') == 'OPS' else 'Annual plan'}[scope]
+        ok = budget_status == 'approved'
+        label = {'changed': f'{what} approved by the board (it was changed after approval)',
+                 None: f'{what} approved by the board (no budget yet)'}.get(budget_status, f'{what} approved by the board')
+        item('budget', label, ok or board, by(board) if board and not ok else '')
+        if ok and budget_expense is not None and scope != 'ops':
+            cap = round(budget_expense * OVERRUN, 2)
+            within = spent + net <= cap + 0.005
+            item('overrun', f'Within 110% of budgeted expenses (${spent + net:,.2f} of ${cap:,.2f})', within or board,
+                 by(board) if board and not within else '')
     if net > SECOND_SIGNER_LIMIT:
         s = got.get('second')
         item('second', f'Second signer, over ${SECOND_SIGNER_LIMIT:,.0f} (RE or ARE)', s, by(s) if s else '')

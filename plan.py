@@ -1,9 +1,8 @@
 """Annual Plan: each program's yearly plan (events and items, expected profit or cost) against QuickBooks actuals.
 
 Directors fill in their own program's plan for the next year (the template is the edit page) and turn it in. The
-board approves budgets, not plans: events have their own budgets (Events), and a program's plan lines that are not
-events (no event, no month) are its program budget, which the board approves here. Operations has no events, so its
-whole plan is its budget. The top of the page charts profit against the plan through the year, and Books check lists what
+board approves budgets, not plans: each event's budget and each program's budget for spending not in an event
+(Events). Operations has no events, so its plan is its budget and the board approves that. The top of the page charts profit against the plan through the year, and Books check lists what
 the nightly QuickBooks sync (tools/qbo_nightly.py) found for the treasurer.
 """
 import os
@@ -30,7 +29,7 @@ def _programs():
 
 
 def _ctx(**kw):
-    return dict(officer=officer_current(), plan_status=P.plan_status, title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Annual Plan", who=session.get('who', ''),
+    return dict(officer=officer_current(), plan_status=P.plan_status, budgets_on=B.enabled(), title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Annual Plan", who=session.get('who', ''),
                 months=MONTHS, n_exceptions=len(P.exceptions()), **kw)
 
 
@@ -88,6 +87,10 @@ def _kids(year, program, p, program_actual, future):
     kids = []
     for ln in (p or {}).get('lines', []):
         x = events.pop(ln['event_code'], None) if ln['event_code'] else None
+        if ln.get('program_budget'):
+            kids.append({'name': ln['item'], 'date': '', 'code': ln['program_budget'], 'plan': ln['net'], 'budget': ln['net'],
+                         'actual': None, 'line': ln, 'pb': True})
+            continue
         kids.append({'name': ln['item'], 'date': x['e']['date'] if x else (f"{year}-{ln['month']:02d}" if ln['month'] else ''),
                      'code': ln['event_code'] if x else '', 'plan': ln['net'], 'budget': x['budget'] if x else None,
                      'actual': x['net'] if x else None, 'line': ln})
@@ -98,7 +101,11 @@ def _kids(year, program, p, program_actual, future):
         k['diff'] = _diff(k['actual'], k['plan'])
     if not future and program_actual is not None:
         other = round(program_actual - sum(k['actual'] or 0 for k in kids), 2)
-        if abs(other) >= 0.5:
+        pb = next((k for k in kids if k.get('pb')), None)
+        if pb:
+            # QuickBooks money on the program's accounts outside event projects is the program budget's actual.
+            pb['actual'], pb['diff'] = other, _diff(other, pb['plan'])
+        elif abs(other) >= 0.5:
             kids.append({'name': 'Other, not in an event project', 'date': '', 'code': '', 'plan': None, 'budget': None, 'actual': other,
                          'diff': None, 'other': True})
     return sorted(kids, key=lambda k: (k.get('other', False), k['date'] or '9999'))
@@ -139,7 +146,7 @@ def summary(year, plan=None, act=None):
         budgets = [k['budget'] for k in kids if k['budget'] is not None]
         if code == OPS and pn is not None:
             budgets = [pn]      # Operations has one budget: its plan
-        rows.append({'code': code, 'name': name, 'plan': pn, 'actual': an, 'info': (p or {}).get('info', {}), 'bst': P.budget_status(p or {}),
+        rows.append({'code': code, 'name': name, 'plan': pn, 'actual': an, 'info': (p or {}).get('info', {}),
                      'budget': round(sum(budgets), 2) if budgets else None, 'diff': _diff(an, pn), 'kids': kids})
     return rows, {k: round(sum(r[k] or 0 for r in rows), 2) for k in ('plan', 'budget', 'actual')}
 
@@ -170,12 +177,16 @@ def detail(year, program):
     if program not in names:
         abort(404)
     p = P.plan(year).get(program) or {'lines': [], 'net': 0.0, 'info': {}}
+    # The program's budget for spending not in an event (Events stores it like an event budget). Operations has none:
+    # its plan is its budget.
+    pb_code = None if program == 'OPS' else f"{program}-{year}"
+    pb = B.get(pb_code) if pb_code and B.enabled() else None
     act, as_of = P.actuals(year)
     qbo = B.qbo_actuals() if B.enabled() else {}
     for ln in p['lines']:
         ln['actual'] = (qbo.get(ln['event_code']) or {}).get('totals', {}).get('surplus') if ln['event_code'] else None
         ln['budget'] = _budget_surplus(ln['event_code']) if ln['event_code'] else None
-        if not ln['event_code'] and program != OPS:
+        if not ln['event_code'] and program != OPS and not ln.get('program_budget'):
             # "Register event" opens Add event filled in from this line, tied to it once saved.
             ln['register'] = register_url(year, program, ln)
     prev = str(int(year) - 1)
@@ -204,10 +215,10 @@ def detail(year, program):
         # The budget is the plan; the records only show what it is made of, and flag a line the bills no longer match.
         g['drift'] = g['records'] is not None and abs((g['records'] or 0) - (g['plan'] or 0)) >= 1
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
-                                               ops_budget=ops_budget is not None, bst=P.budget_status(p), btot=P.budget_totals(p['lines']),
-                                               nbud=len(P.budget_lines(p['lines'])),
+                                               ops_budget=ops_budget is not None, pb_code=pb_code, pb=pb,
+                                               pb_status=(('changed' if pb.get('updated', '') > pb['approved'] else 'approved') if pb.get('approved') else 'budget') if pb else None,
                                                a=act.get(program), as_of=as_of, events=_event_actuals(program, year),
-                                               prev=prev, prev_lines=bool(P.plan(prev).get(program, {}).get('lines')),
+                                               prev=prev, prev_lines=bool(P.saved_lines(P.plan(prev).get(program, {}).get('lines', []))),
                                                accts=accts, future=int(year) > date.today().year, now_year=date.today().year, rows=rows,
                                                groups=groups, last_net=(P.actuals(prev)[0].get(program) or {}).get('net')))
 
@@ -230,11 +241,14 @@ def _account_groups(lines, accts):
 @login_required
 @officer_required
 def approve(year, program):
-    """Record the board meeting that approved this program's budget (its plan lines that are not events), or clear it.
-    Officers only, signed in by email."""
+    """Record the board meeting that approved the Operations budget (its plan), or clear it. Officers only, signed in
+    by email. Other programs' plans are not board approved; the board approves their event and program budgets."""
     if (g := _guard()):
         return g
     year = _year(year)
+    if program != 'OPS':
+        flash('The board approves budgets, not plans. Record approval on the program budget in Events.', 'warning')
+        return redirect(url_for('plan.detail', year=year, program=program))
     who = officer_current()['name']
     approved = request.form.get('approved', '').strip()
     if approved:
@@ -243,15 +257,12 @@ def approve(year, program):
         except ValueError:
             flash('The meeting date must be a date.', 'danger')
             return redirect(url_for('plan.detail', year=year, program=program))
-    if approved and not P.budget_lines((P.plan(year).get(program) or {}).get('lines', [])):
-        flash('This plan has no program budget lines (lines with no event and no month) to approve.', 'warning')
-        return redirect(url_for('plan.detail', year=year, program=program))
     try:
         P.set_approved(year, program, approved, who)
     except ValueError as e:
         flash(str(e), 'warning')
         return redirect(url_for('plan.detail', year=year, program=program))
-    log_audit_event('PROGRAM_BUDGET_APPROVED' if approved else 'PROGRAM_BUDGET_UNAPPROVED', who, {'year': year, 'program': program, 'approved': approved})
+    log_audit_event('PLAN_APPROVED' if approved else 'PLAN_UNAPPROVED', who, {'year': year, 'program': program, 'approved': approved})
     flash(f'Board approval recorded: {approved}.' if approved else 'Board approval cleared.', 'success')
     return redirect(url_for('plan.detail', year=year, program=program))
 
@@ -308,15 +319,15 @@ def edit(year, program):
         return redirect(url_for('plan.detail', year=year, program=program))
     p = P.plan(year).get(program)
     copied = False
-    if p and p['lines']:
-        lines, info = p['lines'], p['info']
+    if p and P.saved_lines(p['lines']):
+        lines, info = P.saved_lines(p['lines']), p['info']
     else:
         # A new plan starts blank, or from last year's items and amounts (?start=copy) with the old year left out
         # of the names; the director and email carry over from last year either way.
         last = P.plan(prev).get(program) or {'lines': [], 'info': {}}
         lines = [] if request.args.get('start') != 'copy' else [
             {'item': P.clean_name(ln['item'], prev), 'month': ln['month'], 'net': ln['net'], 'note': '', 'event_code': ''}
-            for ln in last['lines'] if not P.placeholder(ln['item'])]
+            for ln in P.saved_lines(last['lines']) if not P.placeholder(ln['item'])]
         info = (p or {}).get('info') or {k: last['info'].get(k, '') for k in ('director', 'email')}
         copied = bool(lines)
     # Registered events with no plan line yet start as lines of their own, already tied, so the director only

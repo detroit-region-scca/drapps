@@ -47,18 +47,19 @@ def test_over_110_percent_needs_board_and_board_approval_clears_it():
     assert L.ready(L.review(r, 'approved', 1000, 5000))
 
 
-def test_non_event_before_2027_uses_the_annual_plan():
-    r = req(code='', approvals=CHAIR)
-    assert L.ready(L.review(r, plan_ok=True))
-
-
 def test_non_event_uses_the_program_budget():
     r = req(code='', approvals=CHAIR)
-    assert 'budget' in keys(L.review(r, None), False)
-    assert 'budget' in keys(L.review(r, 'budget', 1000), False)
-    assert 'budget' in keys(L.review(r, 'changed', 1000), False)
-    assert L.ready(L.review(r, 'approved', 1000, 0))
-    assert 'overrun' in keys(L.review(r, 'approved', 50, 0), False)
+    items = L.review(r, None, scope='program')
+    assert 'budget' in keys(items, False) and any(i['key'] == 'budget' and 'Program budget' in i['label'] for i in items)
+    assert 'budget' in keys(L.review(r, 'budget', 1000, scope='program'), False)
+    assert L.ready(L.review(r, 'approved', 1000, 0, scope='program'))
+    assert 'overrun' in keys(L.review(r, 'approved', 50, 0, scope='program'), False)
+
+
+def test_operations_plan_is_its_budget():
+    r = req(code='', approvals=CHAIR)
+    assert 'budget' in keys(L.review(r, None, scope='ops'), False)
+    assert L.ready(L.review(r, 'approved', None, 99999, scope='ops'))
 
 
 def test_over_limit_needs_second_signer():
