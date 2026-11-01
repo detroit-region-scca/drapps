@@ -36,7 +36,7 @@
                 <td class="text-nowrap">{{ r.submitted }}<div class="small text-muted">{{ r.submitter_name }}</div></td>
                 <td>{{ r.payee_name }}<div class="small text-muted">{{ r.method }}</div></td>
                 <td>{{ r.event_name or r.program }} <span class="small text-muted">{{ r.event_code }}</span></td>
-                <td>{% if r.status == 'Submitted' %}{% if r.waiting %}<span class="badge rounded-pill text-bg-warning">Needs approval</span><div class="small text-muted">{{ r.waiting|join(', ') }}</div>{% else %}<span class="badge rounded-pill text-bg-info">Ready to pay</span>{% endif %}{% else %}{{ status_badge(r.status) }}{% endif %}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
+                <td>{% if r.status == 'Submitted' %}{% if r.waiting %}<span class="badge rounded-pill text-bg-warning">Needs approval</span><div class="small text-muted">{{ r.waiting|join(', ') }}</div>{% elif r.method == 'Region credit card' %}<span class="badge rounded-pill text-bg-info" title="Already paid on the region card">Card, ready to record</span>{% else %}<span class="badge rounded-pill text-bg-info">Ready to pay</span>{% endif %}{% else %}{{ status_badge(r.status) }}{% endif %}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
                 <td class="num pe-3">{{ money(r.net) }}</td></tr>
             {% else %}<tr><td colspan="6" class="text-muted ps-3">Nothing here.</td></tr>{% endfor %}
             </tbody>
@@ -180,14 +180,15 @@
             <div class="section-label">Mark paid</div>
             <div class="row g-2">
                 <div class="col-sm-5"><label class="form-label small" for="paidRef">Check # or card</label>
-                    <input name="paid_ref" id="paidRef" class="form-control" placeholder="Check 6080">
+                    {% set card = r.method == 'Region credit card' %}
+                    <input name="paid_ref" id="paidRef" class="form-control" placeholder="Check 6080" value="{{ 'Region card' if card else '' }}">
                     <div class="mt-1"><button type="button" class="btn btn-link btn-sm p-0" onclick="document.getElementById('paidRef').value='Region card'">Paid on the region card</button></div></div>
-                <div class="col-sm-4"><label class="form-label small" for="paidDate">Date paid</label><input type="date" name="paid_date" id="paidDate" class="form-control" value="{{ today }}"></div>
+                <div class="col-sm-4"><label class="form-label small" for="paidDate">Date paid</label><input type="date" name="paid_date" id="paidDate" class="form-control" value="{{ (r.lines|map(attribute='date')|select|max) if card and r.lines else today }}"></div>
                 <div class="col-sm-3"><label class="form-label small" for="paidAmt">Amount</label><input name="paid_amount" id="paidAmt" class="form-control text-end" inputmode="decimal" value="{{ '%.2f'|format(r.net) }}"></div>
                 
-                <div class="col-sm-5 d-flex align-items-end"><button class="btn btn-accent w-100">Mark paid</button></div>
+                <div class="col-sm-5 d-flex align-items-end"><button class="btn btn-accent w-100">{{ 'Record card payment' if card else 'Mark paid' }}</button></div>
             </div>
-            <div class="form-text">This only records the payment here, as {{ officer.name }}. Book it in QuickBooks to the event's project yourself, as usual.</div>
+            <div class="form-text">{% if card %}Already paid on the region card: this records it, with the purchase date. {% endif %}This only records the payment here, as {{ officer.name }}. Book it in QuickBooks to the event's project yourself, as usual.</div>
         </form>{% endif %}</div>
         <div class="col-lg-4"><form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">
             <input type="hidden" name="action" value="reject">
