@@ -23,10 +23,12 @@ def folder_id(url):
 def _files(ids):
     """{folder id: [{'name', 'webViewLink', 'modifiedTime'}]}, one Drive query for all folders, cached a few minutes."""
     key = tuple(sorted(ids))
-    hit = _cache.get(key)
-    if hit and time.time() - hit[0] < CACHE_SECONDS:
-        return hit[1]
-    out = {f: [] for f in ids}
+    import sheet_cache
+    return sheet_cache.remember('docs:' + ','.join(key), CACHE_SECONDS, lambda: _list(key))
+
+
+def _list(key):
+    out = {f: [] for f in key}
     session = sheets_client().http_client.session
     for n in range(0, len(key), 40):
         q = '(' + ' or '.join(f"'{f}' in parents" for f in key[n:n + 40]) + ') and trashed = false'
@@ -44,12 +46,13 @@ def _files(ids):
             token = body.get('nextPageToken')
             if not token:
                 break
-    _cache[key] = (time.time(), out)
     return out
 
 
 def refresh():
+    import sheet_cache
     _cache.clear()
+    sheet_cache.forget('docs:')
 
 
 def needed(row):

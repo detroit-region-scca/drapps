@@ -133,6 +133,30 @@ def version(sheet_id):
     return row[0] if row else 0
 
 
+# ---------- other slow Google answers (Drive folder listings), shared for a few minutes ----------
+
+def remember(key, ttl, loader):
+    """loader()'s JSON-able result, shared by all workers for ttl seconds."""
+    if not enabled():
+        return loader()
+    c = _db()
+    c.execute('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, data TEXT, saved REAL)')
+    row = c.execute('SELECT data, saved FROM kv WHERE key = ?', (key,)).fetchone()
+    if row and time.time() - row[1] < ttl:
+        return json.loads(row[0])
+    val = loader()
+    c.execute('INSERT OR REPLACE INTO kv (key, data, saved) VALUES (?, ?, ?)', (key, json.dumps(val), time.time()))
+    return val
+
+
+def forget(prefix):
+    """Drop remembered answers whose key starts with prefix (after a change they depend on)."""
+    if enabled():
+        c = _db()
+        c.execute('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, data TEXT, saved REAL)')
+        c.execute('DELETE FROM kv WHERE key LIKE ?', (prefix + '%',))
+
+
 # ---------- keeping the copy current ----------
 
 def _modified(sheet_id):
