@@ -34,9 +34,9 @@ def all():  # noqa: A001 (module-level name, read as officials.all())
 
 
 def mailto(o):
-    """Where the app emails an official: the role's group (e.g. autocross@drscca.org, the "notify" field) so mail and
-    approval links follow the job, else their own address. Signing in still uses their own "email"."""
-    return (o.get('notify') or o.get('email') or '').strip()
+    """Where the app emails an official: only the role's group (the "notify" field, e.g. autocross@drscca.org), so mail
+    and approval links follow the job. Never the person's own address; '' when the role has no group."""
+    return (o.get('notify') or '').strip()
 
 
 def director(program):
