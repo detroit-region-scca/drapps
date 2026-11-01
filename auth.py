@@ -71,23 +71,20 @@ def lookup(email):
     if not email:
         return None
     mine = [o for o in O.all() if (o.get('email') or '').strip().lower() == email]
-    group = not mine and [o for o in O.all() if O.mailto(o).lower() == email]
-    if mine or group:
-        rows = mine or group
-        roles = sorted({o.get('role', '') for o in rows})
+    if mine:
+        roles = sorted({o.get('role', '') for o in mine})
         level = 'officer' if set(roles) & set(OFFICER_ROLES) else 'official'
-        names = list(dict.fromkeys(o['name'] for o in rows))
-        return {'email': email, 'name': ' / '.join(names), 'level': level, 'roles': roles}
+        return {'email': email, 'name': mine[0]['name'], 'level': level, 'roles': roles}
     v = volunteers().get(email)
     if v:
         return {'email': email, 'name': v.get('name') or email, 'level': 'volunteer', 'roles': []}
     return None
 
 
-def code_address(email):
-    """Where a sign-in code for this address goes. Officials: their role's group (the first in the officials list that
-    has one), never their own inbox; an address that is itself a group gets it there. Volunteers, provisioned one by
-    one, get it at their own address. An official whose roles have no group falls back to their own address."""
+def group_address(email):
+    """The role group an official's app mail goes to (the first role in the officials list that has one); their own
+    address only when none of their roles has a group, and for volunteers. Sign-in codes do NOT use this: a code
+    proves who you are, so it always goes to your own address."""
     email = (email or '').strip().lower()
     mine = [o for o in O.all() if (o.get('email') or '').strip().lower() == email]
     if mine:
@@ -237,8 +234,8 @@ def send_code():
             region = os.environ.get('SCCA_REGION_NAME', 'SCCA')
             send_mail(f'{code} is your {region} apps code',
                       f"Your sign-in code is {code}\n\nOr tap this link on the device you are signing in on:\n{link}\n\n"
-                      f"It works once, for {CODE_MINUTES} minutes. If you did not ask for it, ignore this email.", code_address(email))
-            log_audit_event('SIGNIN_CODE_SENT', u['name'], {'email': email, 'sent_to': code_address(email)})
+                      f"It works once, for {CODE_MINUTES} minutes. If you did not ask for it, ignore this email.", email)
+            log_audit_event('SIGNIN_CODE_SENT', u['name'], {'email': email})
         else:
             logging.warning(f"Sign-in codes rate limited for {email}")
     session['signin_email'] = email

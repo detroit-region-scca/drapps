@@ -31,19 +31,13 @@ def test_no_group_means_no_email(tmp_path, monkeypatch):
     assert O.signers() == []          # never falls back to the person's own inbox
 
 
-def test_signin_codes_go_to_the_group(tmp_path, monkeypatch):
+def test_group_address_for_app_mail(tmp_path, monkeypatch):
     import auth
     _use(tmp_path, monkeypatch, [
         {'role': 'RE', 'title': 'Region Executive', 'name': 'Alex', 'email': 'alex@x.com', 'notify': 're@drscca.org'},
         {'role': 'Equipment', 'title': 'Equipment Committee', 'name': 'Alex', 'email': 'alex@x.com', 'notify': 'equipment@drscca.org'},
-        {'role': 'Treasurer', 'title': 'Treasurer', 'name': 'Nathan', 'email': 'admin@drscca.org', 'notify': 'treasurer@drscca.org'},
-        {'role': 'Financial Director', 'title': 'Financial Director', 'name': 'Sonja', 'email': 'membership@drscca.org', 'notify': 'treasurer@drscca.org'},
         {'role': 'Director at Large', 'title': 'Director at Large', 'name': 'Eric', 'email': 'eric@x.com'}])
-    monkeypatch.setattr(auth, 'volunteers', lambda: {'vol@x.com': {'name': 'Vee'}})
-    assert auth.code_address('alex@x.com') == 're@drscca.org'          # first role with a group, not equipment@
-    assert auth.code_address('re@drscca.org') == 're@drscca.org'
-    assert auth.code_address('vol@x.com') == 'vol@x.com'                # volunteers are provisioned one by one
-    assert auth.code_address('eric@x.com') == 'eric@x.com'              # no group for the role: own address
-    u = auth.lookup('treasurer@drscca.org')
-    assert u['name'] == 'Nathan / Sonja' and u['level'] == 'officer'
+    assert auth.group_address('alex@x.com') == 're@drscca.org'          # first role with a group
+    assert auth.group_address('eric@x.com') == 'eric@x.com'
+    assert auth.lookup('re@drscca.org') is None                         # sign in with your own address only
     assert auth.lookup('alex@x.com')['name'] == 'Alex'

@@ -114,7 +114,7 @@ def new():
     me = f.get('my_email', '').strip()
     u = auth.user()
     if u and u['level'] != 'volunteer':      # officials get the copy at their role's group, never a personal inbox
-        me = auth.code_address(u['email'])
+        me = auth.group_address(u['email'])
     body = (f"{who} created invoice {inv['id']} for {inv['bill_name']}: {I.money(inv['total'])}, due {inv['due']}.\n"
             f"{(inv['event_name'] + ' ' + inv['event_code']) if inv['event_name'] else 'Program ' + program}\n\n"
             f"The PDF is attached. Send it to the customer from your own email.\n"
