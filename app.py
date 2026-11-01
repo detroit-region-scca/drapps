@@ -130,7 +130,6 @@ def treasurer():
         jobs['pay'], jobs['approvals'] = (len(ready), sum(r['net'] for r in ready)), len(waiting) - len(ready)
     if bud_store.enabled():
         codes = {(e.get('custom_tag') or e.get('unique_code')) for e in load_events() if e.get('date', '').startswith(year)}
-        codes |= {f"{pc}-{year}" for pc in load_programs()}
         jobs['budgets'] = sum(1 for c, b in bud_store.budgets().items() if c in codes and (not b.get('approved') or b.get('updated', '') > b['approved']))
     import equip
     import inv
@@ -176,14 +175,6 @@ def treasurer_report():
                               'actual': ((qbo.get(code) or {}).get('totals') or {}).get('surplus')})
             elif not b and today.isoformat() <= e['date'] <= soon:
                 missing.append({'e': e, 'code': code})
-        import bud
-        for pc in load_programs():
-            code = bud.program_code(pc, year)
-            b = buds.get(code)
-            if b and (not b.get('approved') or b.get('updated', '') > b['approved']):
-                board.append({'e': bud._event(code), 'code': code, 'changed': bool(b.get('approved')),
-                              'budget': (b['totals'].get('budget') or {}).get('surplus'),
-                              'actual': ((bud.program_actuals(pc, year) or {}).get('totals') or {}).get('surplus')})
         ctx['board'], ctx['missing'] = board, missing
     if fr_store.enabled():
         a = fr.Approvals()

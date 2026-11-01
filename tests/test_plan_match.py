@@ -43,3 +43,22 @@ def test_clean_name_drops_numbering_code_and_year():
     assert P.clean_name('DRSCCA Solo #1 - Season Opener (#DRM36)') == 'DRSCCA Solo #1 - Season Opener'
     assert P.clean_name('2026 Banquet', '2026') == 'Banquet'
     assert P.clean_name('Solo #1 (Memorial)', '2026') == 'Solo #1 (Memorial)'
+
+
+def test_program_budget_is_the_lines_not_in_an_event():
+    import plan_store as P
+    lines = [{'item': 'June rally', 'month': 6, 'net': 300, 'event_code': ''},
+             {'item': 'Rally 1', 'month': None, 'net': 200, 'event_code': '#DRAAA'},
+             {'item': "Director's expenses", 'month': None, 'net': -500, 'event_code': '', 'account': ''},
+             {'item': 'Trophies', 'month': None, 'net': -400, 'event_code': ''}]
+    assert [ln['item'] for ln in P.budget_lines(lines)] == ["Director's expenses", 'Trophies']
+    assert P.budget_totals(lines) == {'income': 0, 'expense': 900, 'net': -900}
+    sig = P.budget_sig(lines)
+    p = {'lines': lines, 'info': {'approved': '2026-11-10', 'approved_sig': sig, 'updated': '2026-12-01'}}
+    assert P.budget_status(p) == 'approved'                       # an event line edit after approval is fine
+    lines[0]['net'] = 999
+    assert P.budget_status(p) == 'approved'
+    lines[3]['net'] = -450
+    assert P.budget_status(p) == 'changed'
+    assert P.budget_status({'lines': lines[:2], 'info': {}}) is None
+    assert P.budget_status({'lines': lines, 'info': {}}) == 'budget'

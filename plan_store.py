@@ -8,6 +8,7 @@
   QBO Exceptions  things in the books the treasurer should look at     } read only here
   Reviewed        exception keys the treasurer has looked at, so they stay hidden
 """
+import hashlib
 import os
 import re
 import threading
@@ -21,11 +22,12 @@ import qbo_logic
 from storage import DATA_DIR, open_book, worksheet
 
 PLAN_COLS = ['year', 'program', 'item', 'month', 'net', 'event_code', 'note', 'sort', 'account']    # account: the QuickBooks account it is booked to
-PROG_COLS = ['year', 'program', 'director', 'email', 'notes', 'updated', 'updated_by', 'submitted', 'submitted_by', 'approved', 'approved_by']
+PROG_COLS = ['year', 'program', 'director', 'email', 'notes', 'updated', 'updated_by', 'submitted', 'submitted_by', 'approved', 'approved_by',
+             'approved_sig']   # approved_sig: the program budget lines as the board approved them, to spot later changes
 EXC_COLS = ['key', 'kind', 'date', 'name', 'amount', 'detail', 'link', 'as_of']
 CACHE_SECONDS = 15
 SAVE_LOCK = os.path.join(DATA_DIR, 'plan_save.lock')
-RANGES = ['Plan!A:I', 'Programs!A:K', 'QBO Programs!A:F', 'QBO Status!A:C', 'QBO Exceptions!A:H', 'Reviewed!A:D', 'QBO Monthly!A:E']
+RANGES = ['Plan!A:I', 'Programs!A:L', 'QBO Programs!A:F', 'QBO Status!A:C', 'QBO Exceptions!A:H', 'Reviewed!A:D', 'QBO Monthly!A:E']
 
 _lock = threading.Lock()
 _cache = {}
@@ -141,8 +143,21 @@ def mark_reviewed(key, who, note=''):
         refresh()
 
 
+def budget_lines(lines):
+    """A program's budget: its plan lines that are not events (no event tied and no month), such as supplies,
+    trophies or the director's costs. Events have their own budgets. For Operations every line is one of these."""
+    return [ln for ln in lines if not ln.get('event_code') and not ln.get('month')]
+
+
+def budget_sig(lines):
+    """A short fingerprint of the budget lines (item, amount, account), so an edit after approval shows."""
+    rows = sorted((str(ln.get('item') or '').strip(), round(ln.get('net') or 0, 2), str(ln.get('account') or '')) for ln in budget_lines(lines))
+    return hashlib.sha256(repr(rows).encode()).hexdigest()[:16]
+
+
 def set_approved(year, program, approved, who):
-    """Record (or clear, with approved='') the board meeting date that approved one program's plan for a year."""
+    """Record (or clear, with approved='') the board meeting date that approved one program's budget lines for a year.
+    The board approves budgets, not plans: what is approved is the plan's lines that are not events."""
     year = str(year)
     with FileLock(SAVE_LOCK), _lock:
         refresh()
@@ -150,16 +165,34 @@ def set_approved(year, program, approved, who):
         at = next((i for i, p in enumerate(progs) if p['year'] == year and p['program'] == program), None)
         if at is None:
             raise ValueError('That plan has not been saved yet.')
-        _ws('Programs').update([[approved, who if approved else '']], f'J{at + 2}:K{at + 2}', value_input_option='RAW')
+        sig = budget_sig(plan(year).get(program, {}).get('lines', [])) if approved else ''
+        _ws('Programs').update([[approved, who if approved else '', sig]], f'J{at + 2}:L{at + 2}', value_input_option='RAW')
         refresh()
 
 
 def plan_status(info):
-    """'approved', 'changed' (edited after the board approved it), 'in', 'draft' or '' (nothing saved).
-    The board approves budgets, not plans: only Operations, whose plan is its budget, can be board approved."""
-    if info.get('approved') and info.get('program') == 'OPS':
-        return 'changed' if info.get('updated', '') > info['approved'] else 'approved'
+    """'in', 'draft' or '' (nothing saved): whether the director has turned the plan in."""
     return 'in' if info.get('submitted') else 'draft' if info.get('updated') else ''
+
+
+def budget_status(p):
+    """The program budget (its lines that are not events) for one program's plan(year) entry: 'approved',
+    'changed' (its budget lines edited after the board approved them), 'budget' (lines, not approved) or None."""
+    info = p.get('info') or {}
+    if not budget_lines(p.get('lines', [])) and not info.get('approved'):
+        return None
+    if info.get('approved'):
+        same = info.get('approved_sig') == budget_sig(p.get('lines', [])) if info.get('approved_sig') else info.get('updated', '') <= info['approved']
+        return 'approved' if same else 'changed'
+    return 'budget'
+
+
+def budget_totals(lines):
+    """{'income', 'expense', 'net'} of the program budget lines (plan amounts are profit: costs are negative)."""
+    b = budget_lines(lines)
+    inc = sum(ln['net'] for ln in b if (ln.get('net') or 0) > 0)
+    exp = -sum(ln['net'] for ln in b if (ln.get('net') or 0) < 0)
+    return {'income': round(inc, 2), 'expense': round(exp, 2), 'net': round(inc - exp, 2)}
 
 
 def _cell(v):
@@ -178,7 +211,7 @@ def save(year, program, info, lines, submit=False):
         old = next((p for p in progs if p['year'] == year and p['program'] == program), {})
         info = dict(info, year=year, program=program, updated=date.today().isoformat(),
                     submitted=old.get('submitted', ''), submitted_by=old.get('submitted_by', ''),
-                    approved=old.get('approved', ''), approved_by=old.get('approved_by', ''))
+                    approved=old.get('approved', ''), approved_by=old.get('approved_by', ''), approved_sig=old.get('approved_sig', ''))
         if submit and not info['submitted']:
             info.update(submitted=date.today().isoformat(), submitted_by=info.get('updated_by', ''))
         pw = _ws('Programs')

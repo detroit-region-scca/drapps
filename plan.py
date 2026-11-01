@@ -1,8 +1,9 @@
 """Annual Plan: each program's yearly plan (events and items, expected profit or cost) against QuickBooks actuals.
 
 Directors fill in their own program's plan for the next year (the template is the edit page) and turn it in. The
-board approves budgets, not plans: each event's budget and each program's budget for spending not in an event
-(Events). Operations has no events, so its plan is its budget and the board approves that. The top of the page charts profit against the plan through the year, and Books check lists what
+board approves budgets, not plans: events have their own budgets (Events), and a program's plan lines that are not
+events (no event, no month) are its program budget, which the board approves here. Operations has no events, so its
+whole plan is its budget. The top of the page charts profit against the plan through the year, and Books check lists what
 the nightly QuickBooks sync (tools/qbo_nightly.py) found for the treasurer.
 """
 import os
@@ -29,7 +30,7 @@ def _programs():
 
 
 def _ctx(**kw):
-    return dict(officer=officer_current(), plan_status=P.plan_status, budgets_on=B.enabled(), title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Annual Plan", who=session.get('who', ''),
+    return dict(officer=officer_current(), plan_status=P.plan_status, title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Annual Plan", who=session.get('who', ''),
                 months=MONTHS, n_exceptions=len(P.exceptions()), **kw)
 
 
@@ -138,7 +139,7 @@ def summary(year, plan=None, act=None):
         budgets = [k['budget'] for k in kids if k['budget'] is not None]
         if code == OPS and pn is not None:
             budgets = [pn]      # Operations has one budget: its plan
-        rows.append({'code': code, 'name': name, 'plan': pn, 'actual': an, 'info': (p or {}).get('info', {}),
+        rows.append({'code': code, 'name': name, 'plan': pn, 'actual': an, 'info': (p or {}).get('info', {}), 'bst': P.budget_status(p or {}),
                      'budget': round(sum(budgets), 2) if budgets else None, 'diff': _diff(an, pn), 'kids': kids})
     return rows, {k: round(sum(r[k] or 0 for r in rows), 2) for k in ('plan', 'budget', 'actual')}
 
@@ -169,10 +170,6 @@ def detail(year, program):
     if program not in names:
         abort(404)
     p = P.plan(year).get(program) or {'lines': [], 'net': 0.0, 'info': {}}
-    # The program's budget for spending not in an event (Events stores it like an event budget). Operations has none:
-    # its plan is its budget.
-    pb_code = None if program == 'OPS' else f"{program}-{year}"
-    pb = B.get(pb_code) if pb_code and B.enabled() else None
     act, as_of = P.actuals(year)
     qbo = B.qbo_actuals() if B.enabled() else {}
     for ln in p['lines']:
@@ -207,8 +204,8 @@ def detail(year, program):
         # The budget is the plan; the records only show what it is made of, and flag a line the bills no longer match.
         g['drift'] = g['records'] is not None and abs((g['records'] or 0) - (g['plan'] or 0)) >= 1
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
-                                               ops_budget=ops_budget is not None, pb_code=pb_code, pb=pb,
-                                               pb_status=(('changed' if pb.get('updated', '') > pb['approved'] else 'approved') if pb.get('approved') else 'budget') if pb else None,
+                                               ops_budget=ops_budget is not None, bst=P.budget_status(p), btot=P.budget_totals(p['lines']),
+                                               nbud=len(P.budget_lines(p['lines'])),
                                                a=act.get(program), as_of=as_of, events=_event_actuals(program, year),
                                                prev=prev, prev_lines=bool(P.plan(prev).get(program, {}).get('lines')),
                                                accts=accts, future=int(year) > date.today().year, now_year=date.today().year, rows=rows,
@@ -233,14 +230,11 @@ def _account_groups(lines, accts):
 @login_required
 @officer_required
 def approve(year, program):
-    """Record the board meeting that approved the Operations budget (its plan), or clear it. Officers only, signed in
-    by email. Other programs' plans are not board approved; the board approves their event and program budgets."""
+    """Record the board meeting that approved this program's budget (its plan lines that are not events), or clear it.
+    Officers only, signed in by email."""
     if (g := _guard()):
         return g
     year = _year(year)
-    if program != 'OPS':
-        flash('The board approves budgets, not plans. Record approval on the program budget in Events.', 'warning')
-        return redirect(url_for('plan.detail', year=year, program=program))
     who = officer_current()['name']
     approved = request.form.get('approved', '').strip()
     if approved:
@@ -249,12 +243,15 @@ def approve(year, program):
         except ValueError:
             flash('The meeting date must be a date.', 'danger')
             return redirect(url_for('plan.detail', year=year, program=program))
+    if approved and not P.budget_lines((P.plan(year).get(program) or {}).get('lines', [])):
+        flash('This plan has no program budget lines (lines with no event and no month) to approve.', 'warning')
+        return redirect(url_for('plan.detail', year=year, program=program))
     try:
         P.set_approved(year, program, approved, who)
     except ValueError as e:
         flash(str(e), 'warning')
         return redirect(url_for('plan.detail', year=year, program=program))
-    log_audit_event('PLAN_APPROVED' if approved else 'PLAN_UNAPPROVED', who, {'year': year, 'program': program, 'approved': approved})
+    log_audit_event('PROGRAM_BUDGET_APPROVED' if approved else 'PROGRAM_BUDGET_UNAPPROVED', who, {'year': year, 'program': program, 'approved': approved})
     flash(f'Board approval recorded: {approved}.' if approved else 'Board approval cleared.', 'success')
     return redirect(url_for('plan.detail', year=year, program=program))
 

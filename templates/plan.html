@@ -62,7 +62,7 @@
             <tbody class="grp" data-grp="{{ r.code }}">
                 <tr class="grp-row" data-name="{{ r.name }}" data-plan="{{ r.plan if r.plan is not none else '' }}" data-budget="{{ r.budget if r.budget is not none else '' }}" data-actual="{{ r.actual if r.actual is not none else '' }}" data-diff="{{ r.diff if r.diff is not none else '' }}">
                     <td class="ps-3"><span class="chev">{{ '▸' if r.kids else '' }}</span> <a href="{{ url_for('plan.detail', year=year, program=r.code) }}">{{ r.name }}</a> <span class="text-muted small fw-normal">{{ r.code }}</span></td>
-                    <td class="small fw-normal">{{ officials.director(r.code)[0] }}{% if future %}{% set st = plan_status(r.info) %}{% if st == 'approved' %} <span class="badge rounded-pill text-bg-success">Board approved {{ r.info.approved }}</span>{% elif st == 'changed' %} <span class="badge rounded-pill text-bg-warning">Changed since approved</span>{% elif st == 'in' %} <span class="badge rounded-pill text-bg-primary">In {{ r.info.submitted }}</span>{% elif st == 'draft' %} <span class="badge rounded-pill text-bg-info">Draft</span>{% else %} <span class="badge rounded-pill text-bg-warning">Waiting</span>{% endif %}{% endif %}</td>
+                    <td class="small fw-normal">{{ officials.director(r.code)[0] }}{% if future %}{% set st = plan_status(r.info) %}{% if r.bst == 'approved' %} <span class="badge rounded-pill text-bg-success" title="Program budget board approved">Budget approved {{ r.info.approved }}</span>{% elif r.bst == 'changed' %} <span class="badge rounded-pill text-bg-warning" title="Program budget lines edited since the board approved them">Budget changed</span>{% endif %}{% if st == 'in' %} <span class="badge rounded-pill text-bg-primary">In {{ r.info.submitted }}</span>{% elif st == 'draft' %} <span class="badge rounded-pill text-bg-info">Draft</span>{% else %} <span class="badge rounded-pill text-bg-warning">Waiting</span>{% endif %}{% endif %}</td>
                     <td class="num">{{ money(r.plan) }}</td><td class="num">{{ money(r.budget) }}</td>
                     {% if not future %}<td class="num">{{ money(r.actual) }}</td><td class="num pe-3">{{ money(r.diff) }}</td>{% endif %}
                 </tr>
@@ -88,21 +88,16 @@
                 <div class="page-title m-0">{{ name }} {{ 'budget' if program == 'OPS' else 'plan' }} for {{ year }}</div>
                 <div class="text-muted small">{% set d = officials.director(program) %}{% if d[0] %}Director: {{ d[0] }}{% if d[1] %} · {{ d[1] }}{% endif %}{% endif %}
                     {% set st = plan_status(p.info) %}
-                    {% if st == 'approved' %}<br><span class="badge rounded-pill text-bg-success">Board approved {{ p.info.approved }}</span> recorded by {{ p.info.approved_by }}
-                    {% elif st == 'changed' %}<br><span class="badge rounded-pill text-bg-warning">Changed since the board approved it on {{ p.info.approved }}</span>
-                    {% elif p.info.submitted %}<br><span class="badge rounded-pill text-bg-primary">Turned in {{ p.info.submitted }}</span> by {{ p.info.submitted_by }}{% if program == 'OPS' %}, not board approved yet{% endif %}
+                    {% if p.info.submitted %}<br><span class="badge rounded-pill text-bg-primary">Turned in {{ p.info.submitted }}</span> by {{ p.info.submitted_by }}
                     {% elif p.info.updated %}<br><span class="badge rounded-pill text-bg-info">Draft</span> not turned in yet{% endif %}
+                    {% if bst %}<br>{{ 'Budget' if program == 'OPS' else 'Program budget (lines not in an event)' }}: costs {{ money(btot.expense) }}{% if btot.income %}, income {{ money(btot.income) }}{% endif %}
+                        {% if bst == 'approved' %}<span class="badge rounded-pill text-bg-success">Board approved {{ p.info.approved }}</span> recorded by {{ p.info.approved_by }}
+                        {% elif bst == 'changed' %}<span class="badge rounded-pill text-bg-warning">Changed since the board approved it on {{ p.info.approved }}</span>
+                        {% else %}<span class="badge rounded-pill text-bg-primary">Not board approved yet</span>{% endif %}{% endif %}
                     {% if p.info.updated %}<br>Updated {{ p.info.updated }} by {{ p.info.updated_by }}{% endif %}</div>
-                {% if pb_code and budgets_on %}<div class="small mt-2">Program budget (spending not in an event):
-                    {% if pb_status == 'approved' %}<span class="badge rounded-pill text-bg-success">Board approved {{ pb.approved }}</span>
-                    {% elif pb_status == 'changed' %}<span class="badge rounded-pill text-bg-info">Changed since the board approved it on {{ pb.approved }}</span>
-                    {% elif pb %}<span class="badge rounded-pill text-bg-primary">Not board approved yet</span>
-                    {% else %}<span class="badge rounded-pill text-bg-warning">None yet</span>{% endif %}
-                    {% if pb and pb.totals.budget %} {{ money(pb.totals.budget.surplus) }}{% endif %}</div>{% endif %}
             </div>
             <div class="d-flex gap-2 no-print">
                 <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">Print</button>
-                {% if pb_code and budgets_on %}<a class="btn btn-sm btn-outline-light" href="{{ url_for('bud.detail', code=pb_code) if pb else url_for('bud.edit', code=pb_code) }}">{{ 'Program budget' if pb else 'Create program budget' }}</a>{% endif %}
                 {% if p.lines %}<a class="btn btn-sm btn-accent" href="{{ url_for('plan.edit', year=year, program=program) }}">Edit the {{ 'budget' if program == 'OPS' else 'plan' }}</a>
                 {% else %}{% if prev_lines %}<a class="btn btn-sm btn-accent" href="{{ url_for('plan.edit', year=year, program=program, start='copy') }}">Start from the {{ prev }} plan</a>{% endif %}
                 <a class="btn btn-sm {{ 'btn-outline-light' if prev_lines else 'btn-accent' }}" href="{{ url_for('plan.edit', year=year, program=program) }}">Start a blank plan</a>{% endif %}
@@ -162,9 +157,10 @@
             {% endif %}
         </div>
     </div>
-    {% if p.lines and program == 'OPS' %}
+    {% if nbud or p.info.approved %}
     <div class="card p-3 mt-3 no-print" style="max-width: 46rem">
-        <div class="section-label">Board approval</div>
+        <div class="section-label">Board approval of the {{ 'budget' if program == 'OPS' else 'program budget' }}</div>
+        {% if program != 'OPS' %}<p class="small text-muted mb-2">The program budget is this plan's {{ nbud }} line{{ '' if nbud == 1 else 's' }} with no event and no month. Events are approved through their own budgets. Funds requests not tied to an event are paid against this budget.</p>{% endif %}
         {% if p.info.approved %}
         <form method="post" action="{{ url_for('plan.approve', year=year, program=program) }}" class="d-flex flex-wrap gap-2 align-items-center">
             <span>Approved at the {{ p.info.approved }} board meeting, recorded by {{ p.info.approved_by }}.</span>
@@ -172,12 +168,12 @@
             {% if officer %}<button class="btn btn-sm btn-outline-secondary ms-auto">Clear approval</button>{% endif %}
         </form>
         {% endif %}
-        {% if not p.info.approved or plan_status(p.info) == 'changed' %}
+        {% if nbud and (not p.info.approved or bst == 'changed') %}
         {% if officer %}<form method="post" action="{{ url_for('plan.approve', year=year, program=program) }}" class="row g-2 align-items-end mt-1">
             <div class="col-6 col-md-4"><label class="form-label small">Board meeting date</label><input type="date" name="approved" class="form-control form-control-sm" required></div>
             <div class="col-6 col-md-4"><button class="btn btn-sm btn-accent w-100">Record board approval</button></div>
         </form>
-        {% else %}<div class="small text-muted">After the board approves this {{ 'budget' if program == 'OPS' else 'plan' }}, the RE, ARE or treasurer records the meeting date here: <a href="{{ url_for('officer.signin', next=request.path) }}">officer sign-in</a>.</div>{% endif %}
+        {% else %}<div class="small text-muted">After the board approves this {{ 'budget' if program == 'OPS' else 'program budget' }}, the RE, ARE or treasurer records the meeting date here: <a href="{{ url_for('officer.signin', next=request.path) }}">officer sign-in</a>.</div>{% endif %}
         {% endif %}
     </div>
     {% endif %}
@@ -185,7 +181,7 @@
 {% elif view == 'edit' %}
     <div class="crumbs"><a href="{{ url_for('plan.home', year=year) }}">Annual Plan {{ year }}</a> / <a href="{{ url_for('plan.detail', year=year, program=program) }}">{{ name }}</a> / Edit</div>
     <div class="page-title">{{ name }} {{ 'budget' if program == 'OPS' else 'plan' }} for {{ year }}</div>
-    <p class="text-muted">List each event or item you expect, the month, and about how much it will make. Use a minus sign for a cost or a loss, like <b>-500</b>. Rough numbers are fine.</p>
+    <p class="text-muted">List each event or item you expect, the month, and about how much it will make. Use a minus sign for a cost or a loss, like <b>-500</b>. Rough numbers are fine.{% if program != 'OPS' %} Costs that are not one event, like the director's expenses, supplies or trophies, go on their own line with the month left blank: those lines are your program budget, which the board approves.{% endif %}</p>
     {% if copied %}<div class="alert alert-info py-2">This starts from your {{ prev }} plan. Change what's different, remove what's not happening, and save. <a href="{{ url_for('plan.edit', year=year, program=program) }}">Start blank instead</a></div>{% endif %}
     {% if added %}<div class="alert alert-info py-2">{{ added }} registered event{{ ' is' if added == 1 else 's are' }} already filled in below. Add the profit you expect{{ ' (the budget\'s surplus is there when it has one)' }}, or remove a line that should not be in the plan.</div>{% endif %}
     <div class="row g-3">

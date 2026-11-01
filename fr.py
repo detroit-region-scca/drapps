@@ -10,7 +10,6 @@ from datetime import date
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, session, url_for
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-import bud as BUD
 import bud_store as B
 import fr_logic as FL
 import fr_store as F
@@ -55,7 +54,7 @@ def _events_js(events, keep=''):
 
 
 LINK_DAYS = 90
-# Funds requests not tied to an event are paid against their program's budget from this year on.
+# From this year, funds requests not tied to an event are paid against the program budget (plan lines not in an event).
 PROGRAM_BUDGETS_FROM = '2027'
 
 
@@ -78,40 +77,37 @@ class Approvals:
         """The program director from the officials directory (read-only), never from anything editable in the app."""
         return O.director(r['program'])
 
-    def _other_spent(self, program, year):
-        if (program, year) not in self.other:
-            q = BUD.program_actuals(program, year)
-            self.other[(program, year)] = ((q or {}).get('totals') or {}).get('expense') or 0.0
-        return self.other[(program, year)]
-
     def items(self, r):
-        """A request for an event is paid against the event's budget. One not tied to an event is paid against its
-        program's budget for the year (Operations: its annual plan, which is its budget)."""
-        code, year, program = r['event_code'], r['submitted'][:4], r['program']
-        if code:
-            b, scope = self.budgets.get(code), 'event'
-        elif program == 'OPS':
-            info = self._plan(year).get('OPS', {}).get('info', {})
-            st = P.plan_status(dict(info, program='OPS'))
-            status = st if st in ('approved', 'changed') else ('budget' if st else None)
-            return FL.review(r, status, None, 0.0, scope='ops')
-        elif year < PROGRAM_BUDGETS_FROM:
-            # Before program budgets existed, a program's annual plan covered its spending outside events.
-            return FL.review(r, 'approved' if self._plan(year).get(program, {}).get('lines') else None, None, 0.0, scope='ops')
-        else:
-            b, scope = self.budgets.get(BUD.program_code(program, year)), 'program'
+        code, b = r['event_code'], self.budgets.get(r['event_code'])
         status, expense = None, None
         if b:
             status = 'changed' if b.get('approved') and b.get('updated', '') > b['approved'] else 'approved' if b.get('approved') else 'budget'
             expense = (b['totals'].get('budget') or {}).get('expense')
+        year, program = r['submitted'][:4], r['program']
+        plan = self._plan(year).get(program, {})
         if code:
             spent = (self.qbo.get(code) or {}).get('totals', {}).get('expense') or 0.0
             spent += sum(x['net'] for x in self.reqs if x['event_code'] == code and x['status'] == 'Submitted' and x['id'] != r['id'])
-        else:
-            spent = self._other_spent(program, year) if b else 0.0
-            spent += sum(x['net'] for x in self.reqs if not x['event_code'] and x['program'] == program and x['submitted'][:4] == year
-                         and x['status'] == 'Submitted' and x['id'] != r['id'])
-        return FL.review(r, status, expense, round(spent, 2), scope=scope)
+            return FL.review(r, status, expense, round(spent, 2))
+        if year < PROGRAM_BUDGETS_FROM:
+            return FL.review(r, plan_ok=bool(plan.get('lines')))
+        # Not tied to an event: paid against the program budget, the plan's lines that are not events.
+        status = P.budget_status(plan)
+        expense = P.budget_totals(plan.get('lines', []))['expense'] if status else None
+        spent = self._other_expense(program, year)
+        spent += sum(x['net'] for x in self.reqs if not x['event_code'] and x['program'] == program and x['submitted'][:4] == year
+                     and x['status'] == 'Submitted' and x['id'] != r['id'])
+        return FL.review(r, status, expense, round(spent, 2))
+
+    def _other_expense(self, program, year):
+        """QuickBooks expenses on the program's accounts this year that are not in one of its event projects."""
+        if (program, year) not in self.other:
+            total = (P.actuals(year)[0].get(program) or {}).get('expense') or 0.0 if P.enabled() else 0.0
+            codes = {e.get('custom_tag') or e.get('unique_code') for e in load_events()
+                     if e.get('program_code') == program and e.get('date', '').startswith(year)}
+            total -= sum((q.get('totals') or {}).get('expense') or 0.0 for c, q in self.qbo.items() if c in codes)
+            self.other[(program, year)] = round(max(total, 0.0), 2)
+        return self.other[(program, year)]
 
 
 def _serializer():
@@ -158,7 +154,7 @@ def ask_approvals(rid, roles=None):
             to += [(role, n, m) for n, m in O.signers()]
     why = {'chair': 'Region policy asks the program director to approve each expense before the treasurer pays.',
            'second': f'It is over ${FL.SECOND_SIGNER_LIMIT:,.0f}, so the bylaws ask the RE or ARE to approve it as second signer.',
-           'board': 'Its event or program budget does not cover it yet, so it needs the board. If the board approved it, '
+           'board': 'Its event budget or program budget does not cover it yet, so it needs the board. If the board approved it, '
                     'confirm with the meeting date; if not, please put it on the next board agenda.'}
     for role, name, mail in to:
         body = '\n'.join([
@@ -222,7 +218,7 @@ def new():
     events = _events()
     if request.method == 'GET':
         last = session.get('fr_submitter', {})
-        return render_template('fr.html', **_ctx(view='new', events=events, programs=dict(load_programs(), OPS='Operations'), directors=directors(), signers=[n for n, m in O.signers()], form={'program': request.args.get('program', '')}, last=last,
+        return render_template('fr.html', **_ctx(view='new', events=events, programs=dict(load_programs(), OPS='Operations'), directors=directors(), signers=[n for n, m in O.signers()], form={}, last=last,
                                                  pick=request.args.get('event', ''), events_js=_events_js(events, request.args.get('event', '')),
                                                  rows=[{}] * 3))
     f = request.form
