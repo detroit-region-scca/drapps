@@ -281,7 +281,10 @@ def approve_many():
     rows = [{'b': b, 'status': _status(b), 'surplus': ((b['totals'].get('budget') or {}).get('surplus')), 'plan': plan_by_code.get(code)}
             for code, b in B.budgets().items() if str(b.get('date', '')).startswith(year) and _status(b) != 'approved']
     rows.sort(key=lambda r: (r['b'].get('program', ''), r['b'].get('date', '')))
-    return render_template('bud.html', **_ctx(view='approve', rows=rows, year=year, today=date.today().isoformat()))
+    this = date.today().year
+    years = sorted({str(this - 1), str(this), str(this + 1)} | {str(b.get('date', ''))[:4] for b in B.budgets().values()
+                                                                if str(b.get('date', ''))[:4].isdigit()}, reverse=True)
+    return render_template('bud.html', **_ctx(view='approve', rows=rows, year=year, years=years, today=date.today().isoformat()))
 
 
 @bp.route('/event/<path:code>/approve', methods=['POST'])

@@ -88,6 +88,7 @@
                         <span class="text-warning">Not tied to the annual plan.</span>
                         <select name="plan_line" class="form-select form-select-sm w-auto" aria-label="Annual plan line">{% for ln in open_lines %}<option value="{{ '%g'|format(ln.sort) }}">{{ months[ln.month - 1] ~ ' · ' if ln.month }}{{ ln.item }}</option>{% endfor %}</select>
                         <button class="btn btn-sm btn-outline-light">Tie</button></form>
+                    {% elif e.program_budget %}<span class="text-muted">Its surplus is a line of its own in the <a href="{{ url_for('plan.detail', year=e.date[:4], program=e.program_code) }}">{{ e.date[:4] }} annual plan</a>.</span>
                     {% elif e.date %}<span class="text-muted">Not in the {{ e.date[:4] }} annual plan.</span>{% endif %}</div>
             </div>
             <div class="d-flex flex-wrap gap-2 no-print">
@@ -141,6 +142,7 @@
     <div class="card mt-2"><div class="card-body p-0 table-responsive"><table class="table table-sm mb-0">
         <tbody>{% for ln in q.lines %}<tr><td class="ps-3 small text-muted">{{ ln.section }}</td><td>{{ ln.account }}</td><td class="num pe-3">{{ money(ln.amount) }}</td></tr>{% endfor %}</tbody>
     </table></div></div></details>
+    {% elif e.program_budget %}<p class="text-muted small">No QuickBooks money on the program's accounts outside event projects for {{ e.date[:4] }} yet.</p>
     {% else %}<p class="text-muted small">No QuickBooks project with code {{ code }} yet, so no actuals.</p>{% endif %}
     {% endif %}
     {% if b %}
@@ -192,7 +194,11 @@
 
     {% elif view == 'approve' %}
     <div class="crumbs"><a href="{{ url_for('bud.home', year=year) }}">Budgets</a> / Record board approvals</div>
-    <div class="page-title">Record board approvals, {{ year }}</div>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div class="page-title">Record board approvals, {{ year }}</div>
+        <form method="get" class="m-0"><select name="year" class="form-select form-select-sm w-auto" aria-label="Year" onchange="this.form.submit()">
+            {% for y in years %}<option {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
+    </div>
     <p class="text-muted">Tick the budgets the board approved, enter the meeting date, and save. Recorded as {{ officer.name }} (signed in by email).</p>
     {% if rows %}
     <form method="post">
