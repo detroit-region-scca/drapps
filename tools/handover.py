@@ -4,10 +4,10 @@
 officials.json (the file drevent reads its approvers from) is the one list of who holds which job. This tool
 edits it and then makes the Google Groups match it:
 
-    re@, are@, autocross@, roadracing@, rally@, rallycross@, sim@   the holder of that job
+    re@, are@, secretary@, autocross@, roadracing@, rally@, rallycross@, sim@   the holder of that job
     equipment@                                                     the Equipment Committee entries
     bod@                                                           every board seat
-    officers@                                                      RE, ARE, Treasurer, Financial Director
+    officers@                                                      RE, ARE, Secretary, Treasurer (bylaws IV 4.2)
 
 Only plain MEMBERs are added or removed; owners and managers (treasurer@) are never touched.
 Nothing changes without --apply; without it the tool prints what it would do.
@@ -32,6 +32,7 @@ DOMAIN = 'drscca.org'
 
 ROLE_GROUP = {           # job title -> its group
     'Region Executive': 're',
+    'Secretary': 'secretary',
     'Assistant Region Executive': 'are',
     'Road Racing Director': 'roadracing',
     'Autocross Director': 'autocross',
@@ -39,8 +40,8 @@ ROLE_GROUP = {           # job title -> its group
     'Rallycross Director': 'rallycross',
     'SIM Racing': 'sim',
 }
-BOARD_ROLES = {'RE', 'ARE', 'Treasurer', 'Financial Director', 'Director', 'Director at Large'}
-OFFICER_ROLES = {'RE', 'ARE', 'Treasurer', 'Financial Director'}
+BOARD_ROLES = {'RE', 'ARE', 'Secretary', 'Treasurer', 'Financial Director', 'Director', 'Director at Large'}
+OFFICER_ROLES = {'RE', 'ARE', 'Secretary', 'Treasurer'}   # bylaws Art. IV 4.2
 
 
 def load():
