@@ -133,7 +133,7 @@ def send_mail(subject, body, recipient=None, attachments=(), cc=None):
 
         # SMTP_USER/SMTP_PASSWORD are optional: a local relay that accepts this host by IP
         # needs none and does the authenticated hop to the mail provider itself.
-        if not smtp_server:
+        if not smtp_server and os.environ.get('MAIL_TRANSPORT') != 'gmail_api':
             logger.error("SMTP_SERVER is not set. Email not sent.")
             return
 
@@ -163,6 +163,26 @@ def send_mail(subject, body, recipient=None, attachments=(), cc=None):
             encoders.encode_base64(part)
             part.add_header('Content-Disposition', 'attachment', filename=name)
             msg.attach(part)
+
+        if os.environ.get('MAIL_TRANSPORT') == 'gmail_api':
+            # Send through the Gmail API as the region's service account (domain-wide delegation, gmail.send only):
+            # no password on this server and no dependence on its IP address. GMAIL_SENDER is the Workspace mailbox
+            # it sends from; SMTP_FROM (e.g. apps@) must be a verified send-as address of that mailbox.
+            try:
+                import base64
+                from google.auth.transport.requests import AuthorizedSession
+                from google.oauth2 import service_account
+                creds = service_account.Credentials.from_service_account_file(
+                    os.environ['GOOGLE_SERVICE_ACCOUNT_FILE'], scopes=['https://www.googleapis.com/auth/gmail.send'],
+                    subject=os.environ['GMAIL_SENDER'])
+                raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+                r = AuthorizedSession(creds).post('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+                                                  json={'raw': raw}, timeout=60)
+                r.raise_for_status()
+                logger.info(f"Email sent to {recipient}: {subject}")
+            except Exception as e:
+                logger.error(f"Failed to send email: {e}")
+            return
 
         try:
             server = smtplib.SMTP(smtp_server, smtp_port)
