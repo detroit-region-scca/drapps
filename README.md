@@ -116,3 +116,16 @@ actuals, funds requests with receipt files, invoices, audit). Install and regist
         ~/projects/event_drscca_app/mcp_server/drevent_mcp.py
 
 It reads `DREVENT_URL` and `DREVENT_API_KEY` from `~/.secrets/drevent-api.env` (or the file in `DREVENT_ENV`).
+
+## Election handover (officials and drscca.org groups)
+
+`~/.config/drevent/officials.json` on bodhi is the one list of who holds which job. `tools/handover.py` edits it and
+makes the drscca.org Google Groups match (re@, are@, the program groups, equipment@, bod@, officers@), using GAM as the
+region's service account. Nothing changes without `--apply`.
+
+    python3 tools/handover.py show                      # who each group should reach
+    python3 tools/handover.py sync [--apply]            # fix groups that drifted from the file
+    python3 tools/handover.py hand "Autocross Director" new@example.com "New Person" [--from old@example.com] [--apply]
+
+drevent picks up the edited file on its next read; no restart. Region accounts (treasurer@, membership@) are handed
+over by password, not by this tool.
