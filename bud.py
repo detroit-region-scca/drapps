@@ -144,6 +144,7 @@ def home():
     programs = load_programs()
     names = dict(programs)
     buds = B.budgets() if B.enabled() else {}
+    qbo = B.qbo_actuals() if B.enabled() else {}
     today = date.today()
     rows = []
     for e in events:
@@ -156,7 +157,9 @@ def home():
             days = None
         rows.append({'e': e, 'code': _code(e), 'program': e.get('program_code', ''), 'date': d, 'name': e.get('event_name', ''),
                      'days': days, 'past': days is not None and days < 0,
-                     'needs_budget': B.enabled() and _code(e) not in buds and days is not None and days >= 0})
+                     'needs_budget': B.enabled() and _code(e) not in buds and days is not None and days >= 0,
+                     # The QuickBooks project's own name once it exists; else the name to give it (as on the event page).
+                     'qbo_name': (qbo.get(_code(e)) or {}).get('project') or f"{d[:4]} {e.get('program_code', '')} {e.get('event_name', '')} {_code(e)}"})
     # Plan lines with a month and no registered event yet: events the director expects but has not registered.
     # Lines with no month (supplies, trophies) are not events; past months are left to the Annual Plan.
     codes = {r['code'] for r in rows}

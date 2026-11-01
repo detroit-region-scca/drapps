@@ -49,7 +49,8 @@
                 {% for r in m.rows %}{% set href = url_for('bud.detail', code=r.code) if r.e else r.register %}
                 <tr class="row-link{{ ' past' if r.past }}{{ ' planned' if not r.e }}" onclick="location.href='{{ href }}'">
                     <td class="ps-3 text-nowrap day">{% if r.e %}<div class="fw-semibold">{{ r.date[8:10]|int }}</div><div class="small text-muted">{{ r.e.date|wkday }}</div>{% else %}<span class="small text-muted">TBD</span>{% endif %}</td>
-                    <td>{% if r.e %}<a href="{{ href }}" class="fw-semibold">{{ r.name }}</a> <span class="small text-muted">{{ r.code }}</span>{% else %}{{ r.name }} <span class="small text-muted">planned</span>{% endif %}
+                    <td>{% if r.e %}<a href="{{ href }}" class="fw-semibold">{{ r.name }}</a> <span class="small text-muted">{{ r.code }}</span>
+                        <button type="button" class="btn btn-sm btn-outline-light py-0 px-2 ms-1 no-print" data-copy="{{ r.qbo_name }}" title="Copy the QuickBooks project name: {{ r.qbo_name }}" onclick="event.stopPropagation(); copyText(this)">Copy name</button>{% else %}{{ r.name }} <span class="small text-muted">planned</span>{% endif %}
                         <div class="small text-muted">{{ names.get(r.program, r.program) }}{% if when(r) %} · <span class="text-success">{{ when(r) }}</span>{% endif %}{% if r.needs_budget %} · <span class="text-warning">no budget yet</span>{% endif %}</div></td>
                     <td class="text-end pe-3 align-middle">{% if not r.e %}<a class="btn btn-sm btn-outline-light py-0 px-2" href="{{ r.register }}">Register</a>{% endif %}</td>
                 </tr>{% endfor %}
