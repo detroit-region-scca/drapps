@@ -130,5 +130,7 @@ region's service account. Nothing changes without `--apply`.
     python3 tools/handover.py sync [--apply]            # fix groups that drifted from the file
     python3 tools/handover.py hand "Autocross Director" new@example.com "New Person" [--from old@example.com] [--apply]
 
-drevent picks up the edited file on its next read; no restart. Region accounts (treasurer@, membership@) are handed
+drevent picks up the edited file on its next read; no restart.
+
+Each official has `email` (the person: officer sign-in matches it, and the handover tool uses it for group membership) and `notify` (the role's group, e.g. autocross@drscca.org): approval links and notices go to `notify`, so they follow the job and land in the group's shared inbox. A handover only changes `email`; `notify` stays with the role. Region accounts (treasurer@, membership@) are handed
 over by password, not by this tool.

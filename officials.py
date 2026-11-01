@@ -33,15 +33,21 @@ def all():  # noqa: A001 (module-level name, read as officials.all())
         return [dict(o) for o in _cache['rows']]
 
 
+def mailto(o):
+    """Where the app emails an official: the role's group (e.g. autocross@drscca.org, the "notify" field) so mail and
+    approval links follow the job, else their own address. Signing in still uses their own "email"."""
+    return (o.get('notify') or o.get('email') or '').strip()
+
+
 def director(program):
-    """(name, email) of a program's director, or ('', '')."""
+    """(name, address to email) of a program's director, or ('', '')."""
     o = next((o for o in all() if o.get('role') == 'Director' and o.get('program') == program), None)
-    return (o['name'], o.get('email', '')) if o else ('', '')
+    return (o['name'], mailto(o)) if o else ('', '')
 
 
 def signers():
-    """[(name, email)] who can be the second signer on a check over the limit: the RE and the ARE."""
-    return [(o['name'], o['email']) for o in all() if o.get('role') in ('RE', 'ARE') and o.get('email')]
+    """[(name, address to email)] who can be the second signer on a check over the limit: the RE and the ARE."""
+    return [(o['name'], mailto(o)) for o in all() if o.get('role') in ('RE', 'ARE') and mailto(o)]
 
 
 def mirror_to_sheet():

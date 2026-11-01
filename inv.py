@@ -184,7 +184,7 @@ def _delete_serializer():
 
 
 def _treasurer_email():
-    return next((o['email'] for o in O.all() if o.get('role') == 'Treasurer' and o.get('email')), os.environ.get('NOTIFICATION_EMAIL', ''))
+    return next((O.mailto(o) for o in O.all() if o.get('role') == 'Treasurer' and O.mailto(o)), os.environ.get('NOTIFICATION_EMAIL', ''))
 
 
 @bp.route('/<inv_id>/delete', methods=['POST'])

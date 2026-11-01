@@ -167,7 +167,7 @@ def ask_approvals(rid, roles=None):
             f"For: {r['event_name'] or 'program ' + r['program']} {r['event_code']}", '',
             *[f"  {ln['date']}  {ln['description']}  ${ln['amount']:,.2f}" for ln in r['lines']], '',
             why[role],
-            f"Approve or reject (no password needed; the link only works for you): {_link(rid, role, name, mail)}"])
+            f"Approve or reject (no password needed; the link only works for this request): {_link(rid, role, name, mail)}"])
         subject = ('Board approval for' if role == 'board' else 'Please approve') + f" funds request {rid}: {r['payee_name']} ${r['net']:,.2f}"
         send_mail(subject, body, mail)
     return [m for _, _, m in to]
