@@ -207,7 +207,7 @@
                 <th>Event</th><th class="num">Annual plan</th><th class="num pe-3">Budgeted surplus</th></tr></thead>
             <tbody>{% for r in rows %}<tr>
                 <td class="ps-3"><input type="checkbox" class="form-check-input" name="code" value="{{ r.b.event_code }}" id="c{{ loop.index }}"></td>
-                <td><label for="c{{ loop.index }}">{{ r.b.event_name }}</label> <span class="small text-muted">{{ r.b.date }} · {{ r.b.program }} · <a href="{{ url_for('bud.detail', code=r.b.event_code) }}">{{ r.b.event_code }}</a></span>
+                <td><label for="c{{ loop.index }}">{{ r.b.event_name }}</label> <span class="small text-muted">{{ r.b.date }} · {{ r.b.program }} · <a href="{{ r.link or url_for('bud.detail', code=r.b.event_code) }}">{{ 'Annual Plan' if r.link else r.b.event_code }}</a></span>
                     {% if r.status == 'changed' %}<span class="badge rounded-pill text-bg-info">Changed since approved {{ r.b.approved }}</span>{% endif %}</td>
                 <td class="num">{{ money(r.plan) }}</td><td class="num pe-3">{{ money(r.surplus) }}</td>
             </tr>{% endfor %}</tbody>

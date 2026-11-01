@@ -247,6 +247,23 @@ def tie(code):
     return redirect(url_for('bud.detail', code=code))
 
 
+def ops_budget_row(year):
+    """Operations' budget (its annual plan) for the approvals list, shaped like a budget row, or None when there is no
+    saved plan or it is approved. It is recorded on the plan (plan_store.set_approved), not in the Event Budgets sheet."""
+    if not P.enabled():
+        return None
+    p = P.plan(year).get('OPS')
+    if not p or not p['lines'] or not p['info'].get('updated'):
+        return None
+    st = P.plan_status(p['info'])
+    if st == 'approved':
+        return None
+    b = {'event_code': 'OPS', 'event_name': f'Operations budget {year}', 'date': str(year), 'program': 'OPS',
+         'approved': p['info'].get('approved', '')}
+    return {'b': b, 'status': 'changed' if st == 'changed' else 'budget', 'surplus': p['net'], 'plan': p['net'],
+            'link': url_for('plan.detail', year=year, program='OPS')}
+
+
 @bp.route('/approve', methods=['GET', 'POST'])
 @login_required
 @officer_required
@@ -258,19 +275,25 @@ def approve_many():
     if request.method == 'POST':
         f = request.form
         who = officer_current()['name']
-        codes = [c for c in f.getlist('code') if B.get(c)]
+        ops = 'OPS' in f.getlist('code') and ops_budget_row(year) is not None
+        codes = [c for c in f.getlist('code') if c != 'OPS' and B.get(c)]
         try:
             approved = date.fromisoformat(f.get('approved', '')).isoformat()
         except ValueError:
             flash('The meeting date must be a date.', 'danger')
             return redirect(url_for('bud.approve_many', year=year))
-        if not codes:
+        if not codes and not ops:
             flash('Tick at least one budget.', 'warning')
             return redirect(url_for('bud.approve_many', year=year))
-        B.set_approved(codes, approved, who)
+        if codes:
+            B.set_approved(codes, approved, who)
         for c in codes:
             log_audit_event('BUDGET_APPROVED', who, {'event_code': c, 'approved': approved})
-        flash(f'Board approval on {approved} recorded for {len(codes)} budget{"s" if len(codes) != 1 else ""}.', 'success')
+        if ops:
+            P.set_approved(year, 'OPS', approved, who)
+            log_audit_event('PLAN_APPROVED', who, {'year': year, 'program': 'OPS', 'approved': approved})
+        n = len(codes) + ops
+        flash(f'Board approval on {approved} recorded for {n} budget{"s" if n != 1 else ""}.', 'success')
         return redirect(url_for('bud.home', year=year))
     plan = P.plan(year) if P.enabled() else {}
     # ?program=RX: one program's view (a director's page): its events, plan, totals and open funds requests.
@@ -281,6 +304,9 @@ def approve_many():
     rows = [{'b': b, 'status': _status(b), 'surplus': ((b['totals'].get('budget') or {}).get('surplus')), 'plan': plan_by_code.get(code)}
             for code, b in B.budgets().items() if str(b.get('date', '')).startswith(year) and _status(b) != 'approved']
     rows.sort(key=lambda r: (r['b'].get('program', ''), r['b'].get('date', '')))
+    if not only or only == 'OPS':
+        if (ops := ops_budget_row(year)):
+            rows.append(ops)
     this = date.today().year
     years = sorted({str(this - 1), str(this), str(this + 1)} | {str(b.get('date', ''))[:4] for b in B.budgets().values()
                                                                 if str(b.get('date', ''))[:4].isdigit()}, reverse=True)

@@ -129,15 +129,12 @@ def treasurer():
         ready = [r for r in waiting if fr_logic.ready(a.items(r))]
         jobs['pay'], jobs['approvals'] = (len(ready), sum(r['net'] for r in ready)), len(waiting) - len(ready)
     if bud_store.enabled():
-        # One row per year with budgets waiting for the board (this year and next: the board approves next year's
-        # budgets in the fall), so next year's are never out of reach.
-        events, buds = load_events(), bud_store.budgets()
-        jobs['budgets'] = []
-        for y in (str(int(year) + 1), year):
-            codes = {(e.get('custom_tag') or e.get('unique_code')) for e in events if e.get('date', '').startswith(y)}
-            codes |= {f"{pc}-{y}" for pc in load_programs()}
-            n = sum(1 for c, b in buds.items() if c in codes and (not b.get('approved') or b.get('updated', '') > b['approved']))
-            jobs['budgets'].append((y, n))
+        # Everything waiting for the board, any year: event and program budgets, and Operations (its plan).
+        import bud
+        buds = bud_store.budgets()
+        years = {str(b.get('date', ''))[:4] for b in buds.values()} | {year, str(int(year) + 1)}
+        jobs['budgets'] = sum(1 for b in buds.values() if not b.get('approved') or b.get('updated', '') > b['approved'])
+        jobs['budgets'] += sum(1 for y in years if y.isdigit() and bud.ops_budget_row(y))
     import equip
     import inv
     jobs['equipment'] = equip.overdue_count()

@@ -30,8 +30,8 @@
             <span>Funds requests ready to pay<div class="small text-muted">All approvals in</div></span><span class="fw-semibold">{{ jobs.pay[0] }}{% if jobs.pay[0] %} · ${{ '{:,.2f}'.format(jobs.pay[1]) }}{% endif %}</span></a>
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('fr.home') }}">
             <span>Funds requests waiting on approvals<div class="small text-muted">Director, board or second signer</div></span><span class="fw-semibold">{{ jobs.approvals }}</span></a>{% endif %}
-        {% for y, n in jobs.budgets or [] %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('bud.approve_many', year=y) }}">
-            <span>Approve {{ y }} budgets<div class="small text-muted">Record the board's approval of {{ y }} event and program budgets not approved yet, or changed since</div></span><span class="fw-semibold">{{ n }}</span></a>{% endfor %}
+        {% if jobs.budgets is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('bud.approve_many') }}">
+            <span>Approve budgets<div class="small text-muted">Record the board's approval of event, program and Operations budgets; pick the year on the page</div></span><span class="fw-semibold">{{ jobs.budgets }}</span></a>{% endif %}
         {% if jobs.books is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('plan.checks') }}">
             <span>Books check<div class="small text-muted">What the nightly QuickBooks sync found</div></span><span class="fw-semibold">{{ jobs.books }}</span></a>{% endif %}
         {% if jobs.invoices %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('inv.home') }}">
