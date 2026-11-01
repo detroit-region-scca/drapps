@@ -133,79 +133,55 @@ def register_url(year, program, ln):
 @bp.route('/')
 @login_required
 def home():
+    """The season schedule: registered events and the plan's events still to register, by month.
+    No money here; plan, budget and actual per event live on the Annual Plan's program pages."""
     events = load_events()
     plan_years = P.years() if P.enabled() else []
     years = sorted({e.get('date', '')[:4] for e in events if e.get('date', '')[:4].isdigit()} | set(plan_years) | {str(date.today().year)},
                    reverse=True)
     year = request.args.get('year') or str(date.today().year)
-    buds = B.budgets() if B.enabled() else {}
-    qbo = B.qbo_actuals() if B.enabled() else {}
-    plan = P.plan(year) if P.enabled() else {}
-    # ?program=RX: one program's view (a director's page): its events, plan, totals and open funds requests.
     only = request.args.get('program', '')
-    if only:
-        plan = {k: v for k, v in plan.items() if k == only}
-    plan_by_code = {ln['event_code']: ln['net'] for x in plan.values() for ln in x['lines'] if ln['event_code']}
-    rows = []
-    year_events = sorted((e for e in events if e.get('date', '').startswith(year) and (not only or e.get('program_code') == only)),
-                         key=lambda e: e.get('date', ''))
-    codes = {_code(e) for e in year_events}
-    for e in year_events:
-        b = buds.get(_code(e))
-        t = b['totals'] if b else {}
-        q = qbo.get(_code(e))
-        pc = e.get('program_code', '')
-        rows.append({'e': e, 'code': _code(e), 'program': pc, 'date': e.get('date', ''), 'name': e.get('event_name', ''),
-                     'b': b, 'status': _status(b), 'budget': (t.get('budget') or {}).get('surplus'),
-                     'actual': q['totals']['surplus'] if q else None, 'plan': plan_by_code.get(_code(e)),
-                     'unplanned': bool(plan.get(pc, {}).get('lines')) and _code(e) not in plan_by_code,
-                     # The QuickBooks project's own name once it exists; else the name to give it (as on the event page).
-                     'qbo_name': q['project'] if q and q.get('project') else f"{e.get('date', '')[:4]} {pc} {e.get('event_name', '')} {_code(e)}"})
-    # Plan lines with a month and no registered event yet: the events the director expects but has not registered.
-    # A line with no month (supplies, trophies) is program spending, not an event, and stays on the "other" row,
-    # as do lines for months already past (planned, never registered).
+    programs = load_programs()
+    names = dict(programs)
+    buds = B.budgets() if B.enabled() else {}
     today = date.today()
+    rows = []
+    for e in events:
+        d = e.get('date', '')
+        if not d.startswith(year) or (only and e.get('program_code') != only) or e.get('program_budget'):
+            continue
+        try:
+            days = (date.fromisoformat(d) - today).days
+        except ValueError:
+            days = None
+        rows.append({'e': e, 'code': _code(e), 'program': e.get('program_code', ''), 'date': d, 'name': e.get('event_name', ''),
+                     'days': days, 'past': days is not None and days < 0,
+                     'needs_budget': B.enabled() and _code(e) not in buds and days is not None and days >= 0})
+    # Plan lines with a month and no registered event yet: events the director expects but has not registered.
+    # Lines with no month (supplies, trophies) are not events; past months are left to the Annual Plan.
+    codes = {r['code'] for r in rows}
     first = 1 if int(year) > today.year else 13 if int(year) < today.year else today.month
-    for pc, p in plan.items():
-        if pc == 'OPS':
+    for pc, p in (P.plan(year) if P.enabled() else {}).items():
+        if pc == 'OPS' or (only and pc != only):
             continue
         for ln in p['lines']:
             if ln['month'] and ln['month'] >= first and ln['event_code'] not in codes and not P.placeholder(ln['item']):
                 rows.append({'e': None, 'code': '', 'program': pc, 'date': f"{year}-{ln['month']:02d}", 'name': plan_name(ln['item']),
-                             'b': None, 'status': 'planned', 'budget': None, 'actual': None, 'plan': ln['net'],
-                             'register': register_url(year, pc, ln)})
-    rows.sort(key=lambda r: r['date'])
-    evs = [r for r in rows if r['e']]
-    summary = {'events': len(evs), 'missing': sum(1 for r in evs if not r['b']), 'planned': len(rows) - len(evs),
-               'budget': sum(r['budget'] or 0 for r in evs), 'actual': sum(r['actual'] or 0 for r in evs),
-               'as_of': next((q['as_of'] for q in qbo.values()), '')}
-    programs = load_programs()
-    # QuickBooks money on a program's accounts that is not in any of its event projects (season trophies, last
-    # season's fees), so a program's actual here matches the Annual Plan. Operations has no events and is not listed.
-    prog_act = P.actuals(year)[0] if P.enabled() and int(year) <= date.today().year else {}
-    if only:
-        prog_act = {k: v for k, v in prog_act.items() if k == only}
-    names = dict(programs, OPS='Operations')
-    groups = []
-    shown = ({r['program'] for r in rows} | {pc for pc, a in prog_act.items() if abs(a['net']) >= 0.5}
-             | {pc for pc, p in plan.items() if p.get('lines')}) - {'OPS'}
-    for pc in sorted(shown, key=lambda pc: names.get(pc, pc)):
-        g = [r for r in rows if r['program'] == pc]
-        events_net = sum(r['actual'] or 0 for r in g)
-        other = round(prog_act[pc]['net'] - events_net, 2) if pc in prog_act else 0
-        other = other if abs(other) >= 0.5 else 0
-        gp = plan.get(pc, {})
-        gplan = gp.get('net') if gp.get('lines') else None
-        groups.append({'code': pc, 'name': names.get(pc, pc or 'Other'), 'rows': g, 'other': other,
-                       'events': sum(1 for r in g if r['e']), 'planned': sum(1 for r in g if not r['e']),
-                       'missing': sum(1 for r in g if r['e'] and not r['b']),
-                       'budget': sum(r['budget'] or 0 for r in g), 'actual': round(events_net + other, 2), 'plan': gplan,
-                       'other_plan': round(gplan - sum(r['plan'] or 0 for r in g), 2) if gplan is not None else None})
-    summary['other'] = sum(g['other'] for g in groups)
-    summary['actual'] = round(summary['actual'] + summary['other'], 2)
-    funds = [r for r in F.requests() if r['status'] == 'Submitted' and r['program'] == only] if only and F.enabled() else []
-    return render_template('bud.html', **_ctx(view='list', groups=groups, year=year, years=years, s=summary,
-                                              programs=programs, plan_on=P.enabled(), only=only, names=names, funds=funds))
+                             'days': None, 'past': False, 'needs_budget': False, 'register': register_url(year, pc, ln)})
+    rows.sort(key=lambda r: (r['date'], r['name']))
+    months = []
+    for r in rows:
+        m = r['date'][:7]
+        if not months or months[-1]['key'] != m:
+            months.append({'key': m, 'label': date(int(m[:4]), int(m[5:7]), 1).strftime('%B'), 'rows': []})
+        months[-1]['rows'].append(r)
+    for m in months:
+        m['past'] = all(r['past'] for r in m['rows'])
+    ahead = [r for r in rows if r['e'] and not r['past']]
+    summary = {'next': ahead[0] if ahead else None, 'upcoming': len(ahead), 'done': sum(1 for r in rows if r['past']),
+               'planned': sum(1 for r in rows if not r['e'])}
+    return render_template('bud.html', **_ctx(view='list', season=months, year=year, years=years, s=summary,
+                                              programs=programs, only=only, names=names))
 
 
 @bp.route('/event/<path:code>')

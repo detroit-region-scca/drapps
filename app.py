@@ -27,6 +27,15 @@ logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
+
+@app.template_filter('wkday')
+def wkday(d):
+    """'2027-06-14' -> 'Sat'; '' for anything that is not a full date."""
+    try:
+        return datetime.strptime(d, '%Y-%m-%d').strftime('%a')
+    except (TypeError, ValueError):
+        return ''
+
 from wp import bp as wp_bp  # noqa: E402
 from fr import bp as fr_bp  # noqa: E402
 from bud import bp as bud_bp  # noqa: E402
