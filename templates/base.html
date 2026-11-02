@@ -18,12 +18,12 @@
         .text-muted { color: var(--muted) !important; }
 
         .app-bar { background: #fff; border-bottom: 3px solid var(--red); }
-        .site-brand { display: inline-flex; align-items: center; gap: .6rem; text-decoration: none; color: var(--text); margin-right: 1rem; }
+        .site-brand { display: inline-flex; align-items: center; gap: .6rem; color: var(--text); margin-right: 1rem; }
         .site-brand img { height: 40px; width: auto; }
-        .site-brand .site-name { font-weight: 700; font-size: 1.1rem; line-height: 1.1; white-space: nowrap; }
-        .site-brand .app-name { white-space: nowrap; }
-        .site-brand .app-name { display: block; font-weight: 500; font-size: .85rem; color: var(--muted); }
-        .site-brand:hover { color: var(--text); }
+        .site-brand .site-name { display: block; font-weight: 700; font-size: 1.1rem; line-height: 1.1; white-space: nowrap; color: var(--text); text-decoration: none; }
+        .site-brand .app-line { white-space: nowrap; font-weight: 500; font-size: .85rem; color: var(--muted); }
+        .site-brand .year-pick select { border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 600; padding: 0 .1rem; cursor: pointer; }
+        .site-brand .year-pick::before { content: "·"; margin: 0 .3rem 0 .25rem; }
         .app-bar .apps-btn { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); text-decoration: none;
                              padding: .3rem .55rem; border: 1px solid var(--border); border-radius: 6px; margin-right: .75rem; font-size: .9rem; }
         .app-bar .apps-btn:hover { color: var(--text); border-color: var(--muted); }
@@ -35,7 +35,6 @@
         .app-bar .nav-link.active { color: var(--red); box-shadow: inset 0 -2px 0 var(--red); border-radius: 0; }
         .app-bar .btn-logout { color: var(--muted); }
         .app-bar .btn-logout:hover { color: var(--red); }
-        .app-bar .year-pick .form-select { width: auto; padding-top: .25rem; padding-bottom: .25rem; }
 
         .card { background: var(--surface); border-color: var(--border); border-radius: 8px; color: var(--text); }
         .stat .label { color: var(--muted); font-size: .85rem; }
@@ -85,8 +84,15 @@
 <div class="site-top no-print"><div class="container" style="max-width: {{ self.width() }};"><a href="https://drscca.org">‹ drscca.org</a></div></div>
 <nav class="navbar navbar-expand-xl app-bar sticky-top mb-4">
     <div class="container" style="max-width: {% block width %}1200px{% endblock %};">
-        <a class="site-brand" href="{{ url_for('home') }}"><img src="{{ url_for('static', filename='drscca-logo.png') }}" alt="">
-            <span><span class="site-name">Detroit Region SCCA</span><span class="app-name">{% block app_name %}{{ app_name or title }}{% endblock %}</span></span></a>
+        <div class="site-brand"><a href="{{ url_for('home') }}" class="brand-logo"><img src="{{ url_for('static', filename='drscca-logo.png') }}" alt=""></a>
+            <div><a href="{{ url_for('home') }}" class="site-name">Detroit Region SCCA</a>
+                <div class="app-line"><span class="app-name">{% block app_name %}{{ app_name or title }}{% endblock %}</span>
+                {% if years is defined and years and request.endpoint != 'home' %}
+                {# One year picker, beside the app name in every app that is organized by year. #}
+                <form method="get" action="{{ request.path }}" class="year-pick d-inline m-0 no-print">
+                    {% for k, v in request.args.items() if k in ('status', 'program') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+                    <select name="year" aria-label="Year" onchange="this.form.submit()">{% for y in years %}<option {% if y|string == year|string %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
+                </form>{% endif %}</div></div></div>
         {% if request.endpoint == 'home' %}
         {# The launcher has no sections, so no menu: just log out. #}
         <span class="btn btn-logout ms-auto me-3 px-0" title="{{ me.email if me }}">{{ session.get('who', '') }}</span>
@@ -95,26 +101,13 @@
             <button type="submit" class="btn btn-link btn-logout text-decoration-none px-0">Log out</button>
         </form>
         {% else %}
-        {% if years is defined and years %}
-        {# One year picker, same place in every app that is organized by year. #}
-        <form method="get" action="{{ request.path }}" class="year-pick m-0 ms-auto me-2 d-xl-none no-print">
-            {% for k, v in request.args.items() if k in ('status', 'program') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
-            <select name="year" class="form-select form-select-sm" aria-label="Year" onchange="this.form.submit()">{% for y in years %}<option {% if y|string == year|string %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
-        </form>
-        {% endif %}
-        <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#appnav" aria-controls="appnav" aria-expanded="false" aria-label="Menu">
+        <button class="navbar-toggler border-0 ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#appnav" aria-controls="appnav" aria-expanded="false" aria-label="Menu">
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="appnav">
             <ul class="navbar-nav me-auto gap-xl-1">
                 <li class="nav-item"><a class="apps-btn mt-1 mt-xl-0" href="{{ url_for('home') }}" title="All apps"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Apps</span></a></li>
                 {% block nav %}{% endblock %}</ul>
-        {% if years is defined and years %}
-                <form method="get" action="{{ request.path }}" class="year-pick m-0 me-2 d-none d-xl-block no-print">
-            {% for k, v in request.args.items() if k in ('status', 'program') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
-            <select name="year" class="form-select form-select-sm" aria-label="Year" onchange="this.form.submit()">{% for y in years %}<option {% if y|string == year|string %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
-        </form>
-        {% endif %}
             <span class="btn btn-logout px-xl-2 px-0 d-block text-start" title="{{ me.email if me }}">{{ session.get('who', '') }}</span>
             {% if me and me.level != 'volunteer' %}<a class="btn btn-link btn-logout text-decoration-none px-xl-2 px-0 d-block text-start{% if request.endpoint == 'audit_log' %} fw-semibold{% endif %}" href="{{ url_for('audit_log') }}">Audit log</a>{% endif %}
             <form action="{{ url_for('logout') }}" method="POST" class="m-0">
