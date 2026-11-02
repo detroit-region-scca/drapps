@@ -107,3 +107,10 @@ def test_worker_point_form_rows():
     assert problems and 'Use points tab' in problems[0]
     rows, _ = L.rows_from_form(['1'], ['12'], MEM, '', date(2026, 12, 1), L.VOLUNTEER_JOB)
     assert rows[0]['kind'] == 'Role points'
+
+
+def test_every_members_template_view_compiles():
+    import os
+    from jinja2 import Environment, FileSystemLoader
+    env = Environment(loader=FileSystemLoader(os.path.join(os.path.dirname(__file__), '..', 'templates')))
+    env.get_template('members.html')   # a syntax error here is a 500 on every Members page

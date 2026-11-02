@@ -68,9 +68,6 @@
         <div class="small mt-1">{% for m in lapsed %}<a href="{{ url_for('members.member', mid=m.member) }}">{{ m.first }} {{ m.last }}</a> <span class="text-muted">{{ 'expired ' ~ day(m.expires) if m.expires else 'not on the list' }}, {{ '%g'|format(m.points) }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</div></details>
     <form method="post" action="{{ url_for('members.forfeit') }}" class="m-0" onsubmit="return confirm('Delete the points of all {{ lapsed|length }} members who are not current? This cannot be undone in the app.')"><button class="btn btn-sm btn-danger">Delete their points</button></form>
 </div>
-{% endif %}{% endfor %}</div></details>
-    <form method="post" action="{{ url_for('members.forfeit') }}" class="m-0" onsubmit="return confirm('Forfeit the points of all {{ lapsed|length }} lapsed members?')"><button class="btn btn-sm btn-outline-danger">Forfeit them</button></form>
-</div></div>
 {% endif %}
 
 <input id="find" class="form-control mb-2" type="search" placeholder="Find a member by name or SCCA number" autocomplete="off" style="max-width: 30rem">
