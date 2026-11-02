@@ -4,8 +4,8 @@
 {% block app_name %}Members{% endblock %}
 {% block nav %}
     {% if keeper %}{{ tab('members.home', 'Members') }}{% endif %}
-    {{ tab('members.enter', 'Enter points') }}
-    {% if keeper %}{{ tab('members.use', 'Use points') }}{{ tab('members.auto', 'Auto add') }}{{ tab('members.quickbooks', 'QuickBooks') }}{{ tab('members.milestones', 'Milestones') }}{% endif %}
+    {{ tab('members.enter', 'Points', active=request.endpoint in ('members.enter', 'members.use')) }}
+    {% if keeper %}{{ tab('members.auto', 'Auto add') }}{{ tab('members.quickbooks', 'QuickBooks') }}{{ tab('members.milestones', 'Milestones') }}{% endif %}
 {% endblock %}
 {% macro pts(v) %}<span class="{{ 'text-danger' if v < 0 else '' }}">{{ '%+g'|format(v) }}</span>{% endmacro %}
 {% macro day(d) %}{{ d.strftime('%-m/%-d/%Y') if d else '' }}{% endmacro %}
@@ -14,11 +14,17 @@
     <div>1 point = <strong>${{ point_value }}</strong></div>
     <div class="mt-2">Points per day: event chair 4, special events 3, chief or assistant chair 2, worker 1.</div>
     <div class="mt-2">Blank points count 1.</div>
-    <div class="mt-2">To spend points, use the <a href="{{ url_for('members.use') }}">Use points</a> tab. To add points, use <a href="{{ url_for('members.enter') }}">Enter points</a>.</div>
+    {% if keeper %}<div class="mt-2">Switch between <a href="{{ url_for('members.enter') }}">Add points</a> and <a href="{{ url_for('members.use') }}">Use points</a> at the top.</div>{% endif %}
 </div>{% endmacro %}
+{% macro points_switch(which) %}{% if keeper %}<ul class="nav nav-pills mb-3">
+    <li class="nav-item"><a class="nav-link {{ 'active' if which == 'add' }}" href="{{ url_for('members.enter') }}">Add points</a></li>
+    <li class="nav-item"><a class="nav-link {{ 'active' if which == 'use' }}" href="{{ url_for('members.use') }}">Use points</a></li>
+</ul>{% endif %}{% endmacro %}
 {% block style %}
         #grid td { vertical-align: middle; }
         #memberTable tbody tr[hidden] { display: none; }
+        .nav-pills .nav-link { color: var(--muted); }
+        .nav-pills .nav-link.active { background: var(--accent); color: #111; font-weight: 600; }
         .pending-card .form-control-sm { min-width: 9rem; }
 {% endblock %}
 {% block content %}
@@ -27,7 +33,7 @@
 {% if view == 'home' %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <div class="page-title mb-0">Members</div>
-    <a class="btn btn-accent" href="{{ url_for('members.enter') }}">Enter points</a>
+    <a class="btn btn-accent" href="{{ url_for('members.enter') }}">Add points</a>
 </div>
 <div class="row g-3 mb-3">
     <div class="col-6 col-lg-3"><div class="card stat p-3 h-100"><div class="label">Worker points</div><div class="value">{{ '{:,.1f}'.format(total) }}</div><div class="label">${{ '{:,.2f}'.format(total * point_value) }}</div></div></div>
@@ -115,7 +121,8 @@
 
 {# ================================================================== Enter points #}
 {% elif view == 'enter' %}
-<div class="page-title">Enter points</div>
+<div class="page-title">Points</div>
+{{ points_switch('add') }}
 <p class="text-muted">Who worked an event, and their points. Due within 30 days of the event.</p>
 <div class="row g-4"><div class="col-lg-8">
 <form method="post" class="card p-3">
@@ -172,7 +179,8 @@
 
 {# ================================================================== Use points #}
 {% elif view == 'use' %}
-<div class="page-title">Use points</div>
+<div class="page-title">Points</div>
+{{ points_switch('use') }}
 <p class="text-muted">Take points off a member's balance for a renewal, an event entry, the banquet or merchandise. If the region pays a bill for it, file a funds request for the payment as usual.</p>
 <div class="row g-4"><div class="col-lg-8">
 <form method="post" class="card p-3">

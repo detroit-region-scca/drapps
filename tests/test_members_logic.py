@@ -94,7 +94,7 @@ def test_worker_point_form_rows():
                                       date(2026, 9, 12), 'Registration', default_points=2)
     assert [(r['member'], r['name'], r['points'], r['what'], r['kind']) for r in rows] == [
         ('1', 'Jane Smith', 2, 'Registration', 'Earned'), ('', 'Bob Jones', 3.0, 'Registration', 'Earned')]
-    assert problems and 'Use points tab' in problems[0]
+    assert problems and 'Use points' in problems[0]
     rows, _ = L.rows_from_form(['1'], ['12'], MEM, '', date(2026, 12, 1), L.VOLUNTEER_JOB)
     assert rows[0]['kind'] == 'Role points'
 

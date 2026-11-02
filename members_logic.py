@@ -94,7 +94,7 @@ def rows_from_form(names, points, members_by_id, event_code, when, specialty, de
         m = members_by_id.get(mid)
         pts = num(pts_raw) if str(pts_raw or '').strip() else (default_points or 0)
         if pts <= 0:
-            problems.append(f'{raw}: points must be more than zero (spend points on the Use points tab)'); continue
+            problems.append(f'{raw}: points must be more than zero (to spend points, switch to Use points)'); continue
         out.append({'date': when, 'member': mid if m else '', 'name': full_name(m) if m else raw, 'points': pts,
                     'what': specialty or 'Worker', 'event': event_code or '', 'kind': kind})
     return out, problems
