@@ -2,7 +2,7 @@
 import os
 from datetime import date
 
-from flask import Blueprint, abort, flash, make_response, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 import fr_store as F
 import wp_logic as L
@@ -50,21 +50,6 @@ def _month(value):
     except ValueError:
         y, mo = date.today().year, date.today().month
     return f'{y:04d}-{mo:02d}', y, mo
-
-
-@bp.route('/standings')
-def standings():
-    """Public, read-only: every member's current worker points, the list the region used to post as a weekly PDF.
-    Names and points only (no member numbers or expiry dates). Linked from drscca.org/region/worker-points/."""
-    if not S.enabled():
-        abort(404)
-    rows = L.public_standings(S.members(), S.transactions())
-    resp = make_response(render_template('wp_standings.html', rows=rows['members'], as_of=rows['as_of'],
-                                         point_value=L.POINT_VALUE,
-                                         region=os.environ.get('SCCA_REGION_NAME', 'Detroit Region SCCA')))
-    resp.headers['X-Robots-Tag'] = 'noindex'
-    resp.headers['Cache-Control'] = 'public, max-age=300'
-    return resp
 
 
 @bp.route('/')

@@ -41,13 +41,13 @@ VOL_COLS = ['email', 'name', 'note', 'added', 'added_by']
 
 # What a volunteer may open. Everything else redirects home.
 VOLUNTEER_ENDPOINTS = {
-    'home', 'logout', 'static', 'wp.standings',
+    'home', 'logout', 'static',
     'bud.home', 'bud.detail',
     'fr.home', 'fr.new', 'fr.detail', 'fr.ask', 'fr.receipts',
     'inv.home', 'inv.new', 'inv.detail', 'inv.pdf',
 }
 # Reachable without signing in: the sign-in itself, and the emailed approval and confirmation links.
-PUBLIC_ENDPOINTS = {'home', 'static', 'logout', 'fr.approve_link', 'inv.delete_confirm', 'wp.standings'}
+PUBLIC_ENDPOINTS = {'home', 'static', 'logout', 'fr.approve_link', 'inv.delete_confirm'}
 
 
 # ---------- who is who ----------

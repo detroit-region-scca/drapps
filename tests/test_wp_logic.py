@@ -61,16 +61,3 @@ def test_validate_entry():
 
 def test_street_survival_points_book_to_its_own_account():
     assert L.PROGRAM_ACCOUNT['SS'] == 'Club SS Street Survival Expense:Club SS Street Survival Worker Points'
-
-
-def test_public_standings_lists_names_and_points_only():
-    from datetime import date
-    members = [{'member': '1', 'first': 'ED', 'last': 'ARTHUR', 'balance': 170.6},
-               {'member': '2', 'first': 'Ann', 'last': 'Able', 'balance': 0.0},
-               {'member': '3', 'first': 'Bob', 'last': 'McBaker', 'balance': 2.04}]
-    tx = [{'date': date(2026, 9, 12)}, {'date': date(2026, 8, 1)}, {'date': None}]
-    out = L.public_standings(members, tx)
-    assert out['as_of'] == date(2026, 9, 12)
-    assert [r['name'] for r in out['members']] == ['Ed Arthur', 'Bob McBaker']   # zero balance left out, A-Z by last name
-    assert out['members'][1]['points'] == 2.0
-    assert set(out['members'][0]) == {'name', 'last', 'first', 'points'}       # no member numbers or expiry
