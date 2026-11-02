@@ -9,13 +9,11 @@ def test_grid_rows_work_out_points_from_role_and_days():
     rows, problems = L.rows_from_grid([
         {'member': '1 Jane Smith', 'role': 'Worker', 'days': '2', 'points': '', 'note': 'registration'},
         {'member': '2 Pat Quinn', 'role': 'Event chair', 'days': '2', 'points': '', 'note': ''},
-        {'member': '2', 'role': 'Points used', 'days': '', 'points': '10', 'note': '2027 renewal'},
         {'member': '', 'role': 'Worker', 'days': '1', 'points': '', 'note': ''}], MEM, '#AX1', date(2026, 11, 2))
     assert problems == []
     assert [(r['member'], r['name'], r['points'], r['what'], r['kind']) for r in rows] == [
         ('1', 'Jane Smith', 2.0, 'Worker: registration', 'Earned'),
-        ('2', 'Pat Quinn', 8.0, 'Event chair', 'Earned'),
-        ('2', 'Pat Quinn', -10.0, '2027 renewal', 'Used')]
+        ('2', 'Pat Quinn', 8.0, 'Event chair', 'Earned')]
 
 
 def test_grid_keeps_typed_names_for_the_keeper_to_match_and_needs_points_for_role_points():
@@ -88,3 +86,17 @@ def test_scca_number_formats_match_the_ledger():
                {'member': '500200-1', 'first': 'Norris', 'last': 'Ames', 'life': False, 'points': 29.0}]
     out = L.merge_roster(members, L.roster(rows), date(2026, 11, 2))
     assert len(out) == 2 and all(m['listed'] == date(2026, 11, 2) for m in out)
+
+
+def test_use_points_needs_enough_balance():
+    from datetime import date
+    m = {'member': '1', 'first': 'Pat', 'last': 'Quinn', 'points': 10.0}
+    e, p = L.use_entry(m, '4', 'SCCA membership renewal', date(2026, 11, 2))
+    assert p is None and e['points'] == -4.0 and e['kind'] == 'Used'
+    assert L.use_entry(m, '12', 'x', date(2026, 11, 2))[1] == 'Pat Quinn has only 10 points.'
+    assert L.use_entry(m, '0', 'x', date(2026, 11, 2))[1] == 'Enter how many points to use.'
+
+
+def test_enter_points_rejects_negative_numbers():
+    rows, problems = L.rows_from_grid([{'member': '1', 'role': 'Other', 'points': '-5'}], MEM, '', date(2026, 11, 2))
+    assert rows == [] and 'Use points tab' in problems[0]

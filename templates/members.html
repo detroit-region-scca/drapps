@@ -5,7 +5,7 @@
 {% block nav %}
     {% if keeper %}{{ tab('members.home', 'Members') }}{% endif %}
     {{ tab('members.enter', 'Enter points') }}
-    {% if keeper %}{{ tab('members.milestones', 'Milestones') }}{% endif %}
+    {% if keeper %}{{ tab('members.use', 'Use points') }}{{ tab('members.milestones', 'Milestones') }}{% endif %}
 {% endblock %}
 {% macro pts(v) %}<span class="{{ 'text-danger' if v < 0 else '' }}">{{ '%+g'|format(v) }}</span>{% endmacro %}
 {% macro day(d) %}{{ d.strftime('%-m/%-d/%Y') if d else '' }}{% endmacro %}
@@ -100,7 +100,8 @@
     <div><div class="page-title m-0">{{ m.first }} {{ m.last }}{% if m.life %} <span class="badge text-bg-secondary align-middle">LIFE</span>{% endif %}</div>
         <div class="text-muted">SCCA #{{ m.member }}{% if m.joined %} · member since {{ day(m.joined) }}{% endif %}{% if m.expires %} · expires {{ day(m.expires) }}{% endif %}{% if m.listed %} (SCCA list of {{ day(m.listed) }}){% endif %}</div></div>
     <div class="text-end stat"><div class="value">{{ '%.1f'|format(m.points) }} pts</div><div class="label">${{ '{:,.2f}'.format(m.points * point_value) }}</div>
-        <a class="btn btn-sm btn-accent mt-1" href="{{ url_for('members.enter', member=m.member) }}">Add or use points</a></div>
+        <div class="mt-1"><a class="btn btn-sm btn-accent" href="{{ url_for('members.enter', member=m.member) }}">Add points</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('members.use', member=m.member) }}">Use points</a></div></div>
 </div></div>
 <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
     <thead><tr><th class="ps-3">Date</th><th>What for</th><th>Event</th><th class="num">Points</th><th class="pe-3">Entered by</th></tr></thead>
@@ -111,12 +112,12 @@
 {# ================================================================== Enter points #}
 {% elif view == 'enter' %}
 <div class="page-title">Enter points</div>
-<p class="text-muted">{% if keeper %}Add points for an event, role points for a volunteer job, or points someone used. Saved entries count right away.{% else %}List who worked your event. The points keeper checks it and approves the points.{% endif %}</p>
+<p class="text-muted">{% if keeper %}Add points for an event or role points for a volunteer job. Saved entries count right away. To spend points, use the Use points tab.{% else %}List who worked your event. The points keeper checks it and approves the points.{% endif %}</p>
 <form method="post" class="card p-3">
     <div class="row g-2 mb-3">
         <div class="col-md-6"><label class="form-label">Event <span class="text-muted">{{ '(optional)' if keeper }}</span></label>
             <select name="event" class="form-select" {{ '' if keeper else 'required' }}>
-                <option value="">{{ 'No event (role points, points used, adjustment)' if keeper else 'Select your event…' }}</option>
+                <option value="">{{ 'No event (role points, adjustment)' if keeper else 'Select your event…' }}</option>
                 {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" {% if form.get('event') == c %}selected{% endif %}>{{ e.date }} · {{ c }} · {{ e.event_name }}</option>{% endfor %}
             </select></div>
         <div class="col-md-3"><label class="form-label">Date</label><input type="date" name="date" class="form-control" value="{{ form.get('date', '') }}"><div class="form-text">Blank = the event date, or today</div></div>
@@ -131,7 +132,7 @@
         <td><select name="role" class="form-select form-select-sm">{% for r in roles %}<option>{{ r }}</option>{% endfor %}</select></td>
         <td><input name="days" type="number" min="0.5" step="0.5" value="1" class="form-control form-control-sm"></td>
         <td><input name="points" type="number" step="0.5" class="form-control form-control-sm" placeholder="auto"></td>
-        <td><input name="note" class="form-control form-control-sm" placeholder="e.g. registration, 2027 renewal"></td>
+        <td><input name="note" class="form-control form-control-sm" placeholder="e.g. registration, timing"></td>
         <td><button type="button" class="btn btn-sm btn-link text-muted p-1" title="Remove" onclick="this.closest('tr').remove(); tally()">✕</button></td>
     </tr></template>
     <div class="d-flex flex-wrap align-items-center gap-2">
@@ -139,7 +140,7 @@
         <span class="small text-muted ms-auto" id="tally"></span>
         <button class="btn btn-accent">{{ 'Save' if keeper else 'Send to the points keeper' }}</button>
     </div>
-    <div class="form-text mt-2">Points per day: worker 1, chief or assistant chair 2, event chair 4, special event 3. Points fill in from role × days; type a number to change it.{% if keeper %} For points used, enter how many; they come off the balance.{% endif %}</div>
+    <div class="form-text mt-2">Points per day: worker 1, chief or assistant chair 2, event chair 4, special event 3. Points fill in from role × days; type a number to change it.</div>
 </form>
 <script>
     const RATES = {{ rates|tojson }}, START = {{ grid|tojson }};
@@ -147,7 +148,7 @@
         const role = tr.querySelector('[name=role]').value, days = parseFloat(tr.querySelector('[name=days]').value) || 1, p = tr.querySelector('[name=points]');
         const rate = RATES[role];
         tr.querySelector('[name=days]').disabled = !rate;
-        p.placeholder = rate ? String(rate * days) : (role === 'Points used' ? 'how many' : 'points');
+        p.placeholder = rate ? String(rate * days) : 'points';
         tally();
     }
     function tally() {
@@ -156,7 +157,6 @@
             if (!tr.querySelector('[name=member]').value.trim()) return;
             const role = tr.querySelector('[name=role]').value, p = tr.querySelector('[name=points]');
             let v = parseFloat(p.value || p.placeholder) || 0;
-            if (role === 'Points used') v = -Math.abs(v);
             n++; t += v;
         });
         document.getElementById('tally').textContent = n ? `${n} ${n === 1 ? 'person' : 'people'} · ${t > 0 ? '+' : ''}${t} points` : '';
@@ -173,6 +173,36 @@
     (START.length ? START : [{}, {}, {}]).forEach(v => addRow(v));
     // the form submits disabled "days" as nothing; keep one value per row so the columns line up
     document.querySelector('form.card').addEventListener('submit', () => document.querySelectorAll('[name=days]').forEach(d => d.disabled = false));
+</script>
+
+{# ================================================================== Use points #}
+{% elif view == 'use' %}
+<div class="page-title">Use points</div>
+<p class="text-muted">Take points off a member's balance for a renewal, an event entry, the banquet or merchandise. If the region pays a bill for it, file a funds request for the payment as usual.</p>
+<form method="post" class="card p-3" style="max-width: 46rem">
+    <datalist id="memberlist">{% for m in members if m.points > 0 %}<option value="{{ m.member }} {{ m.first }} {{ m.last }}" data-points="{{ m.points }}">{{ '%g'|format(m.points) }} points</option>{% endfor %}</datalist>
+    <div class="row g-2">
+        <div class="col-md-8"><label class="form-label">Member</label><input id="usemember" name="member" list="memberlist" class="form-control" required placeholder="Type a name" autocomplete="off" value="{{ form.get('member', '') }}">
+            <div class="form-text" id="usebal">&nbsp;</div></div>
+        <div class="col-md-4"><label class="form-label">Points to use</label><input name="points" type="number" min="0.5" step="0.5" class="form-control" required value="{{ form.get('points', '') }}"><div class="form-text" id="useval">&nbsp;</div></div>
+        <div class="col-md-5"><label class="form-label">For</label><select name="for" class="form-select">{% for u in uses %}<option {% if form.get('for') == u %}selected{% endif %}>{{ u }}</option>{% endfor %}</select></div>
+        <div class="col-md-4"><label class="form-label">Note <span class="text-muted">(optional)</span></label><input name="note" class="form-control" placeholder="e.g. 2027 renewal" value="{{ form.get('note', '') }}"></div>
+        <div class="col-md-3"><label class="form-label">Date</label><input name="date" type="date" class="form-control" value="{{ form.get('date', '') }}"></div>
+    </div>
+    <div class="mt-3"><button class="btn btn-accent">Use points</button></div>
+</form>
+<script>
+    (function () {
+        const bal = {}; document.querySelectorAll('#memberlist option').forEach(o => bal[o.value.split(' ')[0]] = parseFloat(o.dataset.points));
+        const m = document.getElementById('usemember'), p = document.querySelector('[name=points]');
+        function show() {
+            const b = bal[m.value.split(' ')[0]];
+            document.getElementById('usebal').textContent = b === undefined ? (m.value ? 'Pick a member from the list (only members with points are listed).' : '\u00a0') : `Balance: ${b} points ($${(b * {{ point_value }}).toFixed(2)})`;
+            const v = parseFloat(p.value) || 0;
+            document.getElementById('useval').textContent = v ? `$${(v * {{ point_value }}).toFixed(2)}` + (b !== undefined && v > b ? ', more than the balance' : '') : '\u00a0';
+        }
+        m.addEventListener('input', show); p.addEventListener('input', show); show();
+    })();
 </script>
 
 {# ================================================================== Milestones #}

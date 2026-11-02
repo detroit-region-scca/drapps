@@ -289,3 +289,32 @@ def milestones():
                                                   differs=bool(proposed) and norm(proposed) != norm(published),
                                                   latest_list=max(lists) if lists else None, years=L.MILESTONE_YEARS,
                                                   public_url=S.public_sheet_url()))
+
+
+@bp.route('/use', methods=['GET', 'POST'])
+@login_required
+def use():
+    """Spend a member's points (renewal, entry, banquet, merchandise). Keeper and officers only."""
+    if (g := _guard(keeper=True)):
+        return g
+    mem = S.members()
+    by_id = {m['member']: m for m in mem}
+    if request.method == 'POST':
+        f = request.form
+        m = by_id.get((f.get('member') or '').split(' ')[0])
+        what = f.get('for', '')
+        if what == 'Other' or f.get('note', '').strip():
+            what = f"{what}: {f.get('note', '').strip()}" if what != 'Other' else (f.get('note', '').strip() or 'Other')
+        entry, problem = (None, 'Pick the member from the list.') if not m else L.use_entry(m, f.get('points'), what, L.to_date(f.get('date')) or date.today())
+        if problem:
+            flash(problem, 'danger')
+            return render_template('members.html', **_ctx(view='use', members=mem, form=f, uses=L.USE_FOR))
+        S.add_entries([entry], L.APPROVED, _who())
+        log_audit_event('POINTS_USED', _who(), {'member': entry['member'], 'points': entry['points'], 'for': entry['what']})
+        flash(f"Used {-entry['points']:g} points from {entry['name']} for {entry['what']}. If the region pays for it, file a funds request.", 'success')
+        return redirect(url_for('members.member', mid=entry['member']))
+    form = {}
+    if request.args.get('member') in by_id:
+        m = by_id[request.args['member']]
+        form = {'member': f"{m['member']} {L.full_name(m)}"}
+    return render_template('members.html', **_ctx(view='use', members=mem, form=form, uses=L.USE_FOR))

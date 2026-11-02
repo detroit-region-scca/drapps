@@ -19,7 +19,7 @@ APPROVED, PENDING = 'Approved', 'Pending'
 
 # What a row on the entry page means: (label, points per day; None = type the points; negative = points used).
 ROLES = [('Worker', 1), ('Chief or assistant chair', 2), ('Event chair', 4), ('Special event', 3),
-         ('Role points (volunteer job)', None), ('Points used', None), ('Other', None)]
+         ('Role points (volunteer job)', None), ('Other', None)]
 
 PROGRAM_ACCOUNT = {
     'AX': 'Club AX Autocross Expense:Club AX Autocross Worker Points',
@@ -106,12 +106,10 @@ def rows_from_grid(form_rows, members_by_id, event_code, when, what_default=''):
             pts = role_rate(role) * days
         else:
             problems.append(f'{raw}: enter the points'); continue
-        if role == 'Points used' and pts > 0:
-            pts = -pts
-        if pts == 0:
-            problems.append(f'{raw}: points cannot be zero'); continue
+        if pts <= 0:
+            problems.append(f'{raw}: points must be more than zero (use the Use points tab to spend points)'); continue
         note = (r.get('note') or '').strip()
-        if role in ('Points used', 'Role points (volunteer job)', 'Other'):
+        if role in ('Role points (volunteer job)', 'Other'):
             what = note or what_default or role
         else:
             what = f'{role}: {note}' if note else role
@@ -279,3 +277,20 @@ def month_books(entries, events_by_code, year, month):
         lines.append({'debit': RESERVE, 'credit': PROGRAM_ACCOUNT['OPS'], 'points': -forfeits,
                       'amount': round(-forfeits * POINT_VALUE, 2), 'what': 'points forfeited'})
     return {'lines': lines, 'used': used}
+
+
+USE_FOR = ['SCCA membership renewal', 'Event entry', 'Awards banquet', 'Region merchandise', 'Other']
+
+
+def use_entry(member, points, what, when):
+    """One Used entry, or (None, problem)."""
+    try:
+        p = abs(float(points))
+    except (TypeError, ValueError):
+        p = 0
+    if p <= 0:
+        return None, 'Enter how many points to use.'
+    if member['points'] + 1e-6 < p:
+        return None, f"{full_name(member)} has only {member['points']:g} points."
+    return {'date': when, 'member': member['member'], 'name': full_name(member), 'points': -p, 'what': what or 'Points used',
+            'event': '', 'kind': 'Used'}, None
