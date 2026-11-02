@@ -25,3 +25,6 @@ cookies.txt
 data/backups/
 data/*.lock
 data/sheet_cache.sqlite*
+# Runtime data (sign-in codes hold email addresses): never commit; programs.json is the one tracked file
+data/*.json
+!data/programs.json

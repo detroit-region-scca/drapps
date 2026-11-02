@@ -1,6 +1,6 @@
 """Members: worker points and member milestones (DRSCCA Members sheet + the public drscca.org sheet).
 
-  Members      (keeper/officers) the SCCA list upload, worker lists to approve, members and points, lapsed, QuickBooks
+  Members      (keeper/officers) the SCCA list upload, members and points, lapsed, QuickBooks
   Enter points (everyone signed in) one grid for an event or a single member; event chairs' entries wait for the keeper
   Milestones   (keeper/officers) each month's new members and anniversaries, published to drscca.org
 Nothing is added or spent without a click from the keeper or an officer.
@@ -13,7 +13,7 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 
 import members_logic as L
 import members_store as S
-from utils import load_events, log_audit_event, login_required
+from utils import local_path, load_events, log_audit_event, login_required
 
 bp = Blueprint('members', __name__, url_prefix='/members')
 KEEPER_ROLE = 'Points Keeper'
@@ -43,7 +43,7 @@ def _ctx(**kw):
 def _back():
     """Where a form posted from another Members page returns to (only this app's own pages)."""
     b = request.form.get('back', '')
-    return b if b.startswith('/members') else url_for('members.home')
+    return b if local_path(b).startswith('/members') else url_for('members.home')
 
 
 def _month_step(month, n):
@@ -96,7 +96,7 @@ def home():
     open_value = round(sum(e['points'] for e in L.unreconciled(ent)) * L.POINT_VALUE, 2)
     lists = [m['listed'] for m in mem if m.get('listed')]
     return render_template('members.html', **_ctx(view='home', members=mem, total=total, reserve=reserve, open_value=open_value,
-                                                  pending=L.pending_groups(ent), lapsed=L.lapsed(mem, t),
+                                                  lapsed=L.lapsed(mem, t),
                                                   latest_list=max(lists) if lists else None, list_url=S.list_folder_url(),
                                                   sheet_url=S.members_sheet_url(), scca_reports=SCCA_REPORTS))
 
@@ -159,39 +159,8 @@ def enter():
     grid = []
     if request.args.get('member') in by_id:
         m = by_id[request.args['member']]
-        grid = [{'member': f"{m['member']} {L.full_name(m)}"}]
+        grid = [{'member': L.pick_label(m)}]
     return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form={}, grid=grid))
-
-
-@bp.route('/approve', methods=['POST'])
-@login_required
-def approve():
-    if (g := _guard(keeper=True)):
-        return g
-    f = request.form
-    rows = {e['row']: e for e in S.entries() if e['status'] == L.PENDING}
-    ids = [int(x) for x in f.getlist('row') if x.isdigit() and int(x) in rows]
-    if f.get('action') == 'reject':
-        S.delete_rows(ids)
-        log_audit_event('POINTS_REJECTED', _who(), {'rows': len(ids)})
-        flash(f'Removed {len(ids)} entries without adding points.', 'info')
-        return redirect(url_for('members.home'))
-    by_id = {m['member']: m for m in S.members()}
-    todo, problems = [], []
-    for n in ids:
-        e = rows[n]
-        mid = L.pick_id(f.get(f'member_{n}'), by_id) or e['member']
-        if mid not in by_id:
-            problems.append(f"{e['name']}: pick the member (or add them first)"); continue
-        todo.append(dict(e, member=mid, name=L.full_name(by_id[mid]), points=L.num(f.get(f'points_{n}') or e['points'])))
-    if problems:
-        for p in problems:
-            flash(p, 'danger')
-        return redirect(url_for('members.home'))
-    S.set_status(todo, L.APPROVED, _who())
-    log_audit_event('POINTS_APPROVED', _who(), {'rows': len(todo), 'points': sum(e['points'] for e in todo)})
-    flash(f"Approved {len(todo)} entries ({sum(e['points'] for e in todo):+g} points).", 'success')
-    return redirect(url_for('members.home'))
 
 
 @bp.route('/upload', methods=['POST'])

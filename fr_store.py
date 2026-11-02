@@ -114,8 +114,9 @@ def _cell(v):
 
 
 def update(req_id, **fields):
-    """Change fields on one request (re-reads the row so concurrent edits to other columns survive)."""
-    with _lock:
+    """Change fields on one request (re-reads the row so concurrent edits to other columns survive). Takes the file lock
+    shared by every worker process, so two changes at the same moment run one after the other."""
+    with FileLock(ID_LOCK), _lock:
         ws = _ws('Requests')
         row = ws.col_values(1).index(req_id) + 1
         cur = dict(zip(REQ_COLS, ws.row_values(row) + [''] * len(REQ_COLS)))

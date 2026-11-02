@@ -82,7 +82,7 @@
         <tr class="fw-semibold"><td class="ps-3" colspan="3">Total</td><td class="num pe-3">{{ money(inv.total) }}</td></tr></tbody>
     </table></div></div>
     <p class="small"><span class="text-muted">Bill to:</span> {{ inv.bill_name }}{% if inv.bill_contact %}, attn {{ inv.bill_contact }}{% endif %}{% if inv.bill_email %} · <a href="mailto:{{ inv.bill_email }}?subject=Invoice {{ inv.id }} from Detroit Region SCCA">{{ inv.bill_email }}</a>{% endif %}</p>
-    {% if inv.status == 'Open' %}
+    {% if inv.status == 'Open' %}{% if officer %}
     <div class="row g-3 no-print">
         <div class="col-lg-8"><form method="post" action="{{ url_for('inv.close', inv_id=inv.id) }}" class="card p-3 h-100"><input type="hidden" name="action" value="paid">
             <div class="section-label">Mark paid</div><div class="row g-2">
@@ -93,10 +93,10 @@
             <div class="form-text">Deposit it in QuickBooks to the program's revenue account (and the event project when there is one).</div></form></div>
         <div class="col-lg-4"><form method="post" action="{{ url_for('inv.close', inv_id=inv.id) }}" class="card p-3 h-100"><input type="hidden" name="action" value="void">
             <div class="section-label">Void</div><input name="note" class="form-control mb-2" placeholder="Why"><button class="btn btn-outline-danger">Void</button></form></div>
-    </div>
+    </div>{% endif %}
     {% else %}
     <div class="card p-3">{% if inv.status == 'Paid' %}Paid {{ inv.paid_date }}{% if inv.paid_ref %} · {{ inv.paid_ref }}{% endif %} · {{ money(inv.paid_amount) }} · recorded by {{ inv.closed_by }}{% else %}Void: {{ inv.closed_note }} ({{ inv.closed_by }}){% endif %}
-        <form method="post" action="{{ url_for('inv.close', inv_id=inv.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary">Reopen</button></form></div>
+        {% if officer %}<form method="post" action="{{ url_for('inv.close', inv_id=inv.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary">Reopen</button></form>{% endif %}</div>
     {% endif %}
     {% if inv.status != 'Paid' %}
     <details class="mt-3 no-print"><summary class="small text-muted">Delete this invoice</summary>

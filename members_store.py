@@ -80,25 +80,6 @@ def add_entries(rows, status, who):
     return len(values)
 
 
-def set_status(rows, status, who=None):
-    """Approve pending rows (by sheet row number), filling the member # chosen by the keeper where given."""
-    with _lock:
-        ws = worksheet(_sid(), 'Points')
-        updates = []
-        for r in rows:
-            n = r['row']
-            if r.get('member'):
-                updates.append({'range': f'B{n}:C{n}', 'values': [[_text(r['member']), _text(r['name'])]]})
-            if r.get('points') is not None:
-                updates.append({'range': f'D{n}', 'values': [[float(r['points'])]]})
-            updates.append({'range': f'H{n}', 'values': [[status]]})
-            if who:
-                updates.append({'range': f'I{n}', 'values': [[_text(r.get('by', '') + f' (approved by {who})')]]})
-        if updates:
-            ws.batch_update(updates, value_input_option='RAW')
-        refresh()
-
-
 def delete_rows(row_numbers):
     with _lock:
         ws = worksheet(_sid(), 'Points')

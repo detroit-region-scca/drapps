@@ -55,12 +55,12 @@ def test_fixed_cost_year():
 def test_locations_nest_contents_under_trailers():
     item = lambda id_, name, place, cat='Other', nick='': dict(id=id_, name=name, place=place, category=cat, nickname=nick, status='In use')
     rows = [item('1', '22 race trailer', 'Thistle Hill', 'Trailer', 'Race Trailer'), item('2', 'Cones', 'Race Trailer'),
-            item('3', 'Laptop', 'With Matt Wolfe'), item('4', 'Banner', ''), item('5', 'Flags', 'Garage')]
+            item('3', 'Laptop', 'With Pat Example'), item('4', 'Banner', ''), item('5', 'Flags', 'Garage')]
     places = [{'id': 'PL-1', 'name': 'Thistle Hill Farm'}]
     where, people, other, unknown = E.locations(rows, places)
     (place, entries), = where
     assert place['name'] == 'Thistle Hill Farm' and entries[0]['it']['id'] == '1' and entries[0]['inside'][0]['it']['id'] == '2'
-    assert people == [('Matt Wolfe', [{'it': rows[2], 'inside': []}])]
+    assert people == [('Pat Example', [{'it': rows[2], 'inside': []}])]
     assert other[0][0] == 'Garage' and unknown[0]['it']['id'] == '4'
 
 

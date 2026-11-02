@@ -60,6 +60,10 @@ def _write_ndjson(path, rows):
     os.replace(tmp, path)
 
 
+class StorageUnavailable(RuntimeError):
+    """Google storage can't be reached; the page says so instead of failing."""
+
+
 class FileStore:
     name = 'files'
 
@@ -195,7 +199,7 @@ class SheetStore:
     def save_events(self, events):
         if getattr(self, '_degraded', False):
             # The list came from the local mirror; writing it back could undo edits made in the sheet.
-            raise RuntimeError('Google Sheets is unreachable, so events are read-only until it is back.')
+            raise StorageUnavailable('Google Sheets is unreachable, so events are read-only until it is back.')
         rows = [[str(e.get(c, '') or '') for c in EVENT_COLS] for e in sorted(events, key=lambda e: e.get('date', ''))]
         ws = self._ws('Events')
         # Write the new rows first and clear only what is left below them, so a failure part-way

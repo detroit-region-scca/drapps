@@ -216,7 +216,8 @@ def _check(email, code):
 
 
 def _safe_next(target):
-    return target if target and target.startswith('/') and not target.startswith('//') else ''
+    from utils import local_path
+    return local_path(target) or ''
 
 
 @bp.route('/signin', methods=['POST'])

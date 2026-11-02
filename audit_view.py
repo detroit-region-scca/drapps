@@ -101,7 +101,8 @@ def describe(log):
     if a == 'INVOICE_REOPENED':
         return Markup('{} reopened invoice {}').format(who, _link('inv.detail', g('id', ''), inv_id=g('id', '')))
     if a == 'EQUIP_ITEM_SAVED':
-        return Markup('{} {} {}').format(who, 'added' if g('new') else 'updated', _link('equip.item', g('name', ''), item_id=g('id', '')))
+        target = g('name', '') if str(g('id', '')).startswith('(') else _link('equip.item', g('name', ''), item_id=g('id', ''))   # "(estimates)" is not an item
+        return Markup('{} {} {}').format(who, 'added' if g('new') else 'updated', target)
     if a == 'EQUIP_PLACE_SAVED':
         return Markup('{} updated storage place {}').format(who, _link('equip.place', g('name', ''), place_id=g('id', '')))
     if a == 'EQUIP_TASK_SAVED':

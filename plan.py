@@ -15,7 +15,7 @@ import officials as O
 import plan_store as P
 from bud import register_url
 from officer import current as officer_current, officer_required
-from utils import load_events, load_programs, log_audit_event, login_required
+from utils import load_events, load_programs, log_audit_event, login_required, to_number
 
 bp = Blueprint('plan', __name__, url_prefix='/plan')
 
@@ -53,7 +53,7 @@ def _money(v):
     if v.startswith('(') and v.endswith(')'):
         v = '-' + v[1:-1]
     try:
-        return round(float(v), 2)
+        return round(to_number(v), 2)
     except ValueError:
         return 'bad'
 
@@ -373,7 +373,8 @@ def checks():
         key = request.form.get('key', '')
         e = next((x for x in P.exceptions() if x['key'] == key), None)
         if e:
-            who = request.form.get('who', '').strip() or session.get('who', '') or 'Unknown'
+            from auth import user as _signed_in   # the audit log names the signed-in person, not a form field
+            who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
             session['who'] = who
             note = request.form.get('note', '').strip()
             P.mark_reviewed(key, who, note)

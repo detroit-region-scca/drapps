@@ -18,7 +18,7 @@ import fr_store as F
 import officials as O
 from officer import current as officer_current, officer_required
 import plan_store as P
-from utils import load_events, load_programs, log_audit_event, login_required, send_mail
+from utils import load_events, load_programs, log_audit_event, login_required, send_mail, to_number
 
 bp = Blueprint('fr', __name__, url_prefix='/funds')
 
@@ -39,7 +39,7 @@ def _guard():
 
 def _money(v):
     try:
-        return round(float(str(v).replace(',', '').replace('$', '').strip() or 0), 2)
+        return round(to_number(str(v).replace(',', '').replace('$', '').strip() or 0), 2)
     except ValueError:
         return None
 

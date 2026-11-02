@@ -5,12 +5,13 @@ The private "DRSCCA Members" sheet has two tabs:
            Lapsed since | Rejoined (kept up to date by each SCCA list load)
   Points   Date | Member # | Name | Points | What for | Event | Kind | Status | Entered by | Reconciled (when it was booked in QuickBooks)
 
-A point is worth $5. Only Approved entries count. Nothing is added or spent until the keeper (or an officer) clicks:
-event chairs' entries arrive as Pending and count once the keeper approves them.
+A point is worth $5. Only Approved entries count; entries are saved Approved (officials pick names from the member
+list), so they count at once.
 """
 import re
 from collections import defaultdict
 from datetime import date, datetime
+from utils import to_number
 
 POINT_VALUE = 5
 MEMBER_COLS = ['Member #', 'First', 'Last', 'Life', 'Member since', 'Membership expires', 'On SCCA list of', 'Points',
@@ -58,13 +59,13 @@ def to_date(v):
 
 def num(v):
     try:
-        return float(str(v).replace(',', '').replace('$', ''))
+        return to_number(str(v).replace(',', '').replace('$', ''))
     except (TypeError, ValueError):
         return 0.0
 
 
 def nice(n):
-    """The ledger mixes "ED ARTHUR" with "McClintock": only fix the all-capitals ones."""
+    """The ledger mixes "PAT EXAMPLE" with "McSample": only fix the all-capitals ones."""
     n = (n or '').strip()
     return n.title() if n.isupper() else n
 
@@ -78,6 +79,9 @@ def full_name(m):
 SPECIALTIES = ['Event chair / assistant chair', 'Registration', 'Tech / scrutineering', 'Timing and scoring', 'Flagging and communications',
                'Grid / pit out', 'Course / course workers', 'Safety / emergency', 'Special event', 'Other']
 VOLUNTEER_JOB = 'Volunteer job (role points)'
+
+
+MAX_POINTS_PER_LINE = 50   # a typo guard: a 3-day event chair earns 12; a year's role points stay under 50
 
 
 def rows_from_form(names, points, members_by_id, event_code, when, specialty, default_points=None):
@@ -95,6 +99,8 @@ def rows_from_form(names, points, members_by_id, event_code, when, specialty, de
         pts = num(pts_raw) if str(pts_raw or '').strip() else (default_points or 0)
         if pts <= 0:
             problems.append(f'{raw}: points must be more than zero (to spend points, switch to Use points)'); continue
+        if pts > MAX_POINTS_PER_LINE:
+            problems.append(f'{raw}: {pts:g} points is more than {MAX_POINTS_PER_LINE} for one entry; check it, or split it'); continue
         out.append({'date': when, 'member': mid if m else '', 'name': full_name(m) if m else raw, 'points': pts,
                     'what': specialty or 'Worker', 'event': event_code or '', 'kind': kind})
     return out, problems
@@ -108,7 +114,7 @@ def check_spending(entries, balances):
     return [f"{mid}: has only {balances.get(mid, 0):g} points" for mid, p in use.items() if balances.get(mid, 0) + p < -0.004]
 
 
-# ---------- balances, pending, lapsed ----------
+# ---------- balances, lapsed ----------
 
 def balances(entries):
     out = defaultdict(float)
@@ -116,18 +122,6 @@ def balances(entries):
         if e['status'] == APPROVED and e['member']:
             out[e['member']] += e['points']
     return {k: round(v, 3) for k, v in out.items()}
-
-
-def pending_groups(entries):
-    """Pending entries grouped as they were sent: [(key, {'event', 'date', 'by', 'rows'})], oldest first."""
-    groups = {}
-    for e in entries:
-        if e['status'] != PENDING:
-            continue
-        key = f"{e['event']}|{e['date']}|{e['by']}"
-        g = groups.setdefault(key, {'event': e['event'], 'date': e['date'], 'by': e['by'], 'rows': []})
-        g['rows'].append(e)
-    return sorted(groups.items(), key=lambda kv: str(kv[1]['date']))
 
 
 def lapsed(members, today):
@@ -309,7 +303,7 @@ USE_FOR = ['SCCA membership renewal', 'Event entry', 'Awards banquet', 'Region m
 def use_entry(member, points, what, when):
     """One Used entry, or (None, problem)."""
     try:
-        p = abs(float(points))
+        p = abs(to_number(points))
     except (TypeError, ValueError):
         p = 0
     if p <= 0:
@@ -340,7 +334,7 @@ def books_email(bk, label, reserve=None, value=None):
     return f'Worker points journal entries to book ({label})', '\n'.join(lines)
 
 
-# ---------- Auto add: people who get points every month (prepared as Pending; the keeper approves) ----------
+# ---------- Auto add: people who get points every month (added on the 1st) ----------
 
 AUTO_COLS = ['Member #', 'Name', 'Role', 'Points a month (Apr-Oct)', 'Points a month (Nov-Mar)']
 
@@ -350,7 +344,7 @@ def auto_points(row, month):
 
 
 def auto_entries(auto_rows, entries, year, month):
-    """The month's auto-add entries not yet prepared (pending or approved), dated the 1st."""
+    """The month's auto-add entries not yet added, dated the 1st."""
     first = date(year, month, 1)
     label = first.strftime('%B %Y')
     done = {(e['member'], e['what']) for e in entries}

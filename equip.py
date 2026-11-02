@@ -16,7 +16,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 import equip_store as E
 import officials as O
-from utils import log_audit_event, login_required, send_mail
+from utils import local_path, log_audit_event, login_required, send_mail
 
 bp = Blueprint('equip', __name__, url_prefix='/operations')
 
@@ -234,7 +234,7 @@ def place(place_id=None):
         return editor_required(lambda: None)()
     held = [i for i in E.items() if p and i['place'] == p.get('name') and i['status'] != 'Gone']
     back = request.args.get('back', '')
-    return render_template('equip.html', **_ctx(view='place', p=p, edit=edit, held=held, back=back if back.startswith('/') else '',
+    return render_template('equip.html', **_ctx(view='place', p=p, edit=edit, held=held, back=local_path(back),
                                                 docs=_docs_for(p['id']) if p and not edit else None))
 
 
@@ -253,7 +253,7 @@ def _save_place(p):
     log_audit_event('EQUIP_PLACE_SAVED', _who(), {'id': pid, 'name': row['name']})
     flash(f"Saved {row['name']}.", 'success')
     back = f.get('back', '')
-    return redirect(back if back.startswith('/') else url_for('equip.place', place_id=pid))
+    return redirect(local_path(back) or url_for('equip.place', place_id=pid))
 
 
 @bp.route('/tasks')
@@ -287,7 +287,7 @@ def task(task_id=None):
         return editor_required(lambda: None)()
     names = sorted({i['name'] for i in E.items() if i['category'] in ('Vehicle', 'Trailer')} | {p['name'] for p in E.places()})
     back = request.args.get('back', '')
-    return render_template('equip.html', **_ctx(view='task', t=t, names=names, frequencies=E.FREQUENCIES, back=back if back.startswith('/') else '',
+    return render_template('equip.html', **_ctx(view='task', t=t, names=names, frequencies=E.FREQUENCIES, back=local_path(back),
                                                 bill=request.args.get('bill') == '1' or bool(t.get('cost'))))
 
 
@@ -304,7 +304,7 @@ def _save_task(t):
         log_audit_event('EQUIP_TASK_DONE', _who(), {'id': t['id'], 'task': t['task'], 'next': nxt})
         flash(f"Marked done: {t['task']}." + (f" Next due {nxt}." if nxt else ''), 'success')
         back = f.get('back', '')
-        return redirect(back if back.startswith('/') else url_for('equip.tasks'))
+        return redirect(local_path(back) or url_for('equip.tasks'))
     for k in E.TASK_COLS:
         if k in f:
             row[k] = f.get(k, '').strip()
@@ -317,7 +317,7 @@ def _save_task(t):
     log_audit_event('EQUIP_TASK_SAVED', _who(), {'id': tid, 'task': row['task'], 'due': row.get('due', '')})
     flash('Saved.', 'success')
     back = f.get('back', '')
-    return redirect(back if back.startswith('/') else url_for('equip.tasks'))
+    return redirect(local_path(back) or url_for('equip.tasks'))
 
 
 @bp.route('/one-pager.pdf')

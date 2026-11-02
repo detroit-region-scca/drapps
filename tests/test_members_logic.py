@@ -11,13 +11,11 @@ def test_spending_cannot_go_below_zero():
     assert L.check_spending(rows, {'1': 12}) == []
 
 
-def test_only_approved_entries_count_and_pending_group_by_sender():
+def test_only_approved_entries_count():
     e = [{'member': '1', 'points': 4, 'status': 'Approved', 'event': '#A', 'date': date(2026, 9, 1), 'by': 'K'},
          {'member': '1', 'points': 2, 'status': 'Pending', 'event': '#B', 'date': date(2026, 10, 1), 'by': 'Chair'},
          {'member': '2', 'points': 1, 'status': 'Pending', 'event': '#B', 'date': date(2026, 10, 1), 'by': 'Chair'}]
     assert L.balances(e) == {'1': 4}
-    groups = L.pending_groups(e)
-    assert len(groups) == 1 and len(groups[0][1]['rows']) == 2
 
 
 def test_roster_merge_refreshes_dates_adds_new_and_keeps_former_members():
@@ -178,3 +176,10 @@ def test_pick_id_accepts_name_first_old_form_and_full_name():
     assert L.pick_id('  lee   sample ', by_id) == '500200_1'
     assert L.pick_id('Nobody Here', by_id) == ''
     assert L.pick_id('', by_id) == ''
+
+
+def test_points_refuse_junk_and_typos():
+    by_id = {'1': {'member': '1', 'first': 'Pat', 'last': 'Example'}}
+    rows, problems = L.rows_from_form(['Pat Example (1)'] * 4, ['nan', 'inf', '500', '2'], by_id, '#A', date(2026, 9, 1), 'Worker')
+    assert [r['points'] for r in rows] == [2.0] and len(problems) == 3
+    assert L.use_entry({'member': '1', 'points': 5}, 'nan', 'Renewal', date(2026, 9, 1))[0] is None

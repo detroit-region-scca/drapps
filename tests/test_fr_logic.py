@@ -31,7 +31,7 @@ def test_someone_else_needs_chair_and_receipt():
 
 def test_same_last_name_is_not_the_chair():
     assert not L.same_person('Ana Smith', 'Pat Smith')
-    assert L.same_person('Matt Wolfe', 'Matthew Wolfe')
+    assert L.same_person('Matt Sample', 'Matthew Sample')
 
 
 def test_no_budget_or_changed_budget_holds_for_board():

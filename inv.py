@@ -11,7 +11,8 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 import inv_store as I
 import officials as O
-from utils import load_events, load_programs, log_audit_event, login_required, send_mail
+from officer import current as officer_current, officer_required
+from utils import load_events, load_programs, log_audit_event, login_required, send_mail, to_number
 
 bp = Blueprint('inv', __name__, url_prefix='/invoices')
 
@@ -21,7 +22,7 @@ def _programs():
 
 
 def _ctx(**kw):
-    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Invoices", programs=_programs(), **kw)
+    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Invoices", programs=_programs(), officer=officer_current(), **kw)
 
 
 def _guard():
@@ -33,7 +34,7 @@ def _guard():
 
 def _money(v):
     try:
-        return round(float(str(v).replace(',', '').replace('$', '').strip()), 2)
+        return round(to_number(str(v).replace(',', '').replace('$', '').strip()), 2)
     except ValueError:
         return None
 
@@ -150,6 +151,7 @@ def pdf(inv_id):
 
 @bp.route('/<inv_id>/close', methods=['POST'])
 @login_required
+@officer_required   # paid, void and reopen are the treasurer's or an officer's call, as for funds requests
 def close(inv_id):
     if (g := _guard()):
         return g
@@ -157,7 +159,7 @@ def close(inv_id):
     inv = I.get(inv_id)
     if not inv:
         abort(404)
-    who = session.get('who', '') or 'Unknown'
+    who = officer_current()['name']
     action = request.form.get('action')
     if action == 'paid':
         amount = _money(request.form.get('paid_amount') or inv['total'])

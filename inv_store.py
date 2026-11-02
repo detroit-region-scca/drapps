@@ -104,7 +104,8 @@ def create(inv, lines):
 
 
 def update(inv_id, **fields):
-    with _lock:
+    # The file lock too: the app runs several worker processes, and a create or delete in another one shifts rows.
+    with FileLock(LOCK), _lock:
         ws = _ws('Invoices')
         n = ws.col_values(1).index(inv_id) + 1
         cur = dict(zip(INV_COLS, ws.row_values(n) + [''] * len(INV_COLS)))

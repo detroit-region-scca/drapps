@@ -244,7 +244,7 @@
         <h2 class="h6 m-0">Where is it now?</h2>
         <div class="small mt-1">{{ it.place or 'Not recorded' }}{% if it.seen %} <span class="text-muted">· last confirmed {{ it.seen }}</span>{% else %} <span class="text-muted">· never confirmed</span>{% endif %}</div>
         {% if editor %}<form method="post" class="d-flex flex-wrap gap-2 mt-2 no-print"><input type="hidden" name="action" value="located">
-            <input name="place" class="form-control form-control-sm" style="max-width: 22rem" list="whereNames" value="{{ it.place or '' }}" placeholder="Wixom storage unit, Race Trailer, With Matt Wolfe">
+            <input name="place" class="form-control form-control-sm" style="max-width: 22rem" list="whereNames" value="{{ it.place or '' }}" placeholder="Wixom storage unit, Race Trailer, With a person">
             <datalist id="whereNames">{% for n in locations %}<option value="{{ n }}">{% endfor %}</datalist>
             <button class="btn btn-sm btn-accent">Confirm or move</button></form>
         {% else %}<div class="small text-muted mt-1 no-print">Moved it? Ask the equipment committee to record where it is.</div>{% endif %}

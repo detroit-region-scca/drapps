@@ -223,3 +223,19 @@ Event Details:
 
 Please review this entry if needed.
 """)
+
+
+def to_number(v):
+    """float() for form input that refuses "nan" and "inf" (float() accepts both), so they can't slip past checks."""
+    import math
+    x = float(v)
+    if not math.isfinite(x):
+        raise ValueError(f'not a number: {v!r}')
+    return x
+
+
+def local_path(target):
+    """target if it is a path on this site ("/x"), else ''. Refuses "//host" and "/\\host", which browsers treat as
+    another site, so a crafted link can't bounce someone off to it after a form."""
+    t = str(target or '')
+    return t if t.startswith('/') and not t.startswith(('//', '/\\')) and '\n' not in t and '\r' not in t else ''

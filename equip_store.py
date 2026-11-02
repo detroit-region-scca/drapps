@@ -18,6 +18,7 @@ from filelock import FileLock
 
 from storage import DATA_DIR, open_book, worksheet
 import sheet_cache as C
+from utils import to_number
 
 ITEM_COLS = ['id', 'name', 'program', 'category', 'place', 'year', 'quantity', 'cost', 'life_years', 'vin', 'plate',
              'condition', 'status', 'notes', 'docs_url', 'updated', 'updated_by', 'replace_cost', 'replace_year', 'nickname', 'seen', 'account']
@@ -74,7 +75,7 @@ def refresh():
 
 def _num(v):
     try:
-        return float(v) if str(v).strip() != '' else None
+        return to_number(v) if str(v).strip() != '' else None
     except (TypeError, ValueError):
         return None
 

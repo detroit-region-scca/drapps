@@ -9,6 +9,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 import officials as O
 from utils import log_audit_event, login_required, send_mail
+from utils import local_path
 
 bp = Blueprint('officer', __name__, url_prefix='/officer')
 
@@ -34,7 +35,9 @@ def officer_required(f):
             session.pop('officer', None)
             flash('Recording a board decision is for the RE, ARE or treasurer.', 'warning')
             back = request.form.get('back') or request.referrer or ''
-            return redirect(back if back.startswith('/') or back.startswith(request.host_url) else url_for('home'))
+            if back.startswith(request.host_url):
+                back = '/' + back[len(request.host_url):]
+            return redirect(local_path(back) or url_for('home'))
         return f(*a, **kw)
     return wrapped
 

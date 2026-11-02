@@ -13,7 +13,7 @@ import fr_store as F
 import officials as O
 import plan_store as P
 from officer import current as officer_current, officer_required
-from utils import load_events, load_programs, log_audit_event, login_required
+from utils import load_events, load_programs, log_audit_event, login_required, to_number
 
 bp = Blueprint('bud', __name__, url_prefix='/events')
 
@@ -91,7 +91,7 @@ def _money(v):
     if not v:
         return None
     try:
-        return round(float(v), 2)
+        return round(to_number(v), 2)
     except ValueError:
         return 'bad'
 
@@ -217,7 +217,8 @@ def tie(code):
     """Tie the event to one of its program's annual plan lines."""
     e = _event(code)
     sort = request.form.get('plan_line', '')
-    who = request.form.get('who', '').strip() or session.get('who', '') or 'Unknown'
+    from auth import user as _signed_in   # the audit log names the signed-in person, not a form field
+    who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
     if e and sort:
         if P.link(e['date'][:4], e['program_code'], float(sort), code):
             item = (P.line_for(code) or {}).get('item', '')

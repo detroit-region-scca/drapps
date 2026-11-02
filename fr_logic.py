@@ -41,7 +41,7 @@ def _words(name):
 
 
 def same_person(a, b):
-    """Same last name and the first names agree ("Matt Wolfe" and "Matthew Wolfe")."""
+    """Same last name and the first names agree ("Matt Sample" and "Matthew Sample")."""
     wa, wb = _words(a), _words(b)
     if len(wa) < 2 or len(wb) < 2 or wa[-1] != wb[-1]:
         return False

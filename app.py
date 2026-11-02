@@ -7,6 +7,7 @@ import hmac
 import calendar
 import csv
 import gspread
+import requests
 from urllib.parse import quote
 import io
 from dotenv import load_dotenv
@@ -73,8 +74,14 @@ import api  # noqa: E402
 app.before_request(api.signin_from_key)   # a valid API key signs the request in (see api.py)
 import auth  # noqa: E402
 app.before_request(auth.gate)               # email-code sign-in: who is signed in and what they may open
+import csrf  # noqa: E402
+app.before_request(csrf.check)              # forged-form protection (after the API key check, which exempts)
+app.after_request(csrf.stamp)
 app.register_blueprint(auth.bp)
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'   # other sites' pages can't post with the session cookie
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
 app.register_blueprint(api.bp)
 app.config['MAX_CONTENT_LENGTH'] = 40 * 1024 * 1024  # funds request receipts
 
@@ -105,7 +112,8 @@ cleanup_temp_files()
 
 def _safe_next(target):
     """Only same-site paths are followed after login (never an absolute or //host URL)."""
-    return target if target and target.startswith('/') and not target.startswith('//') else None
+    from utils import local_path
+    return local_path(target) or None
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -231,10 +239,28 @@ def home():
     return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Apps",
                            members_enabled=members_store.enabled(), minutes_enabled=__import__('minutes_store').enabled(), fr_enabled=fr_store.enabled(), bud_enabled=bud_store.enabled(), plan_enabled=plan_store.enabled(), next_url=_safe_next(request.args.get('next')) or '')
 
-@app.errorhandler(RuntimeError)
+def _signed_in_name():
+    """Who is signed in, for the audit log: from the officials list, never from a form field."""
+    u = auth.user() if 'auth' in globals() else None
+    return (u or {}).get('name') or session.get('who') or 'Unknown'
+
+
+from storage import StorageUnavailable  # noqa: E402
+
+
+@app.errorhandler(StorageUnavailable)
 def storage_unavailable(e):
+    """Only the deliberate "storage is down" error becomes a message; any other RuntimeError is a bug and is logged."""
     flash(str(e), 'danger')
     return redirect(url_for('index'))
+
+
+@app.errorhandler(requests.exceptions.RequestException)
+def google_drive_error(e):
+    """A Drive upload or download failed (network or Google): say so instead of a bare 500."""
+    logging.exception(f"Google Drive request failed on {request.path}")
+    msg = 'Google Drive did not answer, so that was not saved. Go back, check the form is still filled in, and try again.'
+    return render_template('base.html', title='Try again', busy_msg=msg), 503
 
 
 @app.errorhandler(gspread.exceptions.APIError)
@@ -291,17 +317,13 @@ def index():
         # Before loading anything: an anonymous request should not cost a Sheets read.
         return redirect(url_for('home', next=request.full_path.rstrip('?')))
     if request.method == 'POST':
-        if not session.get('authenticated'):
-            return redirect(url_for('index'))
-
         lock = FileLock(DATA_LOCK_FILE)
         with lock:
             events = load_events()
             program_code = request.form['program'].strip()
             date_str = request.form['date'].strip()
             event_name = request.form['event_name'].strip()
-            creator_name = request.form['your_name'].strip()
-            session['who'] = creator_name
+            creator_name = request.form['your_name'].strip()   # who the event is registered by (may be for someone else)
             custom_tag = format_custom_tag(request.form.get('custom_tag'))
 
             if not is_tag_unique(custom_tag, events):
@@ -321,7 +343,7 @@ def index():
 
             events.append(new_event)
             save_events(events)
-            log_audit_event('EVENT_CREATED', creator_name, new_event)
+            log_audit_event('EVENT_CREATED', _signed_in_name(), new_event)
             send_new_event_email(new_event)
         _link_plan_line(new_event, request.form.get('plan_line', ''), creator_name)
         flash(f"Registered {new_event['custom_tag'] or new_event['unique_code']}.", 'success')
@@ -411,7 +433,7 @@ def old_budgets(rest):
 @app.route('/delete/<event_id>', methods=['POST'])
 @login_required
 def delete_event(event_id):
-    delete_user_name = request.form.get('delete_user_name', 'Unknown').strip()
+    delete_user_name = _signed_in_name()
 
     lock = FileLock(DATA_LOCK_FILE)
     with lock:
@@ -463,7 +485,7 @@ def edit_event(event_id):
         
         save_events(events)
         
-        log_audit_event('EVENT_EDITED', request.form['your_name'], {
+        log_audit_event('EVENT_EDITED', _signed_in_name(), {
             'event_id': event_id,
             'original': original_event,
             'updated': event_to_edit
