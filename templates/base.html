@@ -22,8 +22,11 @@
         .site-brand img { height: 40px; width: auto; }
         .site-brand .site-name { display: block; font-weight: 700; font-size: 1.1rem; line-height: 1.1; white-space: nowrap; color: var(--text); text-decoration: none; }
         .site-brand .app-line { white-space: nowrap; font-weight: 500; font-size: .85rem; color: var(--muted); }
-        .site-brand .year-pick select { border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 600; padding: 0 .1rem; cursor: pointer; }
-        .site-brand .year-pick::before { content: "·"; margin: 0 .3rem 0 .25rem; }
+        .site-brand .year-pick select { margin-left: .4rem; border: 1px solid #d2232a; border-radius: 999px; background-color: #fff; color: #d2232a;
+                font-size: .85rem; font-weight: 700; line-height: 1.2; padding: .1rem 1.5rem .1rem .6rem; cursor: pointer; appearance: none;
+                background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23d2232a' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+                background-repeat: no-repeat; background-position: right .45rem center; background-size: 10px 10px; }
+        .site-brand .year-pick select:hover { background-color: #fdf0f0; }
         .app-bar .apps-btn { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); text-decoration: none;
                              padding: .3rem .55rem; border: 1px solid var(--border); border-radius: 6px; margin-right: .75rem; font-size: .9rem; }
         .app-bar .apps-btn:hover { color: var(--text); border-color: var(--muted); }
