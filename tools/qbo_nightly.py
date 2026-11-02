@@ -136,18 +136,13 @@ def main():
             say.append(f'worker points journal entries for {ym} emailed to the treasurer')
     except Exception as e:
         say.append(f'worker points journal entry email failed: {e}')
-    try:   # on the 1st: prepare this month's Auto add points as Pending (the keeper approves them in the app)
+    try:   # on the 1st: add this month's Auto add points (they count right away)
         t0 = date.today()
         if t0.day == 1 and W.enabled() and not DRY:
             n = W.prepare_auto(t0.year, t0.month)
-            say.append(f'auto add: {n} entries waiting for the keeper')
+            say.append(f'auto add: {n} entries added')
     except Exception as e:
         say.append(f'auto add failed: {e}')
-    try:   # the public worker points standings sheet that drscca.org shows
-        if not DRY:
-            say.append(f'worker points standings published: {W.publish_standings()} members')
-    except Exception as e:
-        say.append(f'worker points standings failed: {e}')
     print(f"QuickBooks sync {as_of}{' (dry run)' if DRY else ''}: " + '\n'.join(say))
 
 

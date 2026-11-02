@@ -36,7 +36,7 @@ def _who():
 
 def _ctx(**kw):
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Members", keeper=_keeper(), point_value=L.POINT_VALUE, today_=date.today(),
-                roles=[r for r, _ in L.ROLES], rates=dict(L.ROLES), **kw)
+                structure=L.POINT_STRUCTURE, specialties=L.SPECIALTIES, volunteer_job=L.VOLUNTEER_JOB, **kw)
 
 
 def _guard(keeper=False):
@@ -121,10 +121,13 @@ def enter():
         code = f.get('event', '').strip()
         if _me().get('chair_only') and code not in {e.get('unique_code') for e in events} | {e.get('custom_tag') for e in events}:
             code = ''
-        when = L.to_date(f.get('date')) or L.to_date((_events_by_code().get(code) or {}).get('date')) or date.today()
-        grid = [dict(zip(('member', 'role', 'days', 'points', 'note'), vals)) for vals in
-                zip(f.getlist('member'), f.getlist('role'), f.getlist('days'), f.getlist('points'), f.getlist('note'))]
-        rows, problems = L.rows_from_grid(grid, by_id, code, when)
+        ev_date = L.to_date((_events_by_code().get(code) or {}).get('date'))
+        first = L.to_date(f.get('first')) or ev_date or date.today()
+        last = L.to_date(f.get('last')) or first
+        days = max(1, (last - first).days + 1)
+        specialty = f.get('specialty_other', '').strip() if f.get('specialty') == 'Other' and f.get('specialty_other', '').strip() else f.get('specialty', '')
+        grid = [{'member': n, 'points': p} for n, p in zip(f.getlist('member'), f.getlist('points'))]
+        rows, problems = L.rows_from_form(f.getlist('member'), f.getlist('points'), by_id, code, first, specialty, default_points=days)
         keeper = _keeper()
         if keeper:
             problems += [f"{e['name']}: not a member yet; add them on the Members page first" for e in rows if not e['member']]
@@ -348,7 +351,7 @@ def books_email():
 @bp.route('/auto', methods=['GET', 'POST'])
 @login_required
 def auto():
-    """People who get points every month. On the 1st they are added as Pending; the keeper approves them."""
+    """People who get points every month. On the 1st their points are added automatically (the user's choice)."""
     if (g := _guard(keeper=True)):
         return g
     mem = S.members()
@@ -357,8 +360,8 @@ def auto():
         f = request.form
         if f.get('action') == 'prepare':
             t = date.today()
-            n = S.prepare_auto(t.year, t.month)
-            flash(f'Added {n} entries for {t:%B} to approve on the Members page.' if n else f'{t:%B} is already prepared.', 'info')
+            n = S.prepare_auto(t.year, t.month, _who())
+            flash(f'Added {n} role points entries for {t:%B}.' if n else f'{t:%B} is already added.', 'info')
             return redirect(url_for('members.home'))
         rows, problems = [], []
         for mid, role, season, off in zip(f.getlist('member'), f.getlist('role'), f.getlist('season'), f.getlist('offseason')):

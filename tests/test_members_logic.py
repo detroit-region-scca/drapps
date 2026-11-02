@@ -5,24 +5,6 @@ import members_logic as L
 MEM = {'1': {'member': '1', 'first': 'Jane', 'last': 'Smith'}, '2': {'member': '2', 'first': 'PAT', 'last': 'QUINN'}}
 
 
-def test_grid_rows_work_out_points_from_role_and_days():
-    rows, problems = L.rows_from_grid([
-        {'member': '1 Jane Smith', 'role': 'Worker', 'days': '2', 'points': '', 'note': 'registration'},
-        {'member': '2 Pat Quinn', 'role': 'Event chair', 'days': '2', 'points': '', 'note': ''},
-        {'member': '', 'role': 'Worker', 'days': '1', 'points': '', 'note': ''}], MEM, '#AX1', date(2026, 11, 2))
-    assert problems == []
-    assert [(r['member'], r['name'], r['points'], r['what'], r['kind']) for r in rows] == [
-        ('1', 'Jane Smith', 2.0, 'Worker: registration', 'Earned'),
-        ('2', 'Pat Quinn', 8.0, 'Event chair', 'Earned')]
-
-
-def test_grid_keeps_typed_names_for_the_keeper_to_match_and_needs_points_for_role_points():
-    rows, problems = L.rows_from_grid([{'member': 'Bob Jones', 'role': 'Worker', 'days': '1'},
-                                       {'member': '1', 'role': 'Role points (volunteer job)', 'points': ''}], MEM, '', date(2026, 11, 2))
-    assert rows[0]['member'] == '' and rows[0]['name'] == 'Bob Jones'
-    assert problems == ['1: enter the points']
-
-
 def test_spending_cannot_go_below_zero():
     rows = [{'member': '1', 'points': -12}]
     assert L.check_spending(rows, {'1': 10}) == ['1: has only 10 points']
@@ -97,11 +79,6 @@ def test_use_points_needs_enough_balance():
     assert L.use_entry(m, '0', 'x', date(2026, 11, 2))[1] == 'Enter how many points to use.'
 
 
-def test_enter_points_rejects_negative_numbers():
-    rows, problems = L.rows_from_grid([{'member': '1', 'role': 'Other', 'points': '-5'}], MEM, '', date(2026, 11, 2))
-    assert rows == [] and 'Use points tab' in problems[0]
-
-
 def test_books_email_lists_the_entries():
     from datetime import date
     b = {'lines': [{'debit': 'Club AX Autocross Expense:Club AX Autocross Worker Points', 'credit': 'Reserve Fund - Worker Awards',
@@ -120,3 +97,13 @@ def test_auto_add_prepares_each_month_once():
                                                                   ('2', 1.0, 'Role points, December 2026: Equipment chief')]
     assert L.auto_entries(rows, [{'member': '1', 'what': out[0]['what']}], 2026, 12) == [out[1]]
     assert L.auto_entries(rows, [], 2026, 5)[0]['points'] == 2.0
+
+
+def test_worker_point_form_rows():
+    rows, problems = L.rows_from_form(['1 Jane Smith', 'Bob Jones', '', '2 Pat Quinn'], ['', '3', '', '-1'], MEM, '#AX1',
+                                      date(2026, 9, 12), 'Registration', default_points=2)
+    assert [(r['member'], r['name'], r['points'], r['what'], r['kind']) for r in rows] == [
+        ('1', 'Jane Smith', 2, 'Registration', 'Earned'), ('', 'Bob Jones', 3.0, 'Registration', 'Earned')]
+    assert problems and 'Use points tab' in problems[0]
+    rows, _ = L.rows_from_form(['1'], ['12'], MEM, '', date(2026, 12, 1), L.VOLUNTEER_JOB)
+    assert rows[0]['kind'] == 'Role points'

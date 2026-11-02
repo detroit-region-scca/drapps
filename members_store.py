@@ -5,7 +5,7 @@ Members sheet tabs (see members_logic for the columns):
   Points   every points entry, one row each
   Auto add people who get points every month (Member # | Name | Role | Apr-Oct | Nov-Mar); the app prepares them as Pending
 The sheet stays usable by hand if the apps are gone. The public sheet holds what drscca.org shows:
-  Member Milestones  Month | Name | Years | Note     Worker Points  Name | Points | Value | Points through | Published
+  Member Milestones  Month | Name | Years | Note | Points through | Published
 """
 import logging
 import os
@@ -69,14 +69,12 @@ def entries():
 def add_entries(rows, status, who):
     """Append entries (dicts from members_logic.rows_from_grid, or the same keys). Returns how many."""
     values = [[(e['date'] or date.today()).isoformat(), _text(e['member']), _text(e['name']), float(e['points']), _text(e['what']),
-               _text(e.get('event', '')), e.get('kind') or L.kind_for(e['points'], ''), status, _text(who)] for e in rows]
+               _text(e.get('event', '')), e.get('kind') or ('Used' if e['points'] < 0 else 'Earned'), status, _text(who)] for e in rows]
     if not values:
         return 0
     with _lock:
         worksheet(_sid(), 'Points').append_rows(values, value_input_option='RAW')
         refresh()
-    if status == L.APPROVED:
-        publish_standings_soon()
     return len(values)
 
 
@@ -97,7 +95,6 @@ def set_status(rows, status, who=None):
         if updates:
             ws.batch_update(updates, value_input_option='RAW')
         refresh()
-    publish_standings_soon()
 
 
 def delete_rows(row_numbers):
@@ -138,28 +135,6 @@ def add_member(mid, first, last, life=False):
 
 def _pub():
     return os.environ['PUBLIC_SHEET_ID']
-
-
-def publish_standings():
-    """Rewrite the public Worker Points tab (names and points only)."""
-    if not os.environ.get('PUBLIC_SHEET_ID'):
-        return None
-    refresh()
-    rows = L.standings(members())
-    values = [['Name', 'Points', 'Value']] + [[r['name'], r['points'], round(r['points'] * L.POINT_VALUE, 2)] for r in rows]
-    ws = worksheet(_pub(), 'Worker Points')
-    ws.batch_clear(['A:E'])
-    ws.update(values, 'A1', value_input_option='RAW')
-    return len(rows)
-
-
-def publish_standings_soon():
-    def run():
-        try:
-            publish_standings()
-        except Exception as e:      # the website copy is a convenience; never fail a ledger change over it
-            log.error(f'publishing worker points standings failed: {e}')
-    threading.Thread(target=run, daemon=True).start()
 
 
 def milestone_rows():
@@ -238,7 +213,7 @@ def save_auto_rows(rows):
                   value_input_option='USER_ENTERED')
 
 
-def prepare_auto(year, month, who='Auto add'):
-    """Add this month's auto-add points as Pending (once). Returns how many were added."""
+def prepare_auto(year, month, who='Auto add (monthly)'):
+    """Add this month's auto-add points (once). They count right away: the user asked for these to be automatic."""
     rows = L.auto_entries(auto_rows(), entries(), year, month)
-    return add_entries(rows, L.PENDING, who) if rows else 0
+    return add_entries(rows, L.APPROVED, who) if rows else 0

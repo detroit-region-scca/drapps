@@ -17,9 +17,9 @@ POINT_COLS = ['Date', 'Member #', 'Name', 'Points', 'What for', 'Event', 'Kind',
 KINDS = ('Opening', 'Earned', 'Role points', 'Used', 'Forfeit', 'Adjustment')
 APPROVED, PENDING = 'Approved', 'Pending'
 
-# What a row on the entry page means: (label, points per day; None = type the points; negative = points used).
-ROLES = [('Worker', 1), ('Chief or assistant chair', 2), ('Event chair', 4), ('Special event', 3),
-         ('Role points (volunteer job)', None), ('Other', None)]
+# Point structure per day (from the worker point form)
+POINT_STRUCTURE = [('Event chairman (one per event)', 4), ('Special events', 3),
+                   ('Chief (one per specialty) / assistant chair (one per event)', 2), ('Worker', 1)]
 
 PROGRAM_ACCOUNT = {
     'AX': 'Club AX Autocross Expense:Club AX Autocross Worker Points',
@@ -71,52 +71,30 @@ def full_name(m):
     return f"{nice(m.get('first'))} {nice(m.get('last'))}".strip()
 
 
-def kind_for(points, role):
-    if points < 0:
-        return 'Used'
-    return 'Role points' if (role or '').startswith('Role points') else 'Earned'
-
-
-def role_rate(role):
-    return dict(ROLES).get(role)
-
-
 # ---------- the entry grid ----------
 
-def rows_from_grid(form_rows, members_by_id, event_code, when, what_default=''):
-    """Entry-page rows -> (entries, problems). Each form row: member ('500100 Pat Quinn' or a typed name), role, days,
-    points, note. Points left blank are worked out from the role and days. A row without a known member is a problem
-    (the person must be added first), except that event chairs may send typed names for the keeper to sort out."""
+SPECIALTIES = ['Event chair / assistant chair', 'Registration', 'Tech / scrutineering', 'Timing and scoring', 'Flagging and communications',
+               'Grid / pit out', 'Course / course workers', 'Safety / emergency', 'Special event', 'Other']
+VOLUNTEER_JOB = 'Volunteer job (role points)'
+
+
+def rows_from_form(names, points, members_by_id, event_code, when, specialty, default_points=None):
+    """Steve's worker point form: a specialty for the sheet, then Worker's Name | Points pairs. Names picked from the
+    list carry the member #; typed names are kept for the keeper to match. Blank points use default_points (1 a day)."""
     out, problems = [], []
-    for r in form_rows:
-        raw = (r.get('member') or '').strip()
+    kind = 'Role points' if specialty == VOLUNTEER_JOB else 'Earned'
+    for raw, pts_raw in zip(names, points):
+        raw = (raw or '').strip()
         if not raw:
             continue
         mid = raw.split(' ')[0]
         m = members_by_id.get(mid)
-        role = r.get('role') or 'Worker'
-        try:
-            days = float(r.get('days') or 1)
-        except ValueError:
-            days = 1.0
-        pts_raw = (r.get('points') or '').strip()
-        if pts_raw:
-            pts = num(pts_raw)
-        elif role_rate(role):
-            pts = role_rate(role) * days
-        else:
-            problems.append(f'{raw}: enter the points'); continue
+        pts = num(pts_raw) if str(pts_raw or '').strip() else (default_points or 0)
         if pts <= 0:
-            problems.append(f'{raw}: points must be more than zero (use the Use points tab to spend points)'); continue
-        note = (r.get('note') or '').strip()
-        if role in ('Role points (volunteer job)', 'Other'):
-            what = note or what_default or role
-        else:
-            what = f'{role}: {note}' if note else role
+            problems.append(f'{raw}: points must be more than zero (spend points on the Use points tab)'); continue
         out.append({'date': when, 'member': mid if m else '', 'name': full_name(m) if m else raw, 'points': pts,
-                    'what': what, 'event': event_code or '', 'kind': kind_for(pts, role)})
+                    'what': specialty or 'Worker', 'event': event_code or '', 'kind': kind})
     return out, problems
-
 
 def check_spending(entries, balances):
     """Problems if any member would go below zero."""
