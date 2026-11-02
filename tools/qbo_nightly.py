@@ -130,6 +130,26 @@ def main():
             say.append(f"officials copy failed: {e}")
         P.write_tab('QBO Outstanding', ['date', 'number', 'payee', 'amount', 'as_of'],
                     [[o['date'], o['number'], o['payee'], o['amount'], as_of] for o in data.get('outstanding', [])])
+    try:   # worker points, on the 1st: post role allocations, and email the treasurer last month's journal entry
+        t0 = date.today()
+        if t0.day == 1 and W.enabled() and not DRY:
+            import wp_logic as WL
+            from utils import send_mail
+            alloc = WL.allocation_rows(W.allocations(), W.transactions(), t0)
+            if alloc:
+                W.append_transactions(alloc)
+                say.append(f"worker points allocations posted: {sum(r['points'] for r in alloc):g} points")
+            py, pm = (t0.year, t0.month - 1) if t0.month > 1 else (t0.year - 1, 12)
+            evs = {}
+            for e in load_events():
+                for c in (e.get('unique_code'), e.get('custom_tag')):
+                    if c:
+                        evs[c] = e
+            send_mail(*WL.month_end_email(WL.month_end_summary(W.transactions(), evs, py, pm), py, pm, W.check()),
+                      recipient=os.environ.get('NOTIFICATION_EMAIL', 'treasurer@drscca.org'))
+            say.append('worker points month-end email sent')
+    except Exception as e:
+        say.append(f'worker points month end failed: {e}')
     try:   # the public worker points standings sheet that drscca.org shows
         if not DRY:
             say.append(f'worker points standings published: {W.publish_standings()} members')

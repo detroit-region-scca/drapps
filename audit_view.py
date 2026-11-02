@@ -68,13 +68,13 @@ def describe(log):
     if a == 'WP_ALLOCATIONS_POSTED':
         return Markup('{} posted the {} monthly allocations ({})').format(who, g('month', ''), _pts(g('points')))
     if a == 'WP_REDEMPTION_REQUESTED':
-        return Markup('{} requested {} for member {} ({})').format(who, _pts(g('points')), g('member', ''), _link('wp.redeem_detail', g('id', ''), rid=g('id', '')))
+        return Markup('{} requested {} for member {} ({})').format(who, _pts(g('points')), g('member', ''), g('id', ''))
     if a == 'WP_REDEEMED':
         extra = Markup(', {}').format(_link('fr.detail', g('funds_request'), req_id=g('funds_request'))) if g('funds_request') else ''
-        rid = _link('wp.redeem_detail', g('id'), rid=g('id')) if g('id') else g('note', '')
+        rid = g('id') or g('note', '')
         return Markup('{} approved {} off member {} ({}{})').format(who, _pts(g('points')), g('member', ''), rid, extra)
     if a == 'WP_REDEMPTION_DECLINED':
-        return Markup('{} declined {}: {}').format(who, _link('wp.redeem_detail', g('id', ''), rid=g('id', '')), g('note', ''))
+        return Markup('{} declined {}: {}').format(who, g('id', ''), g('note', ''))
     if a == 'WP_FORFEIT':
         return Markup('{} forfeited {} for member {}').format(who, _pts(g('points')), g('member', ''))
     if a == 'WP_MEMBER_ADDED':

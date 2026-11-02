@@ -1,31 +1,39 @@
-"""Worker Points pages. Everything is read from and written to the ledger Google Sheet (wp_store)."""
+"""Worker Points. Everything is read from and written to the ledger Google Sheet (wp_store).
+
+Kept deliberately small:
+  Points (home)      members, balances, waiting worker lists from event chairs, lapsed members to forfeit
+  Member             history and one "add or use points" form
+  Submit workers     event chairs send who worked (volunteers see only this)
+  Review             the points keeper checks a submitted list and approves it
+Role allocations, the month-end QuickBooks summary and the public standings run in the nightly job (tools/qbo_nightly.py).
+"""
 import os
 from datetime import date
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
-import fr_store as F
 import wp_logic as L
 import wp_store as S
-from fr import notify as fr_notify
-from utils import load_events, load_programs, log_audit_event, login_required
+from utils import load_events, log_audit_event, login_required
 
 bp = Blueprint('wp', __name__, url_prefix='/wp')
 
+SPECIALTIES = ['Whole event (event chair)', 'Registration', 'Tech / scrutineering', 'Timing and scoring',
+               'Flagging and communications', 'Grid / pit out', 'Course / rally route', 'Safety / emergency', 'Special event', 'Other']
+
+
+def _me():
+    from auth import user
+    return user() or {}
+
 
 def _ctx(**kw):
-    from auth import user
-    kw.setdefault('me_level', (user() or {}).get('level', ''))
-    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Worker Points", enabled=S.enabled(), point_value=L.POINT_VALUE,
-                who=session.get('who', ''), **kw)
+    kw.setdefault('me_level', _me().get('level', ''))
+    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Worker Points", enabled=S.enabled(), point_value=L.POINT_VALUE, **kw)
 
 
 def _who():
-    """Who is entering this, from the form; remembered for the rest of the login so it is typed once."""
-    who = request.form.get('entered_by', '').strip() or session.get('who', '')
-    if who:
-        session['who'] = who
-    return who or 'Unknown'
+    return _me().get('name') or session.get('who') or 'Unknown'
 
 
 def _events_by_code():
@@ -44,14 +52,8 @@ def _guard():
     return None
 
 
-def _month(value):
-    """'YYYY-MM' from a form or query string; anything unreadable means this month."""
-    try:
-        y, mo = map(int, (value or '').split('-'))
-        date(y, mo, 1)
-    except ValueError:
-        y, mo = date.today().year, date.today().month
-    return f'{y:04d}-{mo:02d}', y, mo
+def _recent_events():
+    return sorted(load_events(), key=lambda e: e.get('date', ''), reverse=True)[:80]
 
 
 @bp.route('/')
@@ -59,321 +61,100 @@ def _month(value):
 def home():
     if (g := _guard()):
         return g
-    from auth import user
-    if (user() or {}).get('level') == 'volunteer':     # event chairs: straight to submitting workers
+    if _me().get('level') == 'volunteer':     # event chairs: straight to sending who worked
         return redirect(url_for('wp.report'))
-    q = request.args.get('q', '').strip().lower()
-    mem = S.members()
-    hits = [m for m in mem if q and (q in m['member'].lower() or q in f"{m['first']} {m['last']}".lower())] if q else []
-    total = sum(m['balance'] for m in mem)
-    recent = sorted(S.transactions(), key=lambda t: (t['date'] or date.min), reverse=True)[:15]
+    mem = sorted(S.members(), key=lambda m: (m['last'].lower(), m['first'].lower()))
     try:
-        pending = [r for r in S.reports() if r['status'] == 'Submitted']
+        waiting = [r for r in S.reports() if r['status'] == 'Submitted']
     except Exception:
-        pending = []
-    return render_template('wp.html', **_ctx(view='home', q=q, hits=hits[:50], total=total, members_count=len(mem),
-                                             check=S.check(), recent=recent, pending_reports=pending))
+        waiting = []
+    return render_template('wp.html', **_ctx(view='home', members=mem, total=sum(m['balance'] for m in mem), check=S.check(),
+                                             waiting=waiting, lapsed=L.forfeit_candidates(mem, date.today())))
 
 
-@bp.route('/member/<member_id>')
+@bp.route('/member/<member_id>', methods=['GET', 'POST'])
 @login_required
 def member(member_id):
     if (g := _guard()):
         return g
+    if request.method == 'POST':
+        S.refresh()
     m = next((m for m in S.members() if m['member'] == member_id), None)
     if not m:
         flash('Member not found.', 'warning')
         return redirect(url_for('wp.home'))
-    tx = sorted([t for t in S.transactions() if t['member'] == member_id], key=lambda t: t['date'] or date.min, reverse=True)
-    return render_template('wp.html', **_ctx(view='member', m=m, tx=tx))
-
-
-@bp.route('/event', methods=['GET', 'POST'])
-@login_required
-def event():
-    if (g := _guard()):
-        return g
-    events = sorted(load_events(), key=lambda e: e.get('date', ''), reverse=True)
-    mem = S.members()
-    rid = request.args.get('report', '') or request.form.get('report_id', '')
-    if request.method == 'GET' and rid:
-        rep = next((r for r in S.reports() if r['id'] == rid), None)
-        if not rep:
-            flash(f'{rid} not found.', 'warning')
-            return redirect(url_for('wp.home'))
-        parsed = L.parse_report(rep['workers'], mem)
-        for p in parsed:
-            p['duty'] = f"{rep['specialty']}: {p['duty']}" if rep['specialty'] and not rep['specialty'].startswith('Whole') else p['duty']
-        if any(not p['match'] for p in parsed):
-            flash('Some names did not match a member: pick them from the list or add them as members.', 'warning')
-        return render_template('wp.html', **_ctx(view='event', events=events, members=mem, parsed=parsed, report=rep,
-                                                 form={'event_code': rep['event_code'], 'date': rep['date'], 'report': rep['workers']}))
-    if request.method == 'POST' and request.form.get('action') == 'decline':
-        S.close_report(rid, 'Declined', _who())
-        flash(f'{rid} closed without posting.', 'info')
-        return redirect(url_for('wp.home'))
-    if request.method == 'POST' and request.form.get('action') == 'paste':
-        # Fill the rows from a pasted "Report event workers" email; nothing is posted until "Post points".
-        parsed = L.parse_report(request.form.get('report', ''), mem)
-        missing = [p['label'] for p in parsed if not p['match']]
-        if missing:
-            flash('No member found for: ' + ', '.join(missing) + '. Pick them from the list or add them as members.', 'warning')
-        if any(p['match'] == 'guess' for p in parsed):
-            flash('Rows marked "check" matched on last name and first initial only.', 'info')
-        return render_template('wp.html', **_ctx(view='event', events=events, members=mem, form=request.form, parsed=parsed))
-    if request.method == 'POST':
-        S.refresh()
-        mem = S.members()
-        code = request.form['event_code']
-        ev = _events_by_code().get(code)
-        who = _who()
-        when = date.fromisoformat(request.form.get('date') or (ev or {}).get('date') or date.today().isoformat())
-        balances = {m['member']: m['balance'] for m in mem}
-        names = {m['member']: f"{m['first']} {m['last']}" for m in mem}
-        rows, errors = [], []
-        for mid, pts, duty in zip(request.form.getlist('member'), request.form.getlist('points'), request.form.getlist('duty')):
-            mid = mid.split(' ')[0].strip()
-            if not mid:
-                continue
-            try:
-                p = float(pts)
-            except ValueError:
-                errors.append(f'{mid}: points must be a number'); continue
-            if (err := L.validate_entry(mid, p, 'Earned', balances)):
-                errors.append(err); continue
-            rows.append({'date': when, 'member': mid, 'name': names[mid], 'event_code': code,
-                         'description': f"{(ev or {}).get('event_name', code)}: {duty or 'Worker'}", 'points': p,
-                         'type': 'Earned', 'source': f'Entered in app by {who}'})
-        if errors:
-            for e in errors:
-                flash(e, 'danger')
-            return render_template('wp.html', **_ctx(view='event', events=events, members=mem, form=request.form, parsed=[]))
-        if rows:
-            S.append_transactions(rows)
-            log_audit_event('WP_EVENT_POSTED', who, {'event_code': code, 'workers': len(rows), 'points': sum(r['points'] for r in rows)})
-            flash(f"Posted {sum(r['points'] for r in rows):g} points for {len(rows)} workers at {code}.", 'success')
-            if rid:
-                S.close_report(rid, 'Posted', who)
-        return redirect(url_for('wp.home'))
-    return render_template('wp.html', **_ctx(view='event', events=events, members=mem, form={}, parsed=[]))
-
-
-@bp.route('/redeem')
-@login_required
-def redeem():
-    """Redemption requests: pending ones first, then the recent decisions."""
-    if (g := _guard()):
-        return g
-    reqs = sorted(S.requests(), key=lambda r: r['id'], reverse=True)
-    return render_template('wp.html', **_ctx(view='requests', pending=[r for r in reqs if r['status'] == 'Pending'],
-                                             done=[r for r in reqs if r['status'] != 'Pending'][:25]))
-
-
-@bp.route('/redeem/new', methods=['GET', 'POST'])
-@login_required
-def redeem_new():
-    if (g := _guard()):
-        return g
-    if request.method == 'POST':
-        S.refresh()
-    mem = S.members()
     if request.method == 'POST':
         f = request.form
-        mid = f['member'].split(' ')[0].strip()
-        who = _who()
         try:
-            pts = abs(float(f['points']))
+            pts = float(f.get('points', ''))
         except ValueError:
             pts = 0
-        m = next((m for m in mem if m['member'] == mid), None)
-        errors = []
-        if not m:
-            errors.append('Pick the member from the list.')
-        elif pts <= 0:
-            errors.append('Points must be a number above zero.')
-        elif (err := L.validate_entry(mid, -pts, 'Used', {x['member']: x['balance'] for x in mem})):
-            errors.append(err)
-        if not f.get('for', '').strip() or not f.get('payee', '').strip():
-            errors.append('Say what the points are for and who should be paid.')
-        if errors:
-            for e in errors:
-                flash(e, 'danger')
-            return render_template('wp.html', **_ctx(view='request_new', members=mem, form=f))
-        rid = S.add_request({'member': mid, 'name': f"{m['first']} {m['last']}", 'points': pts, 'amount': round(pts * L.POINT_VALUE, 2),
-                             'for': f['for'].strip(), 'payee': f['payee'].strip(), 'payee_address': f.get('payee_address', '').strip(),
-                             'requested_by': who, 'requested_email': f.get('requested_email', '').strip(), 'notes': f.get('notes', '').strip()})
-        log_audit_event('WP_REDEMPTION_REQUESTED', who, {'id': rid, 'member': mid, 'points': pts})
-        flash(f'Request {rid} filed. Nothing comes off until it is approved.', 'success')
-        return redirect(url_for('wp.redeem_detail', rid=rid))
-    form = {'member': request.args.get('member', '')}
-    return render_template('wp.html', **_ctx(view='request_new', members=mem, form=form))
+        reason = f.get('reason', '').strip()
+        code = f.get('event_code', '').strip()
+        typ = 'Used' if pts < 0 else ('Earned' if code else 'Adjustment')
+        err = L.validate_entry(member_id, pts, typ, {member_id: m['balance']})
+        if not err and not reason:
+            err = 'Say what it is for.'
+        if err:
+            flash(err, 'danger')
+            return redirect(url_for('wp.member', member_id=member_id))
+        S.append_transactions([{'date': date.fromisoformat(f.get('date') or date.today().isoformat()), 'member': member_id,
+                                'name': f"{m['first']} {m['last']}", 'event_code': code or typ.upper(), 'description': reason,
+                                'points': pts, 'type': typ, 'source': f'Entered in app by {_who()}'}])
+        log_audit_event('WP_ENTRY', _who(), {'member': member_id, 'points': pts, 'type': typ, 'reason': reason})
+        flash(f"{'Added' if pts > 0 else 'Used'} {abs(pts):g} points for {m['first']} {m['last']}.", 'success')
+        return redirect(url_for('wp.member', member_id=member_id))
+    tx = sorted([t for t in S.transactions() if t['member'] == member_id], key=lambda t: t['date'] or date.min, reverse=True)
+    return render_template('wp.html', **_ctx(view='member', m=m, tx=tx, events=_recent_events()))
 
 
-@bp.route('/redeem/<rid>', methods=['GET', 'POST'])
+@bp.route('/member/add', methods=['POST'])
 @login_required
-def redeem_detail(rid):
+def add_member():
     if (g := _guard()):
         return g
-    if request.method == 'POST':
-        S.refresh()
-    r = next((r for r in S.requests() if r['id'] == rid), None)
-    if not r:
-        flash('Request not found.', 'warning')
-        return redirect(url_for('wp.redeem'))
-    m = next((m for m in S.members() if m['member'] == r['member']), None)
-    if request.method == 'GET':
-        return render_template('wp.html', **_ctx(view='request', r=r, m=m, fr_on=F.enabled()))
-    if r['status'] != 'Pending':
-        flash(f'{rid} was already {r["status"].lower()}.', 'warning')
-        return redirect(url_for('wp.redeem_detail', rid=rid))
-    who = _who()
-    if request.form.get('action') == 'decline':
-        note = request.form.get('note', '').strip()
-        if not note:
-            flash('Say why it is declined.', 'danger')
-            return redirect(url_for('wp.redeem_detail', rid=rid))
-        S.decide_request(rid, 'Declined', decided=date.today().isoformat(), decided_by=who, decision_note=note)
-        log_audit_event('WP_REDEMPTION_DECLINED', who, {'id': rid, 'note': note})
-        flash(f'{rid} declined. No points were taken.', 'info')
-        return redirect(url_for('wp.redeem'))
-    if (err := L.validate_entry(r['member'], -r['points'], 'Used', {m['member']: m['balance']} if m else {})):
-        flash(err, 'danger')
-        return redirect(url_for('wp.redeem_detail', rid=rid))
-    # Points first: a funds request without the deduction would pay out points the member still holds.
-    S.append_transactions([{'date': date.today(), 'member': r['member'], 'name': r['name'], 'event_code': 'USED',
-                            'description': f"{r['for']} ({rid})", 'points': -r['points'], 'type': 'Used',
-                            'source': f'Request {rid}, approved in app by {who}'}])
-    fr_id, note = '', ''
-    if F.enabled():
-        method = F.METHODS.get(request.form.get('method'), F.METHODS['check'])
-        req = {'event_code': '', 'event_name': 'Worker points redemption', 'program': '',
-               'submitter_name': r['requested_by'], 'submitter_email': r['requested_email'], 'submitter_phone': '', 'submitter_address': '',
-               'payee_name': r['payee'], 'payee_address': r['payee_address'], 'payee_email': '', 'payee_phone': '', 'method': method,
-               'total': r['amount'], 'advances': 0, 'net': r['amount'],
-               'notes': f"Points redemption {rid}: {r['name']} #{r['member']}, {r['points']:g} pts for {r['for']}. Approved by {who}.",
-               'entered_by': who}
-        lines = [{'date': date.today().isoformat(), 'description': f"Worker points: {r['name']} #{r['member']}, {r['for']}",
-                  'category': 'Other', 'amount': r['amount']}]
-        try:
-            fr_id = F.create(req, lines, [])
-            fr_notify(fr_id, req, lines, 0)
-        except Exception as e:
-            note = 'Funds request could not be created; enter it by hand.'
-            flash(f'Points were taken off, but the funds request failed ({e}). Please file it by hand.', 'warning')
-    S.decide_request(rid, 'Approved', decided=date.today().isoformat(), decided_by=who, funds_request=fr_id, decision_note=note)
-    log_audit_event('WP_REDEEMED', who, {'id': rid, 'member': r['member'], 'points': -r['points'], 'funds_request': fr_id})
-    flash(f"Approved {rid}: {r['points']:g} points off {r['name']}" + (f', funds request {fr_id} opened.' if fr_id else '.'), 'success')
-    return redirect(url_for('wp.redeem_detail', rid=rid))
-
-
-@bp.route('/allocations', methods=['GET', 'POST'])
-@login_required
-def allocations():
-    if (g := _guard()):
-        return g
-    month, y, mo = _month(request.values.get('month'))
-    if request.method == 'POST':
-        S.refresh()
-    code = f'AC-{month}'
-    roles = S.allocations()
-    already = [t for t in S.transactions() if t['type'] == 'Allocation' and t['event_code'] == code]
-    plan = [dict(r, points=L.allocation_points(r, mo)) for r in roles]
-    if request.method == 'POST':
-        if already:
-            flash(f'Allocations for {month} were already posted.', 'warning')
-            return redirect(url_for('wp.allocations', month=month))
-        who = _who()
-        rows = [{'date': date(y, mo, 1), 'member': r['member'], 'name': r['name'], 'event_code': code,
-                 'description': f"{date(y, mo, 1):%B} allocation: {r['role']}", 'points': r['points'], 'type': 'Allocation',
-                 'source': f'Entered in app by {who}'} for r in plan if r['points'] > 0]
-        S.append_transactions(rows)
-        log_audit_event('WP_ALLOCATIONS_POSTED', who, {'month': month, 'points': sum(r['points'] for r in rows)})
-        flash(f"Posted {month} allocations: {sum(r['points'] for r in rows):g} points.", 'success')
+    S.refresh()
+    f = request.form
+    mid = f.get('member', '').strip()
+    if not mid.isdigit() or not f.get('last', '').strip():
+        flash('Enter the SCCA member number (digits) and the name.', 'danger')
         return redirect(url_for('wp.home'))
-    return render_template('wp.html', **_ctx(view='allocations', month=month, plan=plan, already=already))
-
-
-@bp.route('/forfeits', methods=['GET', 'POST'])
-@login_required
-def forfeits():
-    if (g := _guard()):
-        return g
-    if request.method == 'POST':
-        S.refresh()
-    mem = S.members()
-    if request.method == 'POST':
-        mid = request.form['member']
-        who = _who()
-        m = next((m for m in mem if m['member'] == mid), None)
-        if not m or m['balance'] <= 0:
-            flash('Nothing to forfeit for that member.', 'warning')
-            return redirect(url_for('wp.forfeits'))
-        S.append_transactions([{'date': date.today(), 'member': mid, 'name': f"{m['first']} {m['last']}", 'event_code': 'FORFEIT',
-                                'description': request.form.get('reason') or f"Membership expired {m['exp']}", 'points': -m['balance'],
-                                'type': 'Forfeit', 'source': f'Entered in app by {who}'}])
-        log_audit_event('WP_FORFEIT', who, {'member': mid, 'points': -m['balance']})
-        flash(f"Forfeited {m['balance']:g} points for {m['first']} {m['last']}.", 'success')
-        return redirect(url_for('wp.forfeits'))
-    return render_template('wp.html', **_ctx(view='forfeits', cands=L.forfeit_candidates(mem, date.today())))
-
-
-@bp.route('/month-end')
-@login_required
-def month_end():
-    if (g := _guard()):
-        return g
-    month, y, mo = _month(request.args.get('month'))
-    summ = L.month_end_summary(S.transactions(), _events_by_code(), y, mo)
-    return render_template('wp.html', **_ctx(view='month_end', month=month, s=summ, check=S.check(), programs=load_programs()))
-
-
-@bp.route('/check', methods=['POST'])
-@login_required
-def set_check():
-    try:
-        S.refresh()
-        S.set_qbo_balance(float(request.form['qbo'].replace(',', '').replace('$', '')), date.fromisoformat(request.form['as_of']))
-        log_audit_event('WP_QBO_BALANCE', _who(), {'qbo': request.form['qbo'], 'as_of': request.form['as_of']})
-    except (ValueError, KeyError):
-        flash('Enter the QBO balance and a date.', 'danger')
-    return redirect(request.referrer or url_for('wp.home'))
-
-
-@bp.route('/member/new', methods=['GET', 'POST'])
-@login_required
-def new_member():
-    if (g := _guard()):
-        return g
-    if request.method == 'POST':
-        S.refresh()
-        mid = request.form['member'].strip()
-        if not mid.isdigit():
-            flash('The SCCA member number should be digits only.', 'danger')
-            return redirect(url_for('wp.new_member'))
-        if any(m['member'] == mid for m in S.members()):
-            flash(f'Member {mid} is already in the ledger.', 'warning')
-            return redirect(url_for('wp.member', member_id=mid))
-        S.add_member(mid, request.form['last'].strip().title(), request.form['first'].strip().title(),
-                     request.form.get('exp', '').strip(), bool(request.form.get('life')))
-        log_audit_event('WP_MEMBER_ADDED', _who(), {'member': mid, 'name': f"{request.form['first']} {request.form['last']}"})
-        flash('Member added.', 'success')
+    if any(m['member'] == mid for m in S.members()):
         return redirect(url_for('wp.member', member_id=mid))
-    return render_template('wp.html', **_ctx(view='new_member'))
+    S.add_member(mid, f['last'].strip(), f.get('first', '').strip(), f.get('exp', '').strip(), bool(f.get('life')))
+    log_audit_event('WP_MEMBER_ADDED', _who(), {'member': mid, 'name': f"{f.get('first', '')} {f['last']}"})
+    flash('Member added.', 'success')
+    return redirect(url_for('wp.member', member_id=mid))
 
 
-SPECIALTIES = ['Whole event (event chair)', 'Registration', 'Tech / scrutineering', 'Timing and scoring',
-               'Flagging and communications', 'Grid / pit out', 'Course / rally route', 'Safety / emergency', 'Special event', 'Other']
+@bp.route('/forfeit-lapsed', methods=['POST'])
+@login_required
+def forfeit_lapsed():
+    """Forfeit the points of every member whose membership has lapsed (life members never lapse)."""
+    if (g := _guard()):
+        return g
+    S.refresh()
+    cands = L.forfeit_candidates(S.members(), date.today())
+    if not cands:
+        flash('Nobody to forfeit.', 'info')
+        return redirect(url_for('wp.home'))
+    S.append_transactions([{'date': date.today(), 'member': m['member'], 'name': f"{m['first']} {m['last']}", 'event_code': 'FORFEIT',
+                            'description': f"Membership expired {m['exp']}", 'points': -m['balance'], 'type': 'Forfeit',
+                            'source': f'Entered in app by {_who()}'} for m in cands])
+    log_audit_event('WP_FORFEIT', _who(), {'members': len(cands), 'points': -sum(m['balance'] for m in cands)})
+    flash(f"Forfeited {sum(m['balance'] for m in cands):g} points from {len(cands)} lapsed members.", 'success')
+    return redirect(url_for('wp.home'))
 
 
+@bp.route('/submit', methods=['GET', 'POST'])
 @bp.route('/report', methods=['GET', 'POST'])
 @login_required
 def report():
-    """Event chairs and specialty chiefs submit who worked. The points keeper reviews it before any points post."""
+    """Event chairs and specialty chiefs send who worked. The points keeper reviews it before any points post."""
     if (g := _guard()):
         return g
-    from auth import user
-    me = user() or {}
-    events = sorted(load_events(), key=lambda e: e.get('date', ''), reverse=True)[:60]
+    me = _me()
+    events = _recent_events()
     if request.method == 'POST':
         f = request.form
         code = f.get('event_code', '')
@@ -381,16 +162,71 @@ def report():
         workers = f.get('workers', '').strip()
         if not ev or not workers:
             flash('Pick the event and list at least one worker.', 'warning')
-            return render_template('wp.html', **_ctx(view='report', events=events, specialties=SPECIALTIES, form=f, me=me))
+            return render_template('wp.html', **_ctx(view='submit', events=events, specialties=SPECIALTIES, form=f))
         rid = S.add_report({'event_code': code, 'event_name': ev.get('event_name', ''), 'date': f.get('date') or ev.get('date', ''),
                             'specialty': f.get('specialty', ''), 'workers': workers, 'notes': f.get('notes', '').strip(),
-                            'submitted_by': me.get('name') or session.get('who', ''), 'email': me.get('email', '')})
-        log_audit_event('WP_REPORT_SUBMITTED', me.get('name') or session.get('who', 'Unknown'), {'id': rid, 'event_code': code})
+                            'submitted_by': me.get('name') or _who(), 'email': me.get('email', '')})
+        log_audit_event('WP_REPORT_SUBMITTED', _who(), {'id': rid, 'event_code': code})
         from utils import send_mail
         send_mail(f'Event workers {rid}: {ev.get("event_name", code)}',
                   f"{me.get('name') or 'Someone'} sent the workers for {ev.get('event_name', code)} ({code}), {f.get('specialty', '')}.\n\n"
-                  f"{workers}\n\n{f.get('notes', '').strip()}\n\nReview and post the points: {url_for('wp.event', report=rid, _external=True)}",
+                  f"{workers}\n\n{f.get('notes', '').strip()}\n\nCheck and approve: {url_for('wp.review', rid=rid, _external=True)}",
                   recipient=os.environ.get('MEMBERSHIP_EMAIL', 'membership@drscca.org'))
         flash(f'Thanks. {rid} went to the points keeper, who will record the points.', 'success')
         return redirect(url_for('wp.report'))
-    return render_template('wp.html', **_ctx(view='report', events=events, specialties=SPECIALTIES, form={}, me=me))
+    return render_template('wp.html', **_ctx(view='submit', events=events, specialties=SPECIALTIES, form={}))
+
+
+@bp.route('/review/<rid>', methods=['GET', 'POST'])
+@login_required
+def review(rid):
+    """Check a submitted list (names matched to members, points from role and days) and approve it."""
+    if (g := _guard()):
+        return g
+    rep = next((r for r in S.reports() if r['id'] == rid), None)
+    if not rep:
+        flash(f'{rid} not found.', 'warning')
+        return redirect(url_for('wp.home'))
+    if request.method == 'POST':
+        if rep['status'] != 'Submitted':
+            flash(f"{rid} was already {rep['status'].lower()}.", 'info')
+            return redirect(url_for('wp.home'))
+        if request.form.get('action') == 'close':
+            S.close_report(rid, 'Closed', _who())
+            flash(f'{rid} closed without adding points.', 'info')
+            return redirect(url_for('wp.home'))
+        S.refresh()
+        mem = {m['member']: m for m in S.members()}
+        when = date.fromisoformat(rep['date'] or date.today().isoformat())
+        rows, problems = [], []
+        for mid, pts, duty in zip(request.form.getlist('member'), request.form.getlist('points'), request.form.getlist('duty')):
+            mid = mid.split(' ')[0].strip()
+            if not mid:
+                continue
+            if mid not in mem:
+                problems.append(f'{mid} is not in the ledger'); continue
+            try:
+                p = float(pts)
+            except ValueError:
+                problems.append(f'{mid}: points must be a number'); continue
+            if p <= 0:
+                continue
+            rows.append({'date': when, 'member': mid, 'name': f"{mem[mid]['first']} {mem[mid]['last']}", 'event_code': rep['event_code'],
+                         'description': f"{rep['event_name']}: {duty or 'Worker'}", 'points': p, 'type': 'Earned',
+                         'source': f'{rid}, approved in app by {_who()}'})
+        if problems or not rows:
+            for p in problems or ['Nothing to add: every row needs a member and points.']:
+                flash(p, 'danger')
+            return redirect(url_for('wp.review', rid=rid))
+        S.append_transactions(rows)
+        S.close_report(rid, 'Posted', _who())
+        log_audit_event('WP_EVENT_POSTED', _who(), {'id': rid, 'event_code': rep['event_code'], 'workers': len(rows),
+                                                    'points': sum(r['points'] for r in rows)})
+        flash(f"Added {sum(r['points'] for r in rows):g} points for {len(rows)} workers.", 'success')
+        return redirect(url_for('wp.home'))
+    mem = S.members()
+    rows = L.parse_report(rep['workers'], mem)
+    if rep['specialty'] and not rep['specialty'].startswith('Whole'):
+        for r in rows:
+            r['duty'] = f"{rep['specialty']}: {r['duty']}"
+    return render_template('wp.html', **_ctx(view='review', rep=rep, rows=rows, members=mem))

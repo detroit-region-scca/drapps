@@ -174,3 +174,40 @@ def public_standings(members, transactions):
     rows.sort(key=lambda r: (r['last'], r['first']))
     dates = [t['date'] for t in transactions if t.get('date')]
     return {'members': rows, 'as_of': max(dates) if dates else None}
+
+
+def allocation_rows(roles, transactions, today):
+    """The month's role allocations to post on the 1st (dated the 1st, code AC-YYYY-MM); [] if already posted."""
+    code = f'AC-{today.year:04d}-{today.month:02d}'
+    if any(t['type'] == 'Allocation' and t['event_code'] == code for t in transactions):
+        return []
+    first = date(today.year, today.month, 1)
+    out = []
+    for r in roles:
+        p = allocation_points(r, today.month)
+        if p > 0:
+            out.append({'date': first, 'member': r['member'], 'name': r['name'], 'event_code': code,
+                        'description': f"{first:%B} allocation: {r['role']}", 'points': p, 'type': 'Allocation',
+                        'source': 'Posted automatically on the 1st'})
+    return out
+
+
+def month_end_email(summary, year, month, check):
+    """(subject, body) for the treasurer: the journal entry to make in QuickBooks for last month's points."""
+    label = date(year, month, 1).strftime('%B %Y')
+    lines = [f"Worker points for {label}.", '']
+    if summary['lines']:
+        lines.append('Journal entry to make in QuickBooks:')
+        for ln in summary['lines']:
+            lines.append(f"  Debit {ln['debit']}, credit {ln['credit']}: ${ln['amount']:,.2f} ({ln['points']:g} points, {ln['what']})")
+    else:
+        lines.append('No points were earned, allocated or forfeited, so there is no journal entry to make.')
+    if summary['used_rows']:
+        lines += ['', 'Points used (paid by their own check or card charge, no journal entry):']
+        lines += [f"  {t['date']}: {t['name']}, {t['description']}, {t['points']:g} points" for t in summary['used_rows']]
+    if abs(summary['adjust_points']) > 0.004:
+        lines += ['', f"Adjustments: {summary['adjust_points']:g} points."]
+    if check and check.get('difference') is not None:
+        lines += ['', 'Ledger ties to QuickBooks.' if abs(check['difference']) < 0.005 else
+                  f"Ledger is ${check['difference']:,.2f} off the QuickBooks reserve; check before booking."]
+    return f'Worker points month end: {label}', '\n'.join(lines)

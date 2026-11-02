@@ -74,7 +74,6 @@
             <span>Invoices waiting to be paid<div class="small text-muted">{{ jobs.invoices[1] }} overdue</div></span><span class="fw-semibold">{{ jobs.invoices[0] }}{% if jobs.invoices[0] %} · ${{ '{:,.2f}'.format(jobs.invoices[2]) }}{% endif %}</span></a>{% endif %}
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('equip.home') }}">
             <span>Operations to-dos overdue<div class="small text-muted">Renewals, registrations, inspections</div></span><span class="fw-semibold">{{ jobs.equipment }}</span></a>
-        {% if wp_enabled %}<a class="list-group-item list-group-item-action" href="{{ url_for('wp.month_end') }}">Worker points month end<div class="small text-muted">Post the month's points to QuickBooks</div></a>{% endif %}
         <a class="list-group-item list-group-item-action" href="{{ url_for('export_events') }}">Export events (CSV)</a>
         {% if me and me.level == 'officer' %}<a class="list-group-item list-group-item-action" href="{{ url_for('auth.access') }}">Who can sign in<div class="small text-muted">Add or remove volunteers</div></a>{% endif %}
         <a class="list-group-item list-group-item-action" href="{{ url_for('officials_page') }}">Region officials<div class="small text-muted">Who approves funds requests, read-only</div></a>

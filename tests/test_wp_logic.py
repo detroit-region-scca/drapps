@@ -85,3 +85,22 @@ def test_public_standings_names_and_points_only():
     assert out['as_of'] == date(2026, 9, 12)
     assert [r['name'] for r in out['members']] == ['Ed Arthur', 'Bob McBaker']
     assert set(out['members'][0]) == {'name', 'last', 'first', 'points'}
+
+
+def test_allocations_post_once_per_month():
+    from datetime import date
+    roles = [{'role': 'Points keeper', 'member': '1', 'name': 'A B', 'season': 4, 'offseason': 2}]
+    rows = L.allocation_rows(roles, [], date(2026, 12, 1))
+    assert [(r['points'], r['event_code'], r['date']) for r in rows] == [(2.0, 'AC-2026-12', date(2026, 12, 1))]
+    assert L.allocation_rows(roles, [{'type': 'Allocation', 'event_code': 'AC-2026-12'}], date(2026, 12, 1)) == []
+
+
+def test_month_end_email_lists_the_journal_entry():
+    from datetime import date
+    tx = [{'date': date(2026, 11, 3), 'points': 4.0, 'type': 'Earned', 'event_code': '#X', 'name': 'A', 'description': 'd'},
+          {'date': date(2026, 11, 9), 'points': -10.0, 'type': 'Used', 'event_code': 'USED', 'name': 'B', 'description': 'renewal'}]
+    s = L.month_end_summary(tx, {'#X': {'program_code': 'AX'}}, 2026, 11)
+    subject, body = L.month_end_email(s, 2026, 11, {'difference': 0.0})
+    assert subject == 'Worker points month end: November 2026'
+    assert 'Debit Club AX Autocross Expense:Club AX Autocross Worker Points, credit Reserve Fund - Worker Awards: $20.00' in body
+    assert 'B, renewal, -10 points' in body and 'ties to QuickBooks' in body
