@@ -176,10 +176,15 @@ def report():
         return g
     me = _me()
     events = _recent_events()
+    if me.get('chair_only'):   # signed in only as an event chair: just their own events
+        mine = set(me.get('chair_events', []))
+        events = [e for e in load_events() if (e.get('unique_code') in mine or e.get('custom_tag') in mine)]
     if request.method == 'POST':
         f = request.form
         code = f.get('event_code', '')
         ev = _events_by_code().get(code)
+        if me.get('chair_only') and code not in set(me.get('chair_events', [])):
+            ev = None
         workers = f.get('workers', '').strip()
         if not ev or not workers:
             flash('Pick the event and list at least one worker.', 'warning')

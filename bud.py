@@ -369,7 +369,8 @@ def edit(code):
             return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=f, lines=_form_lines(f), funds=_funds(code),
                                                       plan=_plan_line(code))), 400
         header = {'event_code': code, 'event_name': e.get('event_name', ''), 'program': e.get('program_code', ''), 'date': e.get('date', ''),
-                  'chair': f.get('chair', '').strip(), 'location': f.get('location', '').strip(), 'notes': f.get('notes', '').strip(),
+                  'chair': f.get('chair', '').strip(), 'chair_email': f.get('chair_email', '').strip().lower(),
+                  'location': f.get('location', '').strip(), 'notes': f.get('notes', '').strip(),
                   'updated_by': who}
         B.save(header, lines, request.files.getlist('files'))
         log_audit_event('BUDGET_SAVED', who, {'event_code': code, 'lines': len(lines)})
@@ -383,7 +384,7 @@ def edit(code):
     elif src and (sb := B.get(src)):
         lines = [{'section': ln['section'], 'description': ln['description'], 'last_year': ln['actual'],
                   'budget': ln['budget'], 'actual': None} for ln in sb['lines']]
-        form = {'chair': sb.get('chair', ''), 'location': sb.get('location', '')}
+        form = {'chair': sb.get('chair', ''), 'chair_email': sb.get('chair_email', ''), 'location': sb.get('location', '')}
     elif (pg := program_of(code)):
         lines, form = [], {'chair': O.director(pg[0])[0]}
     else:
