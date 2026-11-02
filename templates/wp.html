@@ -83,7 +83,15 @@
 
     {% elif view == 'event' %}
     <div class="page-title">Enter workers for an event</div>
-    <p class="text-muted">Start typing a name in each row and pick the member from the list.</p>
+    <p class="text-muted">Start typing a name in each row and pick the member from the list, or paste a report from the website form.</p>
+    <details class="mb-3" {% if parsed %}open{% endif %}><summary>Paste a report from the website form</summary>
+      <form method="post" class="card p-3 mt-2">
+        <input type="hidden" name="action" value="paste">
+        <label class="form-label small text-muted" for="report">Copy the "Workers" lines from the report email (Name, role, days) and paste them here. Points are worked out from the role and days; nothing is posted until you check the rows and click Post points.</label>
+        <textarea id="report" name="report" rows="5" class="form-control mb-2" placeholder="Jane Smith, worker, 2&#10;Bob Jones, chief, 1">{{ form.get('report', '') }}</textarea>
+        <div><button class="btn btn-outline-light btn-sm">Fill in the rows</button></div>
+      </form>
+    </details>
     <form method="post" class="card p-3" id="eventForm">
         <div class="row g-2 mb-3">
             <div class="col-md-6"><label class="form-label">Event</label>
@@ -98,7 +106,7 @@
         <div class="table-responsive">
         <table class="table table-sm mb-2" id="rows">
             <thead><tr><th style="width:48%">Member</th><th>Duty</th><th style="width:14%">Points</th><th style="width:2.5rem"></th></tr></thead>
-            <tbody>{% for i in range(5) %}<tr><td><input name="member" list="memberlist" class="form-control form-control-sm" placeholder="Name or number"></td><td><input name="duty" class="form-control form-control-sm" placeholder="Chair, worker, timing…"></td><td><input name="points" type="number" step="0.5" min="0" class="form-control form-control-sm"></td><td><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove row" onclick="removeRow(this)">✕</button></td></tr>{% endfor %}</tbody>
+            <tbody>{% for p in parsed %}<tr><td><input name="member" list="memberlist" class="form-control form-control-sm{% if not p.match %} is-invalid{% endif %}" value="{{ p.member }}" placeholder="{{ p.label }}: pick the member">{% if p.match == 'guess' %}<div class="small text-warning">check: reported as {{ p.label }}</div>{% endif %}</td><td><input name="duty" class="form-control form-control-sm" value="{{ p.duty }}"></td><td><input name="points" type="number" step="0.5" min="0" class="form-control form-control-sm" value="{{ '%g'|format(p.points) }}"></td><td><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove row" onclick="removeRow(this)">✕</button></td></tr>{% endfor %}{% for i in range(0 if parsed else 5) %}<tr><td><input name="member" list="memberlist" class="form-control form-control-sm" placeholder="Name or number"></td><td><input name="duty" class="form-control form-control-sm" placeholder="Chair, worker, timing…"></td><td><input name="points" type="number" step="0.5" min="0" class="form-control form-control-sm"></td><td><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove row" onclick="removeRow(this)">✕</button></td></tr>{% endfor %}</tbody>
         </table>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2">

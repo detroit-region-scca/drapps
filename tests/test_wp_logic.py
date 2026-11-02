@@ -61,3 +61,16 @@ def test_validate_entry():
 
 def test_street_survival_points_book_to_its_own_account():
     assert L.PROGRAM_ACCOUNT['SS'] == 'Club SS Street Survival Expense:Club SS Street Survival Worker Points'
+
+
+def test_role_points_follow_the_form():
+    assert [L.role_points(r) for r in ('Event Chair', 'chief', 'Asst chair', 'special event', 'worker', '')] == [4, 2, 2, 3, 1, 1]
+
+
+def test_parse_report_matches_members_and_works_out_points():
+    members = [{'member': '1', 'first': 'Jane', 'last': 'Smith'}, {'member': '2', 'first': 'Robert', 'last': 'Jones'},
+               {'member': '3', 'first': 'Al', 'last': 'Chan'}]
+    rows = L.parse_report('Jane Smith, worker, 2\nBob Jones, chief, 1\nAl Chan, event chair, 2\nNo Body, worker\n\n', members)
+    assert [(r['member'], r['points'], r['match']) for r in rows] == [
+        ('1 Jane Smith', 2, 'exact'), ('', 2, ''), ('3 Al Chan', 8, 'exact'), ('', 1, '')]
+    assert rows[1]['label'] == 'Bob Jones'     # Bob vs Robert: initials differ, so the keeper picks

@@ -86,6 +86,15 @@ def event():
         return g
     events = sorted(load_events(), key=lambda e: e.get('date', ''), reverse=True)
     mem = S.members()
+    if request.method == 'POST' and request.form.get('action') == 'paste':
+        # Fill the rows from a pasted "Report event workers" email; nothing is posted until "Post points".
+        parsed = L.parse_report(request.form.get('report', ''), mem)
+        missing = [p['label'] for p in parsed if not p['match']]
+        if missing:
+            flash('No member found for: ' + ', '.join(missing) + '. Pick them from the list or add them as members.', 'warning')
+        if any(p['match'] == 'guess' for p in parsed):
+            flash('Rows marked "check" matched on last name and first initial only.', 'info')
+        return render_template('wp.html', **_ctx(view='event', events=events, members=mem, form=request.form, parsed=parsed))
     if request.method == 'POST':
         S.refresh()
         mem = S.members()
@@ -112,13 +121,13 @@ def event():
         if errors:
             for e in errors:
                 flash(e, 'danger')
-            return render_template('wp.html', **_ctx(view='event', events=events, members=mem, form=request.form))
+            return render_template('wp.html', **_ctx(view='event', events=events, members=mem, form=request.form, parsed=[]))
         if rows:
             S.append_transactions(rows)
             log_audit_event('WP_EVENT_POSTED', who, {'event_code': code, 'workers': len(rows), 'points': sum(r['points'] for r in rows)})
             flash(f"Posted {sum(r['points'] for r in rows):g} points for {len(rows)} workers at {code}.", 'success')
         return redirect(url_for('wp.home'))
-    return render_template('wp.html', **_ctx(view='event', events=events, members=mem, form={}))
+    return render_template('wp.html', **_ctx(view='event', events=events, members=mem, form={}, parsed=[]))
 
 
 @bp.route('/redeem')

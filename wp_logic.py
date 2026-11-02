@@ -117,3 +117,46 @@ def validate_entry(member_id, points, typ, balances):
     if typ == 'Used' and balances[member_id] + points < -0.004:
         return f'Member has only {balances[member_id]:.1f} points'
     return None
+
+
+# ---------- the "Report event workers" form on drscca.org (emailed to the points keeper, pasted in here) ----------
+
+ROLE_POINTS = (('event chair', 4), ('chairman', 4), ('special', 3), ('assistant chair', 2), ('asst', 2), ('chief', 2), ('chair', 4))
+
+
+def role_points(role):
+    """Points per day for a role as typed on the form: event chair 4, special events 3, chief or assistant chair 2, else 1."""
+    r = (role or '').lower()
+    for key, pts in ROLE_POINTS:
+        if key in r:
+            return pts
+    return 1
+
+
+def parse_report(text, members):
+    """Lines "Name, role, days" -> [{'line', 'member', 'label', 'duty', 'points', 'match'}]; 'match' is 'exact',
+    'guess' (one member with that last name and first initial) or '' (nobody: the keeper picks). Days default to 1."""
+    people = [(m['member'], f"{m['first']} {m['last']}".strip(), (m['first'] or '').strip().lower(), (m['last'] or '').strip().lower())
+              for m in members]
+    out = []
+    for line in (text or '').splitlines():
+        parts = [p.strip() for p in line.split(',')]
+        if not parts or not parts[0] or parts[0].lower().startswith(('workers', 'name')):
+            continue
+        name, role = parts[0], (parts[1] if len(parts) > 1 else 'worker') or 'worker'
+        try:
+            days = float(parts[2]) if len(parts) > 2 and parts[2] else 1.0
+        except ValueError:
+            days = 1.0
+        words = name.lower().replace('.', '').split()
+        hit, how = None, ''
+        exact = [p for p in people if f'{p[2]} {p[3]}' == ' '.join(words)]
+        if len(exact) == 1:
+            hit, how = exact[0], 'exact'
+        elif words:
+            guess = [p for p in people if p[3] == words[-1] and p[2][:1] == words[0][:1]]
+            if len(guess) == 1:
+                hit, how = guess[0], 'guess'
+        out.append({'line': line.strip(), 'member': f'{hit[0]} {hit[1]}' if hit else '', 'label': name, 'duty': role.capitalize(),
+                    'points': role_points(role) * days, 'match': how})
+    return out
