@@ -27,12 +27,12 @@ def _me():
     return user() or {}
 
 
-KEEPER_ROLE = 'Points Keeper'
+KEEPER_ROLES = {'Points Keeper', 'Treasurer'}
 
 
 def _is_keeper():
-    """Only the Worker Points Keeper (officials list, role "Points Keeper") manages points; everyone else submits workers."""
-    return KEEPER_ROLE in (_me().get('roles') or [])
+    """Only the Worker Points Keeper and the Treasurer (officials list roles) manage points; everyone else submits workers."""
+    return bool(KEEPER_ROLES & set(_me().get('roles') or []))
 
 
 def _keeper_only():
@@ -160,7 +160,7 @@ def add_member():
         return redirect(url_for('wp.home'))
     if any(m['member'] == mid for m in S.members()):
         return redirect(url_for('wp.member', member_id=mid))
-    S.add_member(mid, f['last'].strip(), f.get('first', '').strip(), f.get('exp', '').strip(), bool(f.get('life')))
+    S.add_member(mid, f['last'].strip(), f.get('first', '').strip(), bool(f.get('life')))
     log_audit_event('WP_MEMBER_ADDED', _who(), {'member': mid, 'name': f"{f.get('first', '')} {f['last']}"})
     flash('Member added.', 'success')
     return redirect(url_for('wp.member', member_id=mid))

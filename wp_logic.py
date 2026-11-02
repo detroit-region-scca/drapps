@@ -42,27 +42,6 @@ def allocation_points(role_row, month):
     return float(role_row['season'] if in_season else role_row['offseason'])
 
 
-def membership_lapsed(exp, today):
-    """exp is the keeper's 'M/YY' (membership good through the end of that month)."""
-    try:
-        m, y = exp.split('/')
-        m, y = int(m), 2000 + int(y)
-    except (ValueError, AttributeError):
-        return False
-    return (y, m) < (today.year, today.month)
-
-
-def forfeit_candidates(members, today):
-    """Members with points left whose membership expired before this month. Life members never lapse."""
-    out = []
-    for m in members:
-        if m.get('life') or m['balance'] <= 0.004:
-            continue
-        if membership_lapsed(m.get('exp', ''), today):
-            out.append(m)
-    return sorted(out, key=lambda m: (m.get('exp_sort', ''), m['last']))
-
-
 def month_end_summary(transactions, events_by_code, year, month):
     """What the month's ledger activity means for QBO.
 

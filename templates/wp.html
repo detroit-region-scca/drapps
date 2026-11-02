@@ -75,7 +75,7 @@
             <div class="col-md-2"><label class="form-label small">SCCA #</label><input name="member" class="form-control form-control-sm" required inputmode="numeric"></div>
             <div class="col-md-3"><label class="form-label small">First name</label><input name="first" class="form-control form-control-sm"></div>
             <div class="col-md-3"><label class="form-label small">Last name</label><input name="last" class="form-control form-control-sm" required></div>
-            <div class="col-md-2"><label class="form-label small">Expires (M/YY)</label><input name="exp" class="form-control form-control-sm" placeholder="6/27"></div>
+            <div class="col-md-2"><label class="form-label small d-block">&nbsp;</label><label class="small"><input type="checkbox" name="life"> Life member</label></div>
             <div class="col-md-2"><button class="btn btn-sm btn-outline-secondary w-100">Add</button></div>
         </form>
     </details>
@@ -92,7 +92,7 @@
     <div class="card p-3 mb-3">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
             <div><div class="page-title m-0">{{ m.first }} {{ m.last }}{% if m.life %} <span class="badge text-bg-secondary align-middle">LIFE</span>{% endif %}</div>
-                <div class="text-muted">SCCA #{{ m.member }}{% if roster_exp == 'missing' %} · <span class="text-warning">not on the SCCA member list of {{ roster.createdTime[:10] }}</span>{% elif roster_exp %} · membership good through {{ roster_exp.strftime('%-m/%-d/%Y') }} (SCCA list){% elif m.exp %} · membership expires {{ m.exp }} (old ledger date){% endif %}</div></div>
+                <div class="text-muted">SCCA #{{ m.member }}{% if roster_exp == 'missing' %} · <span class="text-warning">not on the SCCA member list of {{ roster.createdTime[:10] }}</span>{% elif roster_exp %} · membership good through {{ roster_exp.strftime('%-m/%-d/%Y') }} (SCCA list){% endif %}</div></div>
             <div class="text-end stat"><div class="value">{{ '%.1f'|format(m.balance) }} pts</div><div class="label">${{ '{:,.2f}'.format(m.balance * point_value) }}</div></div>
         </div>
     </div>
@@ -107,7 +107,7 @@
         </form>
         <div class="form-text">If the region pays for something with the points (a renewal, the banquet), file a funds request for the payment as usual.</div>
     </div>
-    <h2 class="h6 text-muted">History since the 8/31/2026 balance of {{ '%.1f'|format(m.opening) }}</h2>
+    <h2 class="h6 text-muted">History (opening balance {{ '%.1f'|format(m.opening) }} on 8/31/2026)</h2>
     <div class="card"><div class="card-body p-0 table-responsive">
         <table class="table mb-0">
             <thead><tr><th class="ps-3">Date</th><th>What</th><th>Type</th><th class="num">Points</th><th class="pe-3">Entered</th></tr></thead>

@@ -20,23 +20,6 @@ def test_allocation_rates_by_season():
     assert L.allocation_points(keeper, 11) == 1 and L.allocation_points(keeper, 3) == 1
 
 
-def test_membership_lapsed():
-    today = date(2026, 10, 28)
-    assert L.membership_lapsed('9/26', today)
-    assert not L.membership_lapsed('10/26', today)   # good through the end of October
-    assert not L.membership_lapsed('5/27', today)
-    assert not L.membership_lapsed('', today)
-
-
-def test_forfeit_candidates_skip_life_and_zero():
-    today = date(2026, 10, 28)
-    mem = [{'member': '1', 'last': 'A', 'exp': '8/26', 'balance': 5, 'life': False},
-           {'member': '2', 'last': 'B', 'exp': '8/26', 'balance': 5, 'life': True},
-           {'member': '3', 'last': 'C', 'exp': '8/26', 'balance': 0, 'life': False},
-           {'member': '4', 'last': 'D', 'exp': '12/26', 'balance': 5, 'life': False}]
-    assert [m['member'] for m in L.forfeit_candidates(mem, today)] == ['1']
-
-
 def test_month_end_entry():
     tx = [t(date(2026, 9, 11), 'Earned', 13, '#DR9H6-FRI'), t(date(2026, 9, 12), 'Earned', 13, '#DR9H6-SAT'),
           t(date(2026, 9, 1), 'Allocation', 5, 'AC-2026-09'), t(date(2026, 9, 15), 'Forfeit', -4),
