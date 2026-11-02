@@ -3,6 +3,7 @@
 Members sheet tabs (see members_logic for the columns):
   Members  one row per member; the Points column is a formula over the Points tab (Approved entries only)
   Points   every points entry, one row each
+  Auto add people who get points every month (Member # | Name | Role | Apr-Oct | Nov-Mar); the app prepares them as Pending
 The sheet stays usable by hand if the apps are gone. The public sheet holds what drscca.org shows:
   Member Milestones  Month | Name | Years | Note     Worker Points  Name | Points | Value | Points through | Published
 """
@@ -204,3 +205,40 @@ def save_list_file(data, uploaded_by):
 
 def list_folder_url():
     return f"https://drive.google.com/drive/folders/{os.environ.get('MEMBER_LISTS_FOLDER_ID', '')}"
+
+
+def _auto_ws():
+    from storage import open_book
+    try:
+        return worksheet(_sid(), 'Auto add')
+    except Exception:
+        ws = open_book(_sid()).add_worksheet('Auto add', rows=50, cols=5)
+        ws.update([L.AUTO_COLS], 'A1')
+        ws.freeze(rows=1)
+        ws.format('A1:E1', {'textFormat': {'bold': True}})
+        from storage import _tabs
+        _tabs[(_sid(), 'Auto add')] = ws
+        return ws
+
+
+def auto_rows():
+    out = []
+    for i, r in enumerate(_auto_ws().get_all_values()[1:], start=2):
+        r = list(r) + [''] * 5
+        if str(r[0]).strip() or str(r[2]).strip():
+            out.append({'row': i, 'member': str(r[0]).strip().lstrip("'"), 'name': r[1], 'role': r[2], 'season': L.num(r[3]), 'offseason': L.num(r[4])})
+    return out
+
+
+def save_auto_rows(rows):
+    ws = _auto_ws()
+    ws.batch_clear(['A2:E'])
+    if rows:
+        ws.update([["'" + r['member'], _text(r['name']), _text(r['role']), r['season'], r['offseason']] for r in rows], 'A2',
+                  value_input_option='USER_ENTERED')
+
+
+def prepare_auto(year, month, who='Auto add'):
+    """Add this month's auto-add points as Pending (once). Returns how many were added."""
+    rows = L.auto_entries(auto_rows(), entries(), year, month)
+    return add_entries(rows, L.PENDING, who) if rows else 0

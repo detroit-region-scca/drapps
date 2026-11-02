@@ -343,3 +343,38 @@ def books_email():
     send_books(ym, _who())
     flash(f'Emailed the {ym} journal entries to the treasurer.', 'success')
     return redirect(url_for('members.home'))
+
+
+@bp.route('/auto', methods=['GET', 'POST'])
+@login_required
+def auto():
+    """People who get points every month. On the 1st they are added as Pending; the keeper approves them."""
+    if (g := _guard(keeper=True)):
+        return g
+    mem = S.members()
+    by_id = {m['member']: m for m in mem}
+    if request.method == 'POST':
+        f = request.form
+        if f.get('action') == 'prepare':
+            t = date.today()
+            n = S.prepare_auto(t.year, t.month)
+            flash(f'Added {n} entries for {t:%B} to approve on the Members page.' if n else f'{t:%B} is already prepared.', 'info')
+            return redirect(url_for('members.home'))
+        rows, problems = [], []
+        for mid, role, season, off in zip(f.getlist('member'), f.getlist('role'), f.getlist('season'), f.getlist('offseason')):
+            mid = mid.split(' ')[0].strip()
+            if not mid and not role.strip():
+                continue
+            if mid not in by_id:
+                problems.append(f'{mid or role}: pick the member from the list'); continue
+            rows.append({'member': mid, 'name': L.full_name(by_id[mid]), 'role': role.strip() or 'Volunteer job',
+                         'season': L.num(season), 'offseason': L.num(off)})
+        if problems:
+            for p in problems:
+                flash(p, 'danger')
+        else:
+            S.save_auto_rows(rows)
+            log_audit_event('AUTO_ADD_SAVED', _who(), {'people': len(rows)})
+            flash('Saved.', 'success')
+        return redirect(url_for('members.auto'))
+    return render_template('members.html', **_ctx(view='auto', members=mem, auto=S.auto_rows()))

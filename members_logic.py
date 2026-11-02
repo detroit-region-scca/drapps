@@ -316,3 +316,26 @@ def books_email(books, label, reserve=None, value=None):
         lines.append('Worker points tie to the QuickBooks reserve.' if abs(diff) < 0.005 else
                      f'Worker points are ${diff:,.2f} off the QuickBooks reserve (${reserve:,.2f}) before these entries.')
     return f'Worker points journal entries: {label}', '\n'.join(lines)
+
+
+# ---------- Auto add: people who get points every month (prepared as Pending; the keeper approves) ----------
+
+AUTO_COLS = ['Member #', 'Name', 'Role', 'Points a month (Apr-Oct)', 'Points a month (Nov-Mar)']
+
+
+def auto_points(row, month):
+    return num(row['season'] if 4 <= month <= 10 else row['offseason'])
+
+
+def auto_entries(auto_rows, entries, year, month):
+    """The month's auto-add entries not yet prepared (pending or approved), dated the 1st."""
+    first = date(year, month, 1)
+    label = first.strftime('%B %Y')
+    done = {(e['member'], e['what']) for e in entries}
+    out = []
+    for r in auto_rows:
+        pts = auto_points(r, month)
+        what = f"Role points, {label}: {r['role']}"
+        if pts > 0 and r['member'] and (r['member'], what) not in done:
+            out.append({'date': first, 'member': r['member'], 'name': r['name'], 'points': pts, 'what': what, 'event': '', 'kind': 'Role points'})
+    return out

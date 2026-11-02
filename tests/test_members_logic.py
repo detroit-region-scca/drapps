@@ -110,3 +110,13 @@ def test_books_email_lists_the_entries():
     subject, body = L.books_email(b, 'October 2026', 30640.16, 30640.16)
     assert subject == 'Worker points journal entries: October 2026'
     assert '$20.00' in body and 'Pat Quinn, SCCA membership renewal, 10 points ($50.00)' in body and 'tie to the QuickBooks reserve' in body
+
+
+def test_auto_add_prepares_each_month_once():
+    rows = [{'member': '1', 'name': 'Pat Quinn', 'role': 'Points keeper', 'season': 2, 'offseason': 1},
+            {'member': '2', 'name': 'Chris Lee', 'role': 'Equipment chief', 'season': 1, 'offseason': 1}]
+    out = L.auto_entries(rows, [], 2026, 12)
+    assert [(e['member'], e['points'], e['what']) for e in out] == [('1', 1.0, 'Role points, December 2026: Points keeper'),
+                                                                  ('2', 1.0, 'Role points, December 2026: Equipment chief')]
+    assert L.auto_entries(rows, [{'member': '1', 'what': out[0]['what']}], 2026, 12) == [out[1]]
+    assert L.auto_entries(rows, [], 2026, 5)[0]['points'] == 2.0

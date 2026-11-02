@@ -5,7 +5,7 @@
 {% block nav %}
     {% if keeper %}{{ tab('members.home', 'Members') }}{% endif %}
     {{ tab('members.enter', 'Enter points') }}
-    {% if keeper %}{{ tab('members.use', 'Use points') }}{{ tab('members.milestones', 'Milestones') }}{% endif %}
+    {% if keeper %}{{ tab('members.use', 'Use points') }}{{ tab('members.auto', 'Auto add') }}{{ tab('members.milestones', 'Milestones') }}{% endif %}
 {% endblock %}
 {% macro pts(v) %}<span class="{{ 'text-danger' if v < 0 else '' }}">{{ '%+g'|format(v) }}</span>{% endmacro %}
 {% macro day(d) %}{{ d.strftime('%-m/%-d/%Y') if d else '' }}{% endmacro %}
@@ -211,6 +211,34 @@
         m.addEventListener('input', show); p.addEventListener('input', show); show();
     })();
 </script>
+
+{# ================================================================== Auto add #}
+{% elif view == 'auto' %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+    <div><div class="page-title mb-0">Auto add</div>
+        <div class="text-muted small">People who get points every month for a volunteer job. On the 1st their points are added <strong>waiting for approval</strong> on the Members page; nothing counts until the keeper approves.</div></div>
+    <form method="post" class="m-0"><input type="hidden" name="action" value="prepare"><button class="btn btn-sm btn-outline-secondary">Prepare this month now</button></form>
+</div>
+<form method="post" class="card p-3">
+    <datalist id="memberlist">{% for m in members %}<option value="{{ m.member }} {{ m.first }} {{ m.last }}">{% endfor %}</datalist>
+    <table class="table table-sm align-middle mb-2" id="autogrid">
+        <thead><tr><th style="width:34%">Person</th><th>Job</th><th style="width:9rem">Points a month<br><span class="fw-normal small text-muted">April–October</span></th><th style="width:9rem">Points a month<br><span class="fw-normal small text-muted">November–March</span></th><th></th></tr></thead>
+        <tbody>
+        {% for r in auto %}<tr><td><input name="member" list="memberlist" class="form-control form-control-sm" value="{{ r.member }} {{ r.name }}"></td>
+            <td><input name="role" class="form-control form-control-sm" value="{{ r.role }}"></td>
+            <td><input name="season" type="number" min="0" step="0.5" class="form-control form-control-sm" value="{{ '%g'|format(r.season) }}"></td>
+            <td><input name="offseason" type="number" min="0" step="0.5" class="form-control form-control-sm" value="{{ '%g'|format(r.offseason) }}"></td>
+            <td><button type="button" class="btn btn-sm btn-link text-muted p-1" onclick="this.closest('tr').remove()">✕</button></td></tr>{% endfor %}
+        </tbody>
+    </table>
+    <template id="autotpl"><tr><td><input name="member" list="memberlist" class="form-control form-control-sm" placeholder="Type a name"></td>
+        <td><input name="role" class="form-control form-control-sm" placeholder="e.g. Equipment chief"></td>
+        <td><input name="season" type="number" min="0" step="0.5" class="form-control form-control-sm" value="1"></td>
+        <td><input name="offseason" type="number" min="0" step="0.5" class="form-control form-control-sm" value="1"></td>
+        <td><button type="button" class="btn btn-sm btn-link text-muted p-1" onclick="this.closest('tr').remove()">✕</button></td></tr></template>
+    <div class="d-flex gap-2"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelector('#autogrid tbody').appendChild(document.getElementById('autotpl').content.firstElementChild.cloneNode(true))">Add a person</button>
+        <button class="btn btn-accent ms-auto">Save</button></div>
+</form>
 
 {# ================================================================== Milestones #}
 {% elif view == 'milestones' %}
