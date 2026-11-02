@@ -116,74 +116,68 @@
     {% else %}<tr><td colspan="5" class="ps-3 text-muted">No points yet.</td></tr>{% endfor %}</tbody>
 </table></div></div>
 
-{# ================================================================== Enter points (Steve's worker point form) #}
+{# ================================================================== Enter points #}
 {% elif view == 'enter' %}
-<div class="row g-4">
-<div class="col-lg-8">
-<form method="post" class="card p-3" id="wpform">
-    <div class="text-center mb-3"><div class="fw-bold">DETROIT REGION SCCA</div><div class="h5 mb-0">WORKER POINTS</div></div>
+<div class="page-title">Enter points</div>
+<p class="text-muted">Who worked an event, and their points. Due within 30 days of the event. Points count as soon as you save.</p>
+<form method="post" class="card p-3" style="max-width: 46rem">
     <div class="row g-2 mb-3">
-        <div class="col-12"><label class="form-label">Event name</label>
+        <div class="col-12"><label class="form-label">Event</label>
             <select name="event" class="form-select" {{ '' if keeper else 'required' }}>
-                <option value="">{{ 'No event (volunteer job, adjustment)' if keeper else 'Select your event…' }}</option>
+                <option value="">{{ 'No event (volunteer job, adjustment)' if keeper else 'Select the event…' }}</option>
                 {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" data-date="{{ e.date }}" {% if form.get('event') == c %}selected{% endif %}>{{ e.date }} · {{ c }} · {{ e.event_name }}</option>{% endfor %}
             </select></div>
-        <div class="col-6 col-md-4"><label class="form-label">Dates: first day</label><input type="date" name="first" class="form-control" value="{{ form.get('first', '') }}"></div>
-        <div class="col-6 col-md-4"><label class="form-label">Last day</label><input type="date" name="last" class="form-control" value="{{ form.get('last', '') }}"></div>
+        <div class="col-md-4"><label class="form-label">First day</label><input type="date" name="first" class="form-control" value="{{ form.get('first', '') }}"></div>
+        <div class="col-md-4"><label class="form-label">Last day <span class="text-muted">(if more than one)</span></label><input type="date" name="last" class="form-control" value="{{ form.get('last', '') }}"></div>
         <div class="col-md-4"><label class="form-label">Specialty</label>
             <select name="specialty" class="form-select" id="specialty">{% for sp in specialties %}<option {% if form.get('specialty') == sp %}selected{% endif %}>{{ sp }}</option>{% endfor %}
             {% if keeper %}<option {% if form.get('specialty') == volunteer_job %}selected{% endif %}>{{ volunteer_job }}</option>{% endif %}</select>
             <input name="specialty_other" class="form-control mt-1" placeholder="Which specialty?" value="{{ form.get('specialty_other', '') }}" {% if form.get('specialty') != 'Other' %}hidden{% endif %}></div>
     </div>
     <datalist id="memberlist">{% for m in members %}<option value="{{ m.member }} {{ m.first }} {{ m.last }}">{% endfor %}</datalist>
-    <div class="row g-2 fw-semibold small text-muted d-none d-md-flex"><div class="col-md-5">Worker's name</div><div class="col-md-1">Points</div><div class="col-md-5">Worker's name</div><div class="col-md-1">Points</div></div>
-    <div class="row g-2" id="pairs"></div>
-    <template id="pairtpl"><div class="col-md-6"><div class="d-flex gap-2">
-        <input name="member" list="memberlist" class="form-control form-control-sm" placeholder="Name" autocomplete="off">
-        <input name="points" type="number" min="0.5" step="0.5" class="form-control form-control-sm" style="max-width:5.5rem" placeholder="1"></div></div></template>
-    <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addPairs(2)">More lines</button>
+    <table class="table table-sm align-middle mb-2">
+        <thead><tr><th>Name</th><th style="width:7rem">Points</th><th style="width:2.5rem"></th></tr></thead>
+        <tbody id="people"></tbody>
+    </table>
+    <template id="persontpl"><tr>
+        <td><input name="member" list="memberlist" class="form-control form-control-sm" placeholder="Type a name" autocomplete="off"></td>
+        <td><input name="points" type="number" min="0.5" step="0.5" class="form-control form-control-sm"></td>
+        <td><button type="button" class="btn btn-sm btn-link text-muted p-1" title="Remove" onclick="this.closest('tr').remove(); tally()">✕</button></td>
+    </tr></template>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addPeople(1)">Add a person</button>
         <span class="small text-muted ms-auto" id="tally"></span>
+        <button class="btn btn-accent">Save</button>
     </div>
-    <div class="d-flex flex-wrap align-items-center gap-2 mt-3 pt-3 border-top">
-        <div class="small">Submitted by: <strong>{{ session.get('who', '') }}</strong></div>
-        <button class="btn btn-accent ms-auto">Save</button>
-    </div>
+    <div class="form-text mt-2">Points per day: event chair 4, special events 3, chief or assistant chair 2, worker 1. Blank points count 1 a day for the dates above.{% if keeper %} To spend points, use the Use points tab.{% endif %}</div>
 </form>
-</div>
-<div class="col-lg-4">
-    <div class="card p-3 mb-3"><div class="fw-semibold mb-2">Point structure, per day</div>
-        <table class="table table-sm mb-0"><tbody>{% for label, pts in structure %}<tr><td>{{ label }}</td><td class="num">{{ pts }} pt{{ 's' if pts > 1 }}</td></tr>{% endfor %}</tbody></table></div>
-    <div class="small text-muted">Report due within 30 days of the event. Points count as soon as you save.{% if keeper %} Spend points on the Use points tab.{% endif %}
-        Blank points mean 1 a day for the dates above.</div>
-</div>
-</div>
 <script>
     const START = {{ grid|tojson }};
     function days() {
-        const a = document.querySelector('[name=first]').value || (document.querySelector('[name=event]').selectedOptions[0] || {}).dataset?.date, b = document.querySelector('[name=last]').value;
+        const ev = document.querySelector('[name=event]').selectedOptions[0];
+        const a = document.querySelector('[name=first]').value || (ev && ev.dataset.date), b = document.querySelector('[name=last]').value;
         if (!a) return 1; const d = (new Date(b || a) - new Date(a)) / 864e5 + 1; return d > 0 ? d : 1;
     }
     function tally() {
         let n = 0, t = 0; const per = days();
-        document.querySelectorAll('#pairs [name=points]').forEach(p => p.placeholder = String(per));
-        document.querySelectorAll('#pairs .d-flex').forEach(row => {
-            if (!row.querySelector('[name=member]').value.trim()) return;
-            const p = row.querySelector('[name=points]'); n++; t += parseFloat(p.value || p.placeholder) || 0;
+        document.querySelectorAll('#people tr').forEach(tr => {
+            const p = tr.querySelector('[name=points]'); p.placeholder = String(per);
+            if (!tr.querySelector('[name=member]').value.trim()) return;
+            n++; t += parseFloat(p.value || p.placeholder) || 0;
         });
-        document.getElementById('tally').textContent = n ? `${n} worker${n === 1 ? '' : 's'} · ${t} points` : '';
+        document.getElementById('tally').textContent = n ? `${n} ${n === 1 ? 'person' : 'people'} · ${t} points` : '';
     }
-    function addPairs(k, vals) {
+    function addPeople(k, vals) {
         for (let i = 0; i < k; i++) {
-            const el = document.getElementById('pairtpl').content.firstElementChild.cloneNode(true), v = (vals || [])[i] || {};
-            if (v.member) el.querySelector('[name=member]').value = v.member;
-            if (v.points) el.querySelector('[name=points]').value = v.points;
-            el.querySelectorAll('input').forEach(x => x.addEventListener('input', tally));
-            document.getElementById('pairs').appendChild(el);
+            const tr = document.getElementById('persontpl').content.firstElementChild.cloneNode(true), v = (vals || [])[i] || {};
+            if (v.member) tr.querySelector('[name=member]').value = v.member;
+            if (v.points) tr.querySelector('[name=points]').value = v.points;
+            tr.querySelectorAll('input').forEach(x => x.addEventListener('input', tally));
+            document.getElementById('people').appendChild(tr);
         }
         tally();
     }
-    addPairs(Math.max(10, START.length + (START.length % 2)), START);
+    addPeople(Math.max(5, START.length), START);
     document.querySelectorAll('[name=first],[name=last],[name=event]').forEach(x => x.addEventListener('change', tally));
     document.getElementById('specialty').addEventListener('change', e => document.querySelector('[name=specialty_other]').hidden = e.target.value !== 'Other');
 </script>
