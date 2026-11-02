@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-title">Service Awards</div>
+<p class="text-muted">Members celebrating an SCCA membership anniversary. What you save here shows on <a href="https://drscca.org/region/service-awards/">drscca.org</a> within the hour. You can also fix a name directly in the <a href="{{ sheet_url }}">Service Awards sheet</a>.</p>
+
+<div class="card mb-4"><div class="card-body">
+  <form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto"><label class="form-label small">Month</label><input type="month" class="form-control" name="month" value="{{ month }}"></div>
+    <div class="col-auto"><button class="btn btn-outline-secondary">Open</button></div>
+  </form>
+  <form method="post">
+    <input type="hidden" name="month" value="{{ month }}">
+    <p class="small text-muted mb-2">One name per line, as it should appear. Saving replaces everything for {{ month }}; leave all boxes empty and save to remove the month.</p>
+    <div class="row g-3">
+      {% for y in milestones %}
+      <div class="col-6 col-md-4 col-lg-3">
+        <label class="form-label small fw-semibold" for="y{{ y }}">{{ y }} years</label>
+        <textarea class="form-control" id="y{{ y }}" name="y{{ y }}" rows="{{ [ (current.get(y, [])|length) + 1, 3 ]|max }}">{{ current.get(y, [])|join('\n') }}</textarea>
+      </div>
+      {% endfor %}
+    </div>
+    <button class="btn btn-accent mt-3">Save {{ month }}</button>
+  </form>
+</div></div>
+
+<h2 class="h6 text-muted">Recent months</h2>
+{% for m, groups in months %}
+<div class="card mb-2"><div class="card-body py-2">
+  <div class="d-flex justify-content-between"><strong>{{ m }}</strong><a class="small" href="{{ url_for('sa.home', month=m) }}">Edit</a></div>
+  <div class="small">{% for y, names in groups.items() %}<span class="text-muted">{{ y }} years:</span> {{ names|join(', ') }}{% if not loop.last %} · {% endif %}{% endfor %}</div>
+</div></div>
+{% else %}<p class="text-muted">No awards yet.</p>{% endfor %}
+{% endblock %}
