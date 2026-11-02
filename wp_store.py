@@ -20,6 +20,7 @@ from filelock import FileLock
 
 from storage import DATA_DIR, open_book, worksheet
 import sheet_cache as C
+import wp_logic as L
 
 CACHE_SECONDS = 15
 _lock = threading.Lock()
@@ -171,6 +172,7 @@ def decide_request(rid, status, **fields):
         cur.update(fields, status=status)
         ws.update([[_req_cell(cur, c) for c in REQ_COLS]], f'A{row}', value_input_option='RAW')
         _invalidate()
+    publish_standings_soon()
 
 
 def refresh():
@@ -196,6 +198,7 @@ def append_transactions(rows):
     with _lock:
         worksheet(os.environ['LEDGER_SHEET_ID'], 'Transactions').append_rows(values, value_input_option='RAW')
         _invalidate()
+    publish_standings_soon()
 
 
 def add_member(member, last, first, exp, life=False):
@@ -216,3 +219,82 @@ def set_qbo_balance(amount, as_of):
         ws = worksheet(os.environ['LEDGER_SHEET_ID'], 'Check')
         ws.update([[amount], [as_of.isoformat()]], 'B3:B4', value_input_option='USER_ENTERED')
         _invalidate()
+
+
+# ---------- public standings (names and points) for drscca.org, in the Region drive's public folder ----------
+
+def publish_standings():
+    """Rewrite the public Worker Points Standings sheet from the ledger. Returns how many members it lists."""
+    sid = os.environ.get('WP_STANDINGS_SHEET_ID')
+    if not sid:
+        return None
+    from datetime import date as _date
+    _invalidate()
+    out = L.public_standings(members(), transactions())
+    ws = worksheet(sid, 'Standings')
+    as_of = out['as_of'].isoformat() if out['as_of'] else ''
+    values = [['Name', 'Points', 'Value', 'Points recorded through', 'Published']]
+    values += [[r['name'], r['points'], round(r['points'] * L.POINT_VALUE, 2), as_of if i == 0 else '', _date.today().isoformat() if i == 0 else '']
+               for i, r in enumerate(out['members'])]
+    ws.batch_clear(['A:E'])
+    ws.update(values, 'A1', value_input_option='RAW')
+    return len(out['members'])
+
+
+def publish_standings_soon():
+    """Publish in the background after a ledger change, so the page that made the change stays fast."""
+    import threading
+    import logging
+
+    def run():
+        try:
+            publish_standings()
+        except Exception as e:      # the website copy is a convenience; never fail a ledger write over it
+            logging.getLogger(__name__).error(f'publishing worker points standings failed: {e}')
+    threading.Thread(target=run, daemon=True).start()
+
+
+# ---------- worker reports from event chairs (tab "Reports" in the ledger; private) ----------
+
+REPORT_COLS = ['id', 'submitted', 'status', 'event_code', 'event_name', 'date', 'specialty', 'workers', 'notes',
+               'submitted_by', 'email', 'decided', 'decided_by']
+
+
+def _reports_ws():
+    book_id = os.environ['LEDGER_SHEET_ID']
+    from storage import open_book
+    try:
+        return worksheet(book_id, 'Reports')
+    except Exception:
+        ws = open_book(book_id).add_worksheet('Reports', rows=200, cols=len(REPORT_COLS))
+        ws.update([REPORT_COLS], 'A1', value_input_option='RAW')
+        from storage import _tabs
+        _tabs[(book_id, 'Reports')] = ws
+        return ws
+
+
+def reports():
+    vals = _reports_ws().get_all_values()
+    return [dict(zip(REPORT_COLS, list(r) + [''] * len(REPORT_COLS))) for r in vals[1:] if r and r[0]]
+
+
+def add_report(rep):
+    """rep: REPORT_COLS fields without id/submitted/status. Returns the new id (WR-YYYY-NNN)."""
+    from datetime import date as _date
+    with _lock:
+        ws = _reports_ws()
+        year = _date.today().year
+        n = sum(1 for r in ws.col_values(1)[1:] if r.startswith(f'WR-{year}-'))
+        rid = f'WR-{year}-{n + 1:03d}'
+        row = dict(rep, id=rid, submitted=_date.today().isoformat(), status='Submitted')
+        ws.append_row([_text(row.get(c, '')) for c in REPORT_COLS], value_input_option='RAW')
+    return rid
+
+
+def close_report(rid, status, who):
+    from datetime import date as _date
+    with _lock:
+        ws = _reports_ws()
+        row = ws.col_values(1).index(rid) + 1
+        ws.update([[status]], f'C{row}', value_input_option='RAW')
+        ws.update([[_date.today().isoformat(), who]], f'L{row}:M{row}', value_input_option='RAW')

@@ -62,8 +62,12 @@ def home():
     hits = [m for m in mem if q and (q in m['member'].lower() or q in f"{m['first']} {m['last']}".lower())] if q else []
     total = sum(m['balance'] for m in mem)
     recent = sorted(S.transactions(), key=lambda t: (t['date'] or date.min), reverse=True)[:15]
+    try:
+        pending = [r for r in S.reports() if r['status'] == 'Submitted']
+    except Exception:
+        pending = []
     return render_template('wp.html', **_ctx(view='home', q=q, hits=hits[:50], total=total, members_count=len(mem),
-                                             check=S.check(), recent=recent))
+                                             check=S.check(), recent=recent, pending_reports=pending))
 
 
 @bp.route('/member/<member_id>')
@@ -86,6 +90,23 @@ def event():
         return g
     events = sorted(load_events(), key=lambda e: e.get('date', ''), reverse=True)
     mem = S.members()
+    rid = request.args.get('report', '') or request.form.get('report_id', '')
+    if request.method == 'GET' and rid:
+        rep = next((r for r in S.reports() if r['id'] == rid), None)
+        if not rep:
+            flash(f'Report {rid} not found.', 'warning')
+            return redirect(url_for('wp.home'))
+        parsed = L.parse_report(rep['workers'], mem)
+        for p in parsed:
+            p['duty'] = f"{rep['specialty']}: {p['duty']}" if rep['specialty'] and not rep['specialty'].startswith('Whole') else p['duty']
+        if any(not p['match'] for p in parsed):
+            flash('Some names did not match a member: pick them from the list or add them as members.', 'warning')
+        return render_template('wp.html', **_ctx(view='event', events=events, members=mem, parsed=parsed, report=rep,
+                                                 form={'event_code': rep['event_code'], 'date': rep['date'], 'report': rep['workers']}))
+    if request.method == 'POST' and request.form.get('action') == 'decline':
+        S.close_report(rid, 'Declined', _who())
+        flash(f'Report {rid} closed without posting.', 'info')
+        return redirect(url_for('wp.home'))
     if request.method == 'POST' and request.form.get('action') == 'paste':
         # Fill the rows from a pasted "Report event workers" email; nothing is posted until "Post points".
         parsed = L.parse_report(request.form.get('report', ''), mem)
@@ -126,6 +147,8 @@ def event():
             S.append_transactions(rows)
             log_audit_event('WP_EVENT_POSTED', who, {'event_code': code, 'workers': len(rows), 'points': sum(r['points'] for r in rows)})
             flash(f"Posted {sum(r['points'] for r in rows):g} points for {len(rows)} workers at {code}.", 'success')
+            if rid:
+                S.close_report(rid, 'Posted', who)
         return redirect(url_for('wp.home'))
     return render_template('wp.html', **_ctx(view='event', events=events, members=mem, form={}, parsed=[]))
 
@@ -331,3 +354,38 @@ def new_member():
         flash('Member added.', 'success')
         return redirect(url_for('wp.member', member_id=mid))
     return render_template('wp.html', **_ctx(view='new_member'))
+
+
+SPECIALTIES = ['Whole event (event chair)', 'Registration', 'Tech / scrutineering', 'Timing and scoring',
+               'Flagging and communications', 'Grid / pit out', 'Course / rally route', 'Safety / emergency', 'Special event', 'Other']
+
+
+@bp.route('/report', methods=['GET', 'POST'])
+@login_required
+def report():
+    """Event chairs and specialty chiefs report who worked. The points keeper reviews it before any points post."""
+    if (g := _guard()):
+        return g
+    from auth import user
+    me = user() or {}
+    events = sorted(load_events(), key=lambda e: e.get('date', ''), reverse=True)[:60]
+    if request.method == 'POST':
+        f = request.form
+        code = f.get('event_code', '')
+        ev = _events_by_code().get(code)
+        workers = f.get('workers', '').strip()
+        if not ev or not workers:
+            flash('Pick the event and list at least one worker.', 'warning')
+            return render_template('wp.html', **_ctx(view='report', events=events, specialties=SPECIALTIES, form=f, me=me))
+        rid = S.add_report({'event_code': code, 'event_name': ev.get('event_name', ''), 'date': f.get('date') or ev.get('date', ''),
+                            'specialty': f.get('specialty', ''), 'workers': workers, 'notes': f.get('notes', '').strip(),
+                            'submitted_by': me.get('name') or session.get('who', ''), 'email': me.get('email', '')})
+        log_audit_event('WP_REPORT_SUBMITTED', me.get('name') or session.get('who', 'Unknown'), {'id': rid, 'event_code': code})
+        from utils import send_mail
+        send_mail(f'Worker points report {rid}: {ev.get("event_name", code)}',
+                  f"{me.get('name') or 'Someone'} reported workers for {ev.get('event_name', code)} ({code}), {f.get('specialty', '')}.\n\n"
+                  f"{workers}\n\n{f.get('notes', '').strip()}\n\nReview and post the points: {url_for('wp.event', report=rid, _external=True)}",
+                  recipient=os.environ.get('MEMBERSHIP_EMAIL', 'membership@drscca.org'))
+        flash(f'Thanks. Report {rid} went to the points keeper, who will record the points.', 'success')
+        return redirect(url_for('wp.report'))
+    return render_template('wp.html', **_ctx(view='report', events=events, specialties=SPECIALTIES, form={}, me=me))

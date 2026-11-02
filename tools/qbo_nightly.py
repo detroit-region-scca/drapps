@@ -130,6 +130,11 @@ def main():
             say.append(f"officials copy failed: {e}")
         P.write_tab('QBO Outstanding', ['date', 'number', 'payee', 'amount', 'as_of'],
                     [[o['date'], o['number'], o['payee'], o['amount'], as_of] for o in data.get('outstanding', [])])
+    try:   # the public worker points standings sheet that drscca.org shows
+        if not DRY:
+            say.append(f'worker points standings published: {W.publish_standings()} members')
+    except Exception as e:
+        say.append(f'worker points standings failed: {e}')
     try:   # Member Milestones: on the 1st, remind membership@ to load the month from the SCCA member list
         import sa_logic
         import sa_store

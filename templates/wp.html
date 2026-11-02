@@ -20,6 +20,12 @@
 {% endblock %}
 {% block content %}
     {% if view == 'home' %}
+    {% if pending_reports %}
+    <div class="card mb-3 border-warning"><div class="card-body py-2">
+        <div class="fw-semibold mb-1">Worker reports waiting ({{ pending_reports|length }})</div>
+        {% for r in pending_reports %}<div class="small"><a href="{{ url_for('wp.event', report=r.id) }}">{{ r.id }}</a> · {{ r.event_name }} ({{ r.event_code }}) · {{ r.specialty }} · from {{ r.submitted_by }}, {{ r.submitted }}</div>{% endfor %}
+    </div></div>
+    {% endif %}
     <form class="d-flex gap-2 mb-3" method="get" role="search" style="max-width: 30rem">
         <input class="form-control form-control-sm" type="search" name="q" value="{{ q }}" placeholder="Find a member by name or SCCA number" aria-label="Find a member" autofocus>
         <button class="btn btn-sm btn-accent">Search</button>
@@ -83,16 +89,19 @@
 
     {% elif view == 'event' %}
     <div class="page-title">Enter workers for an event</div>
-    <p class="text-muted">Start typing a name in each row and pick the member from the list, or paste a report from the website form.</p>
-    <details class="mb-3" {% if parsed %}open{% endif %}><summary>Paste a report from the website form</summary>
+    <p class="text-muted">Start typing a name in each row and pick the member from the list, or paste a list. Reports sent by event chairs (Report Workers) show at the top of Worker Points.</p>
+    <details class="mb-3" {% if parsed %}open{% endif %}><summary>Paste a list of workers</summary>
       <form method="post" class="card p-3 mt-2">
         <input type="hidden" name="action" value="paste">
-        <label class="form-label small text-muted" for="report">Copy the "Workers" lines from the report email (Name, role, days) and paste them here. Points are worked out from the role and days; nothing is posted until you check the rows and click Post points.</label>
+        <label class="form-label small text-muted" for="report">One per line as Name, role, days. Points are worked out from the role and days; nothing is posted until you check the rows and click Post points.</label>
         <textarea id="report" name="report" rows="5" class="form-control mb-2" placeholder="Jane Smith, worker, 2&#10;Bob Jones, chief, 1">{{ form.get('report', '') }}</textarea>
         <div><button class="btn btn-outline-light btn-sm">Fill in the rows</button></div>
       </form>
     </details>
+    {% if report %}<div class="alert alert-info small">Report {{ report.id }} from {{ report.submitted_by }} ({{ report.submitted }}){% if report.specialty %}, {{ report.specialty }}{% endif %}. Check the rows, then Post points.{% if report.notes %}<br>Note: {{ report.notes }}{% endif %}
+        <form method="post" class="d-inline ms-2"><input type="hidden" name="report_id" value="{{ report.id }}"><input type="hidden" name="action" value="decline"><button class="btn btn-sm btn-link p-0 align-baseline">Close without posting</button></form></div>{% endif %}
     <form method="post" class="card p-3" id="eventForm">
+        {% if report %}<input type="hidden" name="report_id" value="{{ report.id }}">{% endif %}
         <div class="row g-2 mb-3">
             <div class="col-md-6"><label class="form-label">Event</label>
                 <select name="event_code" class="form-select" required>
@@ -116,6 +125,34 @@
         </div>
         <p class="form-text mt-3 mb-0">Not in the list? <a href="{{ url_for('wp.new_member') }}">Add the member</a> first. Non-members don't earn points.</p>
     </form>
+
+    {% elif view == 'report' %}
+    <div class="page-title">Report event workers</div>
+    <p class="text-muted">For event chairs and specialty chiefs. List who worked; the points keeper checks it and records the points. Please report within 30 days of the event.</p>
+    <div class="row g-4">
+    <div class="col-lg-8">
+    <form method="post" class="card p-3">
+        <div class="row g-2 mb-2">
+            <div class="col-md-7"><label class="form-label">Event</label>
+                <select name="event_code" class="form-select" required>
+                    <option value="" disabled {% if not form.get('event_code') %}selected{% endif %}>Select the event…</option>
+                    {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" {% if form.get('event_code') == c %}selected{% endif %}>{{ e.date }} · {{ e.event_name }}</option>{% endfor %}
+                </select></div>
+            <div class="col-md-5"><label class="form-label">First day worked</label><input type="date" name="date" class="form-control" value="{{ form.get('date', '') }}"><div class="form-text">Blank = the event date</div></div>
+            <div class="col-12"><label class="form-label">Specialty</label>
+                <select name="specialty" class="form-select" required>{% for sp in specialties %}<option {% if form.get('specialty') == sp %}selected{% endif %}>{{ sp }}</option>{% endfor %}</select></div>
+            <div class="col-12"><label class="form-label">Workers: one per line as Name, role, days</label>
+                <textarea name="workers" rows="8" class="form-control" required placeholder="Jane Smith, worker, 2&#10;Bob Jones, chief, 1&#10;Al Chan, event chair, 2">{{ form.get('workers', '') }}</textarea>
+                <div class="form-text">Use members' names as they are on their SCCA membership. Role is event chair, assistant chair, chief, special event or worker.</div></div>
+            <div class="col-12"><label class="form-label">Anything the points keeper should know <span class="text-muted">(optional)</span></label><textarea name="notes" rows="2" class="form-control">{{ form.get('notes', '') }}</textarea></div>
+        </div>
+        <div><button class="btn btn-accent">Send report</button></div>
+    </form>
+    </div>
+    <div class="col-lg-4"><div class="card p-3"><div class="fw-semibold mb-2">Points per day</div>
+        <table class="table table-sm mb-0"><tbody><tr><td>4</td><td>Event chair (one per event)</td></tr><tr><td>3</td><td>Special events</td></tr><tr><td>2</td><td>Chief (one per specialty) or assistant chair (one per event)</td></tr><tr><td>1</td><td>Worker</td></tr></tbody></table>
+    </div></div>
+    </div>
 
     {% elif view == 'requests' %}
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">

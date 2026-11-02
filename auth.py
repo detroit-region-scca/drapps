@@ -41,7 +41,7 @@ VOL_COLS = ['email', 'name', 'note', 'added', 'added_by']
 
 # What a volunteer may open. Everything else redirects home.
 VOLUNTEER_ENDPOINTS = {
-    'home', 'logout', 'static',
+    'home', 'logout', 'static', 'wp.report',
     'bud.home', 'bud.detail',
     'fr.home', 'fr.new', 'fr.detail', 'fr.ask', 'fr.receipts',
     'inv.home', 'inv.new', 'inv.detail', 'inv.pdf',

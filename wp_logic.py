@@ -160,3 +160,17 @@ def parse_report(text, members):
         out.append({'line': line.strip(), 'member': f'{hit[0]} {hit[1]}' if hit else '', 'label': name, 'duty': role.capitalize(),
                     'points': role_points(role) * days, 'match': how})
     return out
+
+
+def public_standings(members, transactions):
+    """What the public standings sheet holds: members with points, A-Z by last then first name, and the date of the
+    newest ledger entry. Names and points only (no member numbers or expiry dates)."""
+    def nice(n):   # the ledger mixes "ED ARTHUR" with "McClintock": only fix the all-capitals ones
+        n = (n or '').strip()
+        return n.title() if n.isupper() else n
+    rows = [{'name': f"{nice(m['first'])} {nice(m['last'])}".strip(), 'last': nice(m['last']).lower(),
+             'first': nice(m['first']).lower(), 'points': round(m['balance'] or 0, 1)}
+            for m in members if (m.get('balance') or 0) >= 0.05]
+    rows.sort(key=lambda r: (r['last'], r['first']))
+    dates = [t['date'] for t in transactions if t.get('date')]
+    return {'members': rows, 'as_of': max(dates) if dates else None}

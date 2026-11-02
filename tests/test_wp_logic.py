@@ -74,3 +74,14 @@ def test_parse_report_matches_members_and_works_out_points():
     assert [(r['member'], r['points'], r['match']) for r in rows] == [
         ('1 Jane Smith', 2, 'exact'), ('', 2, ''), ('3 Al Chan', 8, 'exact'), ('', 1, '')]
     assert rows[1]['label'] == 'Bob Jones'     # Bob vs Robert: initials differ, so the keeper picks
+
+
+def test_public_standings_names_and_points_only():
+    from datetime import date
+    members = [{'member': '1', 'first': 'ED', 'last': 'ARTHUR', 'balance': 170.6},
+               {'member': '2', 'first': 'Ann', 'last': 'Able', 'balance': 0.0},
+               {'member': '3', 'first': 'Bob', 'last': 'McBaker', 'balance': 2.04}]
+    out = L.public_standings(members, [{'date': date(2026, 9, 12)}, {'date': None}])
+    assert out['as_of'] == date(2026, 9, 12)
+    assert [r['name'] for r in out['members']] == ['Ed Arthur', 'Bob McBaker']
+    assert set(out['members'][0]) == {'name', 'last', 'first', 'points'}
