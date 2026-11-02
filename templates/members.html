@@ -117,7 +117,7 @@
         <div class="col-md-6"><label class="form-label">Event <span class="text-muted">{{ '(optional)' if keeper }}</span></label>
             <select name="event" class="form-select" {{ '' if keeper else 'required' }}>
                 <option value="">{{ 'No event (role points, points used, adjustment)' if keeper else 'Select your event…' }}</option>
-                {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" {% if form.get('event') == c %}selected{% endif %}>{{ e.date }} · {{ e.event_name }}</option>{% endfor %}
+                {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" {% if form.get('event') == c %}selected{% endif %}>{{ e.date }} · {{ c }} · {{ e.event_name }}</option>{% endfor %}
             </select></div>
         <div class="col-md-3"><label class="form-label">Date</label><input type="date" name="date" class="form-control" value="{{ form.get('date', '') }}"><div class="form-text">Blank = the event date, or today</div></div>
     </div>
