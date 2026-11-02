@@ -57,3 +57,7 @@ def test_validate_entry():
     assert 'must be negative' in L.validate_entry('1', 3, 'Used', bal)
     assert 'only 10.0' in L.validate_entry('1', -11, 'Used', bal)
     assert L.validate_entry('1', -10, 'Used', bal) is None
+
+
+def test_street_survival_points_book_to_its_own_account():
+    assert L.PROGRAM_ACCOUNT['SS'] == 'Club SS Street Survival Expense:Club SS Street Survival Worker Points'

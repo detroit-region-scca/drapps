@@ -399,7 +399,7 @@ def _short_accounts(q):
     """QuickBooks actuals with account names cut to the useful part ("Club RX Rallycross Site Rental" -> "Site Rental")."""
     if not q:
         return None
-    lines = [dict(ln, label=re.sub(r'^Club \w+ (Autocross|Rallycross|Road Racing|Road Rally|General Events?)\s*', '', ln['account']) or ln['account'])
+    lines = [dict(ln, label=re.sub(r'^Club \w+ (Autocross|Rallycross|Road Racing|Road Rally|Street Survival|General Events?)\s*', '', ln['account']) or ln['account'])
              for ln in q['lines']]
     return dict(q, lines=lines)
 

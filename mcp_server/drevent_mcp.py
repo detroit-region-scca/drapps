@@ -73,7 +73,7 @@ def whoami() -> Any:
 
 @server.tool()
 def list_programs() -> Any:
-    """Program codes and names (AX, RR, RY, RX, SIM, DR, OPS)."""
+    """Program codes and names (AX, RR, RY, RX, SS, SIM, DR, OPS)."""
     return _call('GET', '/programs')
 
 

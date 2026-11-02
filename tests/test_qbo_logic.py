@@ -21,6 +21,7 @@ def card(d, lines):
 def test_program_of_accounts():
     assert Q.program_of('Club AX Autocross Site Rental') == 'AX'
     assert Q.program_of('Club DR General Events Revenue') == 'DR'
+    assert Q.program_of('Club SS Street Survival Expense:Club SS Street Survival Supplies') == 'SS'
     assert Q.program_of('Operations Storage') == 'OPS'
     assert Q.program_of('Other Investment Income') == 'OPS'
 

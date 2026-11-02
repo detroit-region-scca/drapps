@@ -17,7 +17,7 @@ PROGRAM_ACCOUNT = {
     'RY': 'Club RY Road Rally Expense:Club RY Road Rally Worker Points',
     'RR': 'Club RR Road Racing Expense:Club RR Road Racing Worker Points',
     'DR': 'Club DR General Event Expense:Club DR General Event Worker Points',
-    'SS': 'Club DR General Event Expense:Club DR General Event Worker Points',
+    'SS': 'Club SS Street Survival Expense:Club SS Street Survival Worker Points',
     'SIM': 'Club DR General Event Expense:Club DR General Event Worker Points',
     'OPS': 'Operations Expense:Operations Worker Points',
 }

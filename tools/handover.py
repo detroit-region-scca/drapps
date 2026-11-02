@@ -39,6 +39,7 @@ ROLE_GROUP = {           # job title -> its group
     'Road Rally Director': 'rally',
     'Rallycross Director': 'rallycross',
     'SIM Racing': 'sim',
+    'Street Survival Director': 'streetsurvival',
 }
 BOARD_ROLES = {'RE', 'ARE', 'Secretary', 'Treasurer', 'Financial Director', 'Director', 'Director at Large'}
 OFFICER_ROLES = {'RE', 'ARE', 'Secretary', 'Treasurer'}   # bylaws Art. IV 4.2
