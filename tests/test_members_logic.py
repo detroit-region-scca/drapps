@@ -114,3 +114,14 @@ def test_every_members_template_view_compiles():
     from jinja2 import Environment, FileSystemLoader
     env = Environment(loader=FileSystemLoader(os.path.join(os.path.dirname(__file__), '..', 'templates')))
     env.get_template('members.html')   # a syntax error here is a 500 on every Members page
+
+
+def test_lapsed_then_rejoined_is_tracked():
+    rows = [('Member ID', 'First Name', 'Last Name', 'SCCA Member Expire', 'Region Join Date'), ('500100_0', 'Dana', 'Byers', '07/31/2027', '01/01/2001')]
+    m = {'member': '500100', 'first': 'Dana', 'last': 'Byers', 'life': False, 'points': 5.0}
+    first = L.merge_roster([m], {}, date(2026, 11, 2))[0]                 # not on the list: lapsed
+    assert first['lapsed'] == date(2026, 11, 2) and first['rejoined'] is None
+    back = L.merge_roster([first], L.roster(rows), date(2026, 12, 1))[0]   # back on a later list: rejoined
+    assert back['lapsed'] is None and back['rejoined'] == date(2026, 12, 1)
+    exp = L.merge_roster([back], L.roster([rows[0], ('500100_0', 'Dana', 'Byers', '11/30/2026', '01/01/2001')]), date(2027, 1, 5))[0]
+    assert exp['lapsed'] == date(2026, 11, 30) and exp['rejoined'] == date(2026, 12, 1)   # expired on the list: lapsed again

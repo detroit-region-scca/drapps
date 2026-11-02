@@ -1,7 +1,8 @@
 """Members: worker points and member milestones in one place. Rules only (no Flask, no Google), so they test alone.
 
 The private "DRSCCA Members" sheet has two tabs:
-  Members  Member # | First | Last | Life | Member since | Membership expires | On SCCA list of | Points (formula)
+  Members  Member # | First | Last | Life | Member since | Membership expires | On SCCA list of | Points (formula) |
+           Lapsed since | Rejoined (kept up to date by each SCCA list load)
   Points   Date | Member # | Name | Points | What for | Event | Kind | Status | Entered by
 
 A point is worth $5. Only Approved entries count. Nothing is added or spent until the keeper (or an officer) clicks:
@@ -12,7 +13,8 @@ from collections import defaultdict
 from datetime import date, datetime
 
 POINT_VALUE = 5
-MEMBER_COLS = ['Member #', 'First', 'Last', 'Life', 'Member since', 'Membership expires', 'On SCCA list of', 'Points']
+MEMBER_COLS = ['Member #', 'First', 'Last', 'Life', 'Member since', 'Membership expires', 'On SCCA list of', 'Points',
+               'Lapsed since', 'Rejoined']
 POINT_COLS = ['Date', 'Member #', 'Name', 'Points', 'What for', 'Event', 'Kind', 'Status', 'Entered by']
 KINDS = ('Opening', 'Earned', 'Role points', 'Used', 'Forfeit', 'Adjustment')
 APPROVED, PENDING = 'Approved', 'Pending'
@@ -175,10 +177,23 @@ def canon(mid):
     return re.sub(r'_0$', '', s)
 
 
+def lapse_status(m, hit, list_date):
+    """(lapsed since, rejoined) after a list load. Current = on the list and not expired on the list date. A member who
+    stops being current gets "lapsed since" (their expiry date, or the list date if they left the list); a lapsed member
+    who is current again gets "rejoined" = the list date. Life members never lapse."""
+    lapsed, rejoined = m.get('lapsed'), m.get('rejoined')
+    current = m.get('life') or (hit is not None and (not hit.get('expires') or hit['expires'] >= list_date))
+    if current and lapsed:
+        return None, list_date
+    if not current and not lapsed:
+        return ((hit or {}).get('expires') or m.get('expires') or list_date), rejoined
+    return lapsed, rejoined
+
+
 def merge_roster(members, report, list_date):
-    """Members rows updated from the report: names and dates refreshed, new members added, and everyone on it marked
-    with the list date. Members not on it keep their row (and points) with the old list date. Family IDs like
-    500200-1 take their dates from 500200 when the report lists only the base number."""
+    """Members rows updated from the report: names and dates refreshed, new members added, everyone on it marked with
+    the list date, and lapsed/rejoined kept up to date. Members not on it keep their row (and points). SCCA numbers
+    (500100_0, 500200_1) match the ledger's (500100, 500200-1); a family number falls back to its base number."""
     by_canon = {canon(k): v for k, v in report.items()}
     out, seen = [], set()
     for m in members:
@@ -189,13 +204,14 @@ def merge_roster(members, report, list_date):
             m = dict(m, joined=hit['joined'] or m.get('joined'), expires=hit['expires'] or m.get('expires'), listed=list_date)
             if c in by_canon:
                 m.update(first=hit['first'] or m['first'], last=hit['last'] or m['last'])
-        out.append(m)
+        lapsed, rejoined = lapse_status(m, hit, list_date)
+        out.append(dict(m, lapsed=lapsed, rejoined=rejoined))
     have = {canon(m['member']) for m in out}
     for mid, hit in report.items():
         c = canon(mid)
         if c not in seen and c not in have:
             out.append({'member': c, 'first': hit['first'], 'last': hit['last'], 'life': False, 'joined': hit['joined'],
-                        'expires': hit['expires'], 'listed': list_date, 'points': 0.0})
+                        'expires': hit['expires'], 'listed': list_date, 'points': 0.0, 'lapsed': None, 'rejoined': None})
             have.add(c)
     return out
 

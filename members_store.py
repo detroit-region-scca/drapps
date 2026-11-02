@@ -38,7 +38,7 @@ def _text(v):
 
 
 def _snapshot():
-    res = C.batch_get(_sid(), ['Members!A:H', 'Points!A:I'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+    res = C.batch_get(_sid(), ['Members!A:J', 'Points!A:I'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])]
     return vr + [[]] * (2 - len(vr))
 
@@ -46,12 +46,13 @@ def _snapshot():
 def members():
     out = []
     for r in _snapshot()[0][1:]:
-        r = list(r) + [''] * 8
+        r = list(r) + [''] * 10
         mid = str(r[0]).strip()
         if not mid:
             continue
         out.append({'member': mid, 'first': str(r[1]), 'last': str(r[2]), 'life': str(r[3]).strip().upper() in ('LIFE', 'YES', 'TRUE'),
-                    'joined': L.to_date(r[4]), 'expires': L.to_date(r[5]), 'listed': L.to_date(r[6]), 'points': round(L.num(r[7]), 3)})
+                    'joined': L.to_date(r[4]), 'expires': L.to_date(r[5]), 'listed': L.to_date(r[6]), 'points': round(L.num(r[7]), 3),
+                    'lapsed': L.to_date(r[8]), 'rejoined': L.to_date(r[9])})
     return out
 
 
@@ -112,10 +113,13 @@ def write_members(rows):
     values = [L.MEMBER_COLS]
     for i, m in enumerate(rows, start=2):
         values.append(["'" + str(m['member']), _text(m['first']), _text(m['last']), 'LIFE' if m.get('life') else '', d(m.get('joined')),
-                       d(m.get('expires')), d(m.get('listed')), f'=SUMIFS(Points!D:D,Points!B:B,A{i},Points!H:H,"{L.APPROVED}")'])
+                       d(m.get('expires')), d(m.get('listed')), f'=SUMIFS(Points!D:D,Points!B:B,A{i},Points!H:H,"{L.APPROVED}")',
+                       d(m.get('lapsed')), d(m.get('rejoined'))])
     with _lock:
         ws = worksheet(_sid(), 'Members')
-        ws.batch_clear(['A:H'])
+        ws.batch_clear(['A:J'])
+        if ws.col_count < 10:
+            ws.add_cols(10 - ws.col_count)
         if ws.row_count < len(values) + 10:
             ws.add_rows(len(values) + 50 - ws.row_count)
         ws.update(values, 'A1', value_input_option='USER_ENTERED')
