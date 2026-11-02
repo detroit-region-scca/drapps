@@ -288,7 +288,7 @@ def milestones():
                         new.append([month, ' '.join(line.split()), y, ''])
         S.save_milestones(month, new)
         log_audit_event('MILESTONES_SAVED', _who(), {'month': month, 'names': len(new)})
-        flash(f'{month}: {len(new)} names saved. The website drafts the monthly Service Awards post for membership to publish.' if new else f'Removed {month}.', 'success')
+        flash(f'{month}: {len(new)} names saved. The website post draft is ready within the hour.' if new else f'Removed {month}.', 'success')
         return redirect(url_for('members.milestones', month=month))
     norm = lambda g: {k: sorted(x.lower() for x in v) for k, v in g.items() if v}
     lists = [m['listed'] for m in mem if m.get('listed')]
@@ -298,7 +298,9 @@ def milestones():
                                                   month_label=date(int(month[:4]), int(month[5:]), 1).strftime('%B %Y'),
                                                   prev_month=_month_step(month, -1), next_month=_month_step(month, 1),
                                                   public_url=S.public_sheet_url(), list_url=S.list_folder_url(),
-                                                  scca_reports=SCCA_REPORTS))
+                                                  scca_reports=SCCA_REPORTS,
+                                                  website_drafts=os.environ.get('WEBSITE_URL', 'https://drscca.org').rstrip('/')
+                                                  + '/wp-admin/edit.php?post_status=draft&category_name=service-awards'))
 
 
 @bp.route('/use', methods=['GET', 'POST'])

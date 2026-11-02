@@ -291,7 +291,8 @@
     <ol class="small mb-2 ps-3">
         <li>Sign in at <a href="{{ scca_reports }}" target="_blank">my.scca.com › Region Reporting</a> and download the <b>Member List</b> (an .xlsx file).</li>
         <li>Choose the file below and click <b>Load list</b>. New members and anniversaries are worked out for you.</li>
-        <li>Check the month below and click <b>Save for the website</b>. The website then drafts the monthly Service Awards post and emails membership@ to publish it.</li>
+        <li>Check the month below, fix names under <b>Edit names by hand</b> if needed, and click <b>Save for the website</b>.</li>
+        <li>Click <b>Review and publish</b>: the website has the month's post ready as a draft. Look it over and click Publish there.</li>
     </ol>
     <div class="d-flex flex-wrap gap-2 align-items-center">
         <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" required><button class="btn btn-sm btn-accent">Load list</button>
@@ -301,7 +302,9 @@
     <div class="col-6 col-md-4"><div class="small fw-semibold text-muted text-uppercase">{{ 'New members' if y == 0 else y ~ ' years' }}</div>
     <ul class="list-unstyled mb-0">{% for n in g[y] %}<li>{{ n }}</li>{% endfor %}</ul></div>{% endfor %}</div>{% endmacro %}
 <div class="card mb-3"><div class="card-body">
-    {% if published %}<div class="mb-2"><span class="badge text-bg-success">Saved for the website</span></div>{{ groups(published) }}
+    {% if published %}<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2"><span class="badge text-bg-success">Saved for the website</span>
+        <div class="text-end"><a class="btn btn-accent btn-sm" href="{{ website_drafts }}" target="_blank">Review and publish ›</a>
+        <div class="small text-muted mt-1">Opens the draft post on the website (ready within the hour).</div></div></div>{{ groups(published) }}
         {% if differs %}<form method="post" class="mt-3"><input type="hidden" name="month" value="{{ month }}"><input type="hidden" name="action" value="publish">
             <span class="small text-warning me-2">The newest member list gives a different list for {{ month_label }}.</span><button class="btn btn-sm btn-warning">Use the newer list</button></form>{% endif %}
     {% elif proposed %}<div class="mb-2"><span class="badge text-bg-secondary">Not saved yet</span></div>{{ groups(proposed) }}
