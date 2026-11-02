@@ -2,7 +2,7 @@
 {% block style %}
         .app-tile { display: block; text-decoration: none; color: var(--text); background: var(--surface); border: 1px solid var(--border);
                     border-radius: 14px; padding: 1.1rem .9rem; text-align: center; transition: border-color .15s, transform .15s; height: 100%; }
-        .app-tile:hover, .app-tile:focus { border-color: var(--tile); color: #fff; transform: translateY(-2px); }
+        .app-tile:hover, .app-tile:focus { border-color: var(--tile); color: var(--text); transform: translateY(-2px); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
         .app-tile svg { width: 40px; height: 40px; margin-bottom: .5rem; }
         .app-tile .name { font-size: 1.05rem; font-weight: 600; }
         .app-tile .what { color: var(--muted); font-size: .8rem; margin-top: .25rem; line-height: 1.3; }
@@ -80,10 +80,11 @@
     </div>
     {% elif not session.get('authenticated') %}
     <div class="d-flex justify-content-center align-items-center" style="min-height: 80vh;">
-        <div class="card w-100" style="max-width: 380px;">
+        <div class="card w-100" style="max-width: 380px; border-top: 3px solid var(--red);">
             <div class="card-body p-4">
+                <div class="text-center mb-2"><img src="{{ url_for('static', filename='drscca-logo.png') }}" alt="Detroit Region SCCA" style="height: 64px; width: auto;"></div>
                 <h1 class="h4 text-center mb-1">{{ title }}</h1>
-                <p class="text-center text-muted small mb-4">Events, Worker Points, Funds Requests, Invoices, Annual Plan, Operations</p>
+                <p class="text-center text-muted small mb-4">Events, Members and worker points, Funds Requests, Invoices, Annual Plan, Operations</p>
                 <form action="{{ url_for('auth.send_code') }}" method="POST">
                     <input type="hidden" name="next" value="{{ next_url }}">
                     <label for="email" class="form-label">Your email address</label>
