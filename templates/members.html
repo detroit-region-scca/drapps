@@ -298,7 +298,7 @@
         <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" required><button class="btn btn-sm btn-accent">Load list</button>
         <a class="small ms-auto" href="{{ list_url }}">past lists</a></div>
 </form>
-{% macro groups(g) %}<div class="row g-3">{% for y in ([0] if 0 in g else []) + (g.keys()|reject('equalto', 0)|sort(reverse=true)|list) %}
+{% macro groups(g) %}<div class="row g-3">{% for y in (g.keys()|reject('equalto', 0)|sort(reverse=true)|list) + ([0] if 0 in g else []) %}
     <div class="col-6 col-md-4"><div class="small fw-semibold text-muted text-uppercase">{{ 'New members' if y == 0 else y ~ ' years' }}</div>
     <ul class="list-unstyled mb-0">{% for n in g[y] %}<li>{{ n }}</li>{% endfor %}</ul></div>{% endfor %}</div>{% endmacro %}
 <div class="card mb-3"><div class="card-body">
