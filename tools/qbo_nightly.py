@@ -125,6 +125,17 @@ def main():
             say.append(f"officials copy failed: {e}")
         P.write_tab('QBO Outstanding', ['date', 'number', 'payee', 'amount', 'as_of'],
                     [[o['date'], o['number'], o['payee'], o['amount'], as_of] for o in data.get('outstanding', [])])
+    try:   # on the 1st: email the treasurer last month's worker points journal entries (user asked, 2026-11-02)
+        t0 = date.today()
+        if t0.day == 1 and W.enabled() and not DRY:
+            import members
+            from app import app as flask_app
+            ym = f'{t0.year - (t0.month == 1):04d}-{(t0.month - 2) % 12 + 1:02d}'
+            with flask_app.app_context():
+                members.send_books(ym)
+            say.append(f'worker points journal entries for {ym} emailed to the treasurer')
+    except Exception as e:
+        say.append(f'worker points journal entry email failed: {e}')
     try:   # the public worker points standings sheet that drscca.org shows
         if not DRY:
             say.append(f'worker points standings published: {W.publish_standings()} members')

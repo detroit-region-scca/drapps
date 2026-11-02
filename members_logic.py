@@ -294,3 +294,25 @@ def use_entry(member, points, what, when):
         return None, f"{full_name(member)} has only {member['points']:g} points."
     return {'date': when, 'member': member['member'], 'name': full_name(member), 'points': -p, 'what': what or 'Points used',
             'event': '', 'kind': 'Used'}, None
+
+
+def books_email(books, label, reserve=None, value=None):
+    """(subject, body) of the journal entry email for a month (books = month_books(...))."""
+    lines = [f'Worker points journal entries for {label}.', '']
+    if books['lines']:
+        for ln in books['lines']:
+            lines.append(f"  Debit {ln['debit']}")
+            lines.append(f"  Credit {ln['credit']}")
+            lines.append(f"  ${ln['amount']:,.2f}  ({ln['points']:g} points, {ln['what']})")
+            lines.append('')
+    else:
+        lines += ['  Nothing to book: no points were earned or forfeited.', '']
+    if books['used']:
+        lines.append('Points used (each paid by its own check or card charge; no journal entry):')
+        lines += [f"  {e['date']}: {e['name']}, {e['what']}, {-e['points']:g} points (${-e['points'] * POINT_VALUE:,.2f})" for e in books['used']]
+        lines.append('')
+    if reserve is not None and value is not None:
+        diff = round(value - reserve, 2)
+        lines.append('Worker points tie to the QuickBooks reserve.' if abs(diff) < 0.005 else
+                     f'Worker points are ${diff:,.2f} off the QuickBooks reserve (${reserve:,.2f}) before these entries.')
+    return f'Worker points journal entries: {label}', '\n'.join(lines)

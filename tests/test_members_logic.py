@@ -100,3 +100,13 @@ def test_use_points_needs_enough_balance():
 def test_enter_points_rejects_negative_numbers():
     rows, problems = L.rows_from_grid([{'member': '1', 'role': 'Other', 'points': '-5'}], MEM, '', date(2026, 11, 2))
     assert rows == [] and 'Use points tab' in problems[0]
+
+
+def test_books_email_lists_the_entries():
+    from datetime import date
+    b = {'lines': [{'debit': 'Club AX Autocross Expense:Club AX Autocross Worker Points', 'credit': 'Reserve Fund - Worker Awards',
+                    'points': 4.0, 'amount': 20.0, 'what': 'AX points earned'}],
+         'used': [{'date': date(2026, 10, 9), 'name': 'Pat Quinn', 'what': 'SCCA membership renewal', 'points': -10.0}]}
+    subject, body = L.books_email(b, 'October 2026', 30640.16, 30640.16)
+    assert subject == 'Worker points journal entries: October 2026'
+    assert '$20.00' in body and 'Pat Quinn, SCCA membership renewal, 10 points ($50.00)' in body and 'tie to the QuickBooks reserve' in body

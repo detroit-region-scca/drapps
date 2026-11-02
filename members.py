@@ -87,7 +87,7 @@ def home():
     t = date.today()
     months = [(t.year, t.month - 1) if t.month > 1 else (t.year - 1, 12), (t.year, t.month)]
     evs = _events_by_code()
-    books = [dict(L.month_books(ent, evs, y, mo), label=date(y, mo, 1).strftime('%B %Y')) for y, mo in months]
+    books = [dict(L.month_books(ent, evs, y, mo), label=date(y, mo, 1).strftime('%B %Y'), ym=f'{y:04d}-{mo:02d}') for y, mo in months]
     lists = [m['listed'] for m in mem if m.get('listed')]
     return render_template('members.html', **_ctx(view='home', members=mem, total=total, reserve=reserve, books=books,
                                                   pending=L.pending_groups(ent), lapsed=L.lapsed(mem, t),
@@ -318,3 +318,28 @@ def use():
         m = by_id[request.args['member']]
         form = {'member': f"{m['member']} {L.full_name(m)}"}
     return render_template('members.html', **_ctx(view='use', members=mem, form=form, uses=L.USE_FOR))
+
+
+def send_books(ym, who='DRSCCA Apps'):
+    """Email the treasurer the worker points journal entries for 'YYYY-MM'. Used by the button and the nightly job."""
+    from utils import send_mail
+    y, mo = int(ym[:4]), int(ym[5:])
+    books = L.month_books(S.entries(), _events_by_code(), y, mo)
+    st = _reserve()
+    value = round(sum(m['points'] for m in S.members()) * L.POINT_VALUE, 2)
+    subject, body = L.books_email(books, date(y, mo, 1).strftime('%B %Y'), st and st['amount'], value)
+    send_mail(subject, body, recipient=os.environ.get('NOTIFICATION_EMAIL', 'treasurer@drscca.org'))
+    log_audit_event('POINTS_BOOKS_EMAILED', who, {'month': ym, 'lines': len(books['lines'])})
+
+
+@bp.route('/books/email', methods=['POST'])
+@login_required
+def books_email():
+    if (g := _guard(keeper=True)):
+        return g
+    ym = request.form.get('month', '')
+    if not (len(ym) == 7 and ym[4] == '-'):
+        return redirect(url_for('members.home'))
+    send_books(ym, _who())
+    flash(f'Emailed the {ym} journal entries to the treasurer.', 'success')
+    return redirect(url_for('members.home'))
