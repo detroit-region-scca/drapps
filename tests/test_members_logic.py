@@ -85,7 +85,7 @@ def test_books_email_lists_the_entries():
                     'points': 4.0, 'amount': 20.0, 'what': 'AX points earned'}],
          'used': [{'date': date(2026, 10, 9), 'name': 'Pat Quinn', 'what': 'SCCA membership renewal', 'points': -10.0}]}
     subject, body = L.books_email(b, 'October 2026', 30640.16, 30640.16)
-    assert subject == 'Worker points journal entries: October 2026'
+    assert subject == 'Worker points journal entries to book (October 2026)'
     assert '$20.00' in body and 'Pat Quinn, SCCA membership renewal, 10 points ($50.00)' in body and 'tie to the QuickBooks reserve' in body
 
 
@@ -125,3 +125,38 @@ def test_lapsed_then_rejoined_is_tracked():
     assert back['lapsed'] is None and back['rejoined'] == date(2026, 12, 1)
     exp = L.merge_roster([back], L.roster([rows[0], ('500100_0', 'Dana', 'Byers', '11/30/2026', '01/01/2001')]), date(2027, 1, 5))[0]
     assert exp['lapsed'] == date(2026, 11, 30) and exp['rejoined'] == date(2026, 12, 1)   # expired on the list: lapsed again
+
+
+def test_unreconciled_skips_opening_pending_and_booked():
+    e = [{'status': 'Approved', 'kind': 'Opening', 'reconciled': '', 'points': 5},
+         {'status': 'Approved', 'kind': 'Earned', 'reconciled': '2026-11-02', 'points': 4},
+         {'status': 'Pending', 'kind': 'Earned', 'reconciled': '', 'points': 2},
+         {'status': 'Approved', 'kind': 'Role points', 'reconciled': '', 'points': 1}]
+    assert [x['points'] for x in L.unreconciled(e)] == [1]
+
+
+def test_negative_adjustment_releases_reserve():
+    b = L.books([{'status': 'Approved', 'kind': 'Adjustment', 'points': -2.0, 'event': ''}], {})
+    assert b['lines'][0]['debit'] == 'Reserve Fund - Worker Awards' and b['lines'][0]['amount'] == 10.0
+
+
+def test_every_members_page_renders():
+    """Every Members tab and link resolves (a missing route is a 500 on every page)."""
+    import os
+    os.environ.setdefault('STORAGE_BACKEND', 'files')
+    from flask import Flask, render_template
+    import members
+    app = Flask('t', template_folder=os.path.join(os.path.dirname(__file__), '..', 'templates'))
+    app.secret_key = 'x'
+    app.register_blueprint(members.bp)
+    for ep in ('home', 'logout', 'audit'):
+        app.add_url_rule('/' + ep, ep, lambda: '')
+    from datetime import date
+    base = dict(title='t', keeper=True, point_value=5, today_=date(2026, 11, 2), structure=[], members=[], events=[], form={}, grid=[])
+    views = [dict(view='home', total=0, reserve=None, open_value=0, pending=[], lapsed=[], latest_list=None, list_url='', sheet_url='', scca_reports=''),
+             dict(view='enter'), dict(view='use', uses=['Other']), dict(view='auto', auto=[]),
+             dict(view='quickbooks', open_entries=[], bk={'lines': [], 'used': []}, total=0, reserve=None, diff=None, open_value=0, unexplained=None),
+             dict(view='milestones', month='2026-11', proposed={}, published={}, differs=False, latest_list=None, years=[0, 5], public_url='')]
+    with app.test_request_context('/members/'):
+        for v in views:
+            assert render_template('members.html', **dict(base, **v))

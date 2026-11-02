@@ -3,7 +3,7 @@
 The private "DRSCCA Members" sheet has two tabs:
   Members  Member # | First | Last | Life | Member since | Membership expires | On SCCA list of | Points (formula) |
            Lapsed since | Rejoined (kept up to date by each SCCA list load)
-  Points   Date | Member # | Name | Points | What for | Event | Kind | Status | Entered by
+  Points   Date | Member # | Name | Points | What for | Event | Kind | Status | Entered by | Reconciled (when it was booked in QuickBooks)
 
 A point is worth $5. Only Approved entries count. Nothing is added or spent until the keeper (or an officer) clicks:
 event chairs' entries arrive as Pending and count once the keeper approves them.
@@ -15,7 +15,7 @@ from datetime import date, datetime
 POINT_VALUE = 5
 MEMBER_COLS = ['Member #', 'First', 'Last', 'Life', 'Member since', 'Membership expires', 'On SCCA list of', 'Points',
                'Lapsed since', 'Rejoined']
-POINT_COLS = ['Date', 'Member #', 'Name', 'Points', 'What for', 'Event', 'Kind', 'Status', 'Entered by']
+POINT_COLS = ['Date', 'Member #', 'Name', 'Points', 'What for', 'Event', 'Kind', 'Status', 'Entered by', 'Reconciled']
 KINDS = ('Opening', 'Earned', 'Role points', 'Used', 'Forfeit', 'Adjustment')
 APPROVED, PENDING = 'Approved', 'Pending'
 
@@ -81,6 +81,7 @@ VOLUNTEER_JOB = 'Volunteer job (role points)'
 
 
 def rows_from_form(names, points, members_by_id, event_code, when, specialty, default_points=None):
+    # specialty: what the points are for (the event, or a volunteer job)
     """Steve's worker point form: a specialty for the sheet, then Worker's Name | Points pairs. Names picked from the
     list carry the member #; typed names are kept for the keeper to match. Blank points use default_points (1 a day)."""
     out, problems = [], []
@@ -246,19 +247,20 @@ def program_for(code, events_by_code):
     return ev['program_code'] if ev else 'OPS'
 
 
-def month_books(entries, events_by_code, year, month):
-    """The month's journal entry lines: points earned (by program) and role points are an expense to the program and
-    an increase in the reserve; forfeits release reserve to Operations. Points used are paid by their own check or
-    card charge (listed, no journal line)."""
+def books(entries, events_by_code):
+    """Journal entry lines for these entries: points earned (by program), role points and adjustments are an expense to
+    the program and an increase in the reserve; forfeits release reserve to Operations. Points used are paid by their
+    own check or card charge (listed, no journal line)."""
     earned = defaultdict(float)
     forfeits = 0.0
     used = []
     for e in entries:
-        d = e['date']
-        if e['status'] != APPROVED or not isinstance(d, date) or (d.year, d.month) != (year, month):
+        if e['status'] != APPROVED:
             continue
         if e['kind'] in ('Earned', 'Adjustment') and e['points'] > 0:
             earned[program_for(e['event'], events_by_code)] += e['points']
+        elif e['kind'] == 'Adjustment':           # a negative adjustment releases reserve like a forfeit
+            forfeits += e['points']
         elif e['kind'] == 'Role points':
             earned['OPS'] += e['points']
         elif e['kind'] == 'Forfeit':
@@ -269,9 +271,17 @@ def month_books(entries, events_by_code, year, month):
               'amount': round(v * POINT_VALUE, 2), 'what': f'{p} points earned'} for p, v in sorted(earned.items()) if abs(v) > 0.004]
     if abs(forfeits) > 0.004:
         lines.append({'debit': RESERVE, 'credit': PROGRAM_ACCOUNT['OPS'], 'points': -forfeits,
-                      'amount': round(-forfeits * POINT_VALUE, 2), 'what': 'points forfeited'})
+                      'amount': round(-forfeits * POINT_VALUE, 2), 'what': 'points forfeited or written off'})
     return {'lines': lines, 'used': used}
 
+
+def month_books(entries, events_by_code, year, month):
+    return books([e for e in entries if isinstance(e['date'], date) and (e['date'].year, e['date'].month) == (year, month)], events_by_code)
+
+
+def unreconciled(entries):
+    """Approved entries not yet marked as booked in QuickBooks (Opening balances never need booking)."""
+    return [e for e in entries if e['status'] == APPROVED and not e.get('reconciled') and e['kind'] != 'Opening']
 
 USE_FOR = ['SCCA membership renewal', 'Event entry', 'Awards banquet', 'Region merchandise', 'Other']
 
@@ -290,26 +300,27 @@ def use_entry(member, points, what, when):
             'event': '', 'kind': 'Used'}, None
 
 
-def books_email(books, label, reserve=None, value=None):
-    """(subject, body) of the journal entry email for a month (books = month_books(...))."""
-    lines = [f'Worker points journal entries for {label}.', '']
-    if books['lines']:
-        for ln in books['lines']:
+def books_email(bk, label, reserve=None, value=None):
+    """(subject, body) of the journal entry email (bk = books(...))."""
+    lines = [f'Worker points journal entries: {label}.', '']
+    if bk['lines']:
+        for ln in bk['lines']:
             lines.append(f"  Debit {ln['debit']}")
             lines.append(f"  Credit {ln['credit']}")
             lines.append(f"  ${ln['amount']:,.2f}  ({ln['points']:g} points, {ln['what']})")
             lines.append('')
     else:
         lines += ['  Nothing to book: no points were earned or forfeited.', '']
-    if books['used']:
+    if bk['used']:
         lines.append('Points used (each paid by its own check or card charge; no journal entry):')
-        lines += [f"  {e['date']}: {e['name']}, {e['what']}, {-e['points']:g} points (${-e['points'] * POINT_VALUE:,.2f})" for e in books['used']]
+        lines += [f"  {e['date']}: {e['name']}, {e['what']}, {-e['points']:g} points (${-e['points'] * POINT_VALUE:,.2f})" for e in bk['used']]
         lines.append('')
     if reserve is not None and value is not None:
         diff = round(value - reserve, 2)
         lines.append('Worker points tie to the QuickBooks reserve.' if abs(diff) < 0.005 else
-                     f'Worker points are ${diff:,.2f} off the QuickBooks reserve (${reserve:,.2f}) before these entries.')
-    return f'Worker points journal entries: {label}', '\n'.join(lines)
+                     f'Worker points are ${diff:,.2f} off the QuickBooks reserve (${reserve:,.2f}) until these are booked.')
+    lines += ['', 'After booking, mark them reconciled in DRSCCA Apps > Members > QuickBooks.']
+    return f'Worker points journal entries to book ({label})', '\n'.join(lines)
 
 
 # ---------- Auto add: people who get points every month (prepared as Pending; the keeper approves) ----------

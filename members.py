@@ -36,7 +36,7 @@ def _who():
 
 def _ctx(**kw):
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Members", keeper=_keeper(), point_value=L.POINT_VALUE, today_=date.today(),
-                structure=L.POINT_STRUCTURE, specialties=L.SPECIALTIES, volunteer_job=L.VOLUNTEER_JOB, **kw)
+                structure=L.POINT_STRUCTURE, **kw)
 
 
 def _guard(keeper=False):
@@ -80,11 +80,9 @@ def home():
     total = sum(m['points'] for m in mem)
     reserve = _reserve()
     t = date.today()
-    months = [(t.year, t.month - 1) if t.month > 1 else (t.year - 1, 12), (t.year, t.month)]
-    evs = _events_by_code()
-    books = [dict(L.month_books(ent, evs, y, mo), label=date(y, mo, 1).strftime('%B %Y'), ym=f'{y:04d}-{mo:02d}') for y, mo in months]
+    open_value = round(sum(e['points'] for e in L.unreconciled(ent)) * L.POINT_VALUE, 2)
     lists = [m['listed'] for m in mem if m.get('listed')]
-    return render_template('members.html', **_ctx(view='home', members=mem, total=total, reserve=reserve, books=books,
+    return render_template('members.html', **_ctx(view='home', members=mem, total=total, reserve=reserve, open_value=open_value,
                                                   pending=L.pending_groups(ent), lapsed=L.lapsed(mem, t),
                                                   latest_list=max(lists) if lists else None, list_url=S.list_folder_url(),
                                                   sheet_url=S.members_sheet_url(), scca_reports=SCCA_REPORTS))
@@ -114,13 +112,14 @@ def enter():
     if request.method == 'POST':
         f = request.form
         code = f.get('event', '').strip()
-        ev_date = L.to_date((_events_by_code().get(code) or {}).get('date'))
-        first = L.to_date(f.get('first')) or ev_date or date.today()
-        last = L.to_date(f.get('last')) or first
-        days = max(1, (last - first).days + 1)
-        specialty = f.get('specialty_other', '').strip() if f.get('specialty') == 'Other' and f.get('specialty_other', '').strip() else f.get('specialty', '')
+        ev = _events_by_code().get(code) or {}
+        first = L.to_date(f.get('first')) or L.to_date(ev.get('date')) or date.today()
+        what = f"Worked {ev.get('event_name')}" if ev else (f.get('what', '').strip() or 'Volunteer job')
         grid = [{'member': n, 'points': p} for n, p in zip(f.getlist('member'), f.getlist('points'))]
-        rows, problems = L.rows_from_form(f.getlist('member'), f.getlist('points'), by_id, code, first, specialty, default_points=days)
+        rows, problems = L.rows_from_form(f.getlist('member'), f.getlist('points'), by_id, code, first, what, default_points=1)
+        if not code:
+            for r in rows:
+                r['kind'] = 'Role points'
         keeper = _keeper()
         problems += [f"{e['name']}: pick the name from the list (or ask the points keeper to add them)" for e in rows if not e['member']]
         if problems or not rows:
@@ -314,29 +313,53 @@ def use():
     return render_template('members.html', **_ctx(view='use', members=mem, form=form, uses=L.USE_FOR))
 
 
-def send_books(ym, who='DRSCCA Apps'):
-    """Email the treasurer the worker points journal entries for 'YYYY-MM'. Used by the button and the nightly job."""
+def send_books(who='DRSCCA Apps'):
+    """Email the treasurer the journal entry for everything not yet reconciled. Used by the button and on the 1st."""
     from utils import send_mail
-    y, mo = int(ym[:4]), int(ym[5:])
-    books = L.month_books(S.entries(), _events_by_code(), y, mo)
+    open_entries = L.unreconciled(S.entries())
+    if not open_entries:
+        return 0
+    bk = L.books(open_entries, _events_by_code())
     st = _reserve()
     value = round(sum(m['points'] for m in S.members()) * L.POINT_VALUE, 2)
-    subject, body = L.books_email(books, date(y, mo, 1).strftime('%B %Y'), st and st['amount'], value)
+    first, last = min(e['date'] for e in open_entries), max(e['date'] for e in open_entries)
+    subject, body = L.books_email(bk, f"{first:%-m/%-d/%Y} to {last:%-m/%-d/%Y}", st and st['amount'], value)
     send_mail(subject, body, recipient=os.environ.get('NOTIFICATION_EMAIL', 'treasurer@drscca.org'))
-    log_audit_event('POINTS_BOOKS_EMAILED', who, {'month': ym, 'lines': len(books['lines'])})
+    log_audit_event('POINTS_BOOKS_EMAILED', who, {'entries': len(open_entries), 'lines': len(bk['lines'])})
+    return len(open_entries)
 
 
-@bp.route('/books/email', methods=['POST'])
+@bp.route('/quickbooks', methods=['GET', 'POST'])
 @login_required
-def books_email():
+def quickbooks():
+    """Entries not yet booked in QuickBooks, the journal entry for them, and marking them reconciled."""
     if (g := _guard(keeper=True)):
         return g
-    ym = request.form.get('month', '')
-    if not (len(ym) == 7 and ym[4] == '-'):
-        return redirect(url_for('members.home'))
-    send_books(ym, _who())
-    flash(f'Emailed the {ym} journal entries to the treasurer.', 'success')
-    return redirect(url_for('members.home'))
+    if request.method == 'POST':
+        f = request.form
+        if f.get('action') == 'email':
+            n = send_books(_who())
+            flash(f'Emailed the journal entry for {n} entries to the treasurer.' if n else 'Nothing to book.', 'success')
+            return redirect(url_for('members.quickbooks'))
+        rows = [int(x) for x in f.getlist('row') if x.isdigit()]
+        ref = f.get('ref', '').strip()
+        if not rows:
+            flash('Tick the entries that are booked.', 'warning')
+            return redirect(url_for('members.quickbooks'))
+        label = f"{L.to_date(f.get('booked')) or date.today()}" + (f' {ref}' if ref else '')
+        S.mark_reconciled(rows, label)
+        log_audit_event('POINTS_RECONCILED', _who(), {'entries': len(rows), 'ref': label})
+        flash(f'Marked {len(rows)} entries reconciled ({label}).', 'success')
+        return redirect(url_for('members.quickbooks'))
+    ent = S.entries()
+    open_entries = sorted(L.unreconciled(ent), key=lambda e: (e['date'] or date.min, e['row']))
+    total = round(sum(m['points'] for m in S.members()) * L.POINT_VALUE, 2)
+    reserve = _reserve()
+    open_value = round(sum(e['points'] for e in open_entries) * L.POINT_VALUE, 2)
+    diff = round(total - reserve['amount'], 2) if reserve else None
+    return render_template('members.html', **_ctx(view='quickbooks', open_entries=open_entries, bk=L.books(open_entries, _events_by_code()),
+                                                  total=total, reserve=reserve, diff=diff, open_value=open_value,
+                                                  unexplained=round(diff - open_value, 2) if diff is not None else None))
 
 
 @bp.route('/auto', methods=['GET', 'POST'])

@@ -38,7 +38,7 @@ def _text(v):
 
 
 def _snapshot():
-    res = C.batch_get(_sid(), ['Members!A:J', 'Points!A:I'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+    res = C.batch_get(_sid(), ['Members!A:J', 'Points!A:J'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])]
     return vr + [[]] * (2 - len(vr))
 
@@ -59,11 +59,12 @@ def members():
 def entries():
     out = []
     for i, r in enumerate(_snapshot()[1][1:], start=2):
-        r = list(r) + [''] * 9
+        r = list(r) + [''] * 10
         if not str(r[1]).strip() and not str(r[2]).strip():
             continue
         out.append({'row': i, 'date': L.to_date(r[0]), 'member': str(r[1]).strip(), 'name': str(r[2]), 'points': L.num(r[3]),
-                    'what': str(r[4]), 'event': str(r[5]), 'kind': str(r[6]), 'status': str(r[7]).strip(), 'by': str(r[8])})
+                    'what': str(r[4]), 'event': str(r[5]), 'kind': str(r[6]), 'status': str(r[7]).strip(), 'by': str(r[8]),
+                    'reconciled': str(r[9]).strip()})
     return out
 
 
@@ -221,3 +222,13 @@ def prepare_auto(year, month, who='Auto add (monthly)'):
     """Add this month's auto-add points (once). They count right away: the user asked for these to be automatic."""
     rows = L.auto_entries(auto_rows(), entries(), year, month)
     return add_entries(rows, L.APPROVED, who) if rows else 0
+
+
+def mark_reconciled(row_numbers, label):
+    """Fill the Reconciled column (e.g. "2026-12-01 JE 2041") for these Points rows."""
+    with _lock:
+        ws = worksheet(_sid(), 'Points')
+        if ws.col_count < 10:
+            ws.add_cols(10 - ws.col_count)
+        ws.batch_update([{'range': f'J{n}', 'values': [[_text(label)]]} for n in row_numbers], value_input_option='RAW')
+        refresh()

@@ -5,10 +5,17 @@
 {% block nav %}
     {% if keeper %}{{ tab('members.home', 'Members') }}{% endif %}
     {{ tab('members.enter', 'Enter points') }}
-    {% if keeper %}{{ tab('members.use', 'Use points') }}{{ tab('members.auto', 'Auto add') }}{{ tab('members.milestones', 'Milestones') }}{% endif %}
+    {% if keeper %}{{ tab('members.use', 'Use points') }}{{ tab('members.auto', 'Auto add') }}{{ tab('members.quickbooks', 'QuickBooks') }}{{ tab('members.milestones', 'Milestones') }}{% endif %}
 {% endblock %}
 {% macro pts(v) %}<span class="{{ 'text-danger' if v < 0 else '' }}">{{ '%+g'|format(v) }}</span>{% endmacro %}
 {% macro day(d) %}{{ d.strftime('%-m/%-d/%Y') if d else '' }}{% endmacro %}
+{% macro cheat() %}<div class="card p-3 small">
+    <div class="fw-semibold mb-2">Cheat sheet</div>
+    <div>1 point = <strong>${{ point_value }}</strong></div>
+    <div class="mt-2">Points per day: event chair 4, special events 3, chief or assistant chair 2, worker 1.</div>
+    <div class="mt-2">Blank points count 1.</div>
+    <div class="mt-2">To spend points, use the <a href="{{ url_for('members.use') }}">Use points</a> tab. To add points, use <a href="{{ url_for('members.enter') }}">Enter points</a>.</div>
+</div>{% endmacro %}
 {% block style %}
         #grid td { vertical-align: middle; }
         #memberTable tbody tr[hidden] { display: none; }
@@ -18,26 +25,19 @@
 
 {# ================================================================== Members (keeper) #}
 {% if view == 'home' %}
-<div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
     <div><div class="page-title mb-0">Members</div>
-        <div class="text-muted small">{{ members|length }} members · {{ '{:,.1f}'.format(total) }} worker points outstanding (${{ '{:,.2f}'.format(total * point_value) }})
-        {% if reserve %}· {% if (total * point_value - reserve.amount)|abs < 0.005 %}<span class="text-success">ties to QuickBooks</span>{% else %}<span class="text-warning">${{ '{:,.2f}'.format(total * point_value - reserve.amount) }} off QuickBooks</span>{% endif %}{% endif %}</div></div>
+        <div class="small text-muted">{{ '{:,.1f}'.format(total) }} points (${{ '{:,.2f}'.format(total * point_value) }})
+            {% if reserve %}· {% if (total * point_value - reserve.amount)|abs >= 0.005 %}<a href="{{ url_for('members.quickbooks') }}" class="link-warning">${{ '{:,.2f}'.format(total * point_value - reserve.amount) }} off QuickBooks</a>{% else %}<a href="{{ url_for('members.quickbooks') }}" class="link-success">ties to QuickBooks</a>{% endif %}{% endif %}
+            · SCCA list {% if latest_list %}{{ day(latest_list) }}{% else %}not loaded{% endif %} (<a href="#" onclick="document.getElementById('loadlist').hidden=false; return false">load new</a>)
+            {% if lapsed %}· <a href="#lapsed" class="link-warning" onclick="document.getElementById('lapsed').open=true">{{ lapsed|length }} not current</a>{% endif %}</div></div>
     <a class="btn btn-accent" href="{{ url_for('members.enter') }}">Enter points</a>
 </div>
-
-<div class="card mb-3"><div class="card-body">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <div class="fw-semibold">QuickBooks journal entries</div>
-        <div class="small text-muted">{% if reserve %}Reserve ${{ '{:,.2f}'.format(reserve.amount) }} at the {{ reserve.as_of }} sync · {% endif %}emailed to the treasurer automatically on the 1st</div>
-    </div>
-    <div class="row g-3">{% for b in books %}
-        <div class="col-md-6"><div class="d-flex justify-content-between align-items-center"><span class="fw-semibold small">{{ b.label }}{{ ' (so far)' if loop.last }}</span>
-            <form method="post" action="{{ url_for('members.books_email') }}" class="m-0"><input type="hidden" name="month" value="{{ b.ym }}"><button class="btn btn-sm btn-outline-secondary py-0">Email to treasurer</button></form></div>
-        <div class="small mt-1">{% for ln in b.lines %}<div>Debit {{ ln.debit.split(':')[-1] }} · credit {{ ln.credit }} · <strong>${{ '{:,.2f}'.format(ln.amount) }}</strong> <span class="text-muted">({{ '%g'|format(ln.points) }} points)</span></div>
-            {% else %}<div class="text-muted">Nothing to book.</div>{% endfor %}
-            {% for e in b.used %}<div class="text-muted">Used: {{ e.name }}, {{ e.what }}, {{ '%g'|format(-e.points) }} points (paid by its own check or card charge)</div>{% endfor %}</div></div>
-    {% endfor %}</div>
-</div></div>
+<form id="loadlist" method="post" action="{{ url_for('members.upload') }}" enctype="multipart/form-data" class="card card-body mb-3" hidden>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        <span class="small">Download the Member List from <a href="{{ scca_reports }}">my.scca.com › Region Reporting</a>, then:</span>
+        <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" required><button class="btn btn-sm btn-accent">Load list</button>
+        <a class="small ms-auto" href="{{ list_url }}">past lists</a></div></form>
 
 {% for key, g in pending %}
 <form method="post" action="{{ url_for('members.approve') }}" class="card mb-3 border-warning pending-card"><div class="card-body">
@@ -49,26 +49,10 @@
         <td style="width:7rem"><input name="points_{{ e.row }}" type="number" step="0.5" class="form-control form-control-sm" value="{{ '%g'|format(e.points) }}"></td></tr>{% endfor %}
     </tbody></table>
     <button class="btn btn-sm btn-accent" name="action" value="approve">Approve</button>
-    <button class="btn btn-sm btn-link text-muted" name="action" value="reject" onclick="return confirm('Remove these entries without adding points?')">Remove</button>
+    <button class="btn btn-sm btn-link text-muted" name="action" value="reject" onclick="return confirm('Remove these entries?')">Remove</button>
 </div></form>
 {% endfor %}
 {% if pending %}<datalist id="memberlist">{% for m in members %}<option value="{{ m.member }} {{ m.first }} {{ m.last }}">{% endfor %}</datalist>{% endif %}
-
-<div class="card mb-3"><div class="card-body py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
-    <div class="small">SCCA member list: {% if latest_list %}loaded {{ day(latest_list) }}{% else %}<span class="text-warning">not loaded yet</span>{% endif %}
-        · <a href="{{ scca_reports }}">download it from my.scca.com</a> (Region Reporting, Member List) · <a href="{{ list_url }}">past lists</a></div>
-    <form method="post" action="{{ url_for('members.upload') }}" enctype="multipart/form-data" class="d-flex gap-2 m-0">
-        <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" required><button class="btn btn-sm btn-outline-secondary text-nowrap">Load list</button></form>
-</div></div>
-
-{% if lapsed %}
-<div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-start gap-2">
-    <details><summary><strong>{{ lapsed|length }} members with points are not current SCCA members</strong>
-        ({{ '{:,.1f}'.format(lapsed|sum(attribute='points')) }} points, ${{ '{:,.2f}'.format(lapsed|sum(attribute='points') * point_value) }}), per the SCCA list of {{ day(latest_list) }}. Their points can be deleted.</summary>
-        <div class="small mt-1">{% for m in lapsed %}<a href="{{ url_for('members.member', mid=m.member) }}">{{ m.first }} {{ m.last }}</a> <span class="text-muted">{{ 'expired ' ~ day(m.expires) if m.expires else 'not on the list' }}, {{ '%g'|format(m.points) }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</div></details>
-    <form method="post" action="{{ url_for('members.forfeit') }}" class="m-0" onsubmit="return confirm('Delete the points of all {{ lapsed|length }} members who are not current? This cannot be undone in the app.')"><button class="btn btn-sm btn-danger">Delete their points</button></form>
-</div>
-{% endif %}
 
 <input id="find" class="form-control mb-2" type="search" placeholder="Find a member by name or SCCA number" autocomplete="off" style="max-width: 30rem">
 <div class="card"><div class="card-body p-0 table-responsive" style="max-height: 60vh; overflow-y: auto;">
@@ -83,6 +67,13 @@
 </div></div>
 
 
+{% if lapsed %}
+<details id="lapsed" class="mt-3"><summary class="small"><span class="text-warning">{{ lapsed|length }} members with points are not current SCCA members</span> ({{ '{:,.1f}'.format(lapsed|sum(attribute='points')) }} points)</summary>
+    <div class="card card-body mt-2">
+        <div class="small">{% for m in lapsed %}<a href="{{ url_for('members.member', mid=m.member) }}">{{ m.first }} {{ m.last }}</a> <span class="text-muted">{{ 'expired ' ~ day(m.expires) if m.expires else 'not on the list' }}, {{ '%g'|format(m.points) }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</div>
+        <form method="post" action="{{ url_for('members.forfeit') }}" class="mt-2" onsubmit="return confirm('Delete the points of all {{ lapsed|length }} members who are not current?')"><button class="btn btn-sm btn-danger">Delete their points</button></form>
+    </div></details>
+{% endif %}
 <details class="mt-2"><summary class="small">Add someone who is not on the SCCA list</summary>
     <form method="post" action="{{ url_for('members.add_member') }}" class="row g-2 align-items-end mt-1">
         <div class="col-md-2"><label class="form-label small">SCCA #</label><input name="member" class="form-control form-control-sm" required></div>
@@ -119,20 +110,17 @@
 {# ================================================================== Enter points #}
 {% elif view == 'enter' %}
 <div class="page-title">Enter points</div>
-<p class="text-muted">Who worked an event, and their points. Due within 30 days of the event. Points count as soon as you save.</p>
-<form method="post" class="card p-3" style="max-width: 46rem">
+<p class="text-muted">Who worked an event, and their points. Due within 30 days of the event.</p>
+<div class="row g-4"><div class="col-lg-8">
+<form method="post" class="card p-3">
     <div class="row g-2 mb-3">
-        <div class="col-12"><label class="form-label">Event</label>
+        <div class="col-md-8"><label class="form-label">Event</label>
             <select name="event" class="form-select" {{ '' if keeper else 'required' }}>
                 <option value="">{{ 'No event (volunteer job, adjustment)' if keeper else 'Select the event…' }}</option>
-                {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" data-date="{{ e.date }}" {% if form.get('event') == c %}selected{% endif %}>{{ e.date }} · {{ c }} · {{ e.event_name }}</option>{% endfor %}
+                {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" {% if form.get('event') == c %}selected{% endif %}>{{ e.date }} · {{ c }} · {{ e.event_name }}</option>{% endfor %}
             </select></div>
-        <div class="col-md-4"><label class="form-label">First day</label><input type="date" name="first" class="form-control" value="{{ form.get('first', '') }}"></div>
-        <div class="col-md-4"><label class="form-label">Last day <span class="text-muted">(if more than one)</span></label><input type="date" name="last" class="form-control" value="{{ form.get('last', '') }}"></div>
-        <div class="col-md-4"><label class="form-label">Specialty</label>
-            <select name="specialty" class="form-select" id="specialty">{% for sp in specialties %}<option {% if form.get('specialty') == sp %}selected{% endif %}>{{ sp }}</option>{% endfor %}
-            {% if keeper %}<option {% if form.get('specialty') == volunteer_job %}selected{% endif %}>{{ volunteer_job }}</option>{% endif %}</select>
-            <input name="specialty_other" class="form-control mt-1" placeholder="Which specialty?" value="{{ form.get('specialty_other', '') }}" {% if form.get('specialty') != 'Other' %}hidden{% endif %}></div>
+        <div class="col-md-4"><label class="form-label">Start date</label><input type="date" name="first" class="form-control" value="{{ form.get('first', '') }}"><div class="form-text">Blank = the event date</div></div>
+        {% if keeper %}<div class="col-12"><label class="form-label">What for <span class="text-muted">(only when there is no event)</span></label><input name="what" class="form-control" placeholder="e.g. Equipment chief, 2026" value="{{ form.get('what', '') }}"></div>{% endif %}
     </div>
     <datalist id="memberlist">{% for m in members %}<option value="{{ m.member }} {{ m.first }} {{ m.last }}">{% endfor %}</datalist>
     <table class="table table-sm align-middle mb-2">
@@ -141,7 +129,7 @@
     </table>
     <template id="persontpl"><tr>
         <td><input name="member" list="memberlist" class="form-control form-control-sm" placeholder="Type a name" autocomplete="off"></td>
-        <td><input name="points" type="number" min="0.5" step="0.5" class="form-control form-control-sm"></td>
+        <td><input name="points" type="number" min="0.5" step="0.5" class="form-control form-control-sm" placeholder="1"></td>
         <td><button type="button" class="btn btn-sm btn-link text-muted p-1" title="Remove" onclick="this.closest('tr').remove(); tally()">✕</button></td>
     </tr></template>
     <div class="d-flex flex-wrap align-items-center gap-2">
@@ -149,19 +137,14 @@
         <span class="small text-muted ms-auto" id="tally"></span>
         <button class="btn btn-accent">Save</button>
     </div>
-    <div class="form-text mt-2">Points per day: event chair 4, special events 3, chief or assistant chair 2, worker 1. Blank points count 1 a day for the dates above.{% if keeper %} To spend points, use the Use points tab.{% endif %}</div>
 </form>
+</div><div class="col-lg-4">{{ cheat() }}</div></div>
 <script>
     const START = {{ grid|tojson }};
-    function days() {
-        const ev = document.querySelector('[name=event]').selectedOptions[0];
-        const a = document.querySelector('[name=first]').value || (ev && ev.dataset.date), b = document.querySelector('[name=last]').value;
-        if (!a) return 1; const d = (new Date(b || a) - new Date(a)) / 864e5 + 1; return d > 0 ? d : 1;
-    }
     function tally() {
-        let n = 0, t = 0; const per = days();
+        let n = 0, t = 0;
         document.querySelectorAll('#people tr').forEach(tr => {
-            const p = tr.querySelector('[name=points]'); p.placeholder = String(per);
+            const p = tr.querySelector('[name=points]');
             if (!tr.querySelector('[name=member]').value.trim()) return;
             n++; t += parseFloat(p.value || p.placeholder) || 0;
         });
@@ -178,15 +161,14 @@
         tally();
     }
     addPeople(Math.max(5, START.length), START);
-    document.querySelectorAll('[name=first],[name=last],[name=event]').forEach(x => x.addEventListener('change', tally));
-    document.getElementById('specialty').addEventListener('change', e => document.querySelector('[name=specialty_other]').hidden = e.target.value !== 'Other');
 </script>
 
 {# ================================================================== Use points #}
 {% elif view == 'use' %}
 <div class="page-title">Use points</div>
 <p class="text-muted">Take points off a member's balance for a renewal, an event entry, the banquet or merchandise. If the region pays a bill for it, file a funds request for the payment as usual.</p>
-<form method="post" class="card p-3" style="max-width: 46rem">
+<div class="row g-4"><div class="col-lg-8">
+<form method="post" class="card p-3">
     <datalist id="memberlist">{% for m in members if m.points > 0 %}<option value="{{ m.member }} {{ m.first }} {{ m.last }}" data-points="{{ m.points }}">{{ '%g'|format(m.points) }} points</option>{% endfor %}</datalist>
     <div class="row g-2">
         <div class="col-md-8"><label class="form-label">Member</label><input id="usemember" name="member" list="memberlist" class="form-control" required placeholder="Type a name" autocomplete="off" value="{{ form.get('member', '') }}">
@@ -198,6 +180,7 @@
     </div>
     <div class="mt-3"><button class="btn btn-accent">Use points</button></div>
 </form>
+</div><div class="col-lg-4">{{ cheat() }}</div></div>
 <script>
     (function () {
         const bal = {}; document.querySelectorAll('#memberlist option').forEach(o => bal[o.value.split(' ')[0]] = parseFloat(o.dataset.points));
@@ -239,6 +222,32 @@
     <div class="d-flex gap-2"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelector('#autogrid tbody').appendChild(document.getElementById('autotpl').content.firstElementChild.cloneNode(true))">Add a person</button>
         <button class="btn btn-accent ms-auto">Save</button></div>
 </form>
+
+{# ================================================================== QuickBooks #}
+{% elif view == 'quickbooks' %}
+<div class="page-title">QuickBooks</div>
+<p class="text-muted mb-3">Worker points ${{ '{:,.2f}'.format(total) }}{% if reserve %} · QuickBooks reserve ${{ '{:,.2f}'.format(reserve.amount) }} (sync of {{ reserve.as_of }}) ·
+    {% if diff|abs < 0.005 %}<span class="text-success">ties</span>{% else %}<span class="text-warning">${{ '{:,.2f}'.format(diff) }} off</span>{% endif %}{% endif %}</p>
+{% if unexplained is not none and unexplained|abs >= 0.005 %}<div class="alert alert-warning small">${{ '{:,.2f}'.format(unexplained) }} of the difference is not explained by the entries below: something was booked in QuickBooks without a points entry, or an entry was marked reconciled by mistake.</div>{% endif %}
+{% if open_entries %}
+<div class="card mb-3"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-2"><div class="fw-semibold">Journal entry to book (${{ '{:,.2f}'.format(open_value) }})</div>
+        <form method="post" class="m-0"><input type="hidden" name="action" value="email"><button class="btn btn-sm btn-outline-secondary">Email to treasurer</button></form></div>
+    {% for ln in bk.lines %}<div class="small">Debit <strong>{{ ln.debit }}</strong>, credit <strong>{{ ln.credit }}</strong>: <strong>${{ '{:,.2f}'.format(ln.amount) }}</strong> <span class="text-muted">({{ '%g'|format(ln.points) }} points, {{ ln.what }})</span></div>{% endfor %}
+    {% for e in bk.used %}<div class="small text-muted">Used: {{ e.name }}, {{ e.what }}, {{ '%g'|format(-e.points) }} points (paid by its own check or card charge)</div>{% endfor %}
+</div></div>
+<form method="post" class="card"><div class="card-body p-0 table-responsive">
+    <table class="table table-sm mb-0">
+        <thead><tr><th class="ps-3"><input type="checkbox" checked onclick="document.querySelectorAll('[name=row]').forEach(c => c.checked = this.checked)"></th><th>Date</th><th>Member</th><th>What for</th><th>Kind</th><th class="num">Points</th><th class="num pe-3">$</th></tr></thead>
+        <tbody>{% for e in open_entries %}<tr><td class="ps-3"><input type="checkbox" name="row" value="{{ e.row }}" checked></td><td class="text-nowrap">{{ day(e.date) }}</td><td>{{ e.name }}</td><td class="small">{{ e.what }}{% if e.event %} <span class="text-muted">{{ e.event }}</span>{% endif %}</td><td class="small">{{ e.kind }}</td><td class="num">{{ pts(e.points) }}</td><td class="num pe-3">{{ '{:,.2f}'.format(e.points * point_value) }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <div class="card-body d-flex flex-wrap gap-2 align-items-end border-top">
+        <div><label class="form-label small">Booked on</label><input type="date" name="booked" class="form-control form-control-sm"></div>
+        <div><label class="form-label small">Journal entry # <span class="text-muted">(optional)</span></label><input name="ref" class="form-control form-control-sm" placeholder="e.g. JE 2041"></div>
+        <button class="btn btn-sm btn-accent">Mark ticked entries reconciled</button>
+    </div>
+</form>
+{% else %}<p class="text-success">Everything is reconciled.</p>{% endif %}
 
 {# ================================================================== Milestones #}
 {% elif view == 'milestones' %}
