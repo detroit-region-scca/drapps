@@ -139,8 +139,8 @@ def test_event_chair_on_a_budget_can_sign_in_as_volunteer(monkeypatch):
     monkeypatch.setattr(auth.O, 'all', lambda: [])
     monkeypatch.setattr(auth, 'volunteers', lambda: {})
     monkeypatch.setattr(bud_store, 'enabled', lambda: True)
-    monkeypatch.setattr(bud_store, 'budgets', lambda: {'#DR99L': {'chair': 'Eric Penn', 'chair_email': 'chris.chair@example.com'},
+    monkeypatch.setattr(bud_store, 'budgets', lambda: {'#DR99L': {'chair': 'Chris Chair', 'chair_email': 'chris.chair@example.com'},
                                                        '#AX1': {'chair': 'X', 'chair_email': ''}})
-    u = auth.lookup('chris.chair@example.com')
-    assert u['level'] == 'volunteer' and u['name'] == 'Eric Penn' and u['chair_events'] == ['#DR99L'] and u['chair_only']
+    u = auth.lookup('Chris.Chair@example.com')
+    assert u['level'] == 'volunteer' and u['name'] == 'Chris Chair' and u['chair_events'] == ['#DR99L'] and u['chair_only']
     assert auth.lookup('nobody@x.com') is None

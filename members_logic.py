@@ -84,7 +84,7 @@ def role_rate(role):
 # ---------- the entry grid ----------
 
 def rows_from_grid(form_rows, members_by_id, event_code, when, what_default=''):
-    """Entry-page rows -> (entries, problems). Each form row: member ('500123 Ed Arthur' or a typed name), role, days,
+    """Entry-page rows -> (entries, problems). Each form row: member ('500100 Pat Quinn' or a typed name), role, days,
     points, note. Points left blank are worked out from the role and days. A row without a known member is a problem
     (the person must be added first), except that event chairs may send typed names for the keeper to sort out."""
     out, problems = [], []
@@ -192,26 +192,36 @@ def roster(rows):
     return out
 
 
+def canon(mid):
+    """SCCA writes member numbers as 500100_0 (primary) and 500200_1 (family); the old ledger has 500100 and 500200-1.
+    Both forms compare equal after this."""
+    s = str(mid or '').strip().replace('-', '_')
+    return re.sub(r'_0$', '', s)
+
+
 def merge_roster(members, report, list_date):
     """Members rows updated from the report: names and dates refreshed, new members added, and everyone on it marked
     with the list date. Members not on it keep their row (and points) with the old list date. Family IDs like
-    500314-1 take their dates from 500314 when the report lists only the base number."""
+    500200-1 take their dates from 500200 when the report lists only the base number."""
+    by_canon = {canon(k): v for k, v in report.items()}
     out, seen = [], set()
     for m in members:
-        mid = m['member']
-        hit = report.get(mid) or report.get(mid.split('-')[0])
+        c = canon(m['member'])
+        hit = by_canon.get(c) or by_canon.get(c.split('_')[0])
         if hit:
-            seen.add(mid if mid in report else mid.split('-')[0])
+            seen.add(c if c in by_canon else c.split('_')[0])
             m = dict(m, joined=hit['joined'] or m.get('joined'), expires=hit['expires'] or m.get('expires'), listed=list_date)
-            if mid in report:
+            if c in by_canon:
                 m.update(first=hit['first'] or m['first'], last=hit['last'] or m['last'])
         out.append(m)
+    have = {canon(m['member']) for m in out}
     for mid, hit in report.items():
-        if mid not in seen and mid not in {m['member'] for m in out}:
-            out.append({'member': mid, 'first': hit['first'], 'last': hit['last'], 'life': False, 'joined': hit['joined'],
+        c = canon(mid)
+        if c not in seen and c not in have:
+            out.append({'member': c, 'first': hit['first'], 'last': hit['last'], 'life': False, 'joined': hit['joined'],
                         'expires': hit['expires'], 'listed': list_date, 'points': 0.0})
+            have.add(c)
     return out
-
 
 def milestones(members, month):
     """{years: [names]} for 'YYYY-MM' from members on the latest list: 0 = joined that month, else 5-year anniversaries."""
