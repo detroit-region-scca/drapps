@@ -58,12 +58,7 @@ def _events_by_code():
 
 
 def _events_for_me():
-    evs = sorted(load_events(), key=lambda e: e.get('date', ''), reverse=True)
-    me = _me()
-    if me.get('chair_only'):
-        mine = set(me.get('chair_events', []))
-        return [e for e in evs if e.get('unique_code') in mine or e.get('custom_tag') in mine]
-    return evs[:80]
+    return sorted(load_events(), key=lambda e: e.get('date', ''), reverse=True)[:80]
 
 
 def _reserve():
@@ -119,8 +114,6 @@ def enter():
     if request.method == 'POST':
         f = request.form
         code = f.get('event', '').strip()
-        if _me().get('chair_only') and code not in {e.get('unique_code') for e in events} | {e.get('custom_tag') for e in events}:
-            code = ''
         ev_date = L.to_date((_events_by_code().get(code) or {}).get('date'))
         first = L.to_date(f.get('first')) or ev_date or date.today()
         last = L.to_date(f.get('last')) or first
@@ -129,14 +122,12 @@ def enter():
         grid = [{'member': n, 'points': p} for n, p in zip(f.getlist('member'), f.getlist('points'))]
         rows, problems = L.rows_from_form(f.getlist('member'), f.getlist('points'), by_id, code, first, specialty, default_points=days)
         keeper = _keeper()
-        if keeper:
-            problems += [f"{e['name']}: not a member yet; add them on the Members page first" for e in rows if not e['member']]
-            problems += L.check_spending(rows, {m['member']: m['points'] for m in mem})
+        problems += [f"{e['name']}: pick the name from the list (or ask the points keeper to add them)" for e in rows if not e['member']]
         if problems or not rows:
             for p in problems or ['Add at least one person.']:
                 flash(p, 'danger')
             return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form=f, grid=grid))
-        status = L.APPROVED if keeper else L.PENDING
+        status = L.APPROVED
         n = S.add_entries(rows, status, _who())
         log_audit_event('POINTS_ENTERED', _who(), {'event': code, 'rows': n, 'points': sum(e['points'] for e in rows), 'status': status})
         if keeper:
@@ -144,12 +135,12 @@ def enter():
             return redirect(url_for('members.home'))
         from utils import send_mail
         ev = _events_by_code().get(code) or {}
-        send_mail(f"Worker points to approve: {ev.get('event_name') or 'entries'} from {_who()}",
+        send_mail(f"Worker points added: {ev.get('event_name') or 'entries'} from {_who()}",
                   f"{_who()} sent {n} worker points entries{(' for ' + ev.get('event_name', '')) if ev else ''}:\n\n"
                   + '\n'.join(f"  {e['name']}: {e['points']:g} ({e['what']})" for e in rows)
-                  + f"\n\nApprove them: {url_for('members.home', _external=True)}",
+                  + f"\n\nThey count now. Fix anything on the Members page: {url_for('members.home', _external=True)}",
                   recipient=os.environ.get('MEMBERSHIP_EMAIL', 'membership@drscca.org'))
-        flash(f'Thanks. {n} entries went to the points keeper, who will approve them.', 'success')
+        flash(f'Thanks. {n} entries added; the points keeper has a copy.', 'success')
         return redirect(url_for('members.enter'))
     grid = []
     if request.args.get('member') in by_id:
@@ -252,7 +243,7 @@ def forfeit():
             for m in cands]
     S.add_entries(rows, L.APPROVED, _who())
     log_audit_event('POINTS_FORFEITED', _who(), {'members': len(rows), 'points': sum(r['points'] for r in rows)})
-    flash(f"Forfeited {-sum(r['points'] for r in rows):g} points from {len(rows)} lapsed members.", 'success')
+    flash(f"Deleted {-sum(r['points'] for r in rows):g} points from {len(rows)} members who are not current.", 'success')
     return redirect(url_for('members.home'))
 
 

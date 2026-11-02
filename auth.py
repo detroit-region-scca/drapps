@@ -76,17 +76,8 @@ def lookup(email):
         level = 'officer' if set(roles) & set(OFFICER_ROLES) else 'official'
         return {'email': email, 'name': mine[0]['name'], 'level': level, 'roles': roles}
     v = volunteers().get(email)
-    try:   # an event chair named on an event budget may sign in to send who worked (and use the volunteer pages)
-        import bud_store
-        chaired = bud_store.chair_events(email) if bud_store.enabled() else []
-    except Exception as e:
-        logging.error(f"Event chairs unavailable: {e}")
-        chaired = []
     if v:
-        return {'email': email, 'name': v.get('name') or email, 'level': 'volunteer', 'roles': [], 'chair_events': chaired}
-    if chaired:
-        return {'email': email, 'name': bud_store.chair_name(email) or email, 'level': 'volunteer', 'roles': ['Event chair'],
-                'chair_events': chaired, 'chair_only': True}
+        return {'email': email, 'name': v.get('name') or email, 'level': 'volunteer', 'roles': []}
     return None
 
 

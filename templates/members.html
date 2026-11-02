@@ -62,10 +62,13 @@
 </div></div>
 
 {% if lapsed %}
-<div class="card mb-3"><div class="card-body py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
-    <details><summary><span class="fw-semibold">{{ lapsed|length }} lapsed members still have points</span>
-        <span class="small text-muted">({{ '{:,.1f}'.format(lapsed|sum(attribute='points')) }} points), per the SCCA list of {{ day(latest_list) }}</span></summary>
+<div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-start gap-2">
+    <details><summary><strong>{{ lapsed|length }} members with points are not current SCCA members</strong>
+        ({{ '{:,.1f}'.format(lapsed|sum(attribute='points')) }} points, ${{ '{:,.2f}'.format(lapsed|sum(attribute='points') * point_value) }}), per the SCCA list of {{ day(latest_list) }}. Their points can be deleted.</summary>
         <div class="small mt-1">{% for m in lapsed %}<a href="{{ url_for('members.member', mid=m.member) }}">{{ m.first }} {{ m.last }}</a> <span class="text-muted">{{ 'expired ' ~ day(m.expires) if m.expires else 'not on the list' }}, {{ '%g'|format(m.points) }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</div></details>
+    <form method="post" action="{{ url_for('members.forfeit') }}" class="m-0" onsubmit="return confirm('Delete the points of all {{ lapsed|length }} members who are not current? This cannot be undone in the app.')"><button class="btn btn-sm btn-danger">Delete their points</button></form>
+</div>
+{% endif %}{% endfor %}</div></details>
     <form method="post" action="{{ url_for('members.forfeit') }}" class="m-0" onsubmit="return confirm('Forfeit the points of all {{ lapsed|length }} lapsed members?')"><button class="btn btn-sm btn-outline-danger">Forfeit them</button></form>
 </div></div>
 {% endif %}
@@ -147,14 +150,14 @@
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2 mt-3 pt-3 border-top">
         <div class="small">Submitted by: <strong>{{ session.get('who', '') }}</strong></div>
-        <button class="btn btn-accent ms-auto">{{ 'Save' if keeper else 'Send to the points keeper' }}</button>
+        <button class="btn btn-accent ms-auto">Save</button>
     </div>
 </form>
 </div>
 <div class="col-lg-4">
     <div class="card p-3 mb-3"><div class="fw-semibold mb-2">Point structure, per day</div>
         <table class="table table-sm mb-0"><tbody>{% for label, pts in structure %}<tr><td>{{ label }}</td><td class="num">{{ pts }} pt{{ 's' if pts > 1 }}</td></tr>{% endfor %}</tbody></table></div>
-    <div class="small text-muted">{% if keeper %}Saved entries count right away. Spend points on the Use points tab.{% else %}Report due within 30 days of the event. The points keeper checks it and adds the points.{% endif %}
+    <div class="small text-muted">Report due within 30 days of the event. Points count as soon as you save.{% if keeper %} Spend points on the Use points tab.{% endif %}
         Blank points mean 1 a day for the dates above.</div>
 </div>
 </div>

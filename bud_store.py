@@ -19,7 +19,7 @@ from storage import DATA_DIR, drive_folder, drive_upload, open_book, worksheet
 import sheet_cache as C
 
 BUD_COLS = ['event_code', 'event_name', 'program', 'date', 'chair', 'location', 'updated', 'updated_by', 'notes', 'files_url',
-            'approved', 'approved_by', 'chair_email']   # chair_email: lets the event chair sign in to send who worked
+            'approved', 'approved_by']
 LINE_COLS = ['event_code', 'section', 'description', 'last_year', 'budget', 'actual', 'sort']
 AMOUNTS = ('last_year', 'budget', 'actual')
 CACHE_SECONDS = 15
@@ -55,10 +55,10 @@ def _snapshot():
     if hit and hit[0] == C.version(os.environ['BUDGETS_SHEET_ID']):
         return hit[1]
     try:
-        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:M', 'Lines!A:G', 'QBO Actuals!A:F'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:L', 'Lines!A:G', 'QBO Actuals!A:F'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     except gspread.exceptions.APIError:
         # No QBO Actuals tab until the first sync has run.
-        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:M', 'Lines!A:G'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:L', 'Lines!A:G'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], [], []]
     buds = [dict(zip(BUD_COLS, [str(v) for v in r] + [''] * len(BUD_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
     lines = []
@@ -193,15 +193,3 @@ def set_approved(codes, approved, who):
                         value_input_option='RAW')
         refresh()
 
-
-def chair_events(email):
-    """Event codes whose budget names this address as the event chair."""
-    email = (email or '').strip().lower()
-    if not email:
-        return []
-    return [code for code, b in budgets().items() if (b.get('chair_email') or '').strip().lower() == email]
-
-
-def chair_name(email):
-    email = (email or '').strip().lower()
-    return next((b.get('chair') for b in budgets().values() if (b.get('chair_email') or '').strip().lower() == email and b.get('chair')), '')

@@ -235,9 +235,7 @@ def create_event():
 @bp.put('/budgets/<path:code>')
 def save_budget(code):
     d = _body()
-    import bud_store
-    old = bud_store.get(code) or {}   # keep a saved chair email when the caller doesn't send one
-    form = {'chair': d.get('chair', ''), 'chair_email': d.get('chair_email', old.get('chair_email', '')), 'location': d.get('location', ''), 'notes': d.get('notes', ''), 'entered_by': g.api_user['name']}
+    form = {'chair': d.get('chair', ''), 'location': d.get('location', ''), 'notes': d.get('notes', ''), 'entered_by': g.api_user['name']}
     for sec, key in (('Income', 'inc'), ('Expense', 'exp')):
         ls = [ln for ln in d.get('lines', []) if ln.get('section') == sec]
         form.update({f'{key}_desc': [ln.get('description', '') for ln in ls], f'{key}_ly': [ln.get('last_year') for ln in ls],
