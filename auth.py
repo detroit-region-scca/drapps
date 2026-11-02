@@ -153,7 +153,7 @@ def gate():
         session['officer'] = {'email': u['email'], 'name': u['name']}
     else:
         session.pop('officer', None)
-    if set(u['roles']) & {'Equipment', 'Treasurer'}:
+    if u['level'] == 'officer' or 'Equipment' in u['roles']:   # officers have full access to every app
         session['equip_editor'] = {'email': u['email'], 'name': u['name']}
     else:
         session.pop('equip_editor', None)

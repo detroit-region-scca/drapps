@@ -43,8 +43,9 @@ def _guard():
 
 
 def editors():
-    """{email: name} allowed to edit: the equipment committee and the treasurer, from the officials list only."""
-    return {o['email'].lower(): o['name'] for o in O.all() if o.get('role') in ('Equipment', 'Treasurer') and o.get('email')}
+    """{email: name} allowed to edit: the equipment committee and the officers (full access to every app), from the
+    officials list only."""
+    return {o['email'].lower(): o['name'] for o in O.all() if o.get('role') in ('Equipment', 'RE', 'ARE', 'Secretary', 'Treasurer') and o.get('email')}
 
 
 def editor_required(f):
@@ -53,7 +54,7 @@ def editor_required(f):
         ed = session.get('equip_editor')
         if not ed or ed.get('email', '').lower() not in editors():
             session.pop('equip_editor', None)
-            flash('Changes are made by the equipment committee and the treasurer.', 'warning')
+            flash('Changes are made by the equipment committee and the club officers.', 'warning')
             return redirect(url_for('equip.home'))
         return f(*a, **kw)
     return wrapped

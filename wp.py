@@ -27,12 +27,14 @@ def _me():
     return user() or {}
 
 
-KEEPER_ROLES = {'Points Keeper', 'Treasurer'}
+KEEPER_ROLE = 'Points Keeper'
 
 
 def _is_keeper():
-    """Only the Worker Points Keeper and the Treasurer (officials list roles) manage points; everyone else submits workers."""
-    return bool(KEEPER_ROLES & set(_me().get('roles') or []))
+    """The Worker Points Keeper manages points, and so does any officer (officers have full access to every app);
+    everyone else submits workers."""
+    me = _me()
+    return me.get('level') == 'officer' or KEEPER_ROLE in (me.get('roles') or [])
 
 
 def _keeper_only():
