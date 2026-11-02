@@ -1,6 +1,6 @@
-"""Board minutes in the Region shared drive: originals and drafts in the private Board Minutes folder (by year), the
-approved PDFs in the public website folder (by year) that drscca.org lists. The app's service account has writer
-access to just those two folders."""
+"""Board minutes: originals and approved PDFs in the private Board Minutes folder (by year), approved PDFs in the public
+website folder (by year) that drscca.org lists, and drafts in the DRSCCA Apps drive (MINUTES_DRAFTS_FOLDER_ID), where
+the app may delete them. The app's service account can add files to the two Board Minutes folders but not delete."""
 import io
 import json
 import os
@@ -11,7 +11,7 @@ FOLDER = 'application/vnd.google-apps.folder'
 
 
 def enabled():
-    return bool(os.environ.get('MINUTES_PRIVATE_FOLDER_ID') and os.environ.get('MINUTES_PUBLIC_FOLDER_ID'))
+    return all(os.environ.get(k) for k in ('MINUTES_PRIVATE_FOLDER_ID', 'MINUTES_PUBLIC_FOLDER_ID', 'MINUTES_DRAFTS_FOLDER_ID'))
 
 
 def _s():
@@ -96,24 +96,38 @@ def published(year):
     return [f for f in _list(folder[0]['id'])] if folder else []
 
 
-def drafts(years):
-    out = []
-    for y in years:
-        folder = [f for f in _list(os.environ['MINUTES_PRIVATE_FOLDER_ID'], f" and mimeType='{FOLDER}'") if f['name'] == str(y)]
-        if folder:
-            out += [dict(f, year=y) for f in _list(folder[0]['id']) if '(draft)' in f['name']]
-    return out
+def save_draft(name, pdf):
+    hit = [f for f in _list(os.environ['MINUTES_DRAFTS_FOLDER_ID']) if f['name'] == name]
+    if hit:
+        return _replace_content(hit[0]['id'], pdf, L.PDF), True
+    return _upload(os.environ['MINUTES_DRAFTS_FOLDER_ID'], name, pdf, L.PDF), False
 
 
-def publish_draft(file_id, year):
-    """Copy a draft PDF to the public folder under its final name, and drop "(draft)" from the private copy."""
+def drafts():
+    return [f for f in _list(os.environ['MINUTES_DRAFTS_FOLDER_ID']) if f['name'].endswith('.pdf')]
+
+
+def delete_draft(file_id):
+    DRIVE, _ = _drive()
+    f = _s().get(f'{DRIVE}/{file_id}', params={'supportsAllDrives': 'true', 'fields': 'id,name,parents'}).json()
+    if os.environ['MINUTES_DRAFTS_FOLDER_ID'] not in f.get('parents', []):
+        raise ValueError('Not a draft.')
+    r = _s().patch(f'{DRIVE}/{file_id}', params={'supportsAllDrives': 'true'}, json={'trashed': True})
+    r.raise_for_status()
+    return f['name']
+
+
+def publish_draft(file_id):
+    """Put a draft in the public and private Board Minutes folders under its final name, then trash the draft."""
     DRIVE, _ = _drive()
     f = _s().get(f'{DRIVE}/{file_id}', params={'supportsAllDrives': 'true', 'fields': 'id,name'}).json()
     data = _s().get(f'{DRIVE}/{file_id}', params={'alt': 'media', 'supportsAllDrives': 'true'})
     data.raise_for_status()
     final = L.published_name(f['name'])
-    out, replaced = save(year, final, data.content, 'MINUTES_PUBLIC_FOLDER_ID')
-    _s().patch(f'{DRIVE}/{file_id}', params={'supportsAllDrives': 'true'}, json={'name': final})
+    when, _ = L.parse(final)
+    out, replaced = save(when.year, final, data.content, 'MINUTES_PUBLIC_FOLDER_ID')
+    save(when.year, final, data.content, 'MINUTES_PRIVATE_FOLDER_ID')
+    delete_draft(file_id)
     return out, replaced
 
 

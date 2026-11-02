@@ -22,7 +22,8 @@
     <div class="card p-3 small">
         <div class="fw-semibold mb-2">How it's filed</div>
         <div>Approved: <a href="{{ public_url }}">public Board Minutes folder</a> › year › "2026-11 Board Minutes.pdf".</div>
-        <div class="mt-1">Drafts and every original upload: <a href="{{ private_url }}">private Board Minutes folder</a> › year.</div>
+        <div class="mt-1">Every original upload, and a copy of each approved PDF: <a href="{{ private_url }}">private Board Minutes folder</a> › year.</div>
+        <div class="mt-1">Drafts wait in the DRSCCA Apps drive until you publish or delete them.</div>
         <div class="mt-1">Uploading the same month again replaces that month's PDF; the link stays the same.</div>
     </div>
 </div>
@@ -32,7 +33,9 @@
 <h2 class="h6 mt-4">Drafts waiting for approval</h2>
 <div class="card"><div class="card-body p-0"><table class="table table-sm mb-0">
     <tbody>{% for d in drafts %}<tr><td class="ps-3"><a href="{{ d.webViewLink }}" target="_blank" rel="noopener">{{ d.name }}</a></td>
-        <td class="text-end pe-3"><form method="post" action="{{ url_for('minutes.publish') }}" class="m-0"><input type="hidden" name="id" value="{{ d.id }}"><input type="hidden" name="year" value="{{ d.year }}"><button class="btn btn-sm btn-accent">Approved: publish</button></form></td></tr>{% endfor %}</tbody>
+        <td class="text-end pe-3 text-nowrap"><form method="post" action="{{ url_for('minutes.publish') }}" class="m-0 d-inline-flex gap-2"><input type="hidden" name="id" value="{{ d.id }}">
+            <button class="btn btn-sm btn-accent" name="action" value="publish">Approved: publish</button>
+            <button class="btn btn-sm btn-outline-light" name="action" value="delete" onclick="return confirm('Delete this draft?')">Delete</button></form></td></tr>{% endfor %}</tbody>
 </table></div></div>
 {% endif %}
 

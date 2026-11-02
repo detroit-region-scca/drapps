@@ -55,14 +55,13 @@ def home():
         data = up.read()
         year = meeting.year
         S.keep_original(year, L.original_name(meeting, kind, up.filename), data, L.mime_for(up.filename))
-        scratch = S.year_folder(os.environ['MINUTES_PRIVATE_FOLDER_ID'], year)
-        pdf = S.to_pdf(data, up.filename, scratch)
+        pdf = S.to_pdf(data, up.filename, os.environ['MINUTES_DRAFTS_FOLDER_ID'])   # temporary files go where the app may delete
         if approved:
             out, replaced = S.save(year, L.file_name(meeting, kind), pdf, 'MINUTES_PUBLIC_FOLDER_ID')
             S.save(year, L.file_name(meeting, kind), pdf, 'MINUTES_PRIVATE_FOLDER_ID')
             msg = f"{out['name']} is {'updated' if replaced else 'posted'}; drscca.org shows it within the hour."
         else:
-            out, replaced = S.save(year, L.file_name(meeting, kind, draft=True), pdf, 'MINUTES_PRIVATE_FOLDER_ID')
+            out, replaced = S.save_draft(L.file_name(meeting, kind, draft=True), pdf)
             msg = f"Saved {out['name']} as a draft. Publish it once the board approves the minutes."
         log_audit_event('MINUTES_UPLOADED', _who(), {'file': out['name'], 'approved': approved, 'from': up.filename})
         flash(msg, 'success')
@@ -76,7 +75,7 @@ def home():
             pub.append(dict(fl, when=d, label=label, year=y))
     pub.sort(key=lambda x: (x['when'] or date.min), reverse=True)
     return render_template('minutes.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Minutes", kinds=L.KINDS,
-                           drafts=S.drafts(years), published=pub, public_url=S.public_folder_url(), private_url=S.private_folder_url())
+                           drafts=S.drafts(), published=pub, public_url=S.public_folder_url(), private_url=S.private_folder_url())
 
 
 @bp.route('/publish', methods=['POST'])
@@ -84,10 +83,15 @@ def home():
 def publish():
     if (g := _guard()):
         return g
-    fid, year = request.form.get('id', ''), request.form.get('year', '')
-    if not fid or not year.isdigit():
+    fid = request.form.get('id', '')
+    if not fid:
         return redirect(url_for('minutes.home'))
-    out, replaced = S.publish_draft(fid, int(year))
+    if request.form.get('action') == 'delete':
+        name = S.delete_draft(fid)
+        log_audit_event('MINUTES_DRAFT_DELETED', _who(), {'file': name})
+        flash(f'Deleted the draft {name}.', 'info')
+        return redirect(url_for('minutes.home'))
+    out, replaced = S.publish_draft(fid)
     log_audit_event('MINUTES_PUBLISHED', _who(), {'file': out['name']})
     flash(f"{out['name']} is {'updated' if replaced else 'posted'}; drscca.org shows it within the hour.", 'success')
     return redirect(url_for('minutes.home'))
