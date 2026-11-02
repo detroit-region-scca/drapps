@@ -83,5 +83,6 @@ def latest_roster():
         data = _session().get(f"{DRIVE}/{f['id']}", params={'alt': 'media', 'supportsAllDrives': 'true'})
         data.raise_for_status()
         _roster_cache.clear()
-        _roster_cache[f['id']] = L.read_roster(data.content)
-    return dict(f, members=_roster_cache[f['id']])
+        _roster_cache[f['id']] = L.read_roster_full(data.content)
+    members, expiry = _roster_cache[f['id']]
+    return dict(f, members=members, expiry=expiry)

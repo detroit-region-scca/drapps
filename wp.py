@@ -52,6 +52,15 @@ def _guard():
     return None
 
 
+def _roster():
+    """The latest SCCA member list (uploaded in Member Milestones), or None. It decides who is a current member."""
+    try:
+        import sa_store
+        return sa_store.latest_roster() if sa_store.roster_enabled() else None
+    except Exception:
+        return None
+
+
 def _recent_events():
     return sorted(load_events(), key=lambda e: e.get('date', ''), reverse=True)[:80]
 
@@ -68,8 +77,10 @@ def home():
         waiting = [r for r in S.reports() if r['status'] == 'Submitted']
     except Exception:
         waiting = []
+    roster = _roster()
+    lapsed = L.lapsed_from_roster(mem, roster['expiry'], date.today()) if roster else []
     return render_template('wp.html', **_ctx(view='home', members=mem, total=sum(m['balance'] for m in mem), check=S.check(),
-                                             waiting=waiting, lapsed=L.forfeit_candidates(mem, date.today())))
+                                             waiting=waiting, lapsed=lapsed, roster=roster))
 
 
 @bp.route('/member/<member_id>', methods=['GET', 'POST'])
@@ -105,7 +116,12 @@ def member(member_id):
         flash(f"{'Added' if pts > 0 else 'Used'} {abs(pts):g} points for {m['first']} {m['last']}.", 'success')
         return redirect(url_for('wp.member', member_id=member_id))
     tx = sorted([t for t in S.transactions() if t['member'] == member_id], key=lambda t: t['date'] or date.min, reverse=True)
-    return render_template('wp.html', **_ctx(view='member', m=m, tx=tx, events=_recent_events()))
+    roster = _roster()
+    rexp = None
+    if roster:
+        mid = str(m['member']).strip()
+        rexp = roster['expiry'].get(mid) or roster['expiry'].get(mid.split('-')[0]) or 'missing'
+    return render_template('wp.html', **_ctx(view='member', m=m, tx=tx, events=_recent_events(), roster=roster, roster_exp=rexp))
 
 
 @bp.route('/member/add', methods=['POST'])
@@ -134,12 +150,17 @@ def forfeit_lapsed():
     if (g := _guard()):
         return g
     S.refresh()
-    cands = L.forfeit_candidates(S.members(), date.today())
+    roster = _roster()
+    if not roster:
+        flash('Upload the SCCA member list in Member Milestones first; it decides who has lapsed.', 'warning')
+        return redirect(url_for('wp.home'))
+    cands = L.lapsed_from_roster(S.members(), roster['expiry'], date.today())
     if not cands:
         flash('Nobody to forfeit.', 'info')
         return redirect(url_for('wp.home'))
     S.append_transactions([{'date': date.today(), 'member': m['member'], 'name': f"{m['first']} {m['last']}", 'event_code': 'FORFEIT',
-                            'description': f"Membership expired {m['exp']}", 'points': -m['balance'], 'type': 'Forfeit',
+                            'description': f"Membership lapsed ({'expired ' + m['roster_exp'].isoformat() if m['roster_exp'] else 'not on the SCCA member list'} as of {roster['createdTime'][:10]})",
+                            'points': -m['balance'], 'type': 'Forfeit',
                             'source': f'Entered in app by {_who()}'} for m in cands])
     log_audit_event('WP_FORFEIT', _who(), {'members': len(cands), 'points': -sum(m['balance'] for m in cands)})
     flash(f"Forfeited {sum(m['balance'] for m in cands):g} points from {len(cands)} lapsed members.", 'success')

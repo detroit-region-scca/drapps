@@ -128,6 +128,41 @@ def reminder(today, app_url='https://drapps.drscca.org'):
 Then delete the downloaded copy from your computer; it has members' addresses and birth dates.""")
 
 
+def roster_expiry(rows):
+    """{SCCA member ID: membership good-through date} from the report's rows: the later of SCCA Member Expire and
+    Region Member Expire. Only the ID and that date are kept."""
+    rows = [r for r in rows if r and any(c not in (None, '') for c in r)]
+    if not rows:
+        return {}
+    head = [str(h or '').strip().lower() for h in rows[0]]
+    idc = head.index('member id') if 'member id' in head else None
+    cols = [i for i, h in enumerate(head) if h in ('scca member expire', 'region member expire')]
+    out = {}
+    if idc is None:
+        return out
+    for r in rows[1:]:
+        r = list(r) + [None] * len(head)
+        mid = str(r[idc] or '').strip()
+        if mid.endswith('.0'):
+            mid = mid[:-2]
+        dates = [d for d in (_date(r[i]) for i in cols) if d]
+        if mid and dates:
+            out[mid] = max(dates)
+    return out
+
+
+def read_roster_full(data):
+    """Bytes of the SCCA Member List .xlsx -> (members [(name, region join date)], expiry {member ID: date})."""
+    import io
+    import openpyxl
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    except Exception:
+        raise ValueError('Could not open that file. Download the Member List again from SCCA (an .xlsx file) and retry.')
+    rows = list(wb.worksheets[0].iter_rows(values_only=True))
+    return roster_members(rows), roster_expiry(rows)
+
+
 def read_roster(data):
     """Bytes of the SCCA Member List .xlsx -> [(name, region join date)]. ValueError if it is not that report."""
     import io

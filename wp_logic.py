@@ -211,3 +211,18 @@ def month_end_email(summary, year, month, check):
         lines += ['', 'Ledger ties to QuickBooks.' if abs(check['difference']) < 0.005 else
                   f"Ledger is ${check['difference']:,.2f} off the QuickBooks reserve; check before booking."]
     return f'Worker points month end: {label}', '\n'.join(lines)
+
+
+def lapsed_from_roster(members, expiry, today):
+    """Ledger members with points whose membership has lapsed according to the SCCA member list: not on the list,
+    or on it with a good-through date before today. Life members never lapse. Family IDs like 500314-1 also match
+    the list's 500314. Each result carries 'roster_exp' (the list's date, or None if not on it)."""
+    out = []
+    for m in members:
+        if m.get('life') or (m.get('balance') or 0) <= 0.004:
+            continue
+        mid = str(m['member']).strip()
+        exp = expiry.get(mid) or expiry.get(mid.split('-')[0])
+        if exp is None or exp < today:
+            out.append(dict(m, roster_exp=exp))
+    return sorted(out, key=lambda m: ((m['roster_exp'] or date.min), m['last']))

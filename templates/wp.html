@@ -36,11 +36,13 @@
     </div></div>
     {% endif %}
 
-    {% if lapsed %}
+    {% if not roster %}
+    <div class="small text-muted mb-3">Upload this month's SCCA member list in <a href="{{ url_for('sa.home') }}">Member Milestones</a> to see who has lapsed.</div>
+    {% elif lapsed %}
     <div class="card mb-3"><div class="card-body py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
         <details><summary><span class="fw-semibold">{{ lapsed|length }} lapsed members still have points</span>
-            <span class="small text-muted">({{ '{:,.1f}'.format(lapsed|sum(attribute='balance')) }} points, ${{ '{:,.2f}'.format(lapsed|sum(attribute='balance') * point_value) }})</span></summary>
-            <div class="small mt-1">{% for m in lapsed %}<a href="{{ url_for('wp.member', member_id=m.member) }}">{{ m.first }} {{ m.last }}</a> <span class="text-muted">exp {{ m.exp }}, {{ '%.1f'|format(m.balance) }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</div></details>
+            <span class="small text-muted">({{ '{:,.1f}'.format(lapsed|sum(attribute='balance')) }} points, ${{ '{:,.2f}'.format(lapsed|sum(attribute='balance') * point_value) }}), per the SCCA member list of {{ roster.createdTime[:10] }}</span></summary>
+            <div class="small mt-1">{% for m in lapsed %}<a href="{{ url_for('wp.member', member_id=m.member) }}">{{ m.first }} {{ m.last }}</a> <span class="text-muted">{{ 'expired ' ~ m.roster_exp if m.roster_exp else 'not on the list' }}, {{ '%.1f'|format(m.balance) }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</div></details>
         <form method="post" action="{{ url_for('wp.forfeit_lapsed') }}" class="m-0" onsubmit="return confirm('Forfeit the points of all {{ lapsed|length }} lapsed members?')"><button class="btn btn-sm btn-outline-danger">Forfeit them</button></form>
     </div></div>
     {% endif %}
@@ -48,10 +50,10 @@
     <input id="find" class="form-control mb-2" type="search" placeholder="Find a member by name or SCCA number" autocomplete="off" autofocus style="max-width: 30rem">
     <div class="card"><div class="card-body p-0 table-responsive" style="max-height: 65vh; overflow-y: auto;">
         <table class="table table-hover mb-0" id="memberTable">
-            <thead><tr><th class="ps-3">Name</th><th>SCCA #</th><th>Expires</th><th class="num pe-3">Points</th></tr></thead>
+            <thead><tr><th class="ps-3">Name</th><th>SCCA #</th><th class="num pe-3">Points</th></tr></thead>
             <tbody>{% for m in members %}<tr class="row-link" data-k="{{ (m.first ~ ' ' ~ m.last ~ ' ' ~ m.member)|lower }}" onclick="location.href='{{ url_for('wp.member', member_id=m.member) }}'">
                 <td class="ps-3"><a href="{{ url_for('wp.member', member_id=m.member) }}">{{ m.first }} {{ m.last }}</a>{% if m.life %} <span class="badge text-bg-secondary">LIFE</span>{% endif %}</td>
-                <td class="text-muted">{{ m.member }}</td><td class="text-muted">{{ m.exp }}</td><td class="num pe-3">{{ '%.1f'|format(m.balance) }}</td></tr>{% endfor %}</tbody>
+                <td class="text-muted">{{ m.member }}</td><td class="num pe-3">{{ '%.1f'|format(m.balance) }}</td></tr>{% endfor %}</tbody>
         </table>
     </div></div>
     <details class="mt-3"><summary class="small">Someone not in the list? Add a member</summary>
@@ -76,7 +78,7 @@
     <div class="card p-3 mb-3">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
             <div><div class="page-title m-0">{{ m.first }} {{ m.last }}{% if m.life %} <span class="badge text-bg-secondary align-middle">LIFE</span>{% endif %}</div>
-                <div class="text-muted">SCCA #{{ m.member }}{% if m.exp %} · membership expires {{ m.exp }}{% endif %}</div></div>
+                <div class="text-muted">SCCA #{{ m.member }}{% if roster_exp == 'missing' %} · <span class="text-warning">not on the SCCA member list of {{ roster.createdTime[:10] }}</span>{% elif roster_exp %} · membership good through {{ roster_exp.strftime('%-m/%-d/%Y') }} (SCCA list){% elif m.exp %} · membership expires {{ m.exp }} (old ledger date){% endif %}</div></div>
             <div class="text-end stat"><div class="value">{{ '%.1f'|format(m.balance) }} pts</div><div class="label">${{ '{:,.2f}'.format(m.balance * point_value) }}</div></div>
         </div>
     </div>

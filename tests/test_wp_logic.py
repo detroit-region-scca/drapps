@@ -104,3 +104,23 @@ def test_month_end_email_lists_the_journal_entry():
     assert subject == 'Worker points month end: November 2026'
     assert 'Debit Club AX Autocross Expense:Club AX Autocross Worker Points, credit Reserve Fund - Worker Awards: $20.00' in body
     assert 'B, renewal, -10 points' in body and 'ties to QuickBooks' in body
+
+
+def test_lapsed_from_roster_uses_the_scca_list():
+    from datetime import date
+    members = [{'member': '1', 'first': 'A', 'last': 'Current', 'balance': 5, 'life': False},
+               {'member': '2', 'first': 'B', 'last': 'Expired', 'balance': 5, 'life': False},
+               {'member': '3', 'first': 'C', 'last': 'Gone', 'balance': 5, 'life': False},
+               {'member': '4', 'first': 'D', 'last': 'Life', 'balance': 5, 'life': True},
+               {'member': '500314-1', 'first': 'E', 'last': 'Family', 'balance': 5, 'life': False},
+               {'member': '5', 'first': 'F', 'last': 'Empty', 'balance': 0, 'life': False}]
+    expiry = {'1': date(2027, 6, 30), '2': date(2026, 9, 30), '500314': date(2027, 1, 31)}
+    out = L.lapsed_from_roster(members, expiry, date(2026, 11, 2))
+    assert [(m['last'], m['roster_exp']) for m in out] == [('Gone', None), ('Expired', date(2026, 9, 30))]
+
+
+def test_roster_expiry_takes_the_later_date():
+    import sa_logic as SA
+    from datetime import date, datetime
+    rows = [('Member ID', 'SCCA Member Expire\n', 'Region Member Expire\n'), (500123, datetime(2027, 6, 30), '05/31/2027'), ('9', None, None)]
+    assert SA.roster_expiry(rows) == {'500123': date(2027, 6, 30)}
