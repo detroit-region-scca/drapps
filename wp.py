@@ -14,6 +14,8 @@ bp = Blueprint('wp', __name__, url_prefix='/wp')
 
 
 def _ctx(**kw):
+    from auth import user
+    kw.setdefault('me_level', (user() or {}).get('level', ''))
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Worker Points", enabled=S.enabled(), point_value=L.POINT_VALUE,
                 who=session.get('who', ''), **kw)
 
@@ -57,6 +59,9 @@ def _month(value):
 def home():
     if (g := _guard()):
         return g
+    from auth import user
+    if (user() or {}).get('level') == 'volunteer':     # event chairs: straight to submitting workers
+        return redirect(url_for('wp.report'))
     q = request.args.get('q', '').strip().lower()
     mem = S.members()
     hits = [m for m in mem if q and (q in m['member'].lower() or q in f"{m['first']} {m['last']}".lower())] if q else []
@@ -94,7 +99,7 @@ def event():
     if request.method == 'GET' and rid:
         rep = next((r for r in S.reports() if r['id'] == rid), None)
         if not rep:
-            flash(f'Report {rid} not found.', 'warning')
+            flash(f'{rid} not found.', 'warning')
             return redirect(url_for('wp.home'))
         parsed = L.parse_report(rep['workers'], mem)
         for p in parsed:
@@ -105,7 +110,7 @@ def event():
                                                  form={'event_code': rep['event_code'], 'date': rep['date'], 'report': rep['workers']}))
     if request.method == 'POST' and request.form.get('action') == 'decline':
         S.close_report(rid, 'Declined', _who())
-        flash(f'Report {rid} closed without posting.', 'info')
+        flash(f'{rid} closed without posting.', 'info')
         return redirect(url_for('wp.home'))
     if request.method == 'POST' and request.form.get('action') == 'paste':
         # Fill the rows from a pasted "Report event workers" email; nothing is posted until "Post points".
@@ -363,7 +368,7 @@ SPECIALTIES = ['Whole event (event chair)', 'Registration', 'Tech / scrutineerin
 @bp.route('/report', methods=['GET', 'POST'])
 @login_required
 def report():
-    """Event chairs and specialty chiefs report who worked. The points keeper reviews it before any points post."""
+    """Event chairs and specialty chiefs submit who worked. The points keeper reviews it before any points post."""
     if (g := _guard()):
         return g
     from auth import user
@@ -382,10 +387,10 @@ def report():
                             'submitted_by': me.get('name') or session.get('who', ''), 'email': me.get('email', '')})
         log_audit_event('WP_REPORT_SUBMITTED', me.get('name') or session.get('who', 'Unknown'), {'id': rid, 'event_code': code})
         from utils import send_mail
-        send_mail(f'Worker points report {rid}: {ev.get("event_name", code)}',
-                  f"{me.get('name') or 'Someone'} reported workers for {ev.get('event_name', code)} ({code}), {f.get('specialty', '')}.\n\n"
+        send_mail(f'Event workers {rid}: {ev.get("event_name", code)}',
+                  f"{me.get('name') or 'Someone'} sent the workers for {ev.get('event_name', code)} ({code}), {f.get('specialty', '')}.\n\n"
                   f"{workers}\n\n{f.get('notes', '').strip()}\n\nReview and post the points: {url_for('wp.event', report=rid, _external=True)}",
                   recipient=os.environ.get('MEMBERSHIP_EMAIL', 'membership@drscca.org'))
-        flash(f'Thanks. Report {rid} went to the points keeper, who will record the points.', 'success')
+        flash(f'Thanks. {rid} went to the points keeper, who will record the points.', 'success')
         return redirect(url_for('wp.report'))
     return render_template('wp.html', **_ctx(view='report', events=events, specialties=SPECIALTIES, form={}, me=me))

@@ -107,25 +107,14 @@
             </a>
         </div>
         {% set vol = me and me.level == 'volunteer' %}
-        {% if wp_enabled and not vol %}
+        {% if wp_enabled %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('wp.home') }}" style="--tile: #f5b83d;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#f5b83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <circle cx="12" cy="9" r="6"/><path d="M12 6.5v5M9.5 9h5"/><path d="M8.5 14l-2 7 5.5-3 5.5 3-2-7"/>
                 </svg>
                 <div class="name">Worker Points</div>
-                <div class="what">Balances, event workers, redemptions, month end</div>
-            </a>
-        </div>
-        {% endif %}
-        {% if wp_enabled %}
-        <div class="col-6 col-md-4 col-lg">
-            <a class="app-tile" href="{{ url_for('wp.report') }}" style="--tile: #f5b83d;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#f5b83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M9 4h6v3H9z"/><path d="M7 5.5H5.5v15h13v-15H17"/><path d="M8.5 11l1.5 1.5 3-3M8.5 16h7"/>
-                </svg>
-                <div class="name">Report Workers</div>
-                <div class="what">Event chairs: who worked, for worker points</div>
+                <div class="what">{{ "Send who worked your event" if vol else "Balances, event workers, redemptions, month end" }}</div>
             </a>
         </div>
         {% endif %}

@@ -3,12 +3,15 @@
 {% block body_class %}app-wp{% endblock %}
 {% block app_name %}Worker Points{% endblock %}
 {% block nav %}
-    {{ tab('wp.home', 'Overview') }}
-    {{ tab('wp.event', 'Workers') }}
+    {% if me_level != 'volunteer' %}{{ tab('wp.home', 'Overview') }}{% endif %}
+    {{ tab('wp.report', 'Submit workers') }}
+    {% if me_level != 'volunteer' %}
+    {{ tab('wp.event', 'Post points') }}
     {{ tab('wp.redeem', 'Redemptions') }}
     {{ tab('wp.allocations', 'Allocations') }}
     {{ tab('wp.forfeits', 'Forfeits') }}
     {{ tab('wp.month_end', 'Month end') }}
+    {% endif %}
 {% endblock %}
 {# Who did it: the name given at login. #}
 {% macro who_field(cls='') %}<input type="hidden" name="entered_by" value="{{ session.get('who', '') }}">{% endmacro %}
@@ -22,7 +25,7 @@
     {% if view == 'home' %}
     {% if pending_reports %}
     <div class="card mb-3 border-warning"><div class="card-body py-2">
-        <div class="fw-semibold mb-1">Worker reports waiting ({{ pending_reports|length }})</div>
+        <div class="fw-semibold mb-1">Worker submissions waiting ({{ pending_reports|length }})</div>
         {% for r in pending_reports %}<div class="small"><a href="{{ url_for('wp.event', report=r.id) }}">{{ r.id }}</a> · {{ r.event_name }} ({{ r.event_code }}) · {{ r.specialty }} · from {{ r.submitted_by }}, {{ r.submitted }}</div>{% endfor %}
     </div></div>
     {% endif %}
@@ -88,8 +91,8 @@
     </div></div>
 
     {% elif view == 'event' %}
-    <div class="page-title">Enter workers for an event</div>
-    <p class="text-muted">Start typing a name in each row and pick the member from the list, or paste a list. Reports sent by event chairs (Report Workers) show at the top of Worker Points.</p>
+    <div class="page-title">Post points for an event</div>
+    <p class="text-muted">Start typing a name in each row and pick the member from the list, or paste a list. Lists sent by event chairs (Submit workers) show at the top of the Overview.</p>
     <details class="mb-3" {% if parsed %}open{% endif %}><summary>Paste a list of workers</summary>
       <form method="post" class="card p-3 mt-2">
         <input type="hidden" name="action" value="paste">
@@ -98,7 +101,7 @@
         <div><button class="btn btn-outline-light btn-sm">Fill in the rows</button></div>
       </form>
     </details>
-    {% if report %}<div class="alert alert-info small">Report {{ report.id }} from {{ report.submitted_by }} ({{ report.submitted }}){% if report.specialty %}, {{ report.specialty }}{% endif %}. Check the rows, then Post points.{% if report.notes %}<br>Note: {{ report.notes }}{% endif %}
+    {% if report %}<div class="alert alert-info small">Submission {{ report.id }} from {{ report.submitted_by }} ({{ report.submitted }}){% if report.specialty %}, {{ report.specialty }}{% endif %}. Check the rows, then Post points.{% if report.notes %}<br>Note: {{ report.notes }}{% endif %}
         <form method="post" class="d-inline ms-2"><input type="hidden" name="report_id" value="{{ report.id }}"><input type="hidden" name="action" value="decline"><button class="btn btn-sm btn-link p-0 align-baseline">Close without posting</button></form></div>{% endif %}
     <form method="post" class="card p-3" id="eventForm">
         {% if report %}<input type="hidden" name="report_id" value="{{ report.id }}">{% endif %}
@@ -127,8 +130,8 @@
     </form>
 
     {% elif view == 'report' %}
-    <div class="page-title">Report event workers</div>
-    <p class="text-muted">For event chairs and specialty chiefs. List who worked; the points keeper checks it and records the points. Please report within 30 days of the event.</p>
+    <div class="page-title">Submit event workers</div>
+    <p class="text-muted">For event chairs and specialty chiefs: list who worked your event so they get their worker points. The points keeper checks it and records the points. Please send it within 30 days of the event.</p>
     <div class="row g-4">
     <div class="col-lg-8">
     <form method="post" class="card p-3">
@@ -146,7 +149,7 @@
                 <div class="form-text">Use members' names as they are on their SCCA membership. Role is event chair, assistant chair, chief, special event or worker.</div></div>
             <div class="col-12"><label class="form-label">Anything the points keeper should know <span class="text-muted">(optional)</span></label><textarea name="notes" rows="2" class="form-control">{{ form.get('notes', '') }}</textarea></div>
         </div>
-        <div><button class="btn btn-accent">Send report</button></div>
+        <div><button class="btn btn-accent">Send to the points keeper</button></div>
     </form>
     </div>
     <div class="col-lg-4"><div class="card p-3"><div class="fw-semibold mb-2">Points per day</div>
