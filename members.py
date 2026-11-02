@@ -112,6 +112,8 @@ def enter():
     if request.method == 'POST':
         f = request.form
         code = f.get('event', '').strip()
+        if code == 'none':
+            code = ''
         ev = _events_by_code().get(code) or {}
         first = L.to_date(f.get('first')) or L.to_date(ev.get('date')) or date.today()
         what = f"Worked {ev.get('event_name')}" if ev else (f.get('what', '').strip() or 'Volunteer job')
@@ -319,7 +321,8 @@ def send_books(who='DRSCCA Apps'):
     open_entries = L.unreconciled(S.entries())
     if not open_entries:
         return 0
-    bk = L.books(open_entries, _events_by_code())
+    jes, used = L.journal_entries(open_entries, _events_by_code())
+    bk = {'jes': jes, 'used': used}
     st = _reserve()
     value = round(sum(m['points'] for m in S.members()) * L.POINT_VALUE, 2)
     first, last = min(e['date'] for e in open_entries), max(e['date'] for e in open_entries)
@@ -357,7 +360,8 @@ def quickbooks():
     reserve = _reserve()
     open_value = round(sum(e['points'] for e in open_entries) * L.POINT_VALUE, 2)
     diff = round(total - reserve['amount'], 2) if reserve else None
-    return render_template('members.html', **_ctx(view='quickbooks', open_entries=open_entries, bk=L.books(open_entries, _events_by_code()),
+    jes, used = L.journal_entries(open_entries, _events_by_code())
+    return render_template('members.html', **_ctx(view='quickbooks', open_entries=open_entries, jes=jes, used=used,
                                                   total=total, reserve=reserve, diff=diff, open_value=open_value,
                                                   unexplained=round(diff - open_value, 2) if diff is not None else None))
 

@@ -301,16 +301,13 @@ def use_entry(member, points, what, when):
 
 
 def books_email(bk, label, reserve=None, value=None):
-    """(subject, body) of the journal entry email (bk = books(...))."""
-    lines = [f'Worker points journal entries: {label}.', '']
-    if bk['lines']:
-        for ln in bk['lines']:
-            lines.append(f"  Debit {ln['debit']}")
-            lines.append(f"  Credit {ln['credit']}")
-            lines.append(f"  ${ln['amount']:,.2f}  ({ln['points']:g} points, {ln['what']})")
-            lines.append('')
-    else:
-        lines += ['  Nothing to book: no points were earned or forfeited.', '']
+    """(subject, body) of the journal entry email. bk = {'jes': journal_entries(...)[0], 'used': [...]}."""
+    lines = [f'Worker points journal entries to book: {label}.', '']
+    for n, je in enumerate(bk['jes'], start=1):
+        lines += [f"Journal entry {n}: {je['title']}", f"  Memo:   {je['memo']}",
+                  f"  Debit   {je['debit']}   ${je['amount']:,.2f}", f"  Credit  {je['credit']}   ${je['amount']:,.2f}", '']
+    if not bk['jes']:
+        lines += ['Nothing to book: no points were earned or forfeited.', '']
     if bk['used']:
         lines.append('Points used (each paid by its own check or card charge; no journal entry):')
         lines += [f"  {e['date']}: {e['name']}, {e['what']}, {-e['points']:g} points (${-e['points'] * POINT_VALUE:,.2f})" for e in bk['used']]
@@ -344,3 +341,47 @@ def auto_entries(auto_rows, entries, year, month):
         if pts > 0 and r['member'] and (r['member'], what) not in done:
             out.append({'date': first, 'member': r['member'], 'name': r['name'], 'points': pts, 'what': what, 'event': '', 'kind': 'Role points'})
     return out
+
+
+def journal_entries(entries, events_by_code):
+    """One journal entry per event (points earned there), one for role points and other points with no event, and one
+    for forfeits and write-offs. Each: {'title', 'memo', 'debit', 'credit', 'amount', 'points', 'entries'}.
+    Points used are listed separately: each is paid by its own check or card charge."""
+    groups, used = {}, []
+    for e in entries:
+        if e['status'] != APPROVED:
+            continue
+        if e['kind'] == 'Used':
+            used.append(e)
+            continue
+        if e['kind'] == 'Forfeit' or (e['kind'] == 'Adjustment' and e['points'] < 0):
+            key = ('~forfeit', '')
+        elif e['event'] and e['kind'] in ('Earned', 'Adjustment'):
+            key = ('event', e['event'])
+        else:
+            key = ('~role', '')
+        groups.setdefault(key, []).append(e)
+    out = []
+    for (kind, code), es in sorted(groups.items(), key=lambda kv: kv[0]):
+        pts = round(sum(e['points'] for e in es), 3)
+        if abs(pts) < 0.004:
+            continue
+        if kind == 'event':
+            ev = events_by_code.get(code.split('-')[0]) or {}
+            prog = program_for(code, events_by_code)
+            title = f"{code} {ev.get('event_name', '')}".strip()
+            debit, credit = PROGRAM_ACCOUNT.get(prog, PROGRAM_ACCOUNT['OPS']), RESERVE
+            memo = f"Worker points earned at {title} ({pts:g} points)"
+        elif kind == '~role':
+            title, debit, credit = 'Role points and other points', PROGRAM_ACCOUNT['OPS'], RESERVE
+            memo = f"Worker points for volunteer jobs and adjustments ({pts:g} points)"
+        else:
+            title, debit, credit = 'Forfeits and write-offs', RESERVE, PROGRAM_ACCOUNT['OPS']
+            memo = f"Worker points forfeited or written off ({-pts:g} points)"
+        amount = round(abs(pts) * POINT_VALUE, 2)
+        if kind != '~forfeit' and pts < 0:      # a net negative event or role group reverses the entry
+            debit, credit = credit, debit
+        dates = [e['date'] for e in es if e['date']]
+        out.append({'title': title, 'memo': memo, 'debit': debit, 'credit': credit, 'amount': amount, 'points': pts,
+                    'first': min(dates) if dates else None, 'last': max(dates) if dates else None, 'entries': es})
+    return out, used

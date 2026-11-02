@@ -79,16 +79,6 @@ def test_use_points_needs_enough_balance():
     assert L.use_entry(m, '0', 'x', date(2026, 11, 2))[1] == 'Enter how many points to use.'
 
 
-def test_books_email_lists_the_entries():
-    from datetime import date
-    b = {'lines': [{'debit': 'Club AX Autocross Expense:Club AX Autocross Worker Points', 'credit': 'Reserve Fund - Worker Awards',
-                    'points': 4.0, 'amount': 20.0, 'what': 'AX points earned'}],
-         'used': [{'date': date(2026, 10, 9), 'name': 'Pat Quinn', 'what': 'SCCA membership renewal', 'points': -10.0}]}
-    subject, body = L.books_email(b, 'October 2026', 30640.16, 30640.16)
-    assert subject == 'Worker points journal entries to book (October 2026)'
-    assert '$20.00' in body and 'Pat Quinn, SCCA membership renewal, 10 points ($50.00)' in body and 'tie to the QuickBooks reserve' in body
-
-
 def test_auto_add_prepares_each_month_once():
     rows = [{'member': '1', 'name': 'Pat Quinn', 'role': 'Points keeper', 'season': 2, 'offseason': 1},
             {'member': '2', 'name': 'Chris Lee', 'role': 'Equipment chief', 'season': 1, 'offseason': 1}]
@@ -155,8 +145,25 @@ def test_every_members_page_renders():
     base = dict(title='t', keeper=True, point_value=5, today_=date(2026, 11, 2), structure=[], members=[], events=[], form={}, grid=[])
     views = [dict(view='home', total=0, reserve=None, open_value=0, pending=[], lapsed=[], latest_list=None, list_url='', sheet_url='', scca_reports=''),
              dict(view='enter'), dict(view='use', uses=['Other']), dict(view='auto', auto=[]),
-             dict(view='quickbooks', open_entries=[], bk={'lines': [], 'used': []}, total=0, reserve=None, diff=None, open_value=0, unexplained=None),
+             dict(view='quickbooks', open_entries=[], jes=[], used=[], total=0, reserve=None, diff=None, open_value=0, unexplained=None),
              dict(view='milestones', month='2026-11', proposed={}, published={}, differs=False, latest_list=None, years=[0, 5], public_url='')]
     with app.test_request_context('/members/'):
         for v in views:
             assert render_template('members.html', **dict(base, **v))
+
+
+def test_one_journal_entry_per_event():
+    ev = {'#A1': {'program_code': 'AX', 'event_name': 'Solo 1'}, '#R1': {'program_code': 'RX', 'event_name': 'RX 1'}}
+    e = [{'status': 'Approved', 'kind': 'Earned', 'event': '#A1', 'points': 4, 'date': date(2026, 11, 3)},
+         {'status': 'Approved', 'kind': 'Earned', 'event': '#A1', 'points': 2, 'date': date(2026, 11, 3)},
+         {'status': 'Approved', 'kind': 'Earned', 'event': '#R1', 'points': 3, 'date': date(2026, 11, 9)},
+         {'status': 'Approved', 'kind': 'Role points', 'event': '', 'points': 5, 'date': date(2026, 11, 1)},
+         {'status': 'Approved', 'kind': 'Forfeit', 'event': '', 'points': -7, 'date': date(2026, 11, 20)},
+         {'status': 'Approved', 'kind': 'Used', 'event': '', 'points': -10, 'date': date(2026, 11, 21), 'name': 'P', 'what': 'x'}]
+    jes, used = L.journal_entries(e, ev)
+    assert [(j['title'], j['debit'].split(':')[0], j['amount']) for j in jes] == [
+        ('#A1 Solo 1', 'Club AX Autocross Expense', 30.0), ('#R1 RX 1', 'Club RX Rallycross Expense', 15.0),
+        ('Forfeits and write-offs', 'Reserve Fund - Worker Awards', 35.0), ('Role points and other points', 'Operations Expense', 25.0)]
+    assert len(used) == 1
+    subject, body = L.books_email({'jes': jes, 'used': used}, 'November 2026', 100, 100)
+    assert 'Journal entry 1: #A1 Solo 1' in body and 'Debit   Club AX Autocross Expense:Club AX Autocross Worker Points   $30.00' in body

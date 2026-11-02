@@ -25,13 +25,19 @@
 
 {# ================================================================== Members (keeper) #}
 {% if view == 'home' %}
-<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-    <div><div class="page-title mb-0">Members</div>
-        <div class="small text-muted">{{ '{:,.1f}'.format(total) }} points (${{ '{:,.2f}'.format(total * point_value) }})
-            {% if reserve %}· {% if (total * point_value - reserve.amount)|abs >= 0.005 %}<a href="{{ url_for('members.quickbooks') }}" class="link-warning">${{ '{:,.2f}'.format(total * point_value - reserve.amount) }} off QuickBooks</a>{% else %}<a href="{{ url_for('members.quickbooks') }}" class="link-success">ties to QuickBooks</a>{% endif %}{% endif %}
-            · SCCA list {% if latest_list %}{{ day(latest_list) }}{% else %}not loaded{% endif %} (<a href="#" onclick="document.getElementById('loadlist').hidden=false; return false">load new</a>)
-            {% if lapsed %}· <a href="#lapsed" class="link-warning" onclick="document.getElementById('lapsed').open=true">{{ lapsed|length }} not current</a>{% endif %}</div></div>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div class="page-title mb-0">Members</div>
     <a class="btn btn-accent" href="{{ url_for('members.enter') }}">Enter points</a>
+</div>
+<div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="card stat p-3 h-100"><div class="label">Worker points</div><div class="value">{{ '{:,.1f}'.format(total) }}</div><div class="label">${{ '{:,.2f}'.format(total * point_value) }}</div></div></div>
+    <div class="col-6 col-lg-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('members.quickbooks') }}"><div class="label">QuickBooks</div>
+        {% if reserve and (total * point_value - reserve.amount)|abs >= 0.005 %}<div class="value text-warning">${{ '{:,.2f}'.format(total * point_value - reserve.amount) }}</div><div class="label">off: see what to book</div>
+        {% elif reserve %}<div class="value text-success">Ties</div><div class="label">to the reserve</div>{% else %}<div class="value">·</div><div class="label">no sync yet</div>{% endif %}</a></div>
+    <div class="col-6 col-lg-3"><div class="card stat p-3 h-100"><div class="label">SCCA member list</div><div class="value">{{ day(latest_list) if latest_list else 'not loaded' }}</div>
+        <div class="label"><a href="#" onclick="document.getElementById('loadlist').hidden=false; return false">load a new list</a></div></div></div>
+    <div class="col-6 col-lg-3"><a class="card stat p-3 h-100 text-decoration-none" href="#lapsed" onclick="var d=document.getElementById('lapsed'); if(d) d.open=true"><div class="label">Not current members</div>
+        <div class="value {{ 'text-warning' if lapsed }}">{{ lapsed|length }}</div><div class="label">with {{ '{:,.1f}'.format(lapsed|sum(attribute='points')) }} points</div></a></div>
 </div>
 <form id="loadlist" method="post" action="{{ url_for('members.upload') }}" enctype="multipart/form-data" class="card card-body mb-3" hidden>
     <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -115,9 +121,10 @@
 <form method="post" class="card p-3">
     <div class="row g-2 mb-3">
         <div class="col-md-8"><label class="form-label">Event</label>
-            <select name="event" class="form-select" {{ '' if keeper else 'required' }}>
-                <option value="">{{ 'No event (volunteer job, adjustment)' if keeper else 'Select the event…' }}</option>
+            <select name="event" class="form-select" required>
+                <option value="" disabled {% if not form.get('event') %}selected{% endif %}>Select the event…</option>
                 {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" {% if form.get('event') == c %}selected{% endif %}>{{ e.date }} · {{ c }} · {{ e.event_name }}</option>{% endfor %}
+                {% if keeper %}<option value="none" {% if form.get('event') == 'none' %}selected{% endif %}>No event (volunteer job, adjustment)</option>{% endif %}
             </select></div>
         <div class="col-md-4"><label class="form-label">Start date</label><input type="date" name="first" class="form-control" value="{{ form.get('first', '') }}"><div class="form-text">Blank = the event date</div></div>
         {% if keeper %}<div class="col-12"><label class="form-label">What for <span class="text-muted">(only when there is no event)</span></label><input name="what" class="form-control" placeholder="e.g. Equipment chief, 2026" value="{{ form.get('what', '') }}"></div>{% endif %}
@@ -230,12 +237,20 @@
     {% if diff|abs < 0.005 %}<span class="text-success">ties</span>{% else %}<span class="text-warning">${{ '{:,.2f}'.format(diff) }} off</span>{% endif %}{% endif %}</p>
 {% if unexplained is not none and unexplained|abs >= 0.005 %}<div class="alert alert-warning small">${{ '{:,.2f}'.format(unexplained) }} of the difference is not explained by the entries below: something was booked in QuickBooks without a points entry, or an entry was marked reconciled by mistake.</div>{% endif %}
 {% if open_entries %}
+<div class="d-flex justify-content-between align-items-center mb-2"><h2 class="h6 m-0">{{ jes|length }} journal entr{{ 'y' if jes|length == 1 else 'ies' }} to book (${{ '{:,.2f}'.format(open_value) }})</h2>
+    <form method="post" class="m-0"><input type="hidden" name="action" value="email"><button class="btn btn-sm btn-outline-secondary">Email to treasurer</button></form></div>
+{% for je in jes %}
 <div class="card mb-3"><div class="card-body">
-    <div class="d-flex justify-content-between align-items-center mb-2"><div class="fw-semibold">Journal entry to book (${{ '{:,.2f}'.format(open_value) }})</div>
-        <form method="post" class="m-0"><input type="hidden" name="action" value="email"><button class="btn btn-sm btn-outline-secondary">Email to treasurer</button></form></div>
-    {% for ln in bk.lines %}<div class="small">Debit <strong>{{ ln.debit }}</strong>, credit <strong>{{ ln.credit }}</strong>: <strong>${{ '{:,.2f}'.format(ln.amount) }}</strong> <span class="text-muted">({{ '%g'|format(ln.points) }} points, {{ ln.what }})</span></div>{% endfor %}
-    {% for e in bk.used %}<div class="small text-muted">Used: {{ e.name }}, {{ e.what }}, {{ '%g'|format(-e.points) }} points (paid by its own check or card charge)</div>{% endfor %}
+    <div class="fw-semibold">{{ loop.index }}. {{ je.title }}</div>
+    <div class="small text-muted mb-2">Date {{ day(je.last) }} · Memo: {{ je.memo }}</div>
+    <table class="table table-sm mb-0"><thead><tr><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
+        <tbody><tr><td>{{ je.debit }}</td><td class="num">${{ '{:,.2f}'.format(je.amount) }}</td><td></td></tr>
+               <tr><td>{{ je.credit }}</td><td></td><td class="num">${{ '{:,.2f}'.format(je.amount) }}</td></tr></tbody></table>
 </div></div>
+{% endfor %}
+{% if used %}<div class="card mb-3"><div class="card-body small"><div class="fw-semibold mb-1">Points used (no journal entry: each is paid by its own check or card charge)</div>
+    {% for e in used %}<div>{{ day(e.date) }} · {{ e.name }} · {{ e.what }} · {{ '%g'|format(-e.points) }} points (${{ '{:,.2f}'.format(-e.points * point_value) }})</div>{% endfor %}</div></div>{% endif %}
+<h2 class="h6 mt-4">Entries behind these</h2>
 <form method="post" class="card"><div class="card-body p-0 table-responsive">
     <table class="table table-sm mb-0">
         <thead><tr><th class="ps-3"><input type="checkbox" checked onclick="document.querySelectorAll('[name=row]').forEach(c => c.checked = this.checked)"></th><th>Date</th><th>Member</th><th>What for</th><th>Kind</th><th class="num">Points</th><th class="num pe-3">$</th></tr></thead>
