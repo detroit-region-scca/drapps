@@ -28,18 +28,27 @@ def test_next_month_rolls_over_the_year():
     assert L.next_month(date(2026, 3, 1)) == '2026-04'
 
 
-def test_page_renders_for_a_month_with_and_without_awards():
-    from flask import Flask
+def test_page_renders_each_state():
     import os
+    from flask import Flask, render_template
     app = Flask('t', template_folder=os.path.join(os.path.dirname(__file__), '..', 'templates'))
-    app.add_url_rule('/sa/', 'sa.home', lambda: ''); app.add_url_rule('/sa/roster', 'sa.roster', lambda: '')
-    app.add_url_rule('/', 'home', lambda: '')
-    with app.test_request_context('/sa/'):
-        from flask import render_template_string
-        tpl = open(os.path.join(os.path.dirname(__file__), '..', 'templates', 'sa.html')).read().split('{% block content %}')[1].split('{% endblock %}')[0]
-        for current in ({}, {20: ['Donald Badaczewski'], 5: ['Emily Brown']}):
-            html = render_template_string(tpl, sheet_url='x', milestones=L.MILESTONES, months=[], month='2026-10', current=current, scca_reports='x', last_roster=None, from_roster=bool(current))
-            assert 'Save 2026-10' in html
+    for ep in ('sa.home', 'sa.upload', 'sa.publish', 'sa.edit', 'home', 'logout'):
+        app.add_url_rule('/' + ep, ep, lambda: '')
+    roster = {'createdTime': '2026-11-02T10:00:00Z', 'members': [1, 2], 'webViewLink': 'x'}
+    states = [dict(published={}, proposed={}, roster=None, differs=False),
+              dict(published={}, proposed={0: ['New Person'], 10: ['Ann Lee']}, roster=roster, differs=True),
+              dict(published={20: ['Ann Lee']}, proposed={10: ['Bob Ray']}, roster=roster, differs=True)]
+    with app.test_request_context('/'):
+        for st in states:
+            html = render_template('sa.html', title='t', month='2026-11', roster_error=None, sheet_url='x', scca_reports='x',
+                                   milestones=L.MILESTONES, history=[], **st)
+            assert 'Member Milestones' in html
+        assert 'Publish to drscca.org' in render_template('sa.html', title='t', month='2026-11', roster_error=None, sheet_url='x',
+                                                          scca_reports='x', milestones=L.MILESTONES, history=[], **states[1])
+
+
+def test_this_month():
+    assert L.this_month(date(2026, 11, 2)) == '2026-11'
 
 
 def test_roster_keeps_only_names_and_join_dates():

@@ -16,6 +16,11 @@ def valid_month(m):
     return 1 <= int(m[5:]) <= 12
 
 
+def this_month(today=None):
+    t = today or date.today()
+    return f'{t.year:04d}-{t.month:02d}'
+
+
 def next_month(today=None):
     t = today or date.today()
     return f'{t.year + (t.month == 12):04d}-{t.month % 12 + 1:02d}'
@@ -116,8 +121,25 @@ def reminder(today, app_url='https://drapps.drscca.org'):
 
 1. In my.scca.com, go to Region Resources > Region Reporting, choose Report Type "Member List" and click Download:
    https://my.scca.com/eweb/DynamicPage.aspx?webcode=regionreports
-2. Open Member Milestones, pick {month}, choose the downloaded file and click Fill in:
+2. Open Member Milestones and upload that file (drapps keeps the original in a private Drive folder):
    {app_url}/sa/?month={month}
-3. Check the names and click Save. drscca.org shows them within the hour.
+3. Check the names and click Publish to drscca.org. The site shows them within the hour.
 
-You can then delete the downloaded file; it has members' addresses and birth dates.""")
+Then delete the downloaded copy from your computer; it has members' addresses and birth dates.""")
+
+
+def read_roster(data):
+    """Bytes of the SCCA Member List .xlsx -> [(name, region join date)]. ValueError if it is not that report."""
+    import io
+    import openpyxl
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    except Exception:
+        raise ValueError('Could not open that file. Download the Member List again from SCCA (an .xlsx file) and retry.')
+    return roster_members(list(wb.worksheets[0].iter_rows(values_only=True)))
+
+
+def same_names(a, b):
+    """True when two {years: [names]} hold the same people in the same groups (order ignored)."""
+    norm = lambda g: {int(k): sorted(n.lower() for n in v) for k, v in g.items() if v}
+    return norm(a) == norm(b)
