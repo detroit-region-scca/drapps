@@ -38,23 +38,29 @@ def wkday(d):
     except (TypeError, ValueError):
         return ''
 
-from wp import bp as wp_bp  # noqa: E402
+from members import bp as members_bp  # noqa: E402
 from fr import bp as fr_bp  # noqa: E402
 from bud import bp as bud_bp  # noqa: E402
 from plan import bp as plan_bp  # noqa: E402
 from equip import bp as equip_bp  # noqa: E402
 from officer import bp as officer_bp  # noqa: E402
 from inv import bp as inv_bp  # noqa: E402
-import sa_store
-import wp_store  # noqa: E402
+import members_store  # noqa: E402
 import fr_store  # noqa: E402
 import officials  # noqa: E402
 import audit_view  # noqa: E402
 import bud_store  # noqa: E402
 import plan_store  # noqa: E402
-app.register_blueprint(wp_bp)
-from sa import bp as sa_bp  # noqa: E402
-app.register_blueprint(sa_bp)
+app.register_blueprint(members_bp)
+
+
+@app.route('/wp/', defaults={'rest': ''})
+@app.route('/wp/<path:rest>')
+@app.route('/sa/', defaults={'rest': ''})
+@app.route('/sa/<path:rest>')
+def old_points_links(rest):
+    """Worker Points and Member Milestones became Members; old links (bookmarks, emails) land there."""
+    return redirect(url_for('members.home'), code=301)
 app.register_blueprint(fr_bp)
 app.register_blueprint(bud_bp)
 app.register_blueprint(plan_bp)
@@ -144,7 +150,7 @@ def treasurer():
     jobs['equipment'] = equip.overdue_count()
     jobs['invoices'] = inv.open_counts()
     return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Treasurer", app_name='Treasurer', view='treasurer', jobs=jobs,
-                           year=year, wp_enabled=wp_store.enabled())
+                           year=year, members_enabled=members_store.enabled())
 
 
 @app.route('/treasurer/report')
@@ -221,7 +227,7 @@ def home():
         # The create-event form used to post to '/'; a page left open from before keeps working.
         return index()
     return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Apps",
-                           wp_enabled=wp_store.enabled(), sa_enabled=sa_store.enabled(), fr_enabled=fr_store.enabled(), bud_enabled=bud_store.enabled(), plan_enabled=plan_store.enabled(), next_url=_safe_next(request.args.get('next')) or '')
+                           members_enabled=members_store.enabled(), fr_enabled=fr_store.enabled(), bud_enabled=bud_store.enabled(), plan_enabled=plan_store.enabled(), next_url=_safe_next(request.args.get('next')) or '')
 
 @app.errorhandler(RuntimeError)
 def storage_unavailable(e):

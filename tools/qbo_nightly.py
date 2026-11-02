@@ -27,7 +27,7 @@ import bud_store as B  # noqa: E402
 import fr_store as F  # noqa: E402
 import plan_store as P  # noqa: E402
 import qbo_logic as Q  # noqa: E402
-import wp_store as W  # noqa: E402
+import members_store as W  # noqa: E402
 from utils import load_events, log_audit_event  # noqa: E402
 
 WHO = 'QuickBooks sync'
@@ -83,16 +83,11 @@ def main():
                         'name': e['event_name'], 'amount': None, 'link': f"{e['date'][:4]}/{e['program_code']}",
                         'detail': f"{P._code(e)} may be the plan line " + ' or '.join(f'"{x["item"]}"' for x in near[:3])})
     if W.enabled() and reserve is not None:
-        before = W.check()
-        if not DRY and (abs((before['qbo'] or 0) - reserve) > 0.005 or before['as_of'] != today):
-            W.set_qbo_balance(reserve, today)
-            if abs((before['qbo'] or 0) - reserve) > 0.005:
-                log_audit_event('WP_QBO_BALANCE', WHO, {'qbo': f'{reserve:.2f}', 'as_of': as_of})
-            W._invalidate()
-        diff = round((W.check()['value'] or 0) - reserve, 2)
+        value = round(sum(m['points'] for m in W.members()) * 5, 2)
+        diff = round(value - reserve, 2)
         if abs(diff) > 0.005:
-            exc.append({'key': f'reserve:{as_of}:{diff}', 'kind': 'Worker points ledger and QuickBooks differ', 'date': as_of,
-                        'name': RESERVE, 'amount': diff, 'detail': f'Ledger value minus the QuickBooks reserve is ${diff:,.2f}', 'link': ''})
+            exc.append({'key': f'reserve:{as_of}:{diff}', 'kind': 'Worker points and QuickBooks differ', 'date': as_of,
+                        'name': RESERVE, 'amount': diff, 'detail': f'Worker points value minus the QuickBooks reserve is ${diff:,.2f}', 'link': ''})
     say.append(f"{len(exc)} exceptions; reserve {reserve}")
 
     if DRY:
@@ -130,16 +125,6 @@ def main():
             say.append(f"officials copy failed: {e}")
         P.write_tab('QBO Outstanding', ['date', 'number', 'payee', 'amount', 'as_of'],
                     [[o['date'], o['number'], o['payee'], o['amount'], as_of] for o in data.get('outstanding', [])])
-    try:   # worker points, on the 1st: post the month's role allocations (from the ledger's Allocations tab)
-        t0 = date.today()
-        if t0.day == 1 and W.enabled() and not DRY:
-            import wp_logic as WL
-            alloc = WL.allocation_rows(W.allocations(), W.transactions(), t0)
-            if alloc:
-                W.append_transactions(alloc)
-                say.append(f"worker points allocations posted: {sum(r['points'] for r in alloc):g} points")
-    except Exception as e:
-        say.append(f'worker points allocations failed: {e}')
     try:   # the public worker points standings sheet that drscca.org shows
         if not DRY:
             say.append(f'worker points standings published: {W.publish_standings()} members')

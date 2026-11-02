@@ -15,7 +15,7 @@ XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'backups')
 KEEP = 60
 # Every spreadsheet the apps use; any that is not configured is skipped.
-SHEETS = (('event-registry', 'REGISTRY_SHEET_ID'), ('worker-points-ledger', 'LEDGER_SHEET_ID'),
+SHEETS = (('event-registry', 'REGISTRY_SHEET_ID'), ('drscca-members', 'MEMBERS_SHEET_ID'), ('drscca-org-public', 'PUBLIC_SHEET_ID'),
           ('event-budgets', 'BUDGETS_SHEET_ID'), ('funds-requests', 'FUNDS_SHEET_ID'), ('annual-plan', 'PLAN_SHEET_ID'),
           ('operations', 'OPERATIONS_SHEET_ID'), ('invoices', 'INVOICES_SHEET_ID'))
 
