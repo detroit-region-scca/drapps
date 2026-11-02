@@ -75,7 +75,9 @@
     {% if view == 'home' %}
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="text-muted">What the region pays for and looks after between events: bills, chores, vehicles, trailers and gear.</div>
-        <a class="btn btn-sm btn-outline-light no-print" href="{{ url_for('equip.one_pager') }}" target="_blank">One-page PDF</a>
+        <div class="d-flex gap-2 no-print">{% if editor %}<a class="btn btn-sm btn-accent" href="{{ url_for('equip.task', back=request.path) }}">Add a to-do</a>{% endif %}
+            <a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.tasks') }}">All to-dos</a>
+            <a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.one_pager') }}" target="_blank">One-page PDF</a></div>
     </div>
     <div class="row g-3 mb-4">
         <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.tasks') }}"><div class="label">To do</div>
