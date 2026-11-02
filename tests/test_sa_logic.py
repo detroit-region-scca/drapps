@@ -72,9 +72,3 @@ def test_roster_rejects_other_reports():
 
 def test_new_members_are_years_zero():
     assert L.by_month([['2026-11', 'New Person', '0']]) == [('2026-11', {0: ['New Person']})]
-
-
-def test_reminder_only_on_the_first():
-    assert L.reminder(date(2026, 11, 2)) is None
-    subject, body = L.reminder(date(2026, 12, 1))
-    assert subject == 'Member Milestones for December 2026' and '/sa/?month=2026-12' in body

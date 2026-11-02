@@ -95,17 +95,6 @@ def test_allocations_post_once_per_month():
     assert L.allocation_rows(roles, [{'type': 'Allocation', 'event_code': 'AC-2026-12'}], date(2026, 12, 1)) == []
 
 
-def test_month_end_email_lists_the_journal_entry():
-    from datetime import date
-    tx = [{'date': date(2026, 11, 3), 'points': 4.0, 'type': 'Earned', 'event_code': '#X', 'name': 'A', 'description': 'd'},
-          {'date': date(2026, 11, 9), 'points': -10.0, 'type': 'Used', 'event_code': 'USED', 'name': 'B', 'description': 'renewal'}]
-    s = L.month_end_summary(tx, {'#X': {'program_code': 'AX'}}, 2026, 11)
-    subject, body = L.month_end_email(s, 2026, 11, {'difference': 0.0})
-    assert subject == 'Worker points month end: November 2026'
-    assert 'Debit Club AX Autocross Expense:Club AX Autocross Worker Points, credit Reserve Fund - Worker Awards: $20.00' in body
-    assert 'B, renewal, -10 points' in body and 'ties to QuickBooks' in body
-
-
 def test_lapsed_from_roster_uses_the_scca_list():
     from datetime import date
     members = [{'member': '1', 'first': 'A', 'last': 'Current', 'balance': 5, 'life': False},

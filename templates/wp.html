@@ -3,7 +3,7 @@
 {% block body_class %}app-wp{% endblock %}
 {% block app_name %}Worker Points{% endblock %}
 {% block nav %}
-    {% if me_level != 'volunteer' %}{{ tab('wp.home', 'Points') }}{% endif %}
+    {% if keeper %}{{ tab('wp.home', 'Points') }}{% endif %}
     {{ tab('wp.report', 'Submit workers') }}
 {% endblock %}
 {% macro type_badge(t) %}<span class="badge rounded-pill {{ {'Earned': 'text-bg-success', 'Used': 'text-bg-info', 'Allocation': 'text-bg-primary', 'Forfeit': 'text-bg-danger'}.get(t, 'text-bg-secondary') }}">{{ t }}</span>{% endmacro %}
@@ -25,9 +25,23 @@
     {% elif view == 'home' %}
     <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
         <div><div class="page-title mb-0">Worker Points</div>
-            <div class="text-muted small">{{ '{:,.1f}'.format(total) }} points outstanding (${{ '{:,.2f}'.format(total * point_value) }}) ·
-                {% if check.difference is not none and check.difference|abs < 0.005 %}ties to QuickBooks{% else %}<span class="text-warning">${{ '{:,.2f}'.format(check.difference or 0) }} off QuickBooks</span>{% endif %}</div></div>
+            <div class="text-muted small">{{ '{:,.1f}'.format(total) }} points outstanding (${{ '{:,.2f}'.format(total * point_value) }})</div></div>
     </div>
+
+    <details class="card mb-3"><summary class="card-body py-2"><span class="fw-semibold">QuickBooks</span>
+        <span class="small {{ 'text-success' if check.difference is not none and check.difference|abs < 0.005 else 'text-warning' }}">
+        {% if check.difference is none %}not checked yet{% elif check.difference|abs < 0.005 %}ledger ties to the reserve{% else %}ledger is ${{ '{:,.2f}'.format(check.difference) }} off the reserve{% endif %}</span>
+        <span class="small text-muted">· QuickBooks reserve ${{ '{:,.2f}'.format(check.qbo or 0) }}{% if check.as_of %} as of the {{ check.as_of.strftime('%-m/%-d') }} sync{% endif %}</span></summary>
+        <div class="card-body pt-0 small">
+            <p class="text-muted mb-2">The nightly QuickBooks sync refreshes the reserve balance. If the ledger is off, these are the journal entries to book (or check):</p>
+            {% for b in books %}
+            <div class="fw-semibold mt-2">{{ b.label }}</div>
+            {% for ln in b.lines %}<div>Debit {{ ln.debit }}, credit {{ ln.credit }}: <strong>${{ '{:,.2f}'.format(ln.amount) }}</strong> <span class="text-muted">({{ '%g'|format(ln.points) }} points, {{ ln.what }})</span></div>
+            {% else %}<div class="text-muted">Nothing earned, allocated or forfeited.</div>{% endfor %}
+            {% for t in b.used_rows %}<div class="text-muted">Used: {{ t.name }}, {{ t.description }}, {{ '%g'|format(t.points) }} points (paid by its own check or card charge)</div>{% endfor %}
+            {% endfor %}
+        </div>
+    </details>
 
     {% if waiting %}
     <div class="card mb-3 border-warning"><div class="card-body py-2">

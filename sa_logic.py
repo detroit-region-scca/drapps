@@ -110,24 +110,6 @@ def milestones_for(members, month):
     return {k: sorted(v, key=lambda n: (n.split()[-1].lower() if n.split() else '', n.lower())) for k, v in sorted(out.items(), reverse=True)}
 
 
-def reminder(today, app_url='https://drapps.drscca.org'):
-    """(subject, body) of the monthly Member Milestones reminder, sent on the 1st; None on other days."""
-    if today.day != 1:
-        return None
-    month = f'{today.year:04d}-{today.month:02d}'
-    label = today.strftime('%B %Y')
-    return (f'Member Milestones for {label}',
-            f"""It's time to post {label}'s new members and membership anniversaries.
-
-1. In my.scca.com, go to Region Resources > Region Reporting, choose Report Type "Member List" and click Download:
-   https://my.scca.com/eweb/DynamicPage.aspx?webcode=regionreports
-2. Open Member Milestones and upload that file (drapps keeps the original in a private Drive folder):
-   {app_url}/sa/?month={month}
-3. Check the names and click Publish to drscca.org. The site shows them within the hour.
-
-Then delete the downloaded copy from your computer; it has members' addresses and birth dates.""")
-
-
 def roster_expiry(rows):
     """{SCCA member ID: membership good-through date} from the report's rows: the later of SCCA Member Expire and
     Region Member Expire. Only the ID and that date are kept."""

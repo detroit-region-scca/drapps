@@ -192,27 +192,6 @@ def allocation_rows(roles, transactions, today):
     return out
 
 
-def month_end_email(summary, year, month, check):
-    """(subject, body) for the treasurer: the journal entry to make in QuickBooks for last month's points."""
-    label = date(year, month, 1).strftime('%B %Y')
-    lines = [f"Worker points for {label}.", '']
-    if summary['lines']:
-        lines.append('Journal entry to make in QuickBooks:')
-        for ln in summary['lines']:
-            lines.append(f"  Debit {ln['debit']}, credit {ln['credit']}: ${ln['amount']:,.2f} ({ln['points']:g} points, {ln['what']})")
-    else:
-        lines.append('No points were earned, allocated or forfeited, so there is no journal entry to make.')
-    if summary['used_rows']:
-        lines += ['', 'Points used (paid by their own check or card charge, no journal entry):']
-        lines += [f"  {t['date']}: {t['name']}, {t['description']}, {t['points']:g} points" for t in summary['used_rows']]
-    if abs(summary['adjust_points']) > 0.004:
-        lines += ['', f"Adjustments: {summary['adjust_points']:g} points."]
-    if check and check.get('difference') is not None:
-        lines += ['', 'Ledger ties to QuickBooks.' if abs(check['difference']) < 0.005 else
-                  f"Ledger is ${check['difference']:,.2f} off the QuickBooks reserve; check before booking."]
-    return f'Worker points month end: {label}', '\n'.join(lines)
-
-
 def lapsed_from_roster(members, expiry, today):
     """Ledger members with points whose membership has lapsed according to the SCCA member list: not on the list,
     or on it with a good-through date before today. Life members never lapse. Family IDs like 500314-1 also match

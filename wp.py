@@ -27,8 +27,23 @@ def _me():
     return user() or {}
 
 
+KEEPER_ROLE = 'Points Keeper'
+
+
+def _is_keeper():
+    """Only the Worker Points Keeper (officials list, role "Points Keeper") manages points; everyone else submits workers."""
+    return KEEPER_ROLE in (_me().get('roles') or [])
+
+
+def _keeper_only():
+    if not _is_keeper():
+        return redirect(url_for('wp.report'))
+    return None
+
+
 def _ctx(**kw):
     kw.setdefault('me_level', _me().get('level', ''))
+    kw.setdefault('keeper', _is_keeper())
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Worker Points", enabled=S.enabled(), point_value=L.POINT_VALUE, **kw)
 
 
@@ -70,8 +85,8 @@ def _recent_events():
 def home():
     if (g := _guard()):
         return g
-    if _me().get('level') == 'volunteer':     # event chairs: straight to sending who worked
-        return redirect(url_for('wp.report'))
+    if (k := _keeper_only()):     # everyone but the keeper: straight to sending who worked
+        return k
     mem = sorted(S.members(), key=lambda m: (m['last'].lower(), m['first'].lower()))
     try:
         waiting = [r for r in S.reports() if r['status'] == 'Submitted']
@@ -79,8 +94,12 @@ def home():
         waiting = []
     roster = _roster()
     lapsed = L.lapsed_from_roster(mem, roster['expiry'], date.today()) if roster else []
+    t = date.today()
+    months = [(t.year, t.month), (t.year, t.month - 1) if t.month > 1 else (t.year - 1, 12)]
+    evs = _events_by_code()
+    books = [dict(L.month_end_summary(S.transactions(), evs, y, mo), label=date(y, mo, 1).strftime('%B %Y')) for y, mo in reversed(months)]
     return render_template('wp.html', **_ctx(view='home', members=mem, total=sum(m['balance'] for m in mem), check=S.check(),
-                                             waiting=waiting, lapsed=lapsed, roster=roster))
+                                             waiting=waiting, lapsed=lapsed, roster=roster, books=books))
 
 
 @bp.route('/member/<member_id>', methods=['GET', 'POST'])
@@ -88,6 +107,8 @@ def home():
 def member(member_id):
     if (g := _guard()):
         return g
+    if (k := _keeper_only()):
+        return k
     if request.method == 'POST':
         S.refresh()
     m = next((m for m in S.members() if m['member'] == member_id), None)
@@ -129,6 +150,8 @@ def member(member_id):
 def add_member():
     if (g := _guard()):
         return g
+    if (k := _keeper_only()):
+        return k
     S.refresh()
     f = request.form
     mid = f.get('member', '').strip()
@@ -149,6 +172,8 @@ def forfeit_lapsed():
     """Forfeit the points of every member whose membership has lapsed (life members never lapse)."""
     if (g := _guard()):
         return g
+    if (k := _keeper_only()):
+        return k
     S.refresh()
     roster = _roster()
     if not roster:
@@ -209,6 +234,8 @@ def review(rid):
     """Check a submitted list (names matched to members, points from role and days) and approve it."""
     if (g := _guard()):
         return g
+    if (k := _keeper_only()):
+        return k
     rep = next((r for r in S.reports() if r['id'] == rid), None)
     if not rep:
         flash(f'{rid} not found.', 'warning')
