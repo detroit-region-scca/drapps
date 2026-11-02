@@ -1,20 +1,35 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="page-title">Service Awards</div>
-<p class="text-muted">Members celebrating an SCCA membership anniversary. What you save here shows on <a href="https://drscca.org/region/service-awards/">drscca.org</a> within the hour. You can also fix a name directly in the <a href="{{ sheet_url }}">Service Awards sheet</a>.</p>
+<div class="page-title">Member Milestones</div>
+<p class="text-muted">New members and membership anniversaries (the club's service awards). What you save here shows on <a href="https://drscca.org/region/member-milestones/">drscca.org</a> within the hour. You can also fix a name directly in the <a href="{{ sheet_url }}">Member Milestones sheet</a>.</p>
+
+<div class="card mb-3"><div class="card-body">
+  <h2 class="h6">Fill in a month from the SCCA member list</h2>
+  <ol class="small text-muted mb-2">
+    <li>In <a href="{{ scca_reports }}">my.scca.com &rsaquo; Region Resources &rsaquo; Region Reporting</a>, choose Report Type <strong>Member List</strong> and click Download.</li>
+    <li>Pick the month and choose that file here. Only names and join dates are read; the file is not kept.</li>
+  </ol>
+  <form method="post" action="{{ url_for('sa.roster') }}" enctype="multipart/form-data" class="row g-2 align-items-end">
+    <div class="col-auto"><label class="form-label small">Month</label><input type="month" class="form-control" name="month" value="{{ month }}" required></div>
+    <div class="col-md-5"><label class="form-label small">Member List file (.xlsx)</label><input type="file" class="form-control" name="report" accept=".xlsx" required></div>
+    <div class="col-auto"><button class="btn btn-outline-secondary">Fill in</button></div>
+  </form>
+  <div class="form-text">{% if last_roster %}Last used {{ last_roster.when }}{% if last_roster.who %} by {{ last_roster.who }}{% endif %}.{% else %}Not used yet.{% endif %}</div>
+</div></div>
 
 <div class="card mb-4"><div class="card-body">
   <form method="get" class="row g-2 align-items-end mb-3">
     <div class="col-auto"><label class="form-label small">Month</label><input type="month" class="form-control" name="month" value="{{ month }}"></div>
     <div class="col-auto"><button class="btn btn-outline-secondary">Open</button></div>
   </form>
-  <form method="post">
+  <form method="post" action="{{ url_for('sa.home') }}">
     <input type="hidden" name="month" value="{{ month }}">
+    {% if from_roster %}<div class="alert alert-info py-2 small">Filled in from the SCCA member list and <strong>not saved yet</strong>. Check the names, then Save.</div>{% endif %}
     <p class="small text-muted mb-2">One name per line, as it should appear. Saving replaces everything for {{ month }}; leave all boxes empty and save to remove the month.</p>
     <div class="row g-3">
       {% for y in milestones %}
       <div class="col-6 col-md-4 col-lg-3">
-        <label class="form-label small fw-semibold" for="y{{ y }}">{{ y }} years</label>
+        <label class="form-label small fw-semibold" for="y{{ y }}">{{ 'New members' if y == 0 else y ~ ' years' }}</label>
         <textarea class="form-control" id="y{{ y }}" name="y{{ y }}" rows="{{ [ (current.get(y, [])|length) + 1, 3 ]|max }}">{{ current.get(y, [])|join('\n') }}</textarea>
       </div>
       {% endfor %}
@@ -27,7 +42,7 @@
 {% for m, groups in months %}
 <div class="card mb-2"><div class="card-body py-2">
   <div class="d-flex justify-content-between"><strong>{{ m }}</strong><a class="small" href="{{ url_for('sa.home', month=m) }}">Edit</a></div>
-  <div class="small">{% for y, names in groups.items() %}<span class="text-muted">{{ y }} years:</span> {{ names|join(', ') }}{% if not loop.last %} · {% endif %}{% endfor %}</div>
+  <div class="small">{% for y, names in groups.items() %}<span class="text-muted">{{ 'New' if y == 0 else y ~ ' years' }}:</span> {{ names|join(', ') }}{% if not loop.last %} · {% endif %}{% endfor %}</div>
 </div></div>
-{% else %}<p class="text-muted">No awards yet.</p>{% endfor %}
+{% else %}<p class="text-muted">Nothing yet.</p>{% endfor %}
 {% endblock %}

@@ -130,6 +130,16 @@ def main():
             say.append(f"officials copy failed: {e}")
         P.write_tab('QBO Outstanding', ['date', 'number', 'payee', 'amount', 'as_of'],
                     [[o['date'], o['number'], o['payee'], o['amount'], as_of] for o in data.get('outstanding', [])])
+    try:   # Member Milestones: on the 1st, remind membership@ to load the month from the SCCA member list
+        import sa_logic
+        import sa_store
+        note = sa_logic.reminder(date.today())
+        if note and sa_store.enabled() and not DRY:
+            from utils import send_mail
+            send_mail(*note, recipient=os.environ.get('MEMBERSHIP_EMAIL', 'membership@drscca.org'))
+            say.append('Member Milestones reminder sent')
+    except Exception as e:
+        say.append(f"Member Milestones reminder failed: {e}")
     print(f"QuickBooks sync {as_of}{' (dry run)' if DRY else ''}: " + '\n'.join(say))
 
 

@@ -6,3 +6,4 @@ filelock
 gspread
 google-auth
 fpdf2
+openpyxl
