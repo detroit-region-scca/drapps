@@ -4,8 +4,8 @@
 {% block app_name %}Members{% endblock %}
 {% block nav %}
     {% if keeper %}{{ tab('members.home', 'Members') }}{% endif %}
-    {{ tab('members.enter', 'Points', active=request.endpoint in ('members.enter', 'members.use')) }}
-    {% if keeper %}{{ tab('members.auto', 'Auto add') }}{{ tab('members.quickbooks', 'QuickBooks') }}{{ tab('members.milestones', 'Service Awards') }}{% endif %}
+    {{ tab('members.enter', 'Points', active=request.endpoint in ('members.enter', 'members.use', 'members.auto')) }}
+    {% if keeper %}{{ tab('members.quickbooks', 'QuickBooks') }}{{ tab('members.milestones', 'Service Awards') }}{% endif %}
 {% endblock %}
 {% macro pts(v) %}<span class="{{ 'text-danger' if v < 0 else '' }}">{{ '%+g'|format(v) }}</span>{% endmacro %}
 {% macro day(d) %}{{ d.strftime('%-m/%-d/%Y') if d else '' }}{% endmacro %}
@@ -19,6 +19,7 @@
 {% macro points_switch(which) %}{% if keeper %}<ul class="nav nav-pills mb-3">
     <li class="nav-item"><a class="nav-link pill-add {{ 'active' if which == 'add' }}" href="{{ url_for('members.enter') }}">Add points</a></li>
     <li class="nav-item"><a class="nav-link pill-use {{ 'active' if which == 'use' }}" href="{{ url_for('members.use') }}">Use points</a></li>
+    <li class="nav-item"><a class="nav-link pill-auto {{ 'active' if which == 'auto' }}" href="{{ url_for('members.auto') }}">Auto add</a></li>
 </ul>{% endif %}{% endmacro %}
 {% block style %}
         #grid td { vertical-align: middle; }
@@ -27,6 +28,7 @@
         .nav-pills .nav-link.pill-add { color: #1a8a5a; }
         .nav-pills .nav-link.pill-use { color: #c2232e; }
         .nav-pills .nav-link.pill-add.active { background: #1a8a5a; color: #fff; font-weight: 600; }
+        .nav-pills .nav-link.pill-auto.active { background: #555; color: #fff; font-weight: 600; }
         .nav-pills .nav-link.pill-use.active { background: #c2232e; color: #fff; font-weight: 600; }
         .pending-card .form-control-sm { min-width: 9rem; }
 {% endblock %}
@@ -215,6 +217,7 @@
 
 {# ================================================================== Auto add #}
 {% elif view == 'auto' %}
+{{ points_switch('auto') }}
 <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
     <div><div class="page-title mb-0">Auto add</div>
         <div class="text-muted small">People who get points every month for a volunteer job. Their points are added automatically on the 1st of each month.</div></div>
