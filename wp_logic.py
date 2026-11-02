@@ -117,3 +117,17 @@ def validate_entry(member_id, points, typ, balances):
     if typ == 'Used' and balances[member_id] + points < -0.004:
         return f'Member has only {balances[member_id]:.1f} points'
     return None
+
+
+def public_standings(members, transactions):
+    """What the public standings page shows: members with points, sorted by last then first name, and the date of the
+    newest ledger entry (the list is current to then)."""
+    def nice(n):   # the ledger mixes "ED ARTHUR" with "McClintock": only fix the all-capitals ones
+        n = (n or '').strip()
+        return n.title() if n.isupper() else n
+    rows = [{'name': f"{nice(m['first'])} {nice(m['last'])}".strip(),
+             'last': (m['last'] or '').strip().lower(), 'first': (m['first'] or '').strip().lower(),
+             'points': round(m['balance'] or 0, 1)} for m in members if (m.get('balance') or 0) >= 0.05]
+    rows.sort(key=lambda r: (r['last'], r['first']))
+    dates = [t['date'] for t in transactions if t.get('date')]
+    return {'members': rows, 'as_of': max(dates) if dates else None}
