@@ -85,7 +85,8 @@
             <span><span class="site-name">Detroit Region SCCA</span><span class="app-name">{% block app_name %}{{ app_name or title }}{% endblock %}</span></span></a>
         {% if request.endpoint == 'home' %}
         {# The launcher has no sections, so no menu: just log out. #}
-        <span class="btn btn-logout ms-auto me-3 px-0" title="{{ me.email if me }}">{{ session.get('who', '') }}</span>
+        <a class="btn btn-link btn-logout text-decoration-none ms-auto me-3 px-0" href="https://drscca.org">‹ drscca.org</a>
+        <span class="btn btn-logout me-3 px-0" title="{{ me.email if me }}">{{ session.get('who', '') }}</span>
         {% if me and me.level != 'volunteer' %}<a class="btn btn-link btn-logout text-decoration-none me-3 px-0" href="{{ url_for('audit_log') }}">Audit log</a>{% endif %}
         <form action="{{ url_for('logout') }}" method="POST" class="m-0">
             <button type="submit" class="btn btn-link btn-logout text-decoration-none px-0">Log out</button>
@@ -111,6 +112,7 @@
             <select name="year" class="form-select form-select-sm" aria-label="Year" onchange="this.form.submit()">{% for y in years %}<option {% if y|string == year|string %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
         </form>
         {% endif %}
+            <a class="btn btn-link btn-logout text-decoration-none px-xl-2 px-0 d-block text-start" href="https://drscca.org">‹ drscca.org</a>
             <span class="btn btn-logout px-xl-2 px-0 d-block text-start" title="{{ me.email if me }}">{{ session.get('who', '') }}</span>
             {% if me and me.level != 'volunteer' %}<a class="btn btn-link btn-logout text-decoration-none px-xl-2 px-0 d-block text-start{% if request.endpoint == 'audit_log' %} fw-semibold{% endif %}" href="{{ url_for('audit_log') }}">Audit log</a>{% endif %}
             <form action="{{ url_for('logout') }}" method="POST" class="m-0">
