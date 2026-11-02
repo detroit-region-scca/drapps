@@ -5,7 +5,7 @@
 {% block nav %}
     {% if keeper %}{{ tab('members.home', 'Members') }}{% endif %}
     {{ tab('members.enter', 'Points', active=request.endpoint in ('members.enter', 'members.use')) }}
-    {% if keeper %}{{ tab('members.auto', 'Auto add') }}{{ tab('members.quickbooks', 'QuickBooks') }}{{ tab('members.milestones', 'Milestones') }}{% endif %}
+    {% if keeper %}{{ tab('members.auto', 'Auto add') }}{{ tab('members.quickbooks', 'QuickBooks') }}{{ tab('members.milestones', 'Service Awards') }}{% endif %}
 {% endblock %}
 {% macro pts(v) %}<span class="{{ 'text-danger' if v < 0 else '' }}">{{ '%+g'|format(v) }}</span>{% endmacro %}
 {% macro day(d) %}{{ d.strftime('%-m/%-d/%Y') if d else '' }}{% endmacro %}
@@ -48,7 +48,7 @@
     <div class="col-6 col-lg-3"><a class="card stat p-3 h-100 text-decoration-none" href="#lapsed" onclick="var d=document.getElementById('lapsed'); if(d) d.open=true"><div class="label">Not current members</div>
         <div class="value {{ 'text-warning' if lapsed }}">{{ lapsed|length }}</div><div class="label">with {{ '{:,.1f}'.format(lapsed|sum(attribute='points')) }} points</div></a></div>
 </div>
-<form id="loadlist" method="post" action="{{ url_for('members.upload') }}" enctype="multipart/form-data" class="card card-body mb-3" hidden>
+<form id="loadlist" method="post" action="{{ url_for('members.upload') }}" enctype="multipart/form-data" class="card card-body mb-3" hidden><input type="hidden" name="back" value="{{ url_for('members.home') }}">
     <div class="d-flex flex-wrap gap-2 align-items-center">
         <span class="small">Download the Member List from <a href="{{ scca_reports }}">my.scca.com › Region Reporting</a>, then:</span>
         <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" required><button class="btn btn-sm btn-accent">Load list</button>
@@ -278,29 +278,43 @@
 {# ================================================================== Milestones #}
 {% elif view == 'milestones' %}
 <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
-    <div><div class="page-title mb-0">Member Milestones</div>
-        <div class="text-muted small">New members and membership anniversaries on <a href="https://drscca.org/region/member-milestones/">drscca.org</a>. Worked out from the SCCA member list{% if latest_list %} of {{ day(latest_list) }}{% else %} (not loaded yet: load it on the Members page){% endif %}.</div></div>
-    <form method="get" class="d-flex gap-2 align-items-center"><label class="small text-muted" for="m">Month</label>
-        <input id="m" type="month" class="form-control form-control-sm" name="month" value="{{ month }}" onchange="this.form.submit()"></form>
+    <div><div class="page-title mb-0">Service Awards</div>
+        <div class="text-muted small">New members and membership anniversaries, from the SCCA member list{% if latest_list %} of {{ day(latest_list) }}{% endif %}.</div></div>
+    <div class="btn-group" role="group" aria-label="Month">
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('members.milestones', month=prev_month) }}" aria-label="Previous month">‹</a>
+        <span class="btn btn-sm btn-outline-secondary disabled text-body fw-semibold" style="min-width:9rem">{{ month_label }}</span>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('members.milestones', month=next_month) }}" aria-label="Next month">›</a></div>
 </div>
+<form method="post" action="{{ url_for('members.upload') }}" enctype="multipart/form-data" class="card card-body mb-3">
+    <input type="hidden" name="back" value="{{ url_for('members.milestones', month=month) }}">
+    <div class="fw-semibold mb-1">Each month: load the SCCA member list</div>
+    <ol class="small mb-2 ps-3">
+        <li>Sign in at <a href="{{ scca_reports }}" target="_blank">my.scca.com › Region Reporting</a> and download the <b>Member List</b> (an .xlsx file).</li>
+        <li>Choose the file below and click <b>Load list</b>. New members and anniversaries are worked out for you.</li>
+        <li>Check the month below and click <b>Save for the website</b>. The website then drafts the monthly Service Awards post and emails membership@ to publish it.</li>
+    </ol>
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" required><button class="btn btn-sm btn-accent">Load list</button>
+        <a class="small ms-auto" href="{{ list_url }}">past lists</a></div>
+</form>
 {% macro groups(g) %}<div class="row g-3">{% for y in ([0] if 0 in g else []) + (g.keys()|reject('equalto', 0)|sort(reverse=true)|list) %}
     <div class="col-6 col-md-4"><div class="small fw-semibold text-muted text-uppercase">{{ 'New members' if y == 0 else y ~ ' years' }}</div>
     <ul class="list-unstyled mb-0">{% for n in g[y] %}<li>{{ n }}</li>{% endfor %}</ul></div>{% endfor %}</div>{% endmacro %}
 <div class="card mb-3"><div class="card-body">
-    {% if published %}<div class="mb-2"><span class="badge text-bg-success">On drscca.org</span></div>{{ groups(published) }}
+    {% if published %}<div class="mb-2"><span class="badge text-bg-success">Saved for the website</span></div>{{ groups(published) }}
         {% if differs %}<form method="post" class="mt-3"><input type="hidden" name="month" value="{{ month }}"><input type="hidden" name="action" value="publish">
-            <span class="small text-warning me-2">The member list gives a different list for {{ month }}.</span><button class="btn btn-sm btn-warning">Replace with the member list version</button></form>{% endif %}
-    {% elif proposed %}<div class="mb-2"><span class="badge text-bg-secondary">Not on drscca.org yet</span></div>{{ groups(proposed) }}
-        <form method="post" class="mt-3"><input type="hidden" name="month" value="{{ month }}"><input type="hidden" name="action" value="publish"><button class="btn btn-accent">Publish to drscca.org</button></form>
-    {% else %}<p class="text-muted mb-0">{% if latest_list %}Nobody joined or reaches a 5-year anniversary in {{ month }}.{% else %}Load the SCCA member list on the Members page first.{% endif %}</p>{% endif %}
+            <span class="small text-warning me-2">The newest member list gives a different list for {{ month_label }}.</span><button class="btn btn-sm btn-warning">Use the newer list</button></form>{% endif %}
+    {% elif proposed %}<div class="mb-2"><span class="badge text-bg-secondary">Not saved yet</span></div>{{ groups(proposed) }}
+        <form method="post" class="mt-3"><input type="hidden" name="month" value="{{ month }}"><input type="hidden" name="action" value="publish"><button class="btn btn-accent">Save for the website</button></form>
+    {% else %}<p class="text-muted mb-0">{% if latest_list %}Nobody joined or reaches a 5-year anniversary in {{ month_label }}.{% else %}Load the SCCA member list above first.{% endif %}</p>{% endif %}
 </div></div>
 <details><summary class="small">Edit names by hand</summary>
     <form method="post" class="card card-body mt-2"><input type="hidden" name="month" value="{{ month }}">
-        <p class="small text-muted">One name per line. Saving replaces {{ month }} on drscca.org with exactly this; empty boxes remove it. You can also edit the <a href="{{ public_url }}">drscca.org sheet</a> directly.</p>
+        <p class="small text-muted">One name per line. Saving replaces {{ month_label }} with exactly this; empty boxes remove it. You can also edit the <a href="{{ public_url }}">website's sheet</a> directly.</p>
         {% set cur = published or proposed %}
-        <div class="row g-2">{% for y in years %}{% if y in cur or y <= 25 %}<div class="col-6 col-md-3"><label class="form-label small fw-semibold">{{ 'New members' if y == 0 else y ~ ' years' }}</label>
+        <div class="row g-2">{% for y in anniv_years %}{% if y in cur or y <= 25 %}<div class="col-6 col-md-3"><label class="form-label small fw-semibold">{{ 'New members' if y == 0 else y ~ ' years' }}</label>
             <textarea class="form-control form-control-sm" name="y{{ y }}" rows="{{ [ (cur.get(y, [])|length) + 1, 2 ]|max }}">{{ cur.get(y, [])|join('\n') }}</textarea></div>{% endif %}{% endfor %}</div>
-        <div><button class="btn btn-sm btn-outline-secondary mt-2">Save {{ month }}</button></div>
+        <div><button class="btn btn-sm btn-outline-secondary mt-2">Save {{ month_label }}</button></div>
     </form>
 </details>
 {% endif %}

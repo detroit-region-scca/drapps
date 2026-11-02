@@ -39,6 +39,18 @@ def _ctx(**kw):
                 structure=L.POINT_STRUCTURE, **kw)
 
 
+def _back():
+    """Where a form posted from another Members page returns to (only this app's own pages)."""
+    b = request.form.get('back', '')
+    return b if b.startswith('/members') else url_for('members.home')
+
+
+def _month_step(month, n):
+    y, m = int(month[:4]), int(month[5:]) + n
+    y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
+    return f'{y:04d}-{m:02d}'
+
+
 def _guard(keeper=False):
     if not S.enabled():
         flash('Members needs MEMBERS_SHEET_ID and the Google Sheets storage.', 'warning')
@@ -190,7 +202,7 @@ def upload():
     up = request.files.get('report')
     if not up or not up.filename:
         flash('Choose the Member List file first.', 'warning')
-        return redirect(url_for('members.home'))
+        return redirect(_back())
     data = up.read()
     try:
         import openpyxl
@@ -198,17 +210,17 @@ def upload():
         report = L.roster(list(wb.worksheets[0].iter_rows(values_only=True)))
     except ValueError as e:
         flash(str(e), 'warning')
-        return redirect(url_for('members.home'))
+        return redirect(_back())
     except Exception:
         flash('Could not open that file. Download the Member List again from SCCA (an .xlsx file) and retry.', 'warning')
-        return redirect(url_for('members.home'))
+        return redirect(_back())
     saved = S.save_list_file(data, _who())
     before = S.members()
     merged = L.merge_roster(before, report, date.today())
     S.write_members(merged)
     log_audit_event('MEMBER_LIST_LOADED', _who(), {'file': saved['name'], 'on_list': len(report), 'members': len(merged)})
     flash(f'Loaded the SCCA member list: {len(report)} current members ({len(merged) - len(before)} new). The original is kept in Drive.', 'success')
-    return redirect(url_for('members.home'))
+    return redirect(_back())
 
 
 @bp.route('/add-member', methods=['POST'])
@@ -276,14 +288,17 @@ def milestones():
                         new.append([month, ' '.join(line.split()), y, ''])
         S.save_milestones(month, new)
         log_audit_event('MILESTONES_SAVED', _who(), {'month': month, 'names': len(new)})
-        flash(f'{month}: {len(new)} names on drscca.org (shows within the hour).' if new else f'Removed {month} from drscca.org.', 'success')
+        flash(f'{month}: {len(new)} names saved. The website drafts the monthly Service Awards post for membership to publish.' if new else f'Removed {month}.', 'success')
         return redirect(url_for('members.milestones', month=month))
     norm = lambda g: {k: sorted(x.lower() for x in v) for k, v in g.items() if v}
     lists = [m['listed'] for m in mem if m.get('listed')]
     return render_template('members.html', **_ctx(view='milestones', month=month, proposed=proposed, published=published,
                                                   differs=bool(proposed) and norm(proposed) != norm(published),
-                                                  latest_list=max(lists) if lists else None, years=L.MILESTONE_YEARS,
-                                                  public_url=S.public_sheet_url()))
+                                                  latest_list=max(lists) if lists else None, anniv_years=L.MILESTONE_YEARS,
+                                                  month_label=date(int(month[:4]), int(month[5:]), 1).strftime('%B %Y'),
+                                                  prev_month=_month_step(month, -1), next_month=_month_step(month, 1),
+                                                  public_url=S.public_sheet_url(), list_url=S.list_folder_url(),
+                                                  scca_reports=SCCA_REPORTS))
 
 
 @bp.route('/use', methods=['GET', 'POST'])

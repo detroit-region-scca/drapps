@@ -3,14 +3,15 @@
 {% block body_class %}app-equip{% endblock %}
 {% block app_name %}Operations{% endblock %}
 {% block nav %}
-    {{ tab('equip.home', 'Overview') }}
-    {{ tab('equip.tasks', 'To do', request.endpoint == 'equip.tasks' or (request.endpoint == 'equip.task' and not bill)) }}
+    {{ tab('equip.home', 'Overview', request.endpoint in ('equip.home', 'equip.tasks') or (request.endpoint == 'equip.task' and not bill)) }}
     {{ tab('equip.costs', 'Bills', request.endpoint == 'equip.costs' or (request.endpoint == 'equip.task' and bill)) }}
-    {{ tab('equip.items', 'Locations', request.endpoint in ('equip.items', 'equip.item', 'equip.places', 'equip.place')) }}
-    {{ tab('equip.documents', 'Documents') }}
-    <li class="nav-item"><a class="nav-link" href="{{ url_for('plan.detail', year=budget_year, program='OPS') }}" title="The {{ budget_year }} Operations plan and budget, in the Annual Plan app">Budget</a></li>
+    {{ tab('equip.items', 'Gear', request.endpoint in ('equip.items', 'equip.item', 'equip.places', 'equip.place', 'equip.documents')) }}
     {{ tab('equip.plan', 'Replacement') }}
 {% endblock %}
+{% macro gear_pills(which) %}<ul class="nav nav-pills mb-3 small">
+    <li class="nav-item"><a class="nav-link {{ 'active' if which == 'where' }}" href="{{ url_for('equip.items') }}">Where things are</a></li>
+    <li class="nav-item"><a class="nav-link {{ 'active' if which == 'documents' }}" href="{{ url_for('equip.documents') }}">Documents</a></li>
+</ul>{% endmacro %}
 {% macro due_badge(t) -%}
     {% if not t.due %}<span class="badge rounded-pill text-bg-secondary">No date</span>
     {% elif t.due < today %}<span class="badge rounded-pill text-bg-danger">Overdue</span>
@@ -128,6 +129,7 @@
     {% endfor %}
 
     {% elif view == 'where' %}
+    {{ gear_pills('where') }}
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="text-muted small">Where all {{ n_live }} things are (planned purchases are on Replacement): each storage place, what's in each trailer and motorhome, and who has the rest. <a href="{{ url_for('equip.items', by='category') }}">List by category</a></div>
         {{ editbar(none, url_for('equip.item'), 'Add an item') }}
@@ -149,6 +151,7 @@
     <p class="small text-muted">To record a move, open the item and use "Where is it now?". Storage places are added with <a href="{{ url_for('equip.place') }}">Add a place</a>.</p>
 
     {% elif view == 'documents' %}
+    {{ gear_pills('documents') }}
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
         <div><div class="page-title m-0">{% if n_missing %}{{ n_missing }} documents missing{% else %}Every document is in Drive{% endif %}</div>
             <div class="text-muted small">Each vehicle, trailer and storage place has a folder in Drive (Operations › Documents). Put scans or photos in its folder and start the file name with what it is,
@@ -279,6 +282,7 @@
     {% endif %}
 
     {% elif view == 'tasks' %}
+    <div class="small mb-3"><a href="{{ url_for('equip.home') }}">‹ Overview</a></div>
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="text-muted small">Things someone has to do. Bills that charge the card on their own are on Bills, not here.</div>
         {{ editbar(none, url_for('equip.task', back=request.path), 'Add a to-do') }}</div>
@@ -309,7 +313,9 @@
     </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ back or url_for('equip.costs' if bill else 'equip.tasks') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
 
     {% elif view == 'plan' %}
-    <p class="text-muted">Replacements and planned purchases at estimated cost when bought. For planning only; the region gets no tax benefit from depreciation.</p>
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+        <p class="text-muted m-0">Replacements and planned purchases at estimated cost when bought. For planning only; the region gets no tax benefit from depreciation.</p>
+        <a class="btn btn-sm btn-outline-light no-print" href="{{ url_for('plan.detail', year=budget_year, program='OPS') }}">{{ budget_year }} Operations budget ›</a></div>
     <div class="card p-3 mb-4">
         <p class="mb-2"><b>Buy soon:</b> {% for y, c in by_year.items() %}{{ money(c, 0) }} in {{ y }}{{ ' and ' if not loop.last }}{% else %}nothing{% endfor %}. These go straight into those years' budgets.</p>
         <p class="mb-1"><b>Save for later,</b> two ways to pay for the same items:</p>
