@@ -139,6 +139,60 @@
     <div><a href="https://drscca.org">drscca.org</a> · <a href="mailto:treasurer@drscca.org">treasurer@drscca.org</a></div>
 </div></footer>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{# Pickers: any <input list="x"> gets our own dropdown over <datalist id="x"> (the browser's datalist box is unreliable,
+   mostly on phones). Typing filters by every word; arrows, Enter or Tab pick; an option's text shows as a note. #}
+<style>
+    .pick-menu { position: absolute; z-index: 1050; background: var(--surface, #fff); border: 1px solid var(--border, #ccc); border-radius: .375rem;
+                 box-shadow: 0 6px 18px rgba(0,0,0,.12); max-height: 16rem; overflow-y: auto; min-width: 16rem; }
+    .pick-menu div { padding: .35rem .6rem; cursor: pointer; white-space: nowrap; }
+    .pick-menu div.on, .pick-menu div:hover { background: #f1f3f7; }
+    .pick-menu small { color: var(--muted, #666); margin-left: .4rem; }
+</style>
+<script>
+(function () {
+    const lists = {};
+    function names(id) {
+        if (!lists[id]) { const dl = document.getElementById(id); lists[id] = dl ? [...dl.options].map(o => ({v: o.value, k: o.value.toLowerCase(), note: o.textContent.trim()})) : []; }
+        return lists[id];
+    }
+    function adopt(el) { if (el.getAttribute('list')) { el.dataset.pick = el.getAttribute('list'); el.removeAttribute('list'); el.setAttribute('autocomplete', 'off'); } }
+    const menu = document.createElement('div'); menu.className = 'pick-menu'; menu.hidden = true; document.body.appendChild(menu);
+    let box = null, hits = [], at = -1;
+    function close() { menu.hidden = true; box = null; at = -1; }
+    function pick(i) {
+        if (!box || !hits[i]) return;
+        const el = box; el.value = hits[i].v; close();
+        el.dispatchEvent(new Event('input', {bubbles: true})); el.dispatchEvent(new Event('change', {bubbles: true}));
+    }
+    function show(el, all) {
+        const words = el.value.toLowerCase().split(/\s+/).filter(Boolean), src = names(el.dataset.pick);
+        hits = (words.length ? src.filter(n => words.every(w => n.k.includes(w))) : (all ? src : [])).slice(0, 50);
+        if (!hits.length || (hits.length === 1 && hits[0].v === el.value)) { close(); return; }
+        box = el; at = -1;
+        const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+        menu.innerHTML = hits.map((h, i) => `<div data-i="${i}">${esc(h.v)}${h.note && h.note !== h.v ? `<small>${esc(h.note)}</small>` : ''}</div>`).join('');
+        const r = el.getBoundingClientRect();
+        menu.style.left = (r.left + window.scrollX) + 'px'; menu.style.top = (r.bottom + window.scrollY + 2) + 'px'; menu.style.width = Math.max(r.width, 256) + 'px';
+        menu.hidden = false;
+    }
+    document.querySelectorAll('input[list]').forEach(adopt);
+    document.addEventListener('focusin', e => { const t = e.target; if (t.matches && t.matches('input[list]')) adopt(t);
+        if (t.dataset && t.dataset.pick && names(t.dataset.pick).length <= 50) show(t, true); });   // short lists open on focus
+    document.addEventListener('input', e => { if (e.isTrusted && e.target.dataset && e.target.dataset.pick) show(e.target, false); });
+    document.addEventListener('keydown', e => {
+        if (menu.hidden || e.target !== box) return;
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault(); at = (at + (e.key === 'ArrowDown' ? 1 : -1) + hits.length) % hits.length;
+            menu.querySelectorAll('div').forEach((d, i) => d.classList.toggle('on', i === at));
+            menu.children[at].scrollIntoView({block: 'nearest'});
+        } else if (e.key === 'Enter' || e.key === 'Tab') { if (at >= 0 || hits.length === 1) { e.preventDefault(); pick(at >= 0 ? at : 0); } }
+        else if (e.key === 'Escape') close();
+    });
+    menu.addEventListener('mousedown', e => { const d = e.target.closest('[data-i]'); if (d) { e.preventDefault(); pick(+d.dataset.i); } });
+    document.addEventListener('focusout', e => { if (e.target === box) setTimeout(() => { if (document.activeElement !== box) close(); }, 150); });
+    window.addEventListener('resize', close);
+})();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
