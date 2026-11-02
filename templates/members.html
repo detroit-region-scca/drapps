@@ -17,14 +17,17 @@
     {% if keeper %}<div class="mt-2">Switch between <a href="{{ url_for('members.enter') }}">Add points</a> and <a href="{{ url_for('members.use') }}">Use points</a> at the top.</div>{% endif %}
 </div>{% endmacro %}
 {% macro points_switch(which) %}{% if keeper %}<ul class="nav nav-pills mb-3">
-    <li class="nav-item"><a class="nav-link {{ 'active' if which == 'add' }}" href="{{ url_for('members.enter') }}">Add points</a></li>
-    <li class="nav-item"><a class="nav-link {{ 'active' if which == 'use' }}" href="{{ url_for('members.use') }}">Use points</a></li>
+    <li class="nav-item"><a class="nav-link pill-add {{ 'active' if which == 'add' }}" href="{{ url_for('members.enter') }}">Add points</a></li>
+    <li class="nav-item"><a class="nav-link pill-use {{ 'active' if which == 'use' }}" href="{{ url_for('members.use') }}">Use points</a></li>
 </ul>{% endif %}{% endmacro %}
 {% block style %}
         #grid td { vertical-align: middle; }
         #memberTable tbody tr[hidden] { display: none; }
         .nav-pills .nav-link { color: var(--muted); }
-        .nav-pills .nav-link.active { background: var(--accent); color: #111; font-weight: 600; }
+        .nav-pills .nav-link.pill-add { color: #3ecf8e; }
+        .nav-pills .nav-link.pill-use { color: #f0616d; }
+        .nav-pills .nav-link.pill-add.active { background: #3ecf8e; color: #111; font-weight: 600; }
+        .nav-pills .nav-link.pill-use.active { background: #f0616d; color: #111; font-weight: 600; }
         .pending-card .form-control-sm { min-width: 9rem; }
 {% endblock %}
 {% block content %}
