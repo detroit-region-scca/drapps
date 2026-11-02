@@ -167,3 +167,14 @@ def test_one_journal_entry_per_event():
     assert len(used) == 1
     subject, body = L.books_email({'jes': jes, 'used': used}, 'November 2026', 100, 100)
     assert 'Journal entry 1: #A1 Solo 1' in body and 'Debit   Club AX Autocross Expense:Club AX Autocross Worker Points   $30.00' in body
+
+
+def test_pick_id_accepts_name_first_old_form_and_full_name():
+    by_id = {'500100': {'member': '500100', 'first': 'Pat', 'last': 'Example'},
+             '500200_1': {'member': '500200_1', 'first': 'Lee', 'last': 'Sample'}}
+    assert L.pick_label(by_id['500100']) == 'Pat Example (500100)'
+    assert L.pick_id('Pat Example (500100)', by_id) == '500100'
+    assert L.pick_id('500200_1 Lee Sample', by_id) == '500200_1'
+    assert L.pick_id('  lee   sample ', by_id) == '500200_1'
+    assert L.pick_id('Nobody Here', by_id) == ''
+    assert L.pick_id('', by_id) == ''

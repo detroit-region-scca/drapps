@@ -90,7 +90,7 @@ def rows_from_form(names, points, members_by_id, event_code, when, specialty, de
         raw = (raw or '').strip()
         if not raw:
             continue
-        mid = raw.split(' ')[0]
+        mid = pick_id(raw, members_by_id)
         m = members_by_id.get(mid)
         pts = num(pts_raw) if str(pts_raw or '').strip() else (default_points or 0)
         if pts <= 0:
@@ -169,6 +169,26 @@ def roster(rows):
         out[mid] = {'first': str(r[first] or '').strip(), 'last': last_name, 'joined': to_date(r[joined]),
                     'expires': max(exps) if exps else None}
     return out
+
+
+def pick_label(m):
+    """How a member shows in the name pickers: name first, member # in brackets."""
+    return f"{full_name(m)} ({m['member']})"
+
+
+def pick_id(text, members_by_id):
+    """Member # from a picker entry: 'First Last (500100)', an older '500100 First Last', or a name typed out in full
+    that matches exactly one member. '' if none matches."""
+    t = ' '.join(str(text or '').split())
+    if not t:
+        return ''
+    hit = re.search(r'\(([^()]+)\)$', t)
+    if hit and hit.group(1).strip() in members_by_id:
+        return hit.group(1).strip()
+    if t.split(' ')[0] in members_by_id:
+        return t.split(' ')[0]
+    same = [mid for mid, m in members_by_id.items() if full_name(m).lower() == t.lower()]
+    return same[0] if len(same) == 1 else ''
 
 
 def canon(mid):

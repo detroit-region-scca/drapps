@@ -36,6 +36,7 @@ def _who():
 
 def _ctx(**kw):
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Members", keeper=_keeper(), point_value=L.POINT_VALUE, today_=date.today(),
+                pick_label=L.pick_label,
                 structure=L.POINT_STRUCTURE, **kw)
 
 
@@ -179,7 +180,7 @@ def approve():
     todo, problems = [], []
     for n in ids:
         e = rows[n]
-        mid = (f.get(f'member_{n}') or e['member']).split(' ')[0].strip()
+        mid = L.pick_id(f.get(f'member_{n}'), by_id) or e['member']
         if mid not in by_id:
             problems.append(f"{e['name']}: pick the member (or add them first)"); continue
         todo.append(dict(e, member=mid, name=L.full_name(by_id[mid]), points=L.num(f.get(f'points_{n}') or e['points'])))
@@ -313,7 +314,7 @@ def use():
     by_id = {m['member']: m for m in mem}
     if request.method == 'POST':
         f = request.form
-        m = by_id.get((f.get('member') or '').split(' ')[0])
+        m = by_id.get(L.pick_id(f.get('member'), by_id))
         what = f.get('for', '')
         if what == 'Other' or f.get('note', '').strip():
             what = f"{what}: {f.get('note', '').strip()}" if what != 'Other' else (f.get('note', '').strip() or 'Other')
@@ -400,7 +401,7 @@ def auto():
             return redirect(url_for('members.home'))
         rows, problems = [], []
         for mid, role, season, off in zip(f.getlist('member'), f.getlist('role'), f.getlist('season'), f.getlist('offseason')):
-            mid = mid.split(' ')[0].strip()
+            mid = L.pick_id(mid, by_id)
             if not mid and not role.strip():
                 continue
             if mid not in by_id:

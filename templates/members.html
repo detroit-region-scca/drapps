@@ -69,7 +69,7 @@
     <button class="btn btn-sm btn-link text-muted" name="action" value="reject" onclick="return confirm('Remove these entries?')">Remove</button>
 </div></form>
 {% endfor %}
-{% if pending %}<datalist id="memberlist">{% for m in members %}<option value="{{ m.member }} {{ m.first }} {{ m.last }}">{% endfor %}</datalist>{% endif %}
+{% if pending %}<datalist id="memberlist">{% for m in members %}<option value="{{ pick_label(m) }}">{% endfor %}</datalist>{% endif %}
 
 <input id="find" class="form-control mb-2" type="search" placeholder="Find a member by name or SCCA number" autocomplete="off" style="max-width: 30rem">
 <div class="card"><div class="card-body p-0 table-responsive" style="max-height: 60vh; overflow-y: auto;">
@@ -141,7 +141,7 @@
         <div class="col-md-4"><label class="form-label">Start date</label><input type="date" name="first" class="form-control" value="{{ form.get('first', '') }}"><div class="form-text">Blank = the event date</div></div>
         {% if keeper %}<div class="col-12"><label class="form-label">What for <span class="text-muted">(only when there is no event)</span></label><input name="what" class="form-control" placeholder="e.g. Equipment chief, 2026" value="{{ form.get('what', '') }}"></div>{% endif %}
     </div>
-    <datalist id="memberlist">{% for m in members %}<option value="{{ m.member }} {{ m.first }} {{ m.last }}">{% endfor %}</datalist>
+    <datalist id="memberlist">{% for m in members %}<option value="{{ pick_label(m) }}">{% endfor %}</datalist>
     <table class="table table-sm align-middle mb-2">
         <thead><tr><th>Name</th><th style="width:7rem">Points</th><th style="width:2.5rem"></th></tr></thead>
         <tbody id="people"></tbody>
@@ -189,7 +189,7 @@
 <p class="text-muted">Take points off a member's balance for a renewal, an event entry, the banquet or merchandise. If the region pays a bill for it, file a funds request for the payment as usual.</p>
 <div class="row g-4"><div class="col-lg-8">
 <form method="post" class="card p-3">
-    <datalist id="memberlist">{% for m in members if m.points > 0 %}<option value="{{ m.member }} {{ m.first }} {{ m.last }}" data-points="{{ m.points }}">{{ '%g'|format(m.points) }} points</option>{% endfor %}</datalist>
+    <datalist id="memberlist">{% for m in members if m.points > 0 %}<option value="{{ pick_label(m) }}" data-points="{{ m.points }}">{{ '%g'|format(m.points) }} points</option>{% endfor %}</datalist>
     <div class="row g-2">
         <div class="col-md-8"><label class="form-label">Member</label><input id="usemember" name="member" list="memberlist" class="form-control" required placeholder="Type a name" autocomplete="off" value="{{ form.get('member', '') }}">
             <div class="form-text" id="usebal">&nbsp;</div></div>
@@ -203,10 +203,10 @@
 </div><div class="col-lg-4">{{ cheat() }}</div></div>
 <script>
     (function () {
-        const bal = {}; document.querySelectorAll('#memberlist option').forEach(o => bal[o.value.split(' ')[0]] = parseFloat(o.dataset.points));
+        const bal = {}; document.querySelectorAll('#memberlist option').forEach(o => bal[o.value] = parseFloat(o.dataset.points));
         const m = document.getElementById('usemember'), p = document.querySelector('[name=points]');
         function show() {
-            const b = bal[m.value.split(' ')[0]];
+            const b = bal[m.value.trim()];
             document.getElementById('usebal').textContent = b === undefined ? (m.value ? 'Pick a member from the list (only members with points are listed).' : '\u00a0') : `Balance: ${b} points ($${(b * {{ point_value }}).toFixed(2)})`;
             const v = parseFloat(p.value) || 0;
             document.getElementById('useval').textContent = v ? `$${(v * {{ point_value }}).toFixed(2)}` + (b !== undefined && v > b ? ', more than the balance' : '') : '\u00a0';
@@ -224,11 +224,11 @@
     <form method="post" class="m-0"><input type="hidden" name="action" value="prepare"><button class="btn btn-sm btn-outline-secondary">Add this month's now</button></form>
 </div>
 <form method="post" class="card p-3">
-    <datalist id="memberlist">{% for m in members %}<option value="{{ m.member }} {{ m.first }} {{ m.last }}">{% endfor %}</datalist>
+    <datalist id="memberlist">{% for m in members %}<option value="{{ pick_label(m) }}">{% endfor %}</datalist>
     <table class="table table-sm align-middle mb-2" id="autogrid">
         <thead><tr><th style="width:34%">Person</th><th>Job</th><th style="width:9rem">Points a month<br><span class="fw-normal small text-muted">April–October</span></th><th style="width:9rem">Points a month<br><span class="fw-normal small text-muted">November–March</span></th><th></th></tr></thead>
         <tbody>
-        {% for r in auto %}<tr><td><input name="member" list="memberlist" class="form-control form-control-sm" value="{{ r.member }} {{ r.name }}"></td>
+        {% for r in auto %}<tr><td><input name="member" list="memberlist" class="form-control form-control-sm" value="{{ r.name }} ({{ r.member }})"></td>
             <td><input name="role" class="form-control form-control-sm" value="{{ r.role }}"></td>
             <td><input name="season" type="number" min="0" step="0.5" class="form-control form-control-sm" value="{{ '%g'|format(r.season) }}"></td>
             <td><input name="offseason" type="number" min="0" step="0.5" class="form-control form-control-sm" value="{{ '%g'|format(r.offseason) }}"></td>
