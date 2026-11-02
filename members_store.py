@@ -145,11 +145,7 @@ def publish_standings():
         return None
     refresh()
     rows = L.standings(members())
-    dates = [e['date'] for e in entries() if e['status'] == L.APPROVED and e['date']]
-    through = max(dates).isoformat() if dates else ''
-    values = [['Name', 'Points', 'Value', 'Points recorded through', 'Published']]
-    values += [[r['name'], r['points'], round(r['points'] * L.POINT_VALUE, 2), through if i == 0 else '', date.today().isoformat() if i == 0 else '']
-               for i, r in enumerate(rows)]
+    values = [['Name', 'Points', 'Value']] + [[r['name'], r['points'], round(r['points'] * L.POINT_VALUE, 2)] for r in rows]
     ws = worksheet(_pub(), 'Worker Points')
     ws.batch_clear(['A:E'])
     ws.update(values, 'A1', value_input_option='RAW')
