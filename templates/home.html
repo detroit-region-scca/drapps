@@ -118,6 +118,17 @@
             </a>
         </div>
         {% endif %}
+        {% if minutes_enabled and me and me.level == 'officer' %}
+        <div class="col-6 col-md-4 col-lg">
+            <a class="app-tile" href="{{ url_for('minutes.home') }}" style="--tile: #1d3fb8;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#1d3fb8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M6 2.5h9l4 4v15H6z"/><path d="M15 2.5v4h4"/><path d="M9 11h7M9 14.5h7M9 18h4"/>
+                </svg>
+                <div class="name">Minutes</div>
+                <div class="what">Upload board minutes; posted on drscca.org</div>
+            </a>
+        </div>
+        {% endif %}
         {% if fr_enabled %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('fr.home') }}" style="--tile: #3ecf8e;">

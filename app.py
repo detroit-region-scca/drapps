@@ -39,6 +39,7 @@ def wkday(d):
         return ''
 
 from members import bp as members_bp  # noqa: E402
+from minutes import bp as minutes_bp  # noqa: E402
 from fr import bp as fr_bp  # noqa: E402
 from bud import bp as bud_bp  # noqa: E402
 from plan import bp as plan_bp  # noqa: E402
@@ -52,6 +53,7 @@ import audit_view  # noqa: E402
 import bud_store  # noqa: E402
 import plan_store  # noqa: E402
 app.register_blueprint(members_bp)
+app.register_blueprint(minutes_bp)
 
 
 @app.route('/wp/', defaults={'rest': ''})
@@ -227,7 +229,7 @@ def home():
         # The create-event form used to post to '/'; a page left open from before keeps working.
         return index()
     return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Apps",
-                           members_enabled=members_store.enabled(), fr_enabled=fr_store.enabled(), bud_enabled=bud_store.enabled(), plan_enabled=plan_store.enabled(), next_url=_safe_next(request.args.get('next')) or '')
+                           members_enabled=members_store.enabled(), minutes_enabled=__import__('minutes_store').enabled(), fr_enabled=fr_store.enabled(), bud_enabled=bud_store.enabled(), plan_enabled=plan_store.enabled(), next_url=_safe_next(request.args.get('next')) or '')
 
 @app.errorhandler(RuntimeError)
 def storage_unavailable(e):
