@@ -241,7 +241,7 @@ def ops_budget_row(year):
     b = {'event_code': 'OPS', 'event_name': f'Operations budget {year}', 'date': str(year), 'program': 'OPS',
          'approved': p['info'].get('approved', '')}
     return {'b': b, 'status': 'changed' if st == 'changed' else 'budget', 'surplus': p['net'], 'plan': p['net'],
-            'link': url_for('plan.detail', year=year, program='OPS')}
+            'savings': p.get('savings') or 0, 'link': url_for('plan.detail', year=year, program='OPS')}
 
 
 HOW = {'meeting': 'board meeting', 'email': 'email vote'}
@@ -283,6 +283,8 @@ def _ask_board(year, codes):
             link = request.host_url.rstrip('/') + link
         money = '' if r['surplus'] is None else f", expected {'profit' if r['surplus'] >= 0 else 'loss'} ${abs(r['surplus']):,.2f}"
         changed = ' (changed since approved ' + b['approved'] + ')' if r['status'] == 'changed' else ''
+        if r.get('savings'):
+            money += f", plus ${r['savings']:,.2f} moved to savings (not in the total)"
         when = '' if str(b.get('date', '')) in b['event_name'] else f", {b.get('date', '')}"
         prog = load_programs().get(b.get('program', ''), '')
         lines.append(f"- {b['event_name']}{when}{f' ({prog})' if prog else ''}{money}{changed}\n  {link}")
@@ -290,7 +292,7 @@ def _ask_board(year, codes):
     n = len(rows)
     body = (f"{who} asks the board to approve {'this budget' if n == 1 else f'these {n} budgets'}:\n\n" + '\n\n'.join(lines) +
             "\n\nPlease reply all with your vote (approve or not) so it stays in one thread. Everything waiting for the board:\n"
-            + url_for('bud.approve_many', year=year, _external=True))
+            + url_for('board.home', year=year, _external=True))
     board = os.environ.get('BOARD_EMAIL', 'bod@drscca.org')
     send_mail(f"Budget approval vote: {rows[0]['b']['event_name'] if n == 1 else f'{n} budgets'}", body, board, reply_to=board)
     log_audit_event('BOARD_ASKED', who, {'codes': [r['b']['event_code'] for r in rows], 'year': year})
@@ -305,20 +307,22 @@ def approve_many():
     if (g := _guard()):
         return g
     year = request.args.get('year') or str(date.today().year)
+    if request.method == 'GET':
+        return redirect(url_for('board.home', year=year))      # the list lives in the Board app now
     if request.method == 'POST':
         f = request.form
         picked = f.getlist('code')
         if not picked:
             flash('Tick at least one budget.', 'warning')
-            return redirect(url_for('bud.approve_many', year=year))
+            return redirect(url_for('board.home', year=year))
         if f.get('action') == 'ask':
             n = _ask_board(year, picked)
             flash(f"Sent to the board ({os.environ.get('BOARD_EMAIL', 'bod@drscca.org')}): {n} budget{'s' if n != 1 else ''}." if n
                   else 'Nothing to send: those budgets are already approved.', 'success' if n else 'warning')
-            return redirect(url_for('bud.approve_many', year=year))
+            return redirect(url_for('board.home', year=year))
         if not officer_current():
             flash('Recording a board decision is for the RE, ARE or treasurer.', 'warning')
-            return redirect(url_for('bud.approve_many', year=year))
+            return redirect(url_for('board.home', year=year))
         who = officer_current()['name']
         how = _how_vote(f)
         rec = f"{who} ({how})" if how else who
@@ -328,7 +332,7 @@ def approve_many():
             approved = date.fromisoformat(f.get('approved', '')).isoformat()
         except ValueError:
             flash('The approval date must be a date.', 'danger')
-            return redirect(url_for('bud.approve_many', year=year))
+            return redirect(url_for('board.home', year=year))
         if codes:
             B.set_approved(codes, approved, rec)
         for c in codes:
@@ -338,7 +342,7 @@ def approve_many():
             log_audit_event('PLAN_APPROVED', who, {'year': year, 'program': 'OPS', 'approved': approved, 'how': how})
         n = len(codes) + ops
         flash(f'Board approval on {approved} recorded for {n} budget{"s" if n != 1 else ""}.', 'success')
-        return redirect(url_for('bud.approve_many', year=year))
+        return redirect(url_for('board.home', year=year))
     # ?program=RX: one program's view (a director's page)
     rows = _pending_rows(year, request.args.get('program', ''))
     this = date.today().year

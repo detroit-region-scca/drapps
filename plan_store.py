@@ -99,11 +99,17 @@ def plan(year):
     out = {}
     for ln in sorted((x for x in lines if x['year'] == str(year)), key=lambda x: x['sort']):
         out.setdefault(ln['program'], {'lines': []})['lines'].append(ln)
-    for p in out.values():
-        p['net'] = round(sum(ln['net'] or 0 for ln in p['lines']), 2)
+    for prog, p in out.items():
+        # Operations lines with no QuickBooks account are money moved to savings (the equipment replacement set-aside):
+        # still the region's money, so they are shown on their own and kept out of the budget's profit or loss.
+        save = [ln for ln in p['lines'] if prog == 'OPS' and not ln.get('account') and not ln.get('event_code')]
+        for ln in save:
+            ln['savings'] = True
+        p['savings'] = round(-sum(ln['net'] or 0 for ln in save), 2)
+        p['net'] = round(sum(ln['net'] or 0 for ln in p['lines'] if not ln.get('savings')), 2)
     for info in progs:
         if info['year'] == str(year):
-            out.setdefault(info['program'], {'lines': [], 'net': 0.0})['info'] = info
+            out.setdefault(info['program'], {'lines': [], 'net': 0.0, 'savings': 0.0})['info'] = info
     for p in out.values():
         p.setdefault('info', {})
     _add_program_budgets(str(year), out)

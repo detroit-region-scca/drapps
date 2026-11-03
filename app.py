@@ -41,6 +41,7 @@ def wkday(d):
 
 from members import bp as members_bp  # noqa: E402
 from minutes import bp as minutes_bp  # noqa: E402
+from board import bp as board_bp  # noqa: E402
 from fr import bp as fr_bp  # noqa: E402
 from bud import bp as bud_bp  # noqa: E402
 from plan import bp as plan_bp  # noqa: E402
@@ -55,6 +56,7 @@ import bud_store  # noqa: E402
 import plan_store  # noqa: E402
 app.register_blueprint(members_bp)
 app.register_blueprint(minutes_bp)
+app.register_blueprint(board_bp)
 
 
 @app.route('/wp/', defaults={'rest': ''})

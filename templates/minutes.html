@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% from '_ui.html' import tab with context %}
-{% block app_name %}Minutes{% endblock %}
-{% block nav %}{{ tab('minutes.home', 'Board minutes') }}{% endblock %}
+{% block app_name %}Board{% endblock %}
+{% block nav %}{% include '_board_nav.html' %}{% endblock %}
 {% block content %}
 <div class="page-title">Board minutes</div>
 <p class="text-muted">Upload the minutes as a Word document or PDF. The app names the file, makes the PDF and puts it in the right place: approved minutes go on <a href="https://drscca.org/region/minutes-of-bod-meetings/">drscca.org</a> (within the hour), drafts wait until the board approves them.</p>
