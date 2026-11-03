@@ -15,14 +15,13 @@
     <form method="post">
         <div class="card mb-2"><div class="card-body p-0 table-responsive"><table class="table mb-0">
             <thead><tr><th class="ps-3" style="width:2.5rem"><input type="checkbox" class="form-check-input" aria-label="Tick all" onclick="document.querySelectorAll('[name=item]').forEach(c => c.checked = this.checked)"></th>
-                <th>Item</th><th class="num pe-3">Amount</th></tr></thead>
+                <th class="pe-3">Item</th></tr></thead>
             <tbody>
             {% for r in rows %}<tr>
                 <td class="ps-3"><input type="checkbox" class="form-check-input" name="item" value="budget:{{ r.year }}:{{ r.b.event_code }}" id="b{{ loop.index }}"></td>
                 <td><label for="b{{ loop.index }}"><span class="badge rounded-pill text-bg-secondary me-1">Budget</span><a href="{{ r.link or url_for('bud.detail', code=r.b.event_code) }}">{{ r.b.event_name }}</a></label>
-                    {% if r.b.program != 'OPS' %}<div class="small text-muted">{{ programs.get(r.b.program, r.b.program) }}{% if r.b.date %} · {{ r.b.date }}{% endif %}</div>{% endif %}
+                    <div class="small text-muted">{% if r.b.program != 'OPS' %}{{ programs.get(r.b.program, r.b.program) }}{% if r.b.date %} · {{ r.b.date }}{% endif %} · {% endif %}{% if r.equipment %}{{ money(r.surplus + r.equipment, 0) }} running, {{ money(-r.equipment, 0) }} equipment{% elif r.surplus is not none %}{{ 'profit' if r.surplus >= 0 else 'loss' }} {{ money(r.surplus|abs, 0) }}{% endif %}</div>
                     {% if r.status == 'changed' %}<span class="badge rounded-pill text-bg-info">Changed since approved {{ r.b.approved }}</span>{% endif %}</td>
-                <td class="num pe-3">{{ money(r.surplus) }}<div class="small text-muted">{% if r.equipment %}{{ money(r.surplus + r.equipment, 0) }} running, {{ money(-r.equipment, 0) }} equipment{% else %}{{ 'profit' if (r.surplus or 0) >= 0 else 'loss' }}{% endif %}</div></td>
             </tr>{% endfor %}
             {% for m in motions %}<tr id="{{ m.id }}">
                 <td class="ps-3"><input type="checkbox" class="form-check-input" name="item" value="motion:{{ m.id }}" id="m{{ loop.index }}"></td>
@@ -30,7 +29,6 @@
                     {% if m.details %}<details class="small mt-1"><summary class="text-muted">Details</summary><div class="mt-1" style="white-space: pre-line">{{ m.details }}</div>
                         <div class="text-muted mt-1">{{ m.id }} · proposed {{ m.proposed }} by {{ m.proposed_by }}{% if officer or m.proposed_by == who %} · <button form="w{{ loop.index }}" class="btn btn-link btn-sm p-0 align-baseline" onclick="return confirm('Withdraw this motion?')">withdraw</button>{% endif %}</div></details>{% endif %}
                     {% if m.asked %}<div class="small text-muted">Sent to the board {{ m.asked }}</div>{% endif %}</td>
-                <td class="pe-3"></td>
             </tr>{% endfor %}
             </tbody>
         </table></div></div>
