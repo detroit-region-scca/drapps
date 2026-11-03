@@ -316,7 +316,8 @@ def google_back():
         return redirect(url_for('home'))
     u = lookup(email)
     if not u:
-        flash(f'{email} is not on the apps list. Sign in with the email code, using the address the region has for you.', 'warning')
+        flash(f'You picked the Google account {email}, which is not on the apps list. Choose your own account instead '
+              f'(Sign in with Google lets you pick), or use the email code with the address the region has for you.', 'warning')
         return redirect(url_for('home'))
     session.clear()
     session.permanent = True
