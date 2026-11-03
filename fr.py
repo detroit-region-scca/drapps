@@ -291,6 +291,11 @@ def new():
            **{f'submitter_{k}': v for k, v in sub.items()}, **{f'payee_{k}': v for k, v in payee.items()},
            'method': F.METHODS[method], 'total': total, 'advances': advances, 'net': round(total - advances, 2),
            'notes': f.get('notes', '').strip(), 'entered_by': session.get('who') or sub['name']}
+    # A director filing a request for their own program has approved it: they are signed in as themselves
+    # (emailed code or Google), so their filing is their approval.
+    me = (session.get('email') or '').lower()
+    if me and me == O.director_email(program):
+        req['approvals'] = FL.add('', 'chair', O.director(program)[0] or sub['name'], date.today().isoformat(), 'filed it themselves')
     rid = F.create(req, lines, receipts)
     session['fr_submitter'] = sub
     n_files = sum(1 for r in receipts if r and r.filename)

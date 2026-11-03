@@ -11,9 +11,8 @@ Policy (Detroit Region policies, Financial Policy II.A, and Bylaws Article VIII)
 Approvals are kept on the request as "role|name|date|note" entries joined by "; ".
 A board approval (with the meeting date) covers both budget items.
 
-Every approval comes from an emailed link sent to the official's address in the read-only officials list (fr.py). The
-app login is one shared password and a typed name, so nothing typed into the app (a name, an approval) can stand in
-for one: a director's own request is approved from the director's inbox like anyone else's.
+Approvals come from an emailed link sent to the official's address in the read-only officials list (fr.py). A
+director who files a request for their own program, signed in as themselves, has approved it by filing it.
 """
 import re
 

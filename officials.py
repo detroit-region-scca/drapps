@@ -45,6 +45,12 @@ def director(program):
     return (o['name'], mailto(o)) if o else ('', '')
 
 
+def director_email(program):
+    """The program director's own sign-in address, lowercased, or ''."""
+    o = next((o for o in all() if o.get('role') == 'Director' and o.get('program') == program), None)
+    return (o.get('email') or '').strip().lower() if o else ''
+
+
 def signers():
     """[(name, address to email)] who can be the second signer on a check over the limit: the RE and the ARE."""
     return [(o['name'], mailto(o)) for o in all() if o.get('role') in ('RE', 'ARE') and mailto(o)]
