@@ -37,9 +37,16 @@ def all():  # noqa: A001 (module-level name, read as officials.all())
 def follows(title, titles):
     """The job an entry follows, for entries named after one in brackets ("General Events approver (Region Executive)"
     follows "Region Executive"): whoever holds that job holds this too. '' when it follows none."""
+    job = bracketed(title)
+    return job if job in titles else ''
+
+
+def bracketed(title):
+    """The job named in brackets at the end of a title ("... (Treasurer)" gives "Treasurer"), or ''. Titles like this
+    are kept for following another job, so new roles and titles may not end in brackets."""
     import re
     m = re.search(r'\(([^()]+)\)\s*$', title or '')
-    return m.group(1) if m and m.group(1) in titles else ''
+    return m.group(1) if m else ''
 
 
 def shown(viewer_roles=()):

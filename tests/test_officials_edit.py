@@ -125,6 +125,7 @@ def test_roles_grid_saves_only_changed_roles(monkeypatch):
     _as(c, monkeypatch, ['Admin'])
     form = {f'{r}::{p}': 'yes' for r in ('Director', 'Equipment', 'Volunteer') for p in access.perms(r)}
     form['Director::audit'] = 'yes'                     # one new box
+    form['roles_shown'] = ['Director', 'Equipment', 'Volunteer']
     c.post('/admin/roles', data=form)
     assert 'audit' in access.perms('Director')
     assert set(access._load()) == {'Director'}           # Equipment and Volunteer untouched, still on defaults
@@ -145,3 +146,64 @@ def test_hand_over_queues_one_change(tmp_path, monkeypatch):
     assert len(q) == 1 and (q[0]['op'], q[0]['title'], q[0]['from'], q[0]['email'], q[0]['name']) == ('change', 'Treasurer', 'a@x.com', 'b@x.com', 'B')
     c.post('/admin/', data={'action': 'handover', 'old_email': 'a@x.com', 'title': 'Treasurer', 'to': 'b@x.com'})
     assert len(json.loads((tmp_path / 'q.json').read_text())['changes']) == 1     # still pending: refused
+
+
+def _roles_setup(tmp_path, monkeypatch, rows, pending=()):
+    import access
+    import auth
+    import officials
+    monkeypatch.setattr(access, 'PATH', str(tmp_path / 'role-access.json'))
+    access._cache.clear()
+    monkeypatch.setattr(officials, 'all', lambda: [dict(o) for o in rows])
+    monkeypatch.setattr(officials, 'mirror_soon', lambda: None)
+    monkeypatch.setattr(auth, 'volunteers', lambda: {})
+    monkeypatch.setattr(utils, 'official_changes', lambda: {'pending': list(pending), 'done': []})
+    c = app.test_client()
+    _as(c, monkeypatch, ['Admin'])
+    return c, access
+
+
+ROWS = [{'role': 'Treasurer', 'title': 'Treasurer', 'name': 'T', 'email': 't@x.com'},
+        {'role': 'Director', 'title': 'Operations approver (Treasurer)', 'name': 'T', 'email': 't@x.com'}]
+
+
+def test_new_role_names_are_checked(tmp_path, monkeypatch):
+    c, access = _roles_setup(tmp_path, monkeypatch, ROWS)
+    for bad in ('Helper (Treasurer)', 'treasurer', 'Admin', 'volunteer', 'a:b'):
+        c.post('/admin/roles', data={'action': 'add_role', 'role': bad})
+    assert access.saved_roles() == set()
+    c.post('/admin/roles', data={'action': 'add_role', 'role': 'Trophy Committee'})
+    assert access.saved_roles() == {'Trophy Committee'}
+
+
+def test_stale_grid_does_not_wipe_a_role_added_since(tmp_path, monkeypatch):
+    c, access = _roles_setup(tmp_path, monkeypatch, ROWS)
+    c.post('/admin/roles', data={'action': 'add_role', 'role': 'Trophy Committee'})
+    before = access.perms('Trophy Committee')
+    form = {'roles_shown': ['Treasurer'], **{f'Treasurer::{p}': 'yes' for p in access.perms('Treasurer')}}
+    c.post('/admin/roles', data=form)
+    assert access.perms('Trophy Committee') == before and 'funds' in before
+
+
+def test_role_being_given_cannot_be_removed(tmp_path, monkeypatch):
+    c, access = _roles_setup(tmp_path, monkeypatch, ROWS, pending=[{'op': 'person', 'role_of': {'Trophy Committee': 'Trophy Committee'}}])
+    access.add_role('Trophy Committee')
+    c.post('/admin/roles', data={'action': 'remove_role', 'role': 'Trophy Committee'})
+    assert 'Trophy Committee' in access.saved_roles()
+
+
+def test_follower_entries_give_no_roles(monkeypatch):
+    import auth
+    import officials
+    rows = ROWS + [{'role': 'Director', 'title': 'General Events approver (Treasurer)', 'name': 'F', 'email': 'f@x.com'}]
+    monkeypatch.setattr(officials, 'all', lambda: [dict(o) for o in rows])
+    assert auth.lookup('t@x.com')['roles'] == ['Treasurer']
+    assert auth.lookup('f@x.com')['roles'] == []
+
+
+def test_unknown_change_is_refused():
+    import sys
+    sys.path.insert(0, 'tools')
+    import officials_queue as Q
+    ok, msg = Q.apply_one({'op': 'remove', 'title': 'Treasurer', 'email': 'a@x.com', 'name': 'A'})
+    assert not ok and 'Unknown' in msg

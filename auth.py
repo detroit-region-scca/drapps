@@ -75,7 +75,7 @@ def lookup(email):
         # A bracketed entry ("Operations approver (Treasurer)") only routes approvals to that job's holder; it is
         # not a role of its own, so it adds no permissions (the same roles the Users page shows).
         alltitles = {o.get('title', '') for o in O.all()}
-        roles = sorted({o.get('role', '') for o in mine if not O.follows(o.get('title', ''), alltitles)} or {o.get('role', '') for o in mine})
+        roles = sorted({o.get('role', '') for o in mine if not O.follows(o.get('title', ''), alltitles)})
         import access
         perms = access.perms_for(roles)
         level = 'officer' if 'board' in perms else 'official'

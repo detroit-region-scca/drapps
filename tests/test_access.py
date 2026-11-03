@@ -73,5 +73,5 @@ def test_first_holder_of_new_role():
     spec.loader.exec_module(oq)
     rows = [{'role': 'Treasurer', 'title': 'Treasurer', 'name': 'A', 'email': 'a@x.test'}]
     out = oq.apply_person(rows, {'from': '', 'name': 'B', 'email': 'b@x.test', 'titles': ['Trophy Committee'],
-                                 'kinds': {'Trophy Committee': 'Trophy Committee'}})
+                                 'role_of': {'Trophy Committee': 'Trophy Committee'}})
     assert {'role': 'Trophy Committee', 'title': 'Trophy Committee', 'name': 'B', 'email': 'b@x.test'} in out

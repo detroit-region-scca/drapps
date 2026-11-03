@@ -15,7 +15,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(os.path.dirname(HERE), 'data')
 QUEUE, DONE = os.path.join(DATA, 'officials-queue.json'), os.path.join(DATA, 'officials-done.json')
 sys.path.insert(0, HERE)
+sys.path.insert(1, os.path.dirname(HERE))
+import access  # noqa: E402
 import handover  # noqa: E402
+import officials  # noqa: E402
 from filelock import FileLock  # noqa: E402
 
 
@@ -38,14 +41,12 @@ def apply_person(rows, c):
     """One person's roles, as ticked on the Users page: keep (and rename) the entries for titles still ticked, drop the
     rest, add entries for newly ticked titles (copying the role's kind, program and email group from its other
     holders), and a brand new role when one was given."""
-    import re
     frm, email, name = (c.get('from') or '').lower(), c['email'].lower(), c['name']
     want = list(c.get('titles') or [])
     titles = {o.get('title', '') for o in rows}
     out, have = [], set()
     for o in rows:
-        m = re.search(r'\(([^()]+)\)\s*$', o.get('title', ''))
-        if m and m.group(1) in titles:
+        if officials.follows(o.get('title', ''), titles):
             out.append(o)          # follows its job; set below
             continue
         if frm and (o.get('email') or '').lower() == frm:
@@ -61,8 +62,9 @@ def apply_person(rows, c):
         if t in have:
             continue
         tpl = next((o for o in rows if o.get('title') == t), None)
-        if not tpl and t in (c.get('kinds') or {}):
-            tpl = {'role': c['kinds'][t]}       # a role made on Admin > Roles that nobody held yet
+        role_of = c.get('role_of') or c.get('kinds') or {}      # 'kinds' in changes queued before the rename
+        if not tpl and t in role_of:
+            tpl = {'role': role_of[t]}       # a role made on Admin > Roles that nobody held yet
         if not tpl:
             raise SystemExit(f'No role titled "{t}" to copy.')
         out.append({**{k: tpl[k] for k in ('role', 'program', 'notify') if tpl.get(k)}, 'title': t, 'name': name, 'email': email})
@@ -75,20 +77,16 @@ def apply_person(rows, c):
 
 def follow_jobs(rows):
     """Entries named after a job in brackets go with whoever holds that job (when exactly one person does)."""
-    import re
     titles = {o.get('title', '') for o in rows}
     for o in rows:
-        m = re.search(r'\(([^()]+)\)\s*$', o.get('title', ''))
-        if not m or m.group(1) not in titles:
+        job = officials.follows(o.get('title', ''), titles)
+        if not job:
             continue
-        holders = [p for p in rows if p.get('title') == m.group(1)]
+        holders = [p for p in rows if p.get('title') == job]
         if len(holders) == 1 and (holders[0].get('email'), holders[0].get('name')) != (o.get('email'), o.get('name')):
             o['name'], o['email'] = holders[0].get('name'), holders[0].get('email')
-            print(f"officials.json: {o['title']} follows {m.group(1)}: {o['name']} <{o['email']}>")
+            print(f"officials.json: {o['title']} follows {job}: {o['name']} <{o['email']}>")
     return rows
-
-
-NEEDED = ('RE', 'ARE', 'Secretary', 'Treasurer', 'Admin', 'Director', 'Financial Director', 'Points Keeper')
 
 
 def check_needed(before, after):
@@ -96,7 +94,7 @@ def check_needed(before, after):
     def holders(rows):
         out = {}
         for o in rows:
-            if o.get('role') in NEEDED and (o.get('email') or '').strip():
+            if o.get('role') in access.NEEDED and (o.get('email') or '').strip():
                 out.setdefault(o.get('title', ''), set()).add(o['email'].lower())
         return out
     lost = sorted(set(holders(before)) - set(holders(after)))
@@ -131,20 +129,9 @@ def apply_one(c):
             doc = handover.load()
             before = [dict(o) for o in doc['officials']]
             rows = doc['officials']
-            if op == 'person':
-                rows = apply_person(rows, c)
-            elif op == 'add':
-                if any(o.get('title') == c['title'] and (o.get('email') or '').lower() == c['email'].lower() for o in rows):
-                    print(f"officials.json: {c['name']} already holds {c['title']}")
-                else:
-                    rows.append(c['entry'])
-                    print(f"officials.json: added {c['name']} <{c['email']}> as {c['title']}")
-            else:
-                keep = [o for o in rows if not (o.get('title') == c['title'] and (o.get('email') or '').lower() == c['email'].lower())]
-                if len(keep) == len(rows):
-                    raise SystemExit(f"{c['email']} does not hold {c['title']}.")
-                rows = keep
-                print(f"officials.json: removed {c['name']} <{c['email']}> from {c['title']}")
+            if op != 'person':
+                raise SystemExit(f'Unknown change "{op}"; nothing was saved.')
+            rows = apply_person(rows, c)
             check_needed(before, rows)
             doc['officials'] = rows
             handover.save(doc)

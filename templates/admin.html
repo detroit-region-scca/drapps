@@ -8,22 +8,22 @@
     {{ tab('audit_log', 'Audit log') }}
 {% endblock %}
 {% block content %}
-{% macro user_form(u, kinds, programs) %}
+{% macro user_form(u, roles, programs) %}
     <input type="hidden" name="action" value="user"><input type="hidden" name="old_email" value="{{ u.email if u else '' }}">
     <div class="row g-2 mb-2">
         <div class="col-12 col-md-6"><label class="form-label small">Name</label><input name="name" class="form-control form-control-sm" value="{{ u.name if u else '' }}" required></div>
         <div class="col-12 col-md-6"><label class="form-label small">Email (their own address; it is how they sign in)</label><input name="email" type="email" class="form-control form-control-sm" value="{{ u.email if u else '' }}" required></div>
     </div>
     <div class="small fw-semibold mt-2">Roles</div>
-    {% for kind, titles in kinds %}<div class="small text-muted mt-1">{{ kind }}</div>
-        {% for t in titles %}<div class="form-check"><input class="form-check-input" type="checkbox" name="title" value="{{ t }}" id="{{ (u.email if u else 'new') ~ '-' ~ loop.index ~ kind }}" {{ 'checked' if u and t in u.titles }}>
-            <label class="form-check-label small" for="{{ (u.email if u else 'new') ~ '-' ~ loop.index ~ kind }}">{{ t }}</label></div>{% endfor %}{% endfor %}
+    {% for role, titles in roles %}<div class="small text-muted mt-1">{{ role }}</div>
+        {% for t in titles %}<div class="form-check"><input class="form-check-input" type="checkbox" name="title" value="{{ t }}" id="{{ (u.email if u else 'new') ~ '-' ~ loop.index ~ role }}" {{ 'checked' if u and t in u.titles }}>
+            <label class="form-check-label small" for="{{ (u.email if u else 'new') ~ '-' ~ loop.index ~ role }}">{{ t }}</label></div>{% endfor %}{% endfor %}
     <div class="small text-muted mt-1">Volunteer</div>
     <div class="form-check"><input class="form-check-input" type="checkbox" name="volunteer" value="yes" id="{{ (u.email if u else 'new') }}-vol" {{ 'checked' if u and u.volunteer and not u.titles }}>
         <label class="form-check-label small" for="{{ (u.email if u else 'new') }}-vol">Volunteer (only if no role above)</label></div>
     <details class="mt-2"><summary class="small text-muted">A new job title in a role</summary><div class="small text-muted mt-1">For example Karting Director in Director. A whole new role is added on <a href="{{ url_for('admin.roles') }}">Roles</a>.</div><div class="row g-2 mt-1">
         <div class="col-12 col-md-5"><input name="new_title" class="form-control form-control-sm" placeholder="Job title, e.g. Karting Director"></div>
-        <div class="col-7 col-md-4"><select name="new_kind" class="form-select form-select-sm" aria-label="Role">{% for kind, _t in kinds %}<option value="{{ kind }}"{{ ' selected' if kind == 'Director' }}>{{ kind }}</option>{% endfor %}</select></div>
+        <div class="col-7 col-md-4"><select name="new_role" class="form-select form-select-sm" aria-label="Role">{% for role, _t in roles %}<option value="{{ role }}"{{ ' selected' if role == 'Director' }}>{{ role }}</option>{% endfor %}</select></div>
         <div class="col-5 col-md-3"><select name="program" class="form-select form-select-sm"><option value="">Program</option>{% for code, pn in programs.items() %}<option value="{{ code }}">{{ pn }}</option>{% endfor %}</select></div>
     </div></details>
     <button class="btn btn-sm btn-accent mt-3">Save</button>
@@ -34,7 +34,7 @@
     {% if changes.pending %}<div class="alert alert-info py-2 small">Being saved: {% for c in changes.pending %}{{ c.name }} ({{ c.title }}){{ ', ' if not loop.last }}{% endfor %}. Reload in a minute.</div>{% endif %}
     {% for c in changes.done if not c.ok %}<div class="alert alert-warning py-2 small">Not saved: {{ c.name }} ({{ c.title }}), {{ c.applied[:16] }}: {{ c.message }}</div>{% endfor %}
     <details class="mb-3" id="add"><summary class="btn btn-sm btn-accent">+ Add a user</summary>
-        <form method="post" class="card p-3 mt-2">{{ user_form(none, kinds, programs) }}</form></details>
+        <form method="post" class="card p-3 mt-2">{{ user_form(none, roles, programs) }}</form></details>
     <div class="list-group">
         {% for u in users %}<div class="list-group-item py-2">
             <div class="d-flex flex-wrap justify-content-between gap-2">
@@ -44,7 +44,7 @@
                     {% if u.volunteer and not u.titles %}<span class="badge rounded-pill text-bg-info">Volunteer</span>{% endif %}</div>
             </div>
             {% if u.region %}<div class="small text-muted mt-1">Region account: managed in Google Workspace.</div>
-            {% else %}<details class="mt-1"><summary class="small text-muted">Edit</summary><form method="post" class="mt-2 user-form">{{ user_form(u, kinds, programs) }}</form>
+            {% else %}<details class="mt-1"><summary class="small text-muted">Edit</summary><form method="post" class="mt-2 user-form">{{ user_form(u, roles, programs) }}</form>
                 {% set mine = u.titles|reject('in', followers)|list %}{% if mine %}<form method="post" class="border-top mt-3 pt-2">
                     <input type="hidden" name="action" value="handover"><input type="hidden" name="old_email" value="{{ u.email }}">
                     <div class="small fw-semibold">Hand over a role</div><div class="small text-muted mb-1">The role moves in one step, with its email group.</div>
@@ -82,11 +82,11 @@
         .perm-grid .admin-col { color: var(--muted); }
         @media (max-width: 575.98px) { .perm-grid .perm { min-width: 9.5rem; max-width: 9.5rem; font-size: .8rem; } .perm-grid th, .perm-grid td { padding: .35rem .4rem; } }
     </style>
-    <form method="post" id="permGrid">
+    <form method="post" id="permGrid">{% for c in cols %}<input type="hidden" name="roles_shown" value="{{ c.role }}">{% endfor %}
     <div class="card"><div class="table-responsive" style="max-height: 75vh;">
     <table class="perm-grid mb-0">
         <thead><tr><th class="perm text-start">Permission</th>
-            {% for c in cols %}<th title="{{ c.titles|join(', ') }}">{{ c.role }}<div class="fw-normal text-muted">{{ c.n }}</div>{% if c.removable %}<button form="rm-{{ c.role|replace(" ", "-") }}" class="btn btn-link btn-sm p-0 fw-normal" onclick="return confirm('Remove the {{ c.role }} role?')">remove</button>{% endif %}</th>{% endfor %}
+            {% for c in cols %}<th title="{{ c.titles|join(', ') }}">{{ c.role }}<div class="fw-normal text-muted">{{ c.n }}</div>{% if c.removable %}<button form="rm-{{ loop.index }}" class="btn btn-link btn-sm p-0 fw-normal" onclick="return confirm({{ ('Remove the ' ~ c.role ~ ' role?')|tojson|forceescape }})">remove</button>{% endif %}</th>{% endfor %}
             <th class="admin-col" title="admin@drscca.org">Admin<br>account</th></tr></thead>
         <tbody>
         {% for gname, group in groups %}
@@ -106,7 +106,7 @@
     <div class="d-flex flex-wrap gap-2 align-items-center mt-2"><button class="btn btn-accent">Save</button><span class="unsaved small text-warning-emphasis fw-semibold" hidden>Unsaved changes</span>
         <span class="small text-muted">Only roles you changed are saved. "Their own program's plan" covers the programs a person directs. Volunteers can only reach events, worker points and their own requests and invoices.</span></div>
     </form>
-    {% for c in cols if c.removable %}<form id="rm-{{ c.role|replace(" ", "-") }}" method="post" class="d-none"><input type="hidden" name="action" value="remove_role"><input type="hidden" name="role" value="{{ c.role }}"></form>{% endfor %}
+    {% for c in cols %}{% if c.removable %}<form id="rm-{{ loop.index }}" method="post" class="d-none"><input type="hidden" name="action" value="remove_role"><input type="hidden" name="role" value="{{ c.role }}"></form>{% endif %}{% endfor %}
     <details class="mt-3"><summary class="btn btn-sm btn-outline-light">+ Add a role</summary>
     <form method="post" class="card p-3 mt-2"><input type="hidden" name="action" value="add_role"><div class="row g-2 align-items-end">
         <div class="col-12 col-md-5"><label class="form-label small">Name</label><input name="role" class="form-control form-control-sm" maxlength="40" required placeholder="e.g. Trophy Committee"></div>
