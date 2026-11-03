@@ -4,7 +4,7 @@
     {"role": "RE", "title": "Regional Executive", "name": "First Last", "email": "re@example.org"},
     {"role": "ARE", "title": "Assistant Regional Executive", "name": "First Last", "email": "are@example.org"},
     {"role": "Treasurer", "title": "Treasurer", "name": "First Last", "email": "treasurer@example.org"},
-    {"role": "Director", "title": "Rallycross Director", "name": "First Last", "email": "rx@example.org", "program": "RX"},
+    {"role": "Director", "title": "RallyCross Director", "name": "First Last", "email": "rx@example.org", "program": "RX"},
     {"role": "Director at Large", "title": "Director at Large", "name": "First Last", "email": "dal@example.org"}
   ]
 }

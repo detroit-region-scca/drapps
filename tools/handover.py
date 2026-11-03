@@ -37,7 +37,7 @@ ROLE_GROUP = {           # job title -> its group
     'Road Racing Director': 'roadracing',
     'Autocross Director': 'autocross',
     'Road Rally Director': 'rally',
-    'Rallycross Director': 'rallycross',
+    'RallyCross Director': 'rallycross',
     'SIM Racing': 'sim',
     'Street Survival Director': 'streetsurvival',
 }
