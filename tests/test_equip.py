@@ -68,3 +68,19 @@ def test_documents_match_by_file_name():
     import equip_docs as D
     assert D.matches('Title', 'Title - front.jpg') and D.matches('Agreement', 'Lease 2026.pdf')
     assert D.matches('Insurance card', 'Insurance card 2026-27.pdf') and not D.matches('Registration', 'Title.jpg')
+
+
+def test_budget_leaves_out_ended_and_not_yet_due_bills():
+    def bill(**kw):
+        return dict({'id': 'TK-1', 'task': 'x', 'about': '', 'owner': '', 'notes': '', 'category': 'Software and web', 'paid_how': '',
+                     'account': 'Operations Professional Services', 'due': '', 'ends': ''}, **kw)
+    tasks = [bill(task='Old host', repeat_months=1, cost=20, due='2026-11-27', ends='2026-12-31'),
+             bill(task='Old domains', repeat_months=12, cost=368, due='2027-03-26', ends='2026-12-31'),
+             bill(task='New plan', repeat_months=12, cost=336, due='2027-10-31'),
+             bill(task='New domains', repeat_months=12, cost=50, due='2028-02-21'),
+             bill(task='Mail', repeat_months=1, cost=8.4, due='2026-12-01'),
+             bill(task='Winding down', repeat_months=1, cost=10, due='2027-01-05', ends='2027-03-31')]
+    b = E.budget('2027', [], [], tasks)['Operations Professional Services']
+    assert dict(b['items']) == {'New plan': 336, 'Mail': 100.8, 'Winding down': 30}
+    assert b['amount'] == -466.8
+    assert 'New domains' in dict(E.budget('2028', [], [], tasks)['Operations Professional Services']['items'])

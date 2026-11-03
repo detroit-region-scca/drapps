@@ -150,7 +150,7 @@
         <tbody>{% for r in rows %}<tr>
             <td class="ps-3">{% if editor %}<a href="{{ url_for('equip.place', place_id=r.id, edit=1, back=request.path) if r.kind == 'place' else url_for('equip.task', task_id=r.id, back=request.path) }}">{{ r.what }}</a>{% else %}{{ r.what }}{% endif %}
                 <div class="small text-muted">{{ r.paid_how }}{% if r.account %} · {{ r.account }}{% endif %}</div></td>
-            <td class="small text-nowrap">{{ r.how_often }}{% if r.next %}<div class="text-muted">next {{ r.next }}</div>{% endif %}</td>
+            <td class="small text-nowrap">{{ r.how_often }}{% if r.next %}<div class="text-muted">next {{ r.next }}</div>{% endif %}{% if r.ends %}<div class="text-warning">ends {{ r.ends }}</div>{% endif %}</td>
             <td class="num">{{ money(r.each, 2) }}</td>
             <td class="num">{{ money(r.per_year, 0) }}</td>
             <td class="small pe-3">{{ qbo(r.qbo) }}</td></tr>{% endfor %}</tbody>
@@ -346,6 +346,7 @@
         <div class="col-12"><label class="form-label small">Notes</label><input name="notes" class="form-control" value="{{ t.notes or '' }}"></div>
         <div class="col-md-6"><label class="form-label small">QuickBooks account (puts it in the Operations budget)</label><input name="account" class="form-control" list="acctNames" value="{{ t.account or '' }}">
             <datalist id="acctNames">{% for a in accounts %}<option value="{{ a }}">{% endfor %}</datalist></div>
+        <div class="col-6 col-md-3"><label class="form-label small">Ends (last charge)</label><input type="date" name="ends" class="form-control" value="{{ t.ends or '' }}"><div class="form-text">Blank = keeps going. Budgets leave it out after this date.</div></div>
         <div class="col-12"><label class="form-label small">Checked against QuickBooks (start with Matches, Corrected, Estimate or Differs)</label><input name="qbo_check" class="form-control" value="{{ t.qbo_check or '' }}"></div>
     </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ back or url_for('equip.costs' if bill else 'equip.tasks') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
 

@@ -24,7 +24,7 @@ ITEM_COLS = ['id', 'name', 'program', 'category', 'place', 'year', 'quantity', '
              'condition', 'status', 'notes', 'docs_url', 'updated', 'updated_by', 'replace_cost', 'replace_year', 'nickname', 'seen', 'account']
 PLACE_COLS = ['id', 'name', 'address', 'cost_month', 'cost_year', 'account_holder', 'access', 'notes', 'updated', 'updated_by', 'qbo_check', 'status']
 TASK_COLS = ['id', 'task', 'about', 'due', 'repeat_months', 'cost', 'owner', 'notes', 'last_done', 'done_by', 'category', 'paid_how', 'auto',
-             'qbo_check', 'account']
+             'qbo_check', 'account', 'ends']
 # QuickBooks accounts Operations money is booked to; a bill or item on any other account (a program's) is not Operations'.
 ACCOUNTS = ['Operations Professional Services', 'Operations Storage', 'Operations Repair & Maintenance', 'Operations Supplies',
             'Operations Travel', 'Operations Miscellaneous', 'Capital Equipment:Race Equipment',
@@ -46,7 +46,8 @@ LABELS = {
                 'Last updated', 'Updated by', 'Checked against QuickBooks', 'Status (blank = in use; Closed = no longer used)'],
     'Recurring costs and to-dos': ['ID', 'What', 'For', 'Next due', 'Repeats every (months; blank = once)', 'Cost each time', 'Who',
                                    'Notes', 'Last done', 'Done by', 'Cost category', 'Paid how', 'Charged automatically (yes or blank)',
-                                   'Checked against QuickBooks', 'QuickBooks account'],
+                                   'Checked against QuickBooks', 'QuickBooks account',
+                                   'Ends (last charge date; blank = keeps going)'],
     'Documents': ['ID', 'Item or place ID', 'For', 'Drive folder', 'Documents needed (comma list; file names start with these words)', 'Notes'],
 }
 NUMERIC = {'year', 'quantity', 'cost', 'life_years', 'cost_month', 'cost_year', 'repeat_months', 'replace_cost', 'replace_year'}
@@ -266,7 +267,7 @@ def recurring_costs(places_rows, tasks_rows):
             rows.append({'what': t['task'], 'category': t.get('category') or 'Other', 'every': t['repeat_months'],
                          'per_year': round(t['cost'] * 12 / t['repeat_months'], 2), 'each': t['cost'], 'next': t['due'],
                          'paid_how': t.get('paid_how', ''), 'owner': t['owner'], 'kind': 'task', 'id': t['id'], 'qbo': t.get('qbo_check', ''),
-                         'notes': t['notes'], 'account': t.get('account', '')})
+                         'notes': t['notes'], 'account': t.get('account', ''), 'ends': t.get('ends', '')})
     return sorted(rows, key=lambda r: -r['per_year'])
 
 
@@ -328,6 +329,21 @@ def locations(items_rows, places_rows):
             [entry(i) for i in order([i for i in live if where[i['id']][0] == 'unknown'])])
 
 
+def year_cost(c, year):
+    """What a bill (a recurring_costs row) costs in the given year: nothing once it has ended (its 'ends' date is
+    before the year), only the months up to its end in the year it ends, and nothing for a bill paid yearly or less
+    often whose next charge falls after the year (a new domain renewal first due the year after, say)."""
+    y = str(year)
+    ends, nxt, every = c.get('ends') or '', c.get('next') or '', c['every'] or 12
+    if ends and ends[:4] < y:
+        return 0.0
+    if every >= 12 and nxt and nxt[:4] > y:
+        return 0.0
+    if ends and ends[:4] == y and every < 12:
+        return round(c['each'] * (int(ends[5:7]) // every), 2)
+    return c['per_year']
+
+
 def budget(year, items_rows, places_rows, tasks_rows, today=None):
     """What the Operations records say a year costs, by QuickBooks account, for the Budget column of the Operations
     annual plan (the way an event budget fills it for a program): every bill on an Operations account for a full year,
@@ -339,8 +355,8 @@ def budget(year, items_rows, places_rows, tasks_rows, today=None):
         r['amount'] = round(r['amount'] - amount, 2)
         r['items'].append((what, round(amount, 2)))
     for c in recurring_costs(places_rows, tasks_rows):
-        if c['account'] in ACCOUNTS:
-            add(c['account'], c['what'], c['per_year'])
+        if c['account'] in ACCOUNTS and (amount := year_cost(c, year)):
+            add(c['account'], c['what'], amount)
     live = [i for i in items_rows if i['status'] != 'Gone']
     rp = reserve_plan(live, today)
     for r in rp['near']:
