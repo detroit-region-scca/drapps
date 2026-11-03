@@ -24,6 +24,10 @@
 {% block style %}
         #grid td { vertical-align: middle; }
         #memberTable tbody tr[hidden] { display: none; }
+        #memberTable thead th { position: sticky; top: 0; background: var(--bs-body-bg); z-index: 1; cursor: pointer; user-select: none; white-space: nowrap; }
+        #memberTable th[data-sort]::after { content: " \2195"; opacity: .3; font-size: .8em; }
+        #memberTable th[aria-sort=ascending]::after { content: " \2191"; opacity: .8; }
+        #memberTable th[aria-sort=descending]::after { content: " \2193"; opacity: .8; }
         .nav-pills .nav-link { color: var(--muted); }
         .nav-pills .nav-link.pill-add { color: #1a8a5a; }
         .nav-pills .nav-link.pill-use { color: #c2232e; }
@@ -60,8 +64,8 @@
 <input id="find" class="form-control mb-2" type="search" placeholder="Find a member by name or SCCA number" autocomplete="off" style="max-width: 30rem">
 <div class="card"><div class="card-body p-0 table-responsive" style="max-height: 60vh; overflow-y: auto;">
     <table class="table table-hover mb-0" id="memberTable">
-        <thead><tr><th class="ps-3">Name</th><th>SCCA #</th><th>Member since</th><th>Expires</th><th class="num pe-3">Points</th></tr></thead>
-        <tbody>{% for m in members %}<tr class="row-link" data-k="{{ (m.first ~ ' ' ~ m.last ~ ' ' ~ m.member)|lower }}" onclick="location.href='{{ url_for('members.member', mid=m.member) }}'">
+        <thead><tr><th class="ps-3" data-sort="name">Name</th><th data-sort="num" data-type="n">SCCA #</th><th data-sort="since">Member since</th><th data-sort="exp">Expires</th><th class="num pe-3" data-sort="pts" data-type="n">Points</th></tr></thead>
+        <tbody>{% for m in members %}<tr class="row-link" data-k="{{ (m.first ~ ' ' ~ m.last ~ ' ' ~ m.member)|lower }}" data-name="{{ (m.last ~ ' ' ~ m.first)|lower }}" data-num="{{ m.member }}" data-since="{{ m.joined.isoformat() if m.joined else '' }}" data-exp="{{ m.expires.isoformat() if m.expires else '' }}" data-pts="{{ m.points }}" onclick="location.href='{{ url_for('members.member', mid=m.member) }}'">
             <td class="ps-3"><a href="{{ url_for('members.member', mid=m.member) }}">{{ m.first }} {{ m.last }}</a>{% if m.life %} <span class="badge text-bg-secondary">LIFE</span>{% endif %}{% if m.lapsed %} <span class="badge text-bg-warning">lapsed</span>{% elif m.rejoined %} <span class="badge text-bg-info" title="Rejoined {{ day(m.rejoined) }}">rejoined</span>{% endif %}</td>
             <td class="text-muted">{{ m.member }}</td><td class="text-muted">{{ m.joined.year if m.joined else '' }}</td>
             <td class="{{ 'text-warning' if m.expires and m.expires < today_ else 'text-muted' }}">{{ day(m.expires) }}</td>
@@ -91,6 +95,20 @@
     (function () {
         const q = document.getElementById('find'), rows = [...document.querySelectorAll('#memberTable tbody tr')];
         q.addEventListener('input', () => { const v = q.value.trim().toLowerCase(); rows.forEach(r => r.hidden = v && !r.dataset.k.includes(v)); });
+        // Click a heading to sort by it; click again to reverse. Blanks always go last.
+        const body = document.querySelector('#memberTable tbody'), heads = document.querySelectorAll('#memberTable th[data-sort]');
+        heads.forEach(th => th.addEventListener('click', () => {
+            const key = th.dataset.sort, num = th.dataset.type === 'n';
+            const dir = th.getAttribute('aria-sort') === 'ascending' ? -1 : 1;
+            heads.forEach(h => h.removeAttribute('aria-sort'));
+            th.setAttribute('aria-sort', dir === 1 ? 'ascending' : 'descending');
+            const val = r => r.dataset[key] || '';
+            rows.sort((a, b) => {
+                const x = val(a), y = val(b);
+                if (!x || !y) return !x - !y;
+                return dir * (num ? parseFloat(x) - parseFloat(y) : x.localeCompare(y));
+            }).forEach(r => body.appendChild(r));
+        }));
     })();
 </script>
 

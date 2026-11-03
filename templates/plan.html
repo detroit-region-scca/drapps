@@ -78,8 +78,14 @@
                 {% if not future %}<td class="num">{{ money(tot.actual) }}</td><td class="num pe-3">{{ money(tot.actual - tot.plan) }}</td>{% endif %}</tr></tfoot>
         </table>
     </div></div>
-    <p class="form-text mt-3">Plan amounts are expected profit, with costs and losses negative. Actuals are QuickBooks income minus expenses by program{% if as_of %}, as of {{ as_of }}{% endif %}. {{ qbo_refresh() }} Click a program to see its events; "Other, not in an event project" is program money in QuickBooks that is not tagged to an event, such as season trophies or last season's fees. Operations includes membership, storage, insurance and investment income. SIM Racing is booked under General Events in QuickBooks, so it has no actuals of its own.
-        The plan is kept in the DRSCCA Annual Plan sheet in the DRSCCA Apps shared drive.</p>
+    <div class="small text-muted mt-3">
+        <p class="mb-1">{% if not future %}Actuals are from QuickBooks{% if as_of %}, as of {{ as_of }}{% endif %}. {{ qbo_refresh() }}{% endif %}</p>
+        <ul class="mb-0 ps-3">
+            <li>Amounts are profit: income is positive, costs are negative.</li>
+            <li>"Other, not in an event project" is program money not tagged to an event, such as season trophies.</li>
+            <li>SIM Racing is booked under General Events, so it has no actuals of its own.</li>
+        </ul>
+    </div>
 
 {% elif view == 'detail' %}
     <div class="crumbs no-print"><a href="{{ url_for('plan.home', year=year) }}">Annual Plan {{ year }}</a> / {{ name }}</div>
