@@ -34,7 +34,6 @@ EXTRA = {
     'ops': 'Edit Operations (equipment, storage, bills)',
     'access': 'Add and remove volunteers',
     'audit': 'See the audit log',
-    'admin': 'Run the Admin app (users, roles, programs)',
 }
 APPS = {
     'show_members': 'Members',
@@ -45,6 +44,7 @@ APPS = {
     'show_operations': 'Operations',
     'show_treasurer': 'Treasurer',
     'show_volunteers': 'Volunteers',
+    'admin': 'Admin (users, roles, programs); only those with it can open it',
 }
 PERMS = {**EVERYDAY, **EXTRA, **APPS}
 
@@ -59,7 +59,8 @@ def _apps_for(p, volunteer=False):
         'show_plan': not volunteer and bool(p & {'plan_own', 'plan_all', 'board', 'pay'}),
         'show_operations': not volunteer and bool(p & {'ops', 'board', 'pay'}),
         'show_treasurer': not volunteer and bool(p & {'pay', 'audit'}),
-        'show_volunteers': not volunteer and 'access' in p and 'admin' not in p and not (p & {'pay', 'audit'}),
+        'admin': not volunteer and 'board' in p,      # the officers, unless set otherwise
+        'show_volunteers': not volunteer and 'access' in p and 'board' not in p and not (p & {'pay', 'audit'}),
     }
     return {k for k, v in show.items() if v}
 # The order roles are listed in everywhere (Users, Roles, the Drive copy); roles added later follow alphabetically.
