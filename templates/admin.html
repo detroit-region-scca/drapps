@@ -68,7 +68,7 @@
     </script>
 {% elif view == 'roles' %}
     <div class="page-title">Roles</div>
-    <p class="text-muted small mb-2">Whoever holds a role gets what is ticked in its column. Looking around the apps is never limited. Hover a role for its job titles.</p>
+    <p class="text-muted small mb-2">Whoever holds a role gets what is ticked in its column. Looking around the apps is never limited, and each role's home page shows the apps its permissions use. Hover a role for its job titles.</p>
     <style>
         .perm-grid { border-collapse: separate; border-spacing: 0; }
         .perm-grid th, .perm-grid td { padding: .35rem .5rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -93,7 +93,7 @@
             <tr class="group"><td class="perm">{{ gname }}</td>{% for c in cols %}<td></td>{% endfor %}<td></td></tr>
             {% for k, label in group.items() %}<tr><td class="perm">{{ label }}</td>
                 {% for c in cols %}<td class="cell">{% if k in c.choices %}<input class="form-check-input" type="checkbox" name="{{ c.role }}::{{ k }}" value="yes" aria-label="{{ c.role }}: {{ label }}" {{ 'checked' if k in c.perms }}>{% else %}<span class="text-muted">·</span>{% endif %}</td>{% endfor %}
-                <td class="cell admin-col">{% if gname != 'Apps on the home page' and k != 'plan_own' %}✓{% else %}<span class="text-muted">·</span>{% endif %}</td></tr>{% endfor %}
+                <td class="cell admin-col">{% if k != 'plan_own' %}✓{% else %}<span class="text-muted">·</span>{% endif %}</td></tr>{% endfor %}
         {% endfor %}
         </tbody>
     </table></div></div>

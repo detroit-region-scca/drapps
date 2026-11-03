@@ -22,12 +22,14 @@ def test_defaults_and_per_role_permissions():
     assert access.perms('Admin') >= set(access.EXTRA)
 
 
-def test_home_apps_follow_permissions_until_set():
+def test_home_apps_always_follow_permissions():
     assert {'show_operations', 'show_treasurer'} <= access.perms('Treasurer')
     assert 'show_operations' in access.perms('Equipment') and 'show_operations' not in access.perms('Director')
     assert access.perms('Volunteer') & APPS == {'show_members', 'show_funds', 'show_invoices'}
-    access.save('Director', set(access.EVERYDAY_DEFAULT) | {'show_operations'})
-    assert 'show_operations' in access.perms('Director') and 'show_board' not in access.perms('Director')
+    access.save('Director', set(access.EVERYDAY_DEFAULT) | {'show_operations'})     # a tile can't be set by hand
+    assert 'show_operations' not in access.perms('Director')
+    access.save('Director', set(access.EVERYDAY_DEFAULT) | {'ops'})                 # it follows the permission
+    assert 'show_operations' in access.perms('Director')
 
 
 def test_earlier_full_standard_format_still_reads(monkeypatch, tmp_path):

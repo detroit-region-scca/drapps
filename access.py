@@ -36,6 +36,8 @@ EXTRA = {
     'audit': 'See the audit log',
     'admin': 'Run the Admin app (users, roles, programs)',
 }
+# Home-page tiles. Not set by hand: each role sees the tiles its permissions call for (_apps_for). Hiding a tile
+# never blocked a page, so a separate setting only looked like security and drifted from the permissions.
 APPS = {
     'show_members': 'Members',
     'show_board': 'Board',
@@ -46,11 +48,11 @@ APPS = {
     'show_treasurer': 'Treasurer',
     'show_volunteers': 'Volunteers',
 }
-PERMS = {**EVERYDAY, **EXTRA, **APPS}
+PERMS = {**EVERYDAY, **EXTRA}            # what Admin > Roles sets
 
 
 def _apps_for(p, volunteer=False):
-    """The home-page apps that fit these permissions: the default for a role's "Apps on the home page" boxes."""
+    """The home-page tiles these permissions call for."""
     show = {
         'show_members': bool(p & {'points_enter', 'points'}),
         'show_board': not volunteer and bool(p & {'board_ask', 'board', 'minutes'}),
@@ -115,15 +117,11 @@ def perms(role):
         if saved.get('ops'):
             base.add('ops')
         return base | _apps_for(base)
-    out = _default(role) - set(APPS)
+    out = _default(role)
     for p, on in saved.items():
-        if p in PERMS and p not in APPS:
+        if p in PERMS:                  # tile settings saved before tiles followed permissions are ignored
             (out.add if on else out.discard)(p)
-    shown = _apps_for(out, role == VOLUNTEER)          # apps follow the permissions unless set by hand
-    for p, on in saved.items():
-        if p in APPS:
-            (shown.add if on else shown.discard)(p)
-    return out | shown
+    return out | _apps_for(out, role == VOLUNTEER)
 
 
 def saved_roles():

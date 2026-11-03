@@ -113,7 +113,7 @@ def mirror_to_sheet():
     cols = roles() + [access.VOLUNTEER]
     have = {r: access.perms(r) for r in cols}
     grid = []
-    for group, perms in (('Everyday', access.EVERYDAY), ('Extra powers', access.EXTRA), ('Apps on the home page', access.APPS)):
+    for group, perms in (('Everyday', access.EVERYDAY), ('Extra powers', access.EXTRA)):
         grid.append([group.upper()])
         grid += [[label, *['yes' if k in have[r] else '' for r in cols]] for k, label in perms.items()]
     _write_tab(book, 'Role permissions', ['Permission', *cols], grid,

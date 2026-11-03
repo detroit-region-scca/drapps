@@ -34,7 +34,7 @@ def _ctx(**kw):
                 changes=utils.official_changes(), **kw)
 
 
-VOL_PERMS = {'funds', 'invoices', 'points_enter', 'show_members', 'show_funds', 'show_invoices'}    # volunteers only reach these pages
+VOL_PERMS = {'funds', 'invoices', 'points_enter'}    # volunteers only reach these pages
 EXTRA_SHORT = {'board': 'board decisions', 'pay': 'mark paid', 'minutes': 'minutes', 'points': 'worker points', 'ops': 'Operations',
                'access': 'volunteers', 'audit': 'audit log', 'admin': 'admin'}
 
@@ -330,7 +330,7 @@ def roles():
     cols = [{'role': k, 'perms': access.perms(k), 'n': counts[k], 'titles': titles[k],
              'removable': _removable(k, pending),
              'choices': VOL_PERMS if k == access.VOLUNTEER else set(access.PERMS)} for k in kinds]
-    groups = [('Everyday', access.EVERYDAY), ('Extra powers', access.EXTRA), ('Apps on the home page', access.APPS)]
+    groups = [('Everyday', access.EVERYDAY), ('Extra powers', access.EXTRA)]
     return render_template('admin.html', **_ctx(view='roles', cols=cols, groups=groups))
 
 
