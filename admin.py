@@ -10,6 +10,7 @@ import re as _re
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
+import access
 import auth
 import officials
 import utils
@@ -36,20 +37,12 @@ def _ctx(**kw):
 VOL_PERMS = {'funds', 'invoices', 'points_enter', 'show_members', 'show_funds', 'show_invoices'}    # volunteers only reach these pages
 NEEDED = ('RE', 'ARE', 'Secretary', 'Treasurer', 'Admin', 'Director', 'Financial Director', 'Points Keeper')
 VOLUNTEER = 'Volunteer'
-ROLE_ORDER = ['RE', 'ARE', 'Secretary', 'Treasurer', 'Financial Director', 'Director', 'Director at Large', 'Equipment', 'Points Keeper']
 EXTRA_SHORT = {'board': 'board decisions', 'pay': 'mark paid', 'minutes': 'minutes', 'points': 'worker points', 'ops': 'Operations',
                'access': 'volunteers', 'audit': 'audit log', 'admin': 'admin'}
 
 
-def _role_key(k):
-    return (ROLE_ORDER.index(k) if k in ROLE_ORDER else len(ROLE_ORDER), k)
-
-
 def _own_rows():
-    """Officials entries a person holds themselves: not the bracketed ones that follow another job."""
-    rows = officials.all()
-    titles = {o.get('title', '') for o in rows}
-    return [o for o in rows if not officials.follows(o.get('title', ''), titles)]
+    return officials.own()
 
 
 def users():
@@ -65,7 +58,6 @@ def users():
     for e, v in auth.volunteers().items():
         u = out.setdefault(e, {'email': e, 'name': v.get('name') or e, 'titles': [], 'volunteer': True, 'note': v.get('note', '')})
         u['volunteer'] = True
-    import access
     kinds = {}
     for o in _own_rows():
         kinds.setdefault((o.get('email') or '').strip().lower(), set()).add(o.get('role', ''))
@@ -79,15 +71,12 @@ def users():
         u['extra'] = [EXTRA_SHORT.get(p, p) for p in access.EXTRA if p in access.perms_for(roles)]
         # The bubbles name the roles exactly as the Roles grid does; the job titles show on hover.
         mine = held.get(u['email'], {})
-        u['roles'] = [{'role': 'Admin account' if k == 'Admin' else k, 'titles': mine[k]} for k in sorted(mine, key=_role_key)]
+        u['roles'] = [{'role': 'Admin account' if k == 'Admin' else k, 'titles': mine[k]} for k in sorted(mine, key=access.role_key)]
     return sorted(out.values(), key=lambda u: (u['region'], not u['titles'], u['name'].lower()))
 
 
 def all_roles():
-    """Every role: the ones people hold and the ones made on Roles that nobody holds yet (not Admin or Volunteer)."""
-    import access
-    found = {o.get('role', '') for o in _own_rows() if o.get('role')} | access.saved_roles()
-    return sorted(found - {'', 'Admin', VOLUNTEER}, key=_role_key)
+    return officials.roles()
 
 
 def titles_by_kind():
@@ -101,7 +90,7 @@ def titles_by_kind():
             kinds.setdefault(o['role'], set()).add(o['title'])
     for k in all_roles():
         kinds.setdefault(k, {k})
-    return [(k, sorted(v)) for k, v in sorted(kinds.items(), key=lambda kv: _role_key(kv[0]))]
+    return [(k, sorted(v)) for k, v in sorted(kinds.items(), key=lambda kv: access.role_key(kv[0]))]
 
 
 @bp.route('/', methods=['GET', 'POST'])
@@ -261,7 +250,6 @@ def roles():
     """What each kind of role may do. Set per role, so it follows the job, not the person."""
     if (g := _guard()):
         return g
-    import access
     own = _own_rows()
     kinds = all_roles() + [access.VOLUNTEER]
     if request.method == 'POST' and request.form.get('action') == 'add_role':
@@ -273,13 +261,15 @@ def roles():
         else:
             access.add_role(name, like if like in kinds else None)
             log_audit_event('ROLE_ADDED', _me().get('name', ''), {'role': name, 'like': like or 'everyday only'})
+            officials.mirror_soon()
             flash(f'{name} added. Set what it may do below, then give it to someone on Users.', 'success')
         return redirect(url_for('admin.roles'))
     if request.method == 'POST' and request.form.get('action') == 'remove_role':
         name = request.form.get('role', '')
-        if name in kinds and name != access.VOLUNTEER and not any(o.get('role') == name for o in officials.all()) and name not in ROLE_ORDER:
+        if name in kinds and name != access.VOLUNTEER and not any(o.get('role') == name for o in officials.all()) and name not in access.ROLE_ORDER:
             access.remove_role(name)
             log_audit_event('ROLE_REMOVED', _me().get('name', ''), {'role': name})
+            officials.mirror_soon()
             flash(f'{name} removed.', 'success')
         else:
             flash('Only a role nobody holds can be removed.', 'warning')
@@ -297,6 +287,8 @@ def roles():
             after = access.perms(role)
             log_audit_event('ROLE_ACCESS_SAVED', _me().get('name', ''), {'role': role, 'added': sorted(after - before), 'removed': sorted(before - after)})
             changed.append(role)
+        if changed:
+            officials.mirror_soon()
         flash(f"Saved: {', '.join(changed)}." if changed else 'Nothing changed.', 'success' if changed else 'info')
         return redirect(url_for('admin.roles'))
     counts = {k: sum(1 for o in own if o.get('role') == k) for k in kinds}
@@ -304,7 +296,7 @@ def roles():
     titles = {k: sorted({o.get('title', '') for o in own if o.get('role') == k}) for k in kinds}
     titles[access.VOLUNTEER] = ['added one by one on Users']
     cols = [{'role': k, 'perms': access.perms(k), 'n': counts[k], 'titles': titles[k],
-             'removable': counts[k] == 0 and k != access.VOLUNTEER and k not in ROLE_ORDER,
+             'removable': counts[k] == 0 and k != access.VOLUNTEER and k not in access.ROLE_ORDER,
              'choices': VOL_PERMS if k == access.VOLUNTEER else set(access.PERMS)} for k in kinds]
     groups = [('Everyday', access.EVERYDAY), ('Extra powers', access.EXTRA), ('Apps on the home page', access.APPS)]
     return render_template('admin.html', **_ctx(view='roles', cols=cols, groups=groups))
@@ -316,7 +308,6 @@ def _post():
     act = f.get('action', 'change')
     if act == 'program':
         code, pname = f.get('code', '').strip().upper(), ' '.join(f.get('pname', '').split())
-        import re as _re
         if not _re.fullmatch(r'[A-Z]{2,4}', code) or not pname or code == 'OPS':
             flash('A program needs a 2 to 4 letter code (like TT) and a name.', 'danger')
             return redirect(url_for('admin.programs'))

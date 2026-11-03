@@ -72,42 +72,73 @@ def signers():
     return [(o['name'], mailto(o)) for o in all() if o.get('role') in ('RE', 'ARE') and mailto(o)]
 
 
+def own():
+    """Entries a person holds themselves: not the bracketed ones that follow another job's holder."""
+    rows = all()
+    titles = {o.get('title', '') for o in rows}
+    return [o for o in rows if not follows(o.get('title', ''), titles)]
+
+
+def roles():
+    """Every role, in the usual order: the ones people hold and the ones made on Admin > Roles that nobody holds yet
+    (not Admin or Volunteer)."""
+    import access
+    found = {o.get('role', '') for o in own()} | access.saved_roles()
+    return sorted(found - {'', 'Admin', access.VOLUNTEER}, key=access.role_key)
+
+
 def mirror_to_sheet():
-    """Write a readable copy to the Officials tab of the Operations sheet (nightly), so the list is in the shared drive
-    too. The app never reads this copy: editing it changes nothing about who approves."""
+    """Write readable copies of the officials list and the Admin > Roles grid to the Operations sheet, so both are in
+    the shared drive. Run after every change (and nightly). The app never reads these copies: editing them changes
+    nothing. Returns how many officials were written."""
     from storage import open_book
+    import access
     sheet = os.environ.get('OPERATIONS_SHEET_ID')
     rows = all()
     if not sheet or not rows:
         return 0
     book = open_book(sheet)
-    try:
-        ws = book.worksheet('Officials')
-    except Exception:
-        ws = book.add_worksheet('Officials', rows=100, cols=5)
-    out = [['Role', 'Title', 'Name', 'Email', 'Program'],
-           *[[o.get('role', ''), o.get('title', ''), o['name'], o.get('email', ''), o.get('program', '')] for o in rows],
-           [], ['Copy for reference, refreshed nightly. The app sends approval emails only from the list the admin keeps on the server; '
-                'changing this tab does not change who approves.']]
-    ws.clear()
-    ws.update(out, 'A1', value_input_option='RAW')
-    _mirror_permissions(book, rows)
+    listed = sorted(rows, key=lambda o: (access.role_key(o.get('role', '')), o.get('title', ''), o.get('name', '')))
+    _write_tab(book, 'Officials', ['Role', 'Title', 'Name', 'Email', 'Program', 'Email group'],
+               [[o.get('role', ''), o.get('title', ''), o['name'], o.get('email', ''), o.get('program', ''), o.get('notify', '')] for o in listed],
+               'Copy for reference, refreshed after every change. Who approves comes only from the list kept on the server '
+               '(Admin > Users); editing this tab changes nothing.')
+    cols = roles() + [access.VOLUNTEER]
+    have = {r: access.perms(r) for r in cols}
+    grid = []
+    for group, perms in (('Everyday', access.EVERYDAY), ('Extra powers', access.EXTRA), ('Apps on the home page', access.APPS)):
+        grid.append([group.upper()])
+        grid += [[label, *['yes' if k in have[r] else '' for r in cols]] for k, label in perms.items()]
+    _write_tab(book, 'Role permissions', ['Permission', *cols], grid,
+               'Copy for reference, refreshed after every change. Permissions are set in the apps (Admin > Roles); '
+               'editing this tab changes nothing.')
     return len(rows)
 
 
-def _mirror_permissions(book, rows):
-    """The Admin > Roles grid as a readable tab (Role permissions), so it is backed up in the shared drive too."""
-    import access
-    roles = sorted({o.get('role', '') for o in rows if o.get('role') and o.get('role') != 'Admin'}) + [access.VOLUNTEER]
-    grid = [['Permission', *roles]]
-    for group, perms in (('Everyday', access.EVERYDAY), ('Extra powers', access.EXTRA), ('Apps on the home page', access.APPS)):
-        grid.append([group.upper()])
-        have = {r: access.perms(r) for r in roles}
-        grid += [[label, *['yes' if k in have[r] else '' for r in roles]] for k, label in perms.items()]
-    grid += [[], ['Copy for reference, refreshed nightly. Permissions are set in the apps (Admin > Roles); editing this tab changes nothing.']]
+def _write_tab(book, name, header, rows, note):
+    """Replace a tab with a header row (bold, frozen), the rows, and a note under them; sized to fit."""
+    import gspread
+    out = [header, *rows, [], [note]]
+    width = max(len(r) for r in out)
     try:
-        ws = book.worksheet('Role permissions')
-    except Exception:
-        ws = book.add_worksheet('Role permissions', rows=60, cols=len(roles) + 2)
+        ws = book.worksheet(name)
+    except gspread.exceptions.WorksheetNotFound:
+        ws = book.add_worksheet(name, rows=len(out), cols=width)
     ws.clear()
-    ws.update(grid, 'A1', value_input_option='RAW')
+    ws.resize(rows=len(out), cols=width)
+    ws.update(out, 'A1', value_input_option='RAW')
+    ws.freeze(rows=1, cols=1)
+    ws.format('1:1', {'textFormat': {'bold': True}})
+
+
+def mirror_soon():
+    """Refresh the Drive copies in the background after a change; a failure only waits for the next change or night."""
+    import logging
+    import threading
+
+    def run():
+        try:
+            mirror_to_sheet()
+        except Exception as e:
+            logging.getLogger(__name__).warning(f'officials copy to Drive failed: {e}')
+    threading.Thread(target=run, daemon=True).start()

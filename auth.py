@@ -377,7 +377,7 @@ def set_volunteer(email, name=None, note='', by=''):
         ws.update([[email, name]], f'A{col.index(email) + 1}', value_input_option='RAW')
         out = 'updated'
     else:
-        ws.append_row([email, name, (note or '')[:200], date.today().isoformat(), by], value_input_option='RAW')
+        ws.append_row([email, name, (note or '')[:200], date.today().isoformat(), by], value_input_option='RAW', table_range='A1')
         out = 'added'
     store._cache.pop('volunteers', None)
     store._invalidate()
@@ -395,11 +395,8 @@ def access():
         return redirect(url_for('home'))
     if request.method == 'POST':
         email = (request.form.get('email') or '').strip().lower()
-        ws = _vol_ws()
         if request.form.get('action') == 'remove':
-            col = [c.strip().lower() for c in ws.col_values(1)]
-            if email in col:
-                ws.delete_rows(col.index(email) + 1)
+            if set_volunteer(email, None):
                 log_audit_event('ACCESS_REMOVED', u['name'], {'email': email})
                 flash(f'Removed {email}.', 'success')
         else:
@@ -409,12 +406,9 @@ def access():
             elif lookup(email):
                 flash(f'{email} can already sign in.', 'info')
             else:
-                ws.append_row([email, name, (request.form.get('note') or '').strip()[:200], date.today().isoformat(), u['name']],
-                              value_input_option='RAW')
+                set_volunteer(email, name, (request.form.get('note') or '').strip(), u['name'])
                 log_audit_event('ACCESS_ADDED', u['name'], {'email': email, 'name': name})
                 flash(f'{name} can now sign in with {email}.', 'success')
-        store._cache.pop('volunteers', None)
-        store._invalidate()
         return redirect(url_for('auth.access'))
     import access
     people = [dict(o, level='officer' if 'board' in access.perms(o.get('role', '')) else 'official') for o in O.shown((u or {}).get('roles')) if o.get('email')]

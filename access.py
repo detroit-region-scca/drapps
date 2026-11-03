@@ -62,6 +62,14 @@ def _apps_for(p, volunteer=False):
         'show_volunteers': not volunteer and 'access' in p and 'admin' not in p and not (p & {'pay', 'audit'}),
     }
     return {k for k, v in show.items() if v}
+# The order roles are listed in everywhere (Users, Roles, the Drive copy); roles added later follow alphabetically.
+ROLE_ORDER = ['RE', 'ARE', 'Secretary', 'Treasurer', 'Financial Director', 'Director', 'Director at Large', 'Equipment', 'Points Keeper']
+
+
+def role_key(role):
+    return (ROLE_ORDER.index(role) if role in ROLE_ORDER else len(ROLE_ORDER), role)
+
+
 OFFICERS = {'RE', 'ARE', 'Secretary', 'Treasurer', 'Admin'}      # bylaws Art. IV 4.2, plus the admin account
 DEFAULTS = {'Equipment': {'ops'}, 'Points Keeper': {'points'}}
 EVERYDAY_DEFAULT = set(EVERYDAY) - {'plan_own'}            # what every official could do before roles had settings
@@ -128,14 +136,8 @@ def add_role(role, like=None):
 
 def remove_role(role):
     doc = _load()
-    if doc.pop(role, None) is None:
-        return
-    tmp = PATH + '.tmp'
-    with open(tmp, 'w') as f:
-        json.dump(doc, f, indent=1, sort_keys=True)
-    os.replace(tmp, PATH)
-    with _lock:
-        _cache.clear()
+    if doc.pop(role, None) is not None:
+        _write(doc)
 
 
 def perms_for(roles):
@@ -154,6 +156,11 @@ def save(role, on):
         on = set(on) - {'plan_own'}       # any program includes their own
     doc = _load()
     doc[role] = {p: p in on for p in PERMS}
+    _write(doc)
+
+
+def _write(doc):
+    """Replace the file in one step, so a reader never sees half of it."""
     tmp = PATH + '.tmp'
     with open(tmp, 'w') as f:
         json.dump(doc, f, indent=1, sort_keys=True)

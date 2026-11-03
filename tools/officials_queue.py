@@ -166,6 +166,7 @@ def main():
     """Apply everything queued, and keep going until the queue stays empty: a save made while this runs would not
     start another run (the path unit merges it into this one)."""
     done = _read(DONE, {'results': []})
+    mirrored = False
     while True:
         with FileLock(QUEUE + '.lock'):
             changes = _read(QUEUE, {}).get('changes', [])
@@ -179,6 +180,14 @@ def main():
             print(('OK ' if ok else 'FAILED ') + f"{c.get('title')}: {c.get('name')} <{c.get('email')}>" + ('' if ok else f' ({msg})'))
         done['results'] = done['results'][-50:]
         _write(DONE, done)
+        mirrored = True
+    if mirrored:
+        # The readable copy in the shared drive. Written from inside the app's container: that is where the Drive
+        # key is, and it reads the file just changed.
+        import subprocess
+        r = subprocess.run(['docker', 'exec', os.environ.get('APP_CONTAINER', 'event-drscca'), 'python', '-c',
+                            'import officials; print(officials.mirror_to_sheet())'], capture_output=True, text=True, timeout=120)
+        print(f'Drive copy: {r.stdout.strip()} officials' if r.returncode == 0 else f'Drive copy failed: {r.stderr.strip()[-300:]}')
 
 
 if __name__ == '__main__':
