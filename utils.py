@@ -259,3 +259,36 @@ def local_path(target):
     another site, so a crafted link can't bounce someone off to it after a form."""
     t = str(target or '')
     return t if t.startswith('/') and not t.startswith(('//', '/\\')) and '\n' not in t and '\r' not in t else ''
+
+
+# ---------- QuickBooks refresh on request (the host's drscca-qbo-refresh.path runs the sync when the request file changes) ----------
+QBO_REQUEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'qbo-refresh.json')
+QBO_LAST = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'qbo-last-run.json')
+
+
+def _read_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def qbo_state():
+    """{'requested': iso or '', 'last': iso or '', 'pending': bool}: whether a refresh asked for has not finished yet."""
+    req, last = _read_json(QBO_REQUEST).get('at', ''), _read_json(QBO_LAST).get('at', '')
+    return {'requested': req, 'last': last, 'pending': bool(req) and req > last}
+
+
+def request_qbo_refresh(who):
+    """Ask the host to sync QuickBooks now. Returns False when one is already waiting (asked in the last 10 minutes)."""
+    from datetime import datetime, timedelta
+    s = qbo_state()
+    now = datetime.now().astimezone()
+    if s['pending'] and s['requested'] > (now - timedelta(minutes=10)).isoformat(timespec='seconds'):
+        return False
+    tmp = QBO_REQUEST + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump({'at': now.isoformat(timespec='seconds'), 'by': who}, f)
+    os.replace(tmp, QBO_REQUEST)
+    return True

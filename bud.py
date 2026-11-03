@@ -13,7 +13,7 @@ import fr_store as F
 import officials as O
 import plan_store as P
 from officer import current as officer_current, officer_required
-from utils import load_events, load_programs, log_audit_event, login_required, to_number
+from utils import load_events, load_programs, local_path, log_audit_event, login_required, request_qbo_refresh, to_number
 
 bp = Blueprint('bud', __name__, url_prefix='/events')
 
@@ -411,3 +411,16 @@ def _form_lines(f):
         for desc, ly, bud, act in zip(f.getlist(f'{key}_desc'), f.getlist(f'{key}_ly'), f.getlist(f'{key}_bud'), f.getlist(f'{key}_act')):
             out.append({'section': section, 'description': desc, 'last_year': ly, 'budget': bud, 'actual': act})
     return out
+
+
+@bp.route('/qbo-refresh', methods=['POST'])
+@login_required
+def qbo_refresh():
+    """Pull fresh actuals from QuickBooks now instead of waiting for the nightly sync."""
+    who = session.get('who', '')
+    if request_qbo_refresh(who):
+        log_audit_event('QBO_REFRESH', who, {})
+        flash('Getting the latest from QuickBooks. It takes about a minute; reload the page then.', 'info')
+    else:
+        flash('A QuickBooks refresh is already on its way.', 'info')
+    return redirect(local_path(request.form.get('next')) or url_for('bud.home'))

@@ -28,3 +28,6 @@ data/sheet_cache.sqlite*
 # Runtime data (sign-in codes hold email addresses): never commit; programs.json is the one tracked file
 data/*.json
 !data/programs.json
+data/qbo-refresh.json
+data/qbo-last-run.json
+data/*.tmp

@@ -32,6 +32,7 @@ from utils import load_events, log_audit_event  # noqa: E402
 
 WHO = 'QuickBooks sync'
 DRY = '--dry-run' in sys.argv
+MANUAL = '--manual' in sys.argv     # asked for with the Refresh button: skip the once-a-month jobs
 RESERVE = 'Worker points reserve'
 
 
@@ -127,7 +128,7 @@ def main():
                     [[o['date'], o['number'], o['payee'], o['amount'], as_of] for o in data.get('outstanding', [])])
     try:   # on the 1st: email the treasurer the journal entry for worker points not yet reconciled (user asked, 2026-11-02)
         t0 = date.today()
-        if t0.day == 1 and W.enabled() and not DRY:
+        if t0.day == 1 and W.enabled() and not DRY and not MANUAL:
             import members
             from app import app as flask_app
             with flask_app.test_request_context('/', base_url='https://drapps.drscca.org'):
@@ -137,7 +138,7 @@ def main():
         say.append(f'worker points journal entry email failed: {e}')
     try:   # on the 1st: add this month's Auto add points (they count right away)
         t0 = date.today()
-        if t0.day == 1 and W.enabled() and not DRY:
+        if t0.day == 1 and W.enabled() and not DRY and not MANUAL:
             n = W.prepare_auto(t0.year, t0.month)
             say.append(f'auto add: {n} entries added')
     except Exception as e:
@@ -145,5 +146,18 @@ def main():
     print(f"QuickBooks sync {as_of}{' (dry run)' if DRY else ''}: " + '\n'.join(say))
 
 
+def run():
+    """One sync at a time (the nightly timer and the Refresh button can meet), then note when it finished."""
+    from datetime import datetime
+    from filelock import FileLock
+    with FileLock(os.path.join(ROOT, 'data', 'qbo-sync.lock')):
+        main()
+    if not DRY:
+        tmp = os.path.join(ROOT, 'data', 'qbo-last-run.json.tmp')
+        with open(tmp, 'w') as f:
+            json.dump({'at': datetime.now().astimezone().isoformat(timespec='seconds'), 'manual': MANUAL}, f)
+        os.replace(tmp, os.path.join(ROOT, 'data', 'qbo-last-run.json'))
+
+
 if __name__ == '__main__':
-    main()
+    run()

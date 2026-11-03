@@ -1,0 +1,5 @@
+{# A small "Refresh from QuickBooks" control, shown next to an "as of" date. #}
+{% macro qbo_refresh() %}{% set s = qbo_state() %}<form method="post" action="{{ url_for('bud.qbo_refresh') }}" class="d-inline no-print">
+<input type="hidden" name="next" value="{{ request.full_path }}">
+{% if s.pending %}<span class="small text-muted">· refreshing from QuickBooks, reload in a minute</span>
+{% else %}<button class="btn btn-link btn-sm p-0 align-baseline small">Refresh from QuickBooks</button>{% endif %}</form>{% endmacro %}

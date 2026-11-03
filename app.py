@@ -120,6 +120,10 @@ def login():
     """The shared password is gone; an old login form posting here goes to the email sign-in."""
     return redirect(url_for('home'))
 
+from utils import qbo_state as _qbo_state  # noqa: E402
+app.jinja_env.globals['qbo_state'] = _qbo_state
+
+
 @app.context_processor
 def _officials():
     return {'officials': officials, 'me': auth.user()}
