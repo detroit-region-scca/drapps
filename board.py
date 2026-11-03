@@ -58,131 +58,140 @@ def _abs(link):
     return link
 
 
-def ask_motions(ms):
-    """Email the board one message for these motions; replies go to the whole board."""
-    who = session.get('who', '')
-    parts = []
+def _motion_lines(ms):
+    out = []
     for m in ms:
-        bits = [f"- {M.summary(m)}  ({m['id']}, proposed by {m['proposed_by']})"]
+        bits = [f"- Motion {m['id']}: {M.summary(m)} (proposed by {m['proposed_by']})"]
         if m['details']:
             bits.append('  ' + m['details'].replace('\n', '\n  '))
         if m['link']:
             bits.append('  ' + _abs(m['link']))
-        parts.append('\n'.join(bits))
-    n = len(ms)
-    body = (f"{who} asks the board to vote on {'this motion' if n == 1 else f'these {n} motions'}:\n\n" + '\n\n'.join(parts) +
-            "\n\nPlease reply all with your vote (yes or no) so it stays in one thread. Everything waiting for the board:\n"
-            + url_for('board.home', _external=True))
-    send_mail(f"Board vote: {ms[0]['title'] if n == 1 else f'{n} motions'}", body, board_email(), reply_to=board_email())
-    for m in ms:
-        M.update(m['id'], asked=date.today().isoformat())
-    log_audit_event('BOARD_ASKED', who, {'motions': [m['id'] for m in ms]})
+        out.append('\n'.join(bits))
+    return out
 
 
-@bp.route('/')
+def _picked(f):
+    budgets = [v.split(':', 1)[1] for v in f.getlist('item') if v.startswith('budget:')]
+    motions = [v.split(':', 1)[1] for v in f.getlist('item') if v.startswith('motion:')]
+    return budgets, motions
+
+
+@bp.route('/', methods=['GET', 'POST'])
 @login_required
 def home():
-    """Waiting for the board: budgets and motions."""
+    """Everything waiting for the board, budgets and motions in one list: tick items to send them to the board for a
+    vote, or (RE, ARE, treasurer) to record the result. Proposing a motion is at the bottom."""
     if (g := _guard()):
         return g
     import bud
     year = request.args.get('year') or str(date.today().year)
+    if request.method == 'POST':
+        f = request.form
+        bcodes, mids = _picked(f)
+        ms = [m for m in M.motions() if m['id'] in mids and m['status'] == 'open']
+        if not bcodes and not ms:
+            flash('Tick at least one item.', 'warning')
+            return redirect(url_for('board.home', year=year))
+        if f.get('action') == 'ask':
+            blines, brows = bud.budget_vote_lines(year, bcodes) if B.enabled() else ([], [])
+            lines = blines + _motion_lines(ms)
+            n = len(lines)
+            if not n:
+                flash('Nothing to send: those items are already decided.', 'warning')
+                return redirect(url_for('board.home', year=year))
+            who = session.get('who', '')
+            first = (brows[0]['b']['event_name'] if brows else ms[0]['title']) if n == 1 else f'{n} items'
+            body = (f"{who} asks the board to vote on {'this' if n == 1 else f'these {n} items'}:\n\n" + '\n\n'.join(lines) +
+                    "\n\nPlease reply all with your vote (yes or no on each) so it stays in one thread. Everything waiting for the board:\n"
+                    + url_for('board.home', year=year, _external=True))
+            send_mail(f"Board vote: {first}", body, board_email(), reply_to=board_email())
+            for m in ms:
+                M.update(m['id'], asked=date.today().isoformat())
+            log_audit_event('BOARD_ASKED', who, {'budgets': [r['b']['event_code'] for r in brows], 'motions': [m['id'] for m in ms], 'year': year})
+            flash(f"Sent to the board ({board_email()}): {n} item{'s' if n != 1 else ''}.", 'success')
+            return redirect(url_for('board.home', year=year))
+        off = officer_current()
+        if not off:
+            flash('Recording a board decision is for the RE, ARE or treasurer.', 'warning')
+            return redirect(url_for('board.home', year=year))
+        try:
+            decided = date.fromisoformat(f.get('decided', '')).isoformat()
+        except ValueError:
+            flash('The date must be a date.', 'danger')
+            return redirect(url_for('board.home', year=year))
+        result = f.get('result')
+        if result not in ('passed', 'failed'):
+            flash('Choose passed or failed.', 'warning')
+            return redirect(url_for('board.home', year=year))
+        how = bud._how_vote(f)
+        said = []
+        if bcodes and result == 'passed':
+            n = bud.record_budgets(year, bcodes, decided, how)
+            said.append(f"{n} budget{'s' if n != 1 else ''} approved")
+        elif bcodes:
+            said.append('budgets left waiting (a budget is only recorded when the board approves it; ask the director to revise it)')
+        for m in ms:
+            M.update(m['id'], status=result, decided=decided, how=M.HOW.get(f.get('how', ''), ''),
+                     vote=bud._how_vote({'vote': f.get('vote', '')}), recorded_by=off['name'])
+            log_audit_event('MOTION_DECIDED', off['name'], {'id': m['id'], 'result': result, 'decided': decided, 'how': how})
+        if ms:
+            said.append(f"{len(ms)} motion{'s' if len(ms) != 1 else ''} {result}")
+        flash(f"Recorded for {decided}: " + '; '.join(said) + '.', 'success')
+        return redirect(url_for('board.home', year=year))
     rows = bud._pending_rows(year) if B.enabled() else []
     open_m = [m for m in M.motions() if m['status'] == 'open']
-    return render_template('board.html', **_ctx(view='waiting', rows=rows, motions=open_m, year=year, years=_years()))
+    return render_template('board.html', **_ctx(view='waiting', rows=rows, motions=open_m, year=year, years=_years(),
+                                                  prefill=dict(title=request.args.get('title', ''), amount=request.args.get('amount', ''),
+                                                               link=request.args.get('link', ''), details=request.args.get('details', ''))))
 
 
 @bp.route('/motions', methods=['GET', 'POST'])
 @login_required
 def motions():
+    """Propose a motion (the form is at the bottom of Waiting for the board)."""
     if (g := _guard()):
         return g
-    if request.method == 'POST':
-        f = request.form
-        title = ' '.join(f.get('title', '').split())[:200]
-        if not title:
-            flash('Write the motion in one line, for example "Set aside $80,000 of savings for the two motorhomes".', 'warning')
-            return redirect(url_for('board.motions'))
-        amount = None
-        if f.get('amount', '').strip():
-            from utils import to_number
-            amount = to_number(f.get('amount', '').replace('$', '').replace(',', ''))
-            if amount is None:
-                flash('The amount must be a number.', 'warning')
-                return redirect(url_for('board.motions'))
-        link = f.get('link', '').strip()
-        if link and not (link.startswith('https://') or local_path(link)):
-            link = ''
-        who = session.get('who', '')
-        mid = M.propose(title, f.get('details', '').strip()[:4000], amount, link, who)
-        log_audit_event('MOTION_PROPOSED', who, {'id': mid, 'title': title})
-        flash(f'{mid} saved. Send it to the board from Waiting for the board when it is ready.', 'success')
-        return redirect(url_for('board.home'))
-    year = request.args.get('year', '')
-    ms = M.motions()
-    if year:
-        ms = [m for m in ms if m['id'].startswith(f'M-{year}-')]
-    return render_template('board.html', **_ctx(view='motions', motions=ms, year=year, years=_years(),
-                                                  prefill=dict(title=request.args.get('title', ''), amount=request.args.get('amount', ''),
-                                                               link=request.args.get('link', ''), details=request.args.get('details', ''))))
-
-
-@bp.route('/ask', methods=['POST'])
-@login_required
-def ask():
-    """Send the ticked motions to the board (budgets go through Events' approve form)."""
-    if (g := _guard()):
-        return g
-    ids = request.form.getlist('motion')
-    ms = [m for m in M.motions() if m['id'] in ids and m['status'] == 'open']
-    if not ms:
-        flash('Tick at least one open motion.', 'warning')
-    else:
-        ask_motions(ms)
-        flash(f"Sent to the board ({board_email()}): {len(ms)} motion{'s' if len(ms) != 1 else ''}.", 'success')
+    if request.method == 'GET':
+        return redirect(url_for('board.home') + '#propose')
+    f = request.form
+    title = ' '.join(f.get('title', '').split())[:200]
+    if not title:
+        flash('Write the motion in one line.', 'warning')
+        return redirect(url_for('board.home') + '#propose')
+    amount = None
+    if f.get('amount', '').strip():
+        from utils import to_number
+        amount = to_number(f.get('amount', '').replace('$', '').replace(',', ''))
+        if amount is None:
+            flash('The amount must be a number.', 'warning')
+            return redirect(url_for('board.home') + '#propose')
+    link = f.get('link', '').strip()
+    if link and not (link.startswith('https://') or local_path(link)):
+        link = ''
+    who = session.get('who', '')
+    mid = M.propose(title, f.get('details', '').strip()[:4000], amount, link, who)
+    log_audit_event('MOTION_PROPOSED', who, {'id': mid, 'title': title})
+    flash(f'{mid} added to the list. Tick it and press Ask the board when it is ready.', 'success')
     return redirect(url_for('board.home'))
 
 
-@bp.route('/motion/<mid>', methods=['POST'])
+@bp.route('/motion/<mid>/withdraw', methods=['POST'])
 @login_required
-def motion(mid):
-    """Record a motion's result (officers), or withdraw it (whoever proposed it, or an officer)."""
+def withdraw(mid):
+    """Withdraw an open motion (whoever proposed it, or an officer). Motions are never deleted."""
     if (g := _guard()):
         return g
     m = M.get(mid)
-    if not m:
-        flash('There is no such motion.', 'warning')
-        return redirect(url_for('board.home'))
-    f = request.form
     who = session.get('who', '')
-    off = officer_current()
-    if f.get('action') == 'withdraw':
-        if not off and who != m['proposed_by']:
-            flash('Only whoever proposed it, or an officer, can withdraw a motion.', 'warning')
-        else:
-            M.update(mid, status='withdrawn', decided=date.today().isoformat(), recorded_by=who)
-            log_audit_event('MOTION_WITHDRAWN', who, {'id': mid})
-            flash(f'{mid} withdrawn.', 'info')
-        return redirect(url_for('board.home'))
-    if not off:
-        flash('Recording a board decision is for the RE, ARE or treasurer.', 'warning')
-        return redirect(url_for('board.home'))
-    try:
-        decided = date.fromisoformat(f.get('decided', '')).isoformat()
-    except ValueError:
-        flash('The date must be a date.', 'danger')
-        return redirect(url_for('board.home'))
-    result = f.get('result')
-    if result not in ('passed', 'failed'):
-        flash('Choose passed or failed.', 'warning')
-        return redirect(url_for('board.home'))
-    import bud
-    how = M.HOW.get(f.get('how', ''), '')
-    vote = bud._how_vote({'vote': f.get('vote', '')})
-    M.update(mid, status=result, decided=decided, how=how, vote=vote, recorded_by=off['name'])
-    log_audit_event('MOTION_DECIDED', off['name'], {'id': mid, 'result': result, 'decided': decided, 'how': how, 'vote': vote})
-    flash(f"{mid} recorded as {result} on {decided}.", 'success')
-    return redirect(local_path(f.get('next')) or url_for('board.home'))
+    if not m or m['status'] != 'open':
+        flash('That motion is not open.', 'warning')
+    elif not officer_current() and who != m['proposed_by']:
+        flash('Only whoever proposed it, or an officer, can withdraw a motion.', 'warning')
+    else:
+        M.update(mid, status='withdrawn', decided=date.today().isoformat(), recorded_by=who)
+        log_audit_event('MOTION_WITHDRAWN', who, {'id': mid})
+        flash(f'{mid} withdrawn.', 'info')
+    return redirect(url_for('board.home'))
 
 
 def decisions(year):
@@ -191,7 +200,7 @@ def decisions(year):
     for m in M.motions():
         if m['status'] in ('passed', 'failed') and m['decided'].startswith(year):
             items.append({'date': m['decided'], 'kind': 'motion', 'what': M.summary(m), 'id': m['id'], 'result': m['status'],
-                          'how': m['how'], 'vote': m['vote'], 'link': url_for('board.motions', year=m['id'][2:6]) + '#' + m['id']})
+                          'how': m['how'], 'vote': m['vote'], 'link': url_for('board.decisions_page', year=m['decided'][:4]) + '#' + m['id']})
     if B.enabled():
         for code, b in B.budgets().items():
             if str(b.get('approved', '')).startswith(year):

@@ -1,6 +1,5 @@
 {# The Board app's tabs, shared with the Minutes page. #}
 {% from '_ui.html' import tab with context %}
     {{ tab('board.home', 'Waiting for the board') }}
-    {{ tab('board.motions', 'Motions') }}
     {{ tab('board.decisions_page', 'Decisions') }}
     {% if me and me.level == 'officer' %}{{ tab('minutes.home', 'Minutes') }}{% endif %}

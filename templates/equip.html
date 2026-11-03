@@ -323,9 +323,9 @@
             {% if rp.big_total %}move {{ money(rp.big_total, 0) }} of savings now for the big items marked below, and set aside {{ money(rp.monthly_without_big, 0) }} a month from {{ rp.start_label }} for the rest.
             {% else %}set aside {{ money(rp.monthly, 0) }} a month from {{ rp.start_label }}.{% endif %}
             The money stays in savings (the money market) until each item is replaced, so it is not in the budget.</p>
-        <p class="mb-0 small">{% if motion %}Board motion <a href="{{ url_for('board.motions') }}#{{ motion.id }}">{{ motion.id }}</a>:
+        <p class="mb-0 small">{% if motion %}Board motion <a href="{{ url_for('board.home') }}#{{ motion.id }}">{{ motion.id }}</a>:
             {% if motion.status == 'passed' %}approved {{ motion.decided }}{% elif motion.status == 'failed' %}not approved {{ motion.decided }}{% else %}waiting for the board{% endif %}.
-            {% else %}The board decides this as a motion: <a href="{{ url_for('board.motions') }}">propose it</a>.{% endif %}</p>{% endif %}
+            {% else %}The board decides this as a motion: <a href="{{ url_for('board.home') }}#propose">propose it</a>.{% endif %}</p>{% endif %}
     </div>
     <h2 class="h6 text-muted">Buy soon</h2>
     <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
