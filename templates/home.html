@@ -54,9 +54,16 @@
     </div></div>
     {% elif view == 'officials' %}
     <div class="page-title">Region officials</div>
-    <p class="text-muted small">Funds request approvals go only to these people and addresses. The list can't be changed in the apps; the admin keeps it.</p>
+    <p class="text-muted small">Funds request approvals go only to these people and addresses.{% if is_admin %} To give a role to someone else, use Change: the list and the role's email group update within a minute.{% else %} The admin keeps this list.{% endif %}</p>
+    {% if changes.pending %}<div class="alert alert-info py-2 small">Being saved: {% for c in changes.pending %}{{ c.title }} to {{ c.name }}{{ ', ' if not loop.last }}{% endfor %}. Reload in a minute.</div>{% endif %}
+    {% for c in changes.done if not c.ok %}<div class="alert alert-warning py-2 small">Not saved: {{ c.title }} to {{ c.name }} ({{ c.applied[:16] }}): {{ c.message }}</div>{% endfor %}
     {% if people %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <tbody>{% for o in people %}<tr><td class="ps-3">{{ o.title }}</td><td>{{ o.name }}</td><td class="pe-3"><a href="mailto:{{ o.email }}">{{ o.email }}</a></td></tr>{% endfor %}</tbody>
+        <tbody>{% for o in people %}<tr><td class="ps-3">{{ o.title }}</td><td>{{ o.name }}</td><td class="{{ '' if is_admin else 'pe-3' }}"><a href="mailto:{{ o.email }}">{{ o.email }}</a></td>
+            {% if is_admin %}<td class="pe-3 text-end">{% if not (o.email or '').lower().endswith('@drscca.org') %}<details class="d-inline-block text-start"><summary class="small text-muted">Change</summary>
+                <form method="post" class="d-flex flex-wrap gap-1 mt-1" style="min-width: 18rem"><input type="hidden" name="title" value="{{ o.title }}"><input type="hidden" name="from" value="{{ o.email }}">
+                    <input name="name" class="form-control form-control-sm" value="{{ o.name }}" required aria-label="Name">
+                    <input name="email" type="email" class="form-control form-control-sm" value="{{ o.email }}" required aria-label="Email">
+                    <button class="btn btn-sm btn-accent">Save</button></form></details>{% endif %}</td>{% endif %}</tr>{% endfor %}</tbody>
     </table></div></div>{% else %}<p class="text-warning">No officials list on this server, so no approval emails are sent.</p>{% endif %}
     {% elif view == 'treasurer' %}
     <div class="list-group">
@@ -76,7 +83,7 @@
             <span>Operations to-dos overdue<div class="small text-muted">Renewals, registrations, inspections</div></span><span class="fw-semibold">{{ jobs.equipment }}</span></a>
         <a class="list-group-item list-group-item-action" href="{{ url_for('export_events') }}">Export events (CSV)</a>
         {% if me and me.level == 'officer' %}<a class="list-group-item list-group-item-action" href="{{ url_for('auth.access') }}">Who can sign in<div class="small text-muted">Add or remove volunteers</div></a>{% endif %}
-        <a class="list-group-item list-group-item-action" href="{{ url_for('officials_page') }}">Region officials<div class="small text-muted">Who approves funds requests, read-only</div></a>
+        <a class="list-group-item list-group-item-action" href="{{ url_for('officials_page') }}">Region officials<div class="small text-muted">Who holds each role{% if me and 'Admin' in (me.roles or []) %}; change a role's holder{% endif %}</div></a>
     </div>
     {% elif not session.get('authenticated') %}
     <div class="d-flex justify-content-center align-items-center" style="min-height: 80vh;">

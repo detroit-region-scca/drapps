@@ -31,3 +31,5 @@ data/*.json
 data/qbo-refresh.json
 data/qbo-last-run.json
 data/*.tmp
+data/officials-queue.json
+data/officials-done.json

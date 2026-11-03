@@ -75,6 +75,7 @@ app.register_blueprint(officer_bp)
 import api  # noqa: E402
 app.before_request(api.signin_from_key)   # a valid API key signs the request in (see api.py)
 import auth  # noqa: E402
+import utils  # noqa: E402
 app.before_request(auth.gate)               # email-code sign-in: who is signed in and what they may open
 import csrf  # noqa: E402
 app.before_request(csrf.check)              # forged-form protection (after the API key check, which exempts)
@@ -138,12 +139,36 @@ def privacy():
     return render_template('privacy.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Apps privacy")
 
 
-@app.route('/officials')
+@app.route('/officials', methods=['GET', 'POST'])
 @login_required
 def officials_page():
-    """Who holds which region role, read-only: the admin keeps the list on the server."""
+    """Who holds which region role. The admin account can change a role's holder (name and email); the change is
+    queued in data/ and applied on the server (tools/officials_queue.py), which also updates the role's Google Group."""
+    me = auth.user() or {}
+    is_admin = 'Admin' in (me.get('roles') or [])
+    if request.method == 'POST':
+        if not is_admin:
+            flash('Only the admin account can change the officials list.', 'warning')
+            return redirect(url_for('officials_page'))
+        f = request.form
+        title = f.get('title', '').strip()
+        old = next((o for o in officials.all() if o.get('title') == title and (o.get('email') or '').lower() == f.get('from', '').lower()), None)
+        name, email = ' '.join(f.get('name', '').split()), f.get('email', '').strip().lower()
+        if not old or not name or '@' not in email or ' ' in email:
+            flash('Give the name and a valid email address.', 'danger')
+            return redirect(url_for('officials_page'))
+        if (old.get('email') or '').lower().endswith('@drscca.org'):
+            flash('That role uses a region account; change its password holder in Google Workspace instead.', 'warning')
+            return redirect(url_for('officials_page'))
+        if name == old.get('name') and email == (old.get('email') or '').lower():
+            flash('Nothing changed.', 'info')
+            return redirect(url_for('officials_page'))
+        utils.queue_official_change({'title': title, 'from': old.get('email', ''), 'name': name, 'email': email, 'by': me.get('name', '')})
+        log_audit_event('OFFICIAL_CHANGE_REQUESTED', me.get('name', ''), {'title': title, 'from': f"{old.get('name')} <{old.get('email')}>", 'to': f'{name} <{email}>'})
+        flash(f'{title}: {name} ({email}) will be saved within a minute, and the role\'s email group updated.', 'success')
+        return redirect(url_for('officials_page'))
     return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Officials", app_name='Officials', view='officials',
-                           people=officials.all(), programs=load_programs())
+                           people=officials.all(), programs=load_programs(), is_admin=is_admin, changes=utils.official_changes())
 
 
 @app.route('/treasurer')

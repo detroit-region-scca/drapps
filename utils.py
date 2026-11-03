@@ -292,3 +292,26 @@ def request_qbo_refresh(who):
         json.dump({'at': now.isoformat(timespec='seconds'), 'by': who}, f)
     os.replace(tmp, QBO_REQUEST)
     return True
+
+
+# ---------- changes to the officials list, made by the admin in the app and applied on the server ----------
+OFFICIALS_QUEUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'officials-queue.json')
+OFFICIALS_DONE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'officials-done.json')
+
+
+def queue_official_change(change):
+    from datetime import datetime
+    from filelock import FileLock
+    with FileLock(OFFICIALS_QUEUE + '.lock'):
+        q = _read_json(OFFICIALS_QUEUE) or {'changes': []}
+        q['changes'].append(dict(change, at=datetime.now().astimezone().isoformat(timespec='seconds')))
+        tmp = OFFICIALS_QUEUE + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(q, f, indent=1)
+        os.replace(tmp, OFFICIALS_QUEUE)
+
+
+def official_changes():
+    """{'pending': [...], 'done': [last few results]} for the Officials page."""
+    return {'pending': (_read_json(OFFICIALS_QUEUE) or {}).get('changes', []),
+            'done': ((_read_json(OFFICIALS_DONE) or {}).get('results', []))[-5:][::-1]}

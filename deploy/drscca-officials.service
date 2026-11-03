@@ -1,0 +1,11 @@
+[Unit]
+Description=DRSCCA apps: apply officials-list changes (handover)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/projects/event_drscca_app
+EnvironmentFile=%h/projects/event_drscca_app/.env
+Environment=GAMCFGDIR=%h/.gam
+ExecStart=%h/projects/event_drscca_app/venv/bin/python tools/officials_queue.py
+TimeoutStartSec=10min
