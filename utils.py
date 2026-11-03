@@ -120,6 +120,20 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import threading
 
+def _plain_to_html(text):
+    """The plain-text body as simple HTML: escaped, URLs and emails linked, paragraphs kept, lines left to reflow."""
+    import html as _html
+    import re as _re
+    out = []
+    for para in text.split('\n\n'):
+        p = _html.escape(para)
+        p = _re.sub(r'(https?://[^\s<]+)', r'<a href="\1">\1</a>', p)
+        p = _re.sub(r'(?<![\w/=.@])([\w.+-]+@[\w-]+\.[\w.]+\w)', r'<a href="mailto:\1">\1</a>', p)
+        out.append('<p style="margin:0 0 1em">' + p.replace('\n', '<br>') + '</p>')
+    return ('<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.45">'
+            + ''.join(out) + '</div>')
+
+
 def send_mail(subject, body, recipient=None, attachments=(), cc=None):
     """Send a plain-text email in the background (see the SMTP notes inside).
     attachments: [(filename, bytes, mime type)], e.g. an invoice PDF."""
@@ -157,7 +171,13 @@ def send_mail(subject, body, recipient=None, attachments=(), cc=None):
             msg['Cc'] = cc
         footer = os.environ.get('MAIL_FOOTER', 'This is an automated message from the DRSCCA apps. Replies to this address are not read: '
                                  'use the links above, or write to your program group or admin@drscca.org.')
-        msg.attach(MIMEText(f"{body}\n\n--\n{footer}" if footer else body, 'plain'))
+        text = f"{body}\n\n--\n{footer}" if footer else body
+        # Plain text alone gets hard-wrapped by some mail apps (Gmail on Android breaks long lines mid-sentence),
+        # so send an HTML copy too: it reflows to the screen. Same words, links made clickable.
+        alt = MIMEMultipart('alternative')
+        alt.attach(MIMEText(text, 'plain'))
+        alt.attach(MIMEText(_plain_to_html(text), 'html'))
+        msg.attach(alt)
         for name, data, mime in attachments:
             main, _, sub = (mime or 'application/octet-stream').partition('/')
             part = MIMEBase(main, sub)
