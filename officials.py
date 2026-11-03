@@ -90,4 +90,23 @@ def mirror_to_sheet():
                 'changing this tab does not change who approves.']]
     ws.clear()
     ws.update(out, 'A1', value_input_option='RAW')
+    _mirror_permissions(book, rows)
     return len(rows)
+
+
+def _mirror_permissions(book, rows):
+    """The Admin > Roles grid as a readable tab (Role permissions), so it is backed up in the shared drive too."""
+    import access
+    roles = sorted({o.get('role', '') for o in rows if o.get('role') and o.get('role') != 'Admin'}) + [access.VOLUNTEER]
+    grid = [['Permission', *roles]]
+    for group, perms in (('Everyday', access.EVERYDAY), ('Extra powers', access.EXTRA), ('Apps on the home page', access.APPS)):
+        grid.append([group.upper()])
+        have = {r: access.perms(r) for r in roles}
+        grid += [[label, *['yes' if k in have[r] else '' for r in roles]] for k, label in perms.items()]
+    grid += [[], ['Copy for reference, refreshed nightly. Permissions are set in the apps (Admin > Roles); editing this tab changes nothing.']]
+    try:
+        ws = book.worksheet('Role permissions')
+    except Exception:
+        ws = book.add_worksheet('Role permissions', rows=60, cols=len(roles) + 2)
+    ws.clear()
+    ws.update(grid, 'A1', value_input_option='RAW')
