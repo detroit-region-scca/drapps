@@ -146,7 +146,7 @@ def privacy():
 def officials_page():
     """Who holds which region role, read-only. The admin account changes it in the Admin app."""
     return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Officials", app_name='Officials', view='officials',
-                           people=officials.all(), programs=load_programs())
+                           people=officials.shown((auth.user() or {}).get('roles')), programs=load_programs())
 
 
 @app.route('/treasurer')

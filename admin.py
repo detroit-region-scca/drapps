@@ -8,7 +8,7 @@
 import os
 import re as _re
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 import auth
 import officials
@@ -24,8 +24,7 @@ def _me():
 
 def _guard():
     if 'Admin' not in (_me().get('roles') or []):
-        flash('Admin is for the region admin account (admin@drscca.org).', 'warning')
-        return redirect(url_for('home'))
+        abort(404)            # not even a hint that it exists
     return None
 
 

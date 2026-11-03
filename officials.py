@@ -33,6 +33,12 @@ def all():  # noqa: A001 (module-level name, read as officials.all())
         return [dict(o) for o in _cache['rows']]
 
 
+def shown(viewer_roles=()):
+    """The list as people see it: the admin account's own entry is only shown to the admin account."""
+    rows = all()
+    return rows if 'Admin' in (viewer_roles or ()) else [o for o in rows if o.get('role') != 'Admin']
+
+
 def mailto(o):
     """Where the app emails an official: only the role's group (the "notify" field, e.g. autocross@drscca.org), so mail
     and approval links follow the job. Never the person's own address; '' when the role has no group."""

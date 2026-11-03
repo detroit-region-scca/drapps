@@ -372,6 +372,6 @@ def access():
         store._cache.pop('volunteers', None)
         store._invalidate()
         return redirect(url_for('auth.access'))
-    people = [dict(o, level='officer' if o.get('role') in OFFICER_ROLES else 'official') for o in O.all() if o.get('email')]
+    people = [dict(o, level='officer' if o.get('role') in OFFICER_ROLES else 'official') for o in O.shown((u or {}).get('roles')) if o.get('email')]
     return render_template('home.html', title='Who can sign in', app_name='Access', view='access', people=people,
                            vols=sorted(volunteers().values(), key=lambda v: v.get('name', '').lower()))
