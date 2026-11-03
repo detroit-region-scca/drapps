@@ -123,12 +123,11 @@ def apply_one(c):
                 if c.get('drop_volunteer'):
                     _drop_volunteer(c['email'].lower())
                 return True, out.getvalue()
-            doc = handover.load()
-            before = [dict(o) for o in doc['officials']]
-            rows = doc['officials']
             if op != 'person':
                 raise SystemExit(f'Unknown change "{op}"; nothing was saved.')
-            rows = apply_person(rows, c)
+            doc = handover.load()
+            before = [dict(o) for o in doc['officials']]
+            rows = apply_person(doc['officials'], c)
             check_needed(before, rows)
             doc['officials'] = rows
             handover.save(doc)
