@@ -50,6 +50,22 @@ def _num(v):
         return None
 
 
+DATE_COLS = {'date', 'updated', 'approved'}
+
+
+def _read_cell(col, v):
+    """A Budgets cell as text. Someone editing the sheet by hand can turn a date into a real date cell, which the API
+    sends as a day number (46277); give it back as YYYY-MM-DD like the app writes it."""
+    if col in DATE_COLS and isinstance(v, (int, float)) and not isinstance(v, bool) and 20000 < v < 80000:
+        from datetime import date, timedelta
+        d = date(1899, 12, 30) + timedelta(days=int(v))
+        if col == 'updated' and v % 1:
+            from datetime import datetime
+            return (datetime(1899, 12, 30) + timedelta(days=v)).isoformat(sep=' ', timespec='seconds')
+        return d.isoformat()
+    return str(v)
+
+
 def _snapshot():
     hit = _cache.get('snap')
     if hit and hit[0] == C.version(os.environ['BUDGETS_SHEET_ID']):
@@ -60,7 +76,7 @@ def _snapshot():
         # No QBO Actuals tab until the first sync has run.
         res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:L', 'Lines!A:G'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], [], []]
-    buds = [dict(zip(BUD_COLS, [str(v) for v in r] + [''] * len(BUD_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
+    buds = [dict(zip(BUD_COLS, [_read_cell(c, v) for c, v in zip(BUD_COLS, r)] + [''] * len(BUD_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
     lines = []
     for r in vr[1][1:]:
         if not r or not str(r[0]).strip():
