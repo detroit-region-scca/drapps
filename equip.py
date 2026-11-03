@@ -157,7 +157,7 @@ def item(item_id=None):
     edit = request.args.get('edit') == '1' or not item_id
     if edit and not _is_editor():
         return editor_required(lambda: None)()
-    lc = E.lifecycle(it) if it else None
+    lc = E.lifecycle(it) if item_id else None
     tasks = [t for t in E.tasks() if it and t['about'] == it.get('name')]
     return render_template('equip.html', **_ctx(view='item', it=it, lc=lc, edit=edit, locations=_location_names(), tasks=tasks,
                                                 docs=_docs_for(it['id']) if it and not edit else None, today=date.today().isoformat()))
