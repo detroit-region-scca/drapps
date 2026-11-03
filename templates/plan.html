@@ -130,7 +130,8 @@
                 {% endfor %}
                 <tr class="total-row"><td class="ps-3">{{ 'Total' if ops_budget else 'Program total' }}{% if p.savings %} <span class="small fw-normal text-muted">(not counting {{ money(p.savings) }} set aside, which stays in savings)</span>{% endif %}</td><td class="num">{{ money(p.net) }}</td><td class="num pe-3">{{ money(a.net if a and not future else (last_net if future else none)) }}</td></tr>
                 </tbody></table></div></div>
-            {% if ops_budget %}<p class="small text-muted mb-1">Operations has one budget. Under each account are the <a href="{{ url_for('equip.costs') }}">bills</a> and <a href="{{ url_for('equip.plan') }}">equipment</a> from the Operations records that make it up; a line turns amber when the records no longer match.</p>{% endif %}
+            {% if ops_budget %}<p class="small text-muted mb-1">Money set aside for later replacements is not in this budget: it stays in savings and the board decides it as its own motion (see the <a href="{{ url_for('equip.plan') }}">replacement plan</a>).</p>
+            <p class="small text-muted mb-1">Operations has one budget. Under each account are the <a href="{{ url_for('equip.costs') }}">bills</a> and <a href="{{ url_for('equip.plan') }}">equipment</a> from the Operations records that make it up; a line turns amber when the records no longer match.</p>{% endif %}
             {% if as_of %}<p class="small text-muted">Actuals from QuickBooks as of {{ as_of }}. Equipment bought shows in QuickBooks as property, not as an expense, so it has no actual here.</p>{% endif %}
             {% else %}
             <h2 class="h6 text-muted">Plan, events and actuals</h2>

@@ -309,8 +309,7 @@ def locations(items_rows, places_rows):
 def budget(year, items_rows, places_rows, tasks_rows, today=None):
     """What the Operations records say a year costs, by QuickBooks account, for the Budget column of the Operations
     annual plan (the way an event budget fills it for a program): every bill on an Operations account for a full year,
-    equipment the replacement list buys that year on its Capital Equipment account, and the monthly replacement
-    set-aside under '' (kept in savings). {account: {'amount': cost as a negative number, 'items': [(what, amount)]}}."""
+    and equipment the replacement list buys that year on its Capital Equipment account. {account: {'amount': cost as a negative number, 'items': [(what, amount)]}}."""
     out = {}
 
     def add(acc, what, amount):
@@ -325,9 +324,8 @@ def budget(year, items_rows, places_rows, tasks_rows, today=None):
     for r in rp['near']:
         if str(r['year']) == str(year):
             add(r['it'].get('account') or 'Capital Equipment (no account set)', r['it']['name'], r['cost'])
-    monthly = rp['monthly_without_big'] if rp['big_total'] else rp['monthly']
-    if monthly and int(year) >= int(rp['start_label'][-4:]):
-        add('', f"Replacement set-aside, {money_word(monthly)} a month", monthly * 12)
+    # Money set aside for later replacements is not in the budget: it stays the region's money, in savings, and the
+    # board decides it as its own motion (Board > Motions), linked from the replacement plan page.
     for r in out.values():
         r['items'].sort(key=lambda x: -x[1])
     return out

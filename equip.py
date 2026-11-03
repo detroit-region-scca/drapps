@@ -363,7 +363,14 @@ def plan():
     by_year = {}
     for r in rp['near']:
         by_year[r['year']] = by_year.get(r['year'], 0) + r['cost']
-    return render_template('equip.html', **_ctx(view='plan', rp=rp, by_year=by_year, missing=missing))
+    motion = None
+    try:
+        import motions_store as MS
+        if MS.enabled():
+            motion = next((m for m in MS.motions() if m['link'].rstrip('/') == url_for('equip.plan').rstrip('/') and m['status'] != 'withdrawn'), None)
+    except Exception:
+        motion = None
+    return render_template('equip.html', **_ctx(view='plan', rp=rp, by_year=by_year, missing=missing, motion=motion))
 
 
 def overdue_count():
