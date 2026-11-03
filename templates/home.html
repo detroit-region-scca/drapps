@@ -111,7 +111,7 @@
             </a>
         </div>
         {% set vol = me and me.level == 'volunteer' %}
-        {% if members_enabled %}
+        {% if members_enabled and shows('members') %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('members.home') }}" style="--tile: #f5b83d;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#f5b83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -133,7 +133,7 @@
             </a>
         </div>
         {% endif %}
-        {% if me and me.level != 'volunteer' and plan_enabled %}
+        {% if plan_enabled and shows('board') %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('board.home') }}" style="--tile: #1d3fb8;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#1d3fb8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -144,7 +144,7 @@
             </a>
         </div>
         {% endif %}
-        {% if fr_enabled %}
+        {% if fr_enabled and shows('funds') %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('fr.home') }}" style="--tile: #3ecf8e;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#3ecf8e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -155,7 +155,7 @@
             </a>
         </div>
         {% endif %}
-        {% if plan_enabled and not vol %}
+        {% if plan_enabled and shows('plan') %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('plan.home') }}" style="--tile: #4fd1c5;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#4fd1c5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -166,7 +166,7 @@
             </a>
         </div>
         {% endif %}
-        {% if not vol %}
+        {% if shows('operations') %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('equip.home') }}" style="--tile: #ff9f6b;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#ff9f6b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -177,6 +177,7 @@
             </a>
         </div>
         {% endif %}
+        {% if shows('invoices') %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('inv.home') }}" style="--tile: #6ea8ff;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#6ea8ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -186,7 +187,19 @@
                 <div class="what">Bill sponsors and partners in the region's name</div>
             </a>
         </div>
-        {% if not vol %}
+        {% endif %}
+        {% if shows('volunteers') %}
+        <div class="col-6 col-md-4 col-lg">
+            <a class="app-tile" href="{{ url_for('auth.access') }}" style="--tile: #17a2b8;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#17a2b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.6 3-5.6 6-5.6s5.4 2 6 5.6"/><path d="M17 8v6M14 11h6"/>
+                </svg>
+                <div class="name">Volunteers</div>
+                <div class="what">Let a volunteer sign in</div>
+            </a>
+        </div>
+        {% endif %}
+        {% if shows('treasurer') %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('treasurer') }}" style="--tile: #9aa3ad;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#9aa3ad" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

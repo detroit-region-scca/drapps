@@ -130,6 +130,26 @@ app.jinja_env.globals['qbo_state'] = _qbo_state
 app.jinja_env.globals['google_on'] = auth.google_on
 
 
+def _shows(app_name):
+    """Whether an app's tile is shown to the signed-in person: only apps their roles give them something to do in
+    (Admin > Roles). Hiding is for tidiness; looking at a page is never blocked."""
+    u = auth.user() or {}
+    p, vol = set(u.get('perms') or ()), u.get('level') == 'volunteer'
+    return {
+        'members': bool(p & {'points_enter', 'points'}),
+        'board': not vol and bool(p & {'board_ask', 'board', 'minutes'}),
+        'funds': bool(p & {'funds', 'funds_all', 'pay'}),
+        'invoices': bool(p & {'invoices', 'invoices_all', 'pay'}),
+        'plan': not vol and bool(p & {'plan_own', 'plan_all', 'board', 'pay'}),
+        'operations': not vol and bool(p & {'ops', 'board', 'pay'}),
+        'treasurer': not vol and bool(p & {'pay', 'audit'}),
+        'volunteers': not vol and 'access' in p and 'admin' not in p and not (p & {'pay', 'audit'}),
+    }.get(app_name, True)
+
+
+app.jinja_env.globals['shows'] = _shows
+
+
 @app.context_processor
 def _officials():
     return {'officials': officials, 'me': auth.user()}
