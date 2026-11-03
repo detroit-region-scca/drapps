@@ -23,4 +23,4 @@ def test_earlier_full_standard_format_still_reads(monkeypatch, tmp_path):
     p.write_text(json.dumps({'Director': {'level': 'full', 'ops': False}, 'Equipment': {'level': 'standard', 'ops': True}}))
     monkeypatch.setattr(access, 'PATH', str(p))
     access._cache.clear()
-    assert access.perms('Director') >= set(access.EXTRA) and access.perms('Equipment') == EVERY | {'ops'}
+    assert access.perms('Director') >= set(access.EXTRA) - {'admin'} and access.perms('Equipment') == EVERY | {'ops'}

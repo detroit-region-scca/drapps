@@ -34,6 +34,7 @@ EXTRA = {
     'ops': 'Edit Operations (equipment, storage, bills)',
     'access': 'Add and remove volunteers',
     'audit': 'See the audit log',
+    'admin': 'Run the Admin app (users, roles, programs)',
 }
 PERMS = {**EVERYDAY, **EXTRA}
 OFFICERS = {'RE', 'ARE', 'Secretary', 'Treasurer', 'Admin'}      # bylaws Art. IV 4.2, plus the admin account
@@ -74,7 +75,7 @@ def perms(role):
         return set(PERMS) - {'plan_own'}
     saved = _load().get(role) or {}
     if 'level' in saved:                        # the earlier full/standard + ops format
-        base = (set(PERMS) - {'plan_own'}) if saved.get('level') == 'full' else set(EVERYDAY_DEFAULT)
+        base = (set(PERMS) - {'plan_own', 'admin'}) if saved.get('level') == 'full' else set(EVERYDAY_DEFAULT)
         if saved.get('ops'):
             base.add('ops')
         return base

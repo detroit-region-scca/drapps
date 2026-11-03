@@ -23,7 +23,7 @@ def _me():
 
 
 def _guard():
-    if 'Admin' not in (_me().get('roles') or []):
+    if 'admin' not in (_me().get('perms') or []):
         abort(404)            # not even a hint that it exists
     return None
 

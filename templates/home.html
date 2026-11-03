@@ -54,7 +54,7 @@
     </div></div>
     {% elif view == 'officials' %}
     <div class="page-title">Region officials</div>
-    <p class="text-muted small">Funds request approvals go only to these people and addresses. The admin keeps this list{% if me and 'Admin' in (me.roles or []) %} in <a href="{{ url_for('admin.home') }}">Admin</a>{% endif %}.</p>
+    <p class="text-muted small">Funds request approvals go only to these people and addresses. The admin keeps this list{% if me and 'admin' in (me.perms or []) %} in <a href="{{ url_for('admin.home') }}">Admin</a>{% endif %}.</p>
     {% if people %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
         <tbody>{% for o in people %}<tr><td class="ps-3">{{ o.title }}</td><td>{{ o.name }}</td><td class="pe-3"><a href="mailto:{{ o.email }}">{{ o.email }}</a></td></tr>{% endfor %}</tbody>
     </table></div></div>{% else %}<p class="text-warning">No officials list on this server, so no approval emails are sent.</p>{% endif %}
@@ -122,7 +122,7 @@
             </a>
         </div>
         {% endif %}
-        {% if me and 'Admin' in (me.roles or []) %}
+        {% if me and 'admin' in (me.perms or []) %}
         <div class="col-6 col-md-4 col-lg">
             <a class="app-tile" href="{{ url_for('admin.home') }}" style="--tile: #6c757d;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

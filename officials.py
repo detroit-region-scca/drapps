@@ -42,9 +42,10 @@ def follows(title, titles):
 
 
 def shown(viewer_roles=()):
-    """The list as people see it: the admin account's own entry is only shown to the admin account."""
+    """The list as people see it: the admin account's own entry only for those who may run Admin."""
+    import access
     rows = all()
-    return rows if 'Admin' in (viewer_roles or ()) else [o for o in rows if o.get('role') != 'Admin']
+    return rows if 'admin' in access.perms_for(viewer_roles or ()) else [o for o in rows if o.get('role') != 'Admin']
 
 
 def mailto(o):
