@@ -60,6 +60,25 @@ def editor_required(f):
     return wrapped
 
 
+def _changed(f, cols, base_row):
+    """Which fields the person changed in the form. The form carries the values it was opened with (_base), so a field
+    left alone is not written back over an edit made in the sheet since. Old forms without _base: every field sent."""
+    import json
+    try:
+        base = json.loads(f.get('_base') or 'null')
+    except ValueError:
+        base = None
+    sent = [k for k in cols if k in f and k != 'id']
+    if not isinstance(base, dict):
+        return set(sent)
+    return {k for k in sent if E.norm(f.get(k, '')) != E.norm(base.get(k, ''))}
+
+
+def _diff(before, after):
+    """Fields a quick action changed on a row."""
+    return {k for k in after if k != 'id' and E.norm(after.get(k)) != E.norm((before or {}).get(k))}
+
+
 def _who():
     return (session.get('equip_editor') or {}).get('name') or session.get('who') or 'Unknown'
 
@@ -176,7 +195,7 @@ def _save_item(it):
         # Confirm where it is (or say where it went): the quick form on the item page.
         place = f.get('place', '').strip()
         row.update(place=place, seen=date.today().isoformat(), updated=date.today().isoformat(), updated_by=_who())
-        E.save('Property', row)
+        E.save('Property', row, changed=_diff(it, row))
         log_audit_event('EQUIP_ITEM_LOCATED', _who(), {'id': it['id'], 'name': it['name'], 'place': place, 'was': it.get('place', '')})
         flash(f"{it['name']}: {'moved to ' + place if place != it.get('place') else 'confirmed at ' + place}.", 'success')
         return redirect(url_for('equip.item', item_id=it['id']))
@@ -185,7 +204,7 @@ def _save_item(it):
         stamp = f"{'Removed' if gone else 'Put back'} {date.today().isoformat()} by {_who()}."
         row.update(status='Gone' if gone else 'In use', notes=((row.get('notes') or '') + '\n' + stamp).strip(),
                    updated=date.today().isoformat(), updated_by=_who())
-        E.save('Property', row)
+        E.save('Property', row, changed=_diff(it, row))
         log_audit_event('EQUIP_ITEM_REMOVED' if gone else 'EQUIP_ITEM_RESTORED', _who(), {'id': it['id'], 'name': it['name']})
         flash(f"{it['name']} {'removed. It stays on record as Gone' if gone else 'is back in use'}.", 'success')
         return redirect(local_path(f.get('back')) or url_for('equip.item', item_id=it['id']))
@@ -194,7 +213,7 @@ def _save_item(it):
         for k in ('replace_year', 'replace_cost'):
             row[k] = f.get(k, '').replace('$', '').replace(',', '').strip()
         row.update(updated=date.today().isoformat(), updated_by=_who())
-        E.save('Property', row)
+        E.save('Property', row, changed=_diff(it, row))
         log_audit_event('EQUIP_ITEM_SAVED', _who(), {'id': it['id'], 'name': it['name'], 'replace_year': row['replace_year'], 'replace_cost': row['replace_cost']})
         flash(f"{it['name']}: replacement updated.", 'success')
         return redirect(url_for('equip.plan') + f"#{it['id']}")
@@ -208,7 +227,8 @@ def _save_item(it):
         return redirect(request.url)
     row.update(updated=date.today().isoformat(), updated_by=_who())
     new = not row.get('id')
-    rid = E.save('Property', row)
+    ch = _changed(f, E.ITEM_COLS, it) | {'updated', 'updated_by'} | ({'seen'} if row.get('seen') != (it or {}).get('seen') else set())
+    rid = E.save('Property', row, changed=None if new else ch)
     log_audit_event('EQUIP_ITEM_SAVED', _who(), {'id': rid, 'name': row['name'], 'new': new})
     flash(f"Saved {row['name']}.", 'success')
     return redirect(url_for('equip.item', item_id=rid))
@@ -269,7 +289,7 @@ def _save_place(p):
             flash(f"Move the {len(held)} item{'s' if len(held) != 1 else ''} kept at {p['name']} first (open each and use Where is it now?).", 'warning')
             return redirect(url_for('equip.place', place_id=p['id']))
         row.update(status='Closed' if f['action'] == 'close' else '', updated=date.today().isoformat(), updated_by=_who())
-        E.save('Storage', row)
+        E.save('Storage', row, changed=_diff(p, row))
         log_audit_event('EQUIP_PLACE_CLOSED' if f['action'] == 'close' else 'EQUIP_PLACE_REOPENED', _who(), {'id': p['id'], 'name': p['name']})
         flash(f"{p['name']} {'closed: it no longer shows in Gear or Bills' if f['action'] == 'close' else 'is in use again'}.", 'success')
         return redirect(url_for('equip.items') if f['action'] == 'close' else url_for('equip.place', place_id=p['id']))
@@ -280,7 +300,7 @@ def _save_place(p):
         flash('Give the place a name.', 'danger')
         return redirect(request.url)
     row.update(updated=date.today().isoformat(), updated_by=_who())
-    pid = E.save('Storage', row)
+    pid = E.save('Storage', row, changed=None if not row.get('id') else _changed(f, E.PLACE_COLS, p) | {'updated', 'updated_by'})
     log_audit_event('EQUIP_PLACE_SAVED', _who(), {'id': pid, 'name': row['name']})
     flash(f"Saved {row['name']}.", 'success')
     back = f.get('back', '')
@@ -331,7 +351,7 @@ def _save_task(t):
         row.update(last_done=date.today().isoformat(), done_by=_who())
         nxt = E.next_due(t)
         row['due'] = nxt
-        E.save('Recurring costs and to-dos', row)
+        E.save('Recurring costs and to-dos', row, changed=_diff(t, row))
         log_audit_event('EQUIP_TASK_DONE', _who(), {'id': t['id'], 'task': t['task'], 'next': nxt})
         flash(f"Marked done: {t['task']}." + (f" Next due {nxt}." if nxt else ''), 'success')
         back = f.get('back', '')
@@ -344,7 +364,10 @@ def _save_task(t):
     if not row.get('task'):
         flash('Say what has to be done.', 'danger')
         return redirect(request.url)
-    tid = E.save('Recurring costs and to-dos', row)
+    ch = _changed(f, E.TASK_COLS, t) - {'auto'}
+    if 'auto' in f and E.norm(row.get('auto')) != E.norm((t or {}).get('auto')):
+        ch.add('auto')
+    tid = E.save('Recurring costs and to-dos', row, changed=None if not row.get('id') else ch)
     log_audit_event('EQUIP_TASK_SAVED', _who(), {'id': tid, 'task': row['task'], 'due': row.get('due', '')})
     flash('Saved.', 'success')
     back = f.get('back', '')

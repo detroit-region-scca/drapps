@@ -118,8 +118,12 @@ def _cell(v):
     return '' if v is None else v if isinstance(v, (int, float)) else str(v)
 
 
-def save(tab, row):
-    """Add the row (no id yet) or replace the row with its id. Returns the id."""
+def save(tab, row, changed=None):
+    """Add the row (no id yet) or update the row with its id. Returns the id.
+
+    changed: the fields this save means to change. With it, an existing row is re-read from the sheet first and only
+    those fields are written over it, so an edit someone made straight in the sheet meanwhile survives. Without it
+    the whole row is written (only for callers that hold the full, current row)."""
     cols = TABS[tab]
     with FileLock(LOCK), _lock:
         ws = _ws(tab)
@@ -131,9 +135,25 @@ def save(tab, row):
             ws.append_row([_cell(row.get(c)) for c in cols], value_input_option='RAW')
         else:
             n = ids.index(row['id']) + 1
-            ws.update([[_cell(row.get(c)) for c in cols]], f'A{n}', value_input_option='RAW')
+            out = row
+            if changed is not None:
+                end = chr(64 + len(cols)) if len(cols) <= 26 else 'Z'
+                live = (ws.get(f'A{n}:{end}{n}', value_render_option='UNFORMATTED_VALUE') or [[]])[0]
+                out = dict(zip(cols, list(live) + [''] * len(cols)))
+                out.update({k: row.get(k) for k in changed if k in cols and k != 'id'})
+            ws.update([[_cell(out.get(c)) for c in cols]], f'A{n}', value_input_option='RAW')
         refresh()
         return row['id']
+
+
+def norm(v):
+    """A value as the forms show it, for telling whether a field was really changed ("1,200" == 1200 == "1200.0")."""
+    s = '' if v is None else str(v).strip().replace('$', '').replace(',', '')
+    try:
+        f = float(s)
+        return f'{f:g}'
+    except ValueError:
+        return s
 
 
 def create_tabs():

@@ -83,7 +83,7 @@ def test_quota_errors_are_not_remembered(cache):
 def test_poll_refetches_only_changed_sheets(cache, monkeypatch):
     cache.batch_get('s1', ['A:A'])
     times = {'s1': 't1'}
-    monkeypatch.setattr(cache, '_modified', lambda sid: times[sid])
+    monkeypatch.setattr(cache, '_modified', lambda sid: {'modifiedTime': times[sid]})
     cache.poll_once()                       # first look records the time (and refreshes once)
     calls = cache.book.calls
     cache.poll_once()                       # unchanged: nothing fetched
@@ -122,3 +122,21 @@ def test_a_deleted_sheet_is_dropped_from_the_poll(cache, monkeypatch):
     monkeypatch.setattr(cache, '_modified', missing)
     cache.poll_once()
     assert cache._db().execute("SELECT COUNT(*) FROM snaps WHERE sheet_id = 'gone'").fetchone()[0] == 0
+
+
+def test_hand_edit_is_logged_app_edit_is_not(cache, monkeypatch):
+    import utils
+    logged = []
+    monkeypatch.setattr(cache, '_hand_logged', {})
+    monkeypatch.setattr(utils, 'log_audit_event', lambda a, u, d: logged.append((a, u, d)))
+    cache.batch_get('s1', ['A:A'])
+    info = {'modifiedTime': 't1', 'name': 'Ops', 'lastModifyingUser': {'displayName': 'Pat', 'emailAddress': 'pat@x.com'}}
+    monkeypatch.setattr(cache, '_modified', lambda sid: info)
+    cache.poll_once()                       # first look: no log
+    info.update(modifiedTime='t2', lastModifyingUser={'emailAddress': 'app@proj.iam.gserviceaccount.com'})
+    cache.poll_once()                       # the apps' own write: no log
+    info.update(modifiedTime='t3', lastModifyingUser={'displayName': 'Pat', 'emailAddress': 'pat@x.com'})
+    cache.poll_once()
+    info.update(modifiedTime='t4')
+    cache.poll_once()                       # Pat still editing: not logged again
+    assert [(a, u, d['sheet']) for a, u, d in logged] == [('SHEET_EDITED', 'Pat', 'Ops')]

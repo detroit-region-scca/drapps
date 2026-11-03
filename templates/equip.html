@@ -201,7 +201,7 @@
     {% elif view == 'item' %}
     <div class="crumbs"><a href="{{ url_for('equip.items') }}">Where things are</a> / {{ it.name or 'New item' }}</div>
     {% if edit %}
-    <form method="post" class="card p-3">
+    <form method="post" class="card p-3"><input type="hidden" name="_base" value='{{ (it or {})|tojson }}'>
         <div class="row g-2">
             <div class="col-md-8"><label class="form-label small">Name</label><input name="name" class="form-control" value="{{ it.name or '' }}" required></div>
             <div class="col-6 col-md-2"><label class="form-label small">Program</label><input name="program" class="form-control" value="{{ it.program or '' }}" placeholder="Solo, RX…"></div>
@@ -264,7 +264,7 @@
     {% elif view == 'place' %}
     <div class="crumbs"><a href="{{ url_for('equip.items') }}">Where things are</a> / {{ p.name or 'New place' }}</div>
     {% if edit %}
-    <form method="post" class="card p-3"><input type="hidden" name="back" value="{{ back }}"><div class="row g-2">
+    <form method="post" class="card p-3"><input type="hidden" name="back" value="{{ back }}"><input type="hidden" name="_base" value='{{ (p or {})|tojson }}'><div class="row g-2">
         <div class="col-md-6"><label class="form-label small">Name</label><input name="name" class="form-control" value="{{ p.name or '' }}" required></div>
         <div class="col-md-6"><label class="form-label small">Address</label><input name="address" class="form-control" value="{{ p.address or '' }}"></div>
         <div class="col-6 col-md-3"><label class="form-label small">Cost a month</label><input name="cost_month" class="form-control" inputmode="decimal" value="{{ p.cost_month or '' }}"></div>
@@ -307,7 +307,7 @@
 
     {% elif view == 'task' %}
     <div class="crumbs"><a href="{{ back or url_for('equip.costs' if bill else 'equip.tasks') }}">{{ 'Bills' if bill else 'To do' }}</a> / {{ t.task or ('New bill' if bill else 'New to-do') }}</div>
-    <form method="post" class="card p-3"><input type="hidden" name="back" value="{{ back }}"><div class="row g-2">
+    <form method="post" class="card p-3"><input type="hidden" name="back" value="{{ back }}"><input type="hidden" name="_base" value='{{ (t or {})|tojson }}'><div class="row g-2">
         <div class="col-md-8"><label class="form-label small">{{ 'What the bill is for' if bill else 'What has to be done' }}</label><input name="task" class="form-control" value="{{ t.task or '' }}" required></div>
         <div class="col-md-4"><label class="form-label small">For (vehicle, place or group)</label><input name="about" class="form-control" list="aboutNames" value="{{ t.about or '' }}">
             <datalist id="aboutNames">{% for n in names %}<option value="{{ n }}">{% endfor %}</datalist></div>

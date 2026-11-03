@@ -34,6 +34,8 @@ DRIVE = 'https://www.googleapis.com/drive/v3/files/'
 _local = threading.local()
 _poller = None
 _poller_lock = threading.Lock()
+_hand_logged = {}          # (sheet, person) -> when their last hand edit was logged
+HAND_EDIT_QUIET = 30 * 60
 
 
 def enabled():
@@ -167,12 +169,34 @@ class SheetGone(Exception):
 
 
 def _modified(sheet_id):
-    r = sheets_client().http_client.session.get(DRIVE + sheet_id, params={'fields': 'modifiedTime', 'supportsAllDrives': 'true'},
-                                                timeout=20)
+    """Drive's modifiedTime for a sheet, plus its name and who changed it last."""
+    r = sheets_client().http_client.session.get(DRIVE + sheet_id, params={'fields': 'modifiedTime,name,lastModifyingUser(displayName,emailAddress)',
+                                                                         'supportsAllDrives': 'true'}, timeout=20)
     if r.status_code == 404:
         raise SheetGone(sheet_id)
     r.raise_for_status()
-    return r.json().get('modifiedTime', '')
+    return r.json()
+
+
+def _note_hand_edit(sheet_id, info):
+    """A sheet changed by a person rather than by the apps (which write as a service account): say so in the audit
+    log, with a link to the sheet, whose version history shows exactly what changed."""
+    who = info.get('lastModifyingUser') or {}
+    mail = (who.get('emailAddress') or '').lower()
+    if not mail or mail.endswith('.gserviceaccount.com'):
+        return
+    # One entry per person per sheet per half hour: an editing session is one line in the log, not one per poll.
+    now = time.time()
+    if now - _hand_logged.get((sheet_id, mail), 0) < HAND_EDIT_QUIET:
+        return
+    _hand_logged[(sheet_id, mail)] = now
+    try:
+        from utils import log_audit_event
+        log_audit_event('SHEET_EDITED', who.get('displayName') or mail,
+                        {'sheet': info.get('name', ''), 'email': mail, 'modified': info.get('modifiedTime', ''),
+                         'link': f'https://docs.google.com/spreadsheets/d/{sheet_id}/edit'})
+    except Exception as e:
+        log.warning('sheet cache: could not log a hand edit of %s: %s', sheet_id, e)
 
 
 def poll_once():
@@ -181,7 +205,7 @@ def poll_once():
     for (sheet_id, last) in c.execute('SELECT DISTINCT s.sheet_id, COALESCE(m.modified, "") FROM snaps s'
                                       ' LEFT JOIN sheets m ON m.sheet_id = s.sheet_id').fetchall():
         try:
-            mod = _modified(sheet_id)
+            info = _modified(sheet_id)
         except SheetGone:
             # Stop checking a sheet that is gone; if a page asks for it again it is fetched (and fails) afresh.
             log.warning('sheet cache: %s no longer exists in Drive; dropped from the local copy', sheet_id)
@@ -191,8 +215,11 @@ def poll_once():
         except Exception as e:
             log.warning('sheet cache: modifiedTime for %s failed: %s', sheet_id, e)
             continue
+        mod = info.get('modifiedTime', '')
         if mod == last:
             continue
+        if last:            # not the first look at this sheet
+            _note_hand_edit(sheet_id, info)
         for key, ranges, params in c.execute('SELECT key, ranges, params FROM snaps WHERE sheet_id = ?', (sheet_id,)).fetchall():
             try:
                 _fetch(sheet_id, key, json.loads(ranges), json.loads(params))

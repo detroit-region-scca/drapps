@@ -10,7 +10,8 @@ from markupsafe import Markup, escape
 
 # action prefix -> (app label, badge colour)
 APPS = {'EVENT': ('Events', 'primary'), 'WP': ('Worker Points', 'warning'), 'FUNDS': ('Funds Requests', 'success'),
-        'BUDGET': ('Events', 'primary'), 'PLAN': ('Annual Plan', 'light'), 'EQUIP': ('Operations', 'warning'), 'INVOICE': ('Invoices', 'info'), 'LOGIN': ('Login', 'secondary')}
+        'BUDGET': ('Events', 'primary'), 'PLAN': ('Annual Plan', 'light'), 'EQUIP': ('Operations', 'warning'), 'INVOICE': ('Invoices', 'info'), 'LOGIN': ('Login', 'secondary'),
+        'SHEET': ('Sheets', 'danger'), 'BOARD': ('Board', 'primary'), 'MOTION': ('Board', 'primary')}
 
 
 def app_of(action):
@@ -54,6 +55,9 @@ def describe(log):
     if not isinstance(d, dict):
         d = {}
     g = d.get
+    if a == 'SHEET_EDITED':
+        return Markup('{} edited the {} sheet directly (not through the apps). <a href="{}" target="_blank" rel="noopener">See what changed</a> (File &gt; Version history).').format(
+            who, g('sheet', 'a'), g('link', '#'))
     if a == 'EVENT_CREATED':
         return Markup('{} registered {} {} ({})').format(who, g('event_name', ''), g('custom_tag') or g('unique_code', ''), g('program_code', ''))
     if a == 'EVENT_DELETED':
