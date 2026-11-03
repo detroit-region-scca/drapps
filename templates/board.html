@@ -10,7 +10,7 @@
 {% block content %}
 {% if view == 'waiting' %}
     <div class="page-title">Waiting for the board</div>
-    <p class="text-muted small">Tick items, then ask the board to vote{% if officer %} or record its vote{% endif %}.</p>
+    <p class="text-muted small">Tick items, then request an email vote{% if officer %} or record its vote{% endif %}.</p>
     {% if rows or motions %}
     <form method="post">
         <div class="card mb-2"><div class="card-body p-0 table-responsive"><table class="table mb-0">
@@ -31,7 +31,11 @@
             </tr>{% endfor %}
             </tbody>
         </table></div></div>
-        <button name="action" value="ask" class="btn btn-sm btn-outline-primary mb-3">Ask the board</button>
+        <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+            <button name="action" value="ask" class="btn btn-sm btn-outline-primary">Request email vote</button>
+            <div class="form-check m-0"><input class="form-check-input" type="checkbox" name="urgent" value="yes" id="urgent">
+                <label class="form-check-label small" for="urgent">Urgent</label></div>
+        </div>
         {% if officer %}
         <div class="card p-3"><div class="section-label">Record the board's vote on the ticked items</div><div class="row g-2 align-items-end">
             {{ record_fields('decided') }}

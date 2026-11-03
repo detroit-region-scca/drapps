@@ -112,14 +112,16 @@ def home():
                 return redirect(url_for('board.home'))
             who = session.get('who', '')
             first = (brows[0]['b']['event_name'] if brows else ms[0]['title']) if n == 1 else f'{n} items'
-            body = (f"{who} asks the board to vote on {'this' if n == 1 else f'these {n} items'}:\n\n" + '\n\n'.join(lines) +
+            urgent = f.get('urgent') == 'yes'
+            body = (("URGENT: please vote as soon as you can.\n\n" if urgent else '') +
+                    f"{who} asks the board to vote on {'this' if n == 1 else f'these {n} items'}:\n\n" + '\n\n'.join(lines) +
                     "\n\nPlease reply all with your vote (yes or no on each) so it stays in one thread. Everything waiting for the board:\n"
                     + url_for('board.home', _external=True))
-            send_mail(f"Board vote: {first}", body, board_email(), reply_to=board_email())
+            send_mail(f"{'URGENT ' if urgent else ''}Board vote: {first}", body, board_email(), reply_to=board_email())
             for m in ms:
                 M.update(m['id'], asked=date.today().isoformat())
-            log_audit_event('BOARD_ASKED', who, {'budgets': [r['b']['event_code'] for r in brows], 'motions': [m['id'] for m in ms]})
-            flash(f"Sent to the board ({board_email()}): {n} item{'s' if n != 1 else ''}.", 'success')
+            log_audit_event('BOARD_ASKED', who, {'budgets': [r['b']['event_code'] for r in brows], 'motions': [m['id'] for m in ms], 'urgent': urgent})
+            flash(f"{'Urgent vote request' if urgent else 'Vote request'} sent to the board ({board_email()}): {n} item{'s' if n != 1 else ''}.", 'success')
             return redirect(url_for('board.home'))
         off = officer_current()
         if not off:
@@ -177,7 +179,7 @@ def motions():
     who = session.get('who', '')
     mid = M.propose(title, f.get('details', '').strip()[:4000], amount, link, who)
     log_audit_event('MOTION_PROPOSED', who, {'id': mid, 'title': title})
-    flash(f'{mid} added to the list. Tick it and press Ask the board when it is ready.', 'success')
+    flash(f'{mid} added to the list. Tick it and press Request email vote when it is ready.', 'success')
     return redirect(url_for('board.home'))
 
 
