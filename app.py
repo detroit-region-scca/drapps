@@ -134,7 +134,10 @@ def _shows(app_name):
     """Whether an app's tile is on the signed-in person's home page: set per role in Admin > Roles (Apps on the home
     page). Hiding is for tidiness; looking at a page is never blocked."""
     u = auth.user() or {}
-    return f'show_{app_name}' in set(u.get('perms') or ())
+    p = set(u.get('perms') or ())
+    if app_name == 'volunteers' and (p & {'show_treasurer', 'admin'}):
+        return False          # the Treasurer and Admin pages already cover volunteers
+    return f'show_{app_name}' in p
 
 
 app.jinja_env.globals['shows'] = _shows
