@@ -22,7 +22,7 @@ from utils import to_number
 
 ITEM_COLS = ['id', 'name', 'program', 'category', 'place', 'year', 'quantity', 'cost', 'life_years', 'vin', 'plate',
              'condition', 'status', 'notes', 'docs_url', 'updated', 'updated_by', 'replace_cost', 'replace_year', 'nickname', 'seen', 'account']
-PLACE_COLS = ['id', 'name', 'address', 'cost_month', 'cost_year', 'account_holder', 'access', 'notes', 'updated', 'updated_by', 'qbo_check']
+PLACE_COLS = ['id', 'name', 'address', 'cost_month', 'cost_year', 'account_holder', 'access', 'notes', 'updated', 'updated_by', 'qbo_check', 'status']
 TASK_COLS = ['id', 'task', 'about', 'due', 'repeat_months', 'cost', 'owner', 'notes', 'last_done', 'done_by', 'category', 'paid_how', 'auto',
              'qbo_check', 'account']
 # QuickBooks accounts Operations money is booked to; a bill or item on any other account (a program's) is not Operations'.
@@ -43,7 +43,7 @@ LABELS = {
                  'Replacement cost estimate', 'Replace or buy in (year)', 'Also called (for things other items are kept in)',
                  'Location last confirmed', 'QuickBooks account (for equipment to buy)'],
     'Storage': ['ID', 'Name', 'Address', 'Cost per month', 'Cost per year', 'Account in the name of / paid how', 'Access', 'Notes',
-                'Last updated', 'Updated by', 'Checked against QuickBooks'],
+                'Last updated', 'Updated by', 'Checked against QuickBooks', 'Status (blank = in use; Closed = no longer used)'],
     'Recurring costs and to-dos': ['ID', 'What', 'For', 'Next due', 'Repeats every (months; blank = once)', 'Cost each time', 'Who',
                                    'Notes', 'Last done', 'Done by', 'Cost category', 'Paid how', 'Charged automatically (yes or blank)',
                                    'Checked against QuickBooks', 'QuickBooks account'],
@@ -101,8 +101,9 @@ def items():
     return _snapshot()['Property']
 
 
-def places():
-    return _snapshot()['Storage']
+def places(closed=False):
+    """Storage places in use (closed=True: also the ones the region no longer uses)."""
+    return [p for p in _snapshot()['Storage'] if closed or p.get('status', '') != 'Closed']
 
 
 def tasks():
@@ -137,6 +138,7 @@ def save(tab, row):
 
 def create_tabs():
     """Make the tabs with their plain headers if they are not there yet, and bring older headers up to date."""
+    book = open_book(os.environ['OPERATIONS_SHEET_ID'])
     have = {w.title: w for w in book.worksheets()}
     for title, labels in LABELS.items():
         if title not in have:

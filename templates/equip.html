@@ -69,6 +69,11 @@
         ul.where-inside { list-style: none; padding-left: 1.1rem; margin: .25rem 0 0; border-left: 2px solid rgba(255,159,107,.35); }
         ul.where-inside li { padding: .1rem 0 .1rem .5rem; font-size: .92rem; }
 {% endblock %}
+{% macro repl_cells(r) %}{% if editor %}<td class="pe-3 text-end text-nowrap no-print" style="width: 1%"><form method="post" action="{{ url_for('equip.item', item_id=r.it.id) }}" class="d-inline-flex gap-1 m-0" onclick="event.stopPropagation()">
+    <input type="hidden" name="action" value="replacement">
+    <input name="replace_year" class="form-control form-control-sm" style="width: 5.2rem" inputmode="numeric" value="{{ r.year }}" aria-label="Year">
+    <input name="replace_cost" class="form-control form-control-sm" style="width: 7rem" inputmode="decimal" value="{{ '%d'|format(r.cost) }}" aria-label="Estimated cost">
+    <button class="btn btn-sm btn-outline-light">Save</button></form></td>{% endif %}{% endmacro %}
 {% block content %}
     {% if not editor %}<div class="small text-muted mb-2 no-print">Changes are made by the equipment committee and the club officers.</div>{% endif %}
 
@@ -133,13 +138,13 @@
     {{ gear_pills('where') }}
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="text-muted small">Where all {{ n_live }} things are (planned purchases are on Replacement): each storage place, what's in each trailer and motorhome, and who has the rest. <a href="{{ url_for('equip.items', by='category') }}">List by category</a></div>
-        {{ editbar(none, url_for('equip.item'), 'Add an item') }}
+        {% if editor %}<div class="d-flex flex-wrap gap-2 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item') }}">+ Add an item</a><a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.place') }}">+ Add a storage place</a></div>{% endif %}
     </div>
     {% for p, entries in where %}
     <div class="card mb-3">
         <div class="d-flex flex-wrap justify-content-between gap-2 px-3 pt-3 pb-2">
             <div><a class="h6 m-0" href="{{ url_for('equip.place', place_id=p.id) }}">{{ p.name }}</a> <span class="small text-muted">{{ p.address }}</span></div>
-            <div class="small text-muted">{% if p.cost_month %}{{ money(p.cost_month, 0) }}/mo{% elif p.cost_year %}{{ money(p.cost_year, 0) }}/yr{% else %}free{% endif %} · {{ p.account_holder }}</div>
+            <div class="small text-muted">{% if p.cost_month %}{{ money(p.cost_month, 0) }}/mo{% elif p.cost_year %}{{ money(p.cost_year, 0) }}/yr{% else %}free{% endif %} · {{ p.account_holder }}{% if editor %} · <a class="no-print" href="{{ url_for('equip.item', place=p.name) }}">+ add item here</a>{% endif %}</div>
         </div>
         {% if entries %}{{ where_list(entries) }}{% else %}<div class="px-3 pb-3 small text-muted">Nothing listed here.</div>{% endif %}
     </div>
@@ -149,7 +154,7 @@
     {% if other %}<h2 class="h6 text-muted mt-4">Somewhere else</h2>
     <div class="card mb-3">{% for place, entries in other %}<div class="px-3 pt-2 fw-semibold">{{ place }}</div>{{ where_list(entries) }}{% endfor %}</div>{% endif %}
     {% if unknown %}<h2 class="h6 text-warning mt-4">Not sure where</h2><div class="card mb-3">{{ where_list(unknown) }}</div>{% endif %}
-    <p class="small text-muted">To record a move, open the item and use "Where is it now?". Storage places are added with <a href="{{ url_for('equip.place') }}">Add a place</a>.</p>
+    <p class="small text-muted">To move or remove something, open it. To close a storage place, open the place.</p>
 
     {% elif view == 'documents' %}
     {{ gear_pills('documents') }}
@@ -180,7 +185,7 @@
     <div class="small mb-3"><a href="{{ url_for('equip.items') }}">‹ Back to where things are</a></div>
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
         <h2 class="h6 text-muted m-0">Property by category <span class="small">· <a href="{{ url_for('equip.items', gone=none if show_gone else '1') }}">{{ 'hide' if show_gone else 'show' }} items that are gone</a></span></h2>
-        {{ editbar(none, url_for('equip.item'), 'Add an item') }}
+        {% if editor %}<div class="d-flex flex-wrap gap-2 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item') }}">+ Add an item</a><a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.place') }}">+ Add a storage place</a></div>{% endif %}
     </div>
     {% for cat, rows in groups %}
     <h2 class="h6 text-muted mt-3">{{ cat }} ({{ rows|length }})</h2>
@@ -226,7 +231,10 @@
         <div class="d-flex flex-wrap justify-content-between gap-2">
             <div><div class="page-title m-0">{{ it.name }}</div>
                 <div class="text-muted">{{ it.category }}{% if it.program %} · {{ it.program }}{% endif %} · {{ it.status }}{% if it.condition %} · {{ it.condition }}{% endif %}</div></div>
-            {{ editbar(url_for('equip.item', item_id=it.id, edit=1)) }}
+            {% if editor %}<div class="d-flex flex-wrap gap-2 align-items-start no-print">
+                <a class="btn btn-sm btn-accent" href="{{ url_for('equip.item', item_id=it.id, edit=1) }}">Edit</a>
+                <form method="post" class="m-0">{% if it.status == 'Gone' %}<button name="action" value="restore" class="btn btn-sm btn-outline-light">Put back in use</button>
+                    {% else %}<button name="action" value="remove" class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove {{ it.name|e }}? It stays on record as Gone.')">Remove</button>{% endif %}</form></div>{% endif %}
         </div>
         <dl class="row mt-3 mb-0 small">
             <dt class="col-sm-3">Kept at</dt><dd class="col-sm-9">{{ it.place or '·' }}</dd>
@@ -268,7 +276,12 @@
     </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ back or url_for('equip.items') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
     {% else %}
     <div class="card p-3 mb-3">
-        <div class="d-flex flex-wrap justify-content-between gap-2"><div><div class="page-title m-0">{{ p.name }}</div><div class="text-muted">{{ p.address }}</div></div>{{ editbar(url_for('equip.place', place_id=p.id, edit=1)) }}</div>
+        <div class="d-flex flex-wrap justify-content-between gap-2"><div><div class="page-title m-0">{{ p.name }}{% if p.status == 'Closed' %} <span class="badge rounded-pill text-bg-secondary align-middle">Closed</span>{% endif %}</div><div class="text-muted">{{ p.address }}</div></div>
+            {% if editor %}<div class="d-flex flex-wrap gap-2 align-items-start no-print">
+                <a class="btn btn-sm btn-accent" href="{{ url_for('equip.place', place_id=p.id, edit=1) }}">Edit</a>
+                <a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.item', place=p.name) }}">+ Add item here</a>
+                <form method="post" class="m-0">{% if p.status == 'Closed' %}<button name="action" value="reopen" class="btn btn-sm btn-outline-light">Reopen</button>
+                    {% else %}<button name="action" value="close" class="btn btn-sm btn-outline-danger" onclick="return confirm('Close {{ p.name|e }}? Its bill stops counting; it stays on record.')">Close this place</button>{% endif %}</form></div>{% endif %}</div>
         <dl class="row mt-3 mb-0 small">
             <dt class="col-sm-3">Cost</dt><dd class="col-sm-9">{% if p.cost_month %}{{ money(p.cost_month) }} a month{% elif p.cost_year %}{{ money(p.cost_year) }} a year{% else %}free{% endif %}</dd>
             <dt class="col-sm-3">Account</dt><dd class="col-sm-9">{{ p.account_holder or '·' }}</dd>
@@ -327,16 +340,18 @@
             {% if motion.status == 'passed' %}approved {{ motion.decided }}{% elif motion.status == 'failed' %}not approved {{ motion.decided }}{% else %}waiting for the board{% endif %}.
             {% else %}The board decides this as a motion: <a href="{{ url_for('board.home') }}#propose">propose it</a>.{% endif %}</p>{% endif %}
     </div>
+    {% if editor %}<div class="d-flex flex-wrap gap-2 mb-3 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item', status='Planned') }}">+ Add a planned purchase</a>
+        <span class="small text-muted align-self-center">Change a year or cost right in the lists below; open an item for anything else.</span></div>{% endif %}
     <h2 class="h6 text-muted">Buy soon</h2>
     <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <tbody>{% for r in rp.near %}<tr class="row-link" onclick="location.href='{{ url_for('equip.item', item_id=r.it.id) }}'"><td class="ps-3">{{ r.year }}</td><td><a href="{{ url_for('equip.item', item_id=r.it.id) }}">{{ r.it.name }}</a>{% if r.it.status == 'Planned' %} <span class="small text-muted">new</span>{% endif %}</td><td class="num pe-3">{{ money(r.cost, 0) }}</td></tr>{% else %}<tr><td class="ps-3 text-muted">Nothing.</td></tr>{% endfor %}</tbody>
+        <tbody>{% for r in rp.near %}<tr id="{{ r.it.id }}">{% if not editor %}<td class="ps-3">{{ r.year }}</td>{% endif %}<td class="{{ 'ps-3' if editor }}"><a href="{{ url_for('equip.item', item_id=r.it.id) }}">{{ r.it.name }}</a>{% if r.it.status == 'Planned' %} <span class="small text-muted">new</span>{% endif %}</td>{% if not editor %}<td class="num pe-3">{{ money(r.cost, 0) }}</td>{% endif %}{{ repl_cells(r) }}</tr>{% else %}<tr><td class="ps-3 text-muted">Nothing.</td></tr>{% endfor %}</tbody>
     </table></div></div>
     <h2 class="h6 text-muted">Save for later</h2>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <thead><tr><th class="ps-3">Year</th><th>Item</th><th class="num">Estimated cost</th><th class="num pe-3">A month</th></tr></thead>
-        <tbody>{% for r in rp.later %}<tr class="row-link" onclick="location.href='{{ url_for('equip.item', item_id=r.it.id) }}'"><td class="ps-3">{{ r.year }}</td><td><a href="{{ url_for('equip.item', item_id=r.it.id) }}">{{ r.it.name }}</a>{% if r.big %} <span class="small text-muted">· big item</span>{% endif %}</td>
-            <td class="num">{{ money(r.cost, 0) }}</td><td class="num pe-3">{% if r.big and rp.big_total %}<span class="small text-muted">from the {{ money(rp.big_total, 0) }}</span>{% else %}{{ money(r.monthly, 0) }}{% endif %}</td></tr>{% else %}<tr><td class="ps-3 text-muted" colspan="4">Nothing.</td></tr>{% endfor %}
-        {% if rp.later %}<tr class="fw-semibold"><td class="ps-3" colspan="2">Total</td><td class="num">{{ money(rp.later|sum(attribute='cost'), 0) }}</td><td class="num pe-3">{{ money(rp.monthly_without_big if rp.big_total else rp.monthly, 0) }}</td></tr>{% endif %}</tbody>
+        <thead><tr>{% if not editor %}<th class="ps-3">Year</th>{% endif %}<th class="{{ 'ps-3' if editor }}">Item</th>{% if not editor %}<th class="num">Estimated cost</th>{% endif %}<th class="num pe-3">A month</th>{% if editor %}<th class="text-end pe-3 small text-muted fw-normal">Year · estimated cost</th>{% endif %}</tr></thead>
+        <tbody>{% for r in rp.later %}<tr id="{{ r.it.id }}">{% if not editor %}<td class="ps-3">{{ r.year }}</td>{% endif %}<td class="{{ 'ps-3' if editor }}"><a href="{{ url_for('equip.item', item_id=r.it.id) }}">{{ r.it.name }}</a>{% if r.big %} <span class="small text-muted">· big item</span>{% endif %}</td>
+            {% if not editor %}<td class="num">{{ money(r.cost, 0) }}</td>{% endif %}<td class="num pe-3">{% if r.big and rp.big_total %}<span class="small text-muted">from the {{ money(rp.big_total, 0) }}</span>{% else %}{{ money(r.monthly, 0) }}{% endif %}</td>{{ repl_cells(r) }}</tr>{% else %}<tr><td class="ps-3 text-muted" colspan="4">Nothing.</td></tr>{% endfor %}
+        {% if rp.later %}<tr class="fw-semibold"><td class="ps-3" colspan="{{ 1 if editor else 2 }}">Total{% if editor %} {{ money(rp.later|sum(attribute='cost'), 0) }}{% endif %}</td>{% if not editor %}<td class="num">{{ money(rp.later|sum(attribute='cost'), 0) }}</td>{% endif %}<td class="num pe-3">{{ money(rp.monthly_without_big if rp.big_total else rp.monthly, 0) }}</td>{% if editor %}<td></td>{% endif %}</tr>{% endif %}</tbody>
     </table></div></div>
     <p class="small text-muted mt-2">A month = the item's estimated cost spread over the months from {{ rp.start_label }} to July of the year it is due.</p>
     {% if missing %}<p class="small mt-3"><b>Over $2,500 with no replacement year</b>, so not in the plan: {% for i in missing %}<a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}</a>{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}

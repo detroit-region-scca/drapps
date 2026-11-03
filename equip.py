@@ -149,6 +149,9 @@ def item(item_id=None):
     it = next((i for i in E.items() if i['id'] == item_id), None) if item_id else {}
     if item_id and not it:
         abort(404)
+    if not item_id and request.method == 'GET':
+        # "Add item here" and "Add a planned purchase" start the form filled in.
+        it = {k: request.args[k] for k in ('place', 'status', 'category') if request.args.get(k)}
     if request.method == 'POST':
         return _save_item(it)
     edit = request.args.get('edit') == '1' or not item_id
@@ -177,6 +180,24 @@ def _save_item(it):
         log_audit_event('EQUIP_ITEM_LOCATED', _who(), {'id': it['id'], 'name': it['name'], 'place': place, 'was': it.get('place', '')})
         flash(f"{it['name']}: {'moved to ' + place if place != it.get('place') else 'confirmed at ' + place}.", 'success')
         return redirect(url_for('equip.item', item_id=it['id']))
+    if f.get('action') in ('remove', 'restore'):
+        gone = f['action'] == 'remove'
+        stamp = f"{'Removed' if gone else 'Put back'} {date.today().isoformat()} by {_who()}."
+        row.update(status='Gone' if gone else 'In use', notes=((row.get('notes') or '') + '\n' + stamp).strip(),
+                   updated=date.today().isoformat(), updated_by=_who())
+        E.save('Property', row)
+        log_audit_event('EQUIP_ITEM_REMOVED' if gone else 'EQUIP_ITEM_RESTORED', _who(), {'id': it['id'], 'name': it['name']})
+        flash(f"{it['name']} {'removed. It stays on record as Gone' if gone else 'is back in use'}.", 'success')
+        return redirect(local_path(f.get('back')) or url_for('equip.item', item_id=it['id']))
+    if f.get('action') == 'replacement':
+        # The Replacement page's quick edit: just the year and the cost estimate.
+        for k in ('replace_year', 'replace_cost'):
+            row[k] = f.get(k, '').replace('$', '').replace(',', '').strip()
+        row.update(updated=date.today().isoformat(), updated_by=_who())
+        E.save('Property', row)
+        log_audit_event('EQUIP_ITEM_SAVED', _who(), {'id': it['id'], 'name': it['name'], 'replace_year': row['replace_year'], 'replace_cost': row['replace_cost']})
+        flash(f"{it['name']}: replacement updated.", 'success')
+        return redirect(url_for('equip.plan') + f"#{it['id']}")
     if 'place' in f and f.get('place', '').strip() != (it or {}).get('place', ''):
         row['seen'] = date.today().isoformat()
     for k in E.ITEM_COLS:
@@ -224,7 +245,7 @@ def documents():
 def place(place_id=None):
     if (g := _guard()):
         return g
-    p = next((x for x in E.places() if x['id'] == place_id), None) if place_id else {}
+    p = next((x for x in E.places(closed=True) if x['id'] == place_id), None) if place_id else {}
     if place_id and not p:
         abort(404)
     if request.method == 'POST':
@@ -242,6 +263,16 @@ def place(place_id=None):
 def _save_place(p):
     f = request.form
     row = dict(p or {})
+    if f.get('action') in ('close', 'reopen'):
+        held = [i for i in E.items() if i['place'] == p.get('name') and i['status'] != 'Gone']
+        if f['action'] == 'close' and held:
+            flash(f"Move the {len(held)} item{'s' if len(held) != 1 else ''} kept at {p['name']} first (open each and use Where is it now?).", 'warning')
+            return redirect(url_for('equip.place', place_id=p['id']))
+        row.update(status='Closed' if f['action'] == 'close' else '', updated=date.today().isoformat(), updated_by=_who())
+        E.save('Storage', row)
+        log_audit_event('EQUIP_PLACE_CLOSED' if f['action'] == 'close' else 'EQUIP_PLACE_REOPENED', _who(), {'id': p['id'], 'name': p['name']})
+        flash(f"{p['name']} {'closed: it no longer shows in Gear or Bills' if f['action'] == 'close' else 'is in use again'}.", 'success')
+        return redirect(url_for('equip.items') if f['action'] == 'close' else url_for('equip.place', place_id=p['id']))
     for k in E.PLACE_COLS:
         if k in f:
             row[k] = f.get(k, '').strip()
