@@ -63,8 +63,34 @@
                 <form method="post" class="d-flex flex-wrap gap-1 mt-1" style="min-width: 18rem"><input type="hidden" name="title" value="{{ o.title }}"><input type="hidden" name="from" value="{{ o.email }}">
                     <input name="name" class="form-control form-control-sm" value="{{ o.name }}" required aria-label="Name">
                     <input name="email" type="email" class="form-control form-control-sm" value="{{ o.email }}" required aria-label="Email">
-                    <button class="btn btn-sm btn-accent">Save</button></form></details>{% endif %}</td>{% endif %}</tr>{% endfor %}</tbody>
+                    <button class="btn btn-sm btn-accent">Save</button></form>
+                <form method="post" class="mt-1"><input type="hidden" name="action" value="remove"><input type="hidden" name="title" value="{{ o.title }}"><input type="hidden" name="email" value="{{ o.email }}">
+                    <button class="btn btn-link btn-sm p-0 text-danger" onclick="return confirm('Take {{ o.name|e }} off {{ o.title|e }}?')">Remove from this role</button></form></details>{% endif %}</td>{% endif %}</tr>{% endfor %}</tbody>
     </table></div></div>{% else %}<p class="text-warning">No officials list on this server, so no approval emails are sent.</p>{% endif %}
+    {% if is_admin %}
+    <details class="mt-4" id="add"><summary class="fw-semibold">Add a person to a role</summary>
+    <form method="post" class="card p-3 mt-2"><input type="hidden" name="action" value="add"><div class="row g-2">
+        <div class="col-md-5"><label class="form-label small">Role (pick one, or type a new one)</label><input name="title" class="form-control" list="titleNames" required placeholder="Equipment Committee">
+            <datalist id="titleNames">{% for tt in people|map(attribute='title')|unique %}<option value="{{ tt }}">{% endfor %}</datalist></div>
+        <div class="col-md-3"><label class="form-label small">Name</label><input name="name" class="form-control" required></div>
+        <div class="col-md-4"><label class="form-label small">Email</label><input name="email" type="email" class="form-control" required></div>
+        <div class="col-md-5"><label class="form-label small">For a new role: what kind</label><select name="role" class="form-select">
+            <option value="Committee">Committee member</option><option value="Equipment">Equipment Committee</option><option value="Director at Large">Director at Large (board)</option><option value="Director">Program director (board, approves the program's spending)</option></select></div>
+        <div class="col-md-4"><label class="form-label small">Program (program directors)</label><select name="program" class="form-select"><option value="">-</option>{% for code, pn in programs.items() %}<option value="{{ code }}">{{ pn }}</option>{% endfor %}</select></div>
+        <div class="col-md-3 d-flex align-items-end"><button class="btn btn-accent w-100">Add</button></div>
+    </div><div class="form-text">An existing role keeps its kind and email group; the person is added to the group within a minute.</div></form></details>
+
+    <h2 class="h6 mt-4" id="programs">Programs</h2>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><tbody>
+        {% for code, pn in programs.items() %}<tr><td class="ps-3" style="width: 5rem">{{ code }}</td><td class="pe-3">
+            <form method="post" class="d-flex gap-1 m-0"><input type="hidden" name="action" value="program"><input type="hidden" name="code" value="{{ code }}">
+                <input name="pname" class="form-control form-control-sm" value="{{ pn }}" aria-label="Name of {{ code }}"><button class="btn btn-sm btn-outline-light">Rename</button></form></td></tr>{% endfor %}
+        <tr><td class="ps-3" colspan="2"><form method="post" class="d-flex flex-wrap gap-1 m-0"><input type="hidden" name="action" value="program">
+            <input name="code" class="form-control form-control-sm" style="width: 6rem" placeholder="Code" maxlength="4" aria-label="New code">
+            <input name="pname" class="form-control form-control-sm" style="max-width: 18rem" placeholder="New program name" aria-label="New program name"><button class="btn btn-sm btn-accent">Add program</button></form></td></tr>
+    </tbody></table></div></div>
+    <p class="small text-muted mt-1">Programs are not removed here: past events and money stay filed under them.</p>
+    {% endif %}
     {% elif view == 'treasurer' %}
     <div class="list-group">
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('treasurer_report') }}">

@@ -240,6 +240,16 @@ class SheetStore:
                 return self.files.load_audit()
         return self._cached('audit', load)
 
+    def save_program(self, code, name):
+        """Rename a program, or add one (code, name) to the Programs tab."""
+        ws = self._ws('Programs')
+        codes = [str(c).strip() for c in ws.col_values(1)]
+        if code in codes:
+            ws.update([[code, name]], f'A{codes.index(code) + 1}', value_input_option='RAW')
+        else:
+            ws.append_row([code, name], value_input_option='RAW', table_range='A1')
+        self._invalidate()
+
     def load_programs(self):
         def load():
             try:

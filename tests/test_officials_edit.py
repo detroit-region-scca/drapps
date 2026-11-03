@@ -24,3 +24,19 @@ def test_only_admin_can_queue_a_change(tmp_path, monkeypatch):
     c.post('/officials', data={'title': 'Autocross Director', 'from': 'old@x.com', 'name': 'New Person', 'email': 'new@x.com'})
     q = json.loads((tmp_path / 'q.json').read_text())['changes']
     assert q[0]['title'] == 'Autocross Director' and q[0]['email'] == 'new@x.com' and q[0]['from'] == 'old@x.com'
+
+
+def test_needed_role_cannot_lose_its_only_holder(tmp_path, monkeypatch):
+    import officials
+    monkeypatch.setattr(utils, 'OFFICIALS_QUEUE', str(tmp_path / 'q.json'))
+    monkeypatch.setattr(utils, 'OFFICIALS_DONE', str(tmp_path / 'd.json'))
+    monkeypatch.setattr(officials, 'all', lambda: [{'role': 'Director', 'title': 'Autocross Director', 'name': 'Old', 'email': 'old@x.com'},
+                                                   {'role': 'Equipment', 'title': 'Equipment Committee', 'name': 'Ed', 'email': 'ed@x.com'}])
+    c = app.test_client()
+    _as(c, monkeypatch, ['Admin'])
+    c.post('/officials', data={'action': 'remove', 'title': 'Autocross Director', 'email': 'old@x.com'})
+    assert not (tmp_path / 'q.json').exists()
+    c.post('/officials', data={'action': 'remove', 'title': 'Equipment Committee', 'email': 'ed@x.com'})
+    c.post('/officials', data={'action': 'add', 'title': 'Equipment Committee', 'name': 'New Member', 'email': 'nm@x.com'})
+    q = json.loads((tmp_path / 'q.json').read_text())['changes']
+    assert [x['op'] for x in q] == ['remove', 'add'] and q[1]['entry']['role'] == 'Equipment'
