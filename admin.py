@@ -103,8 +103,6 @@ def _pending_roles():
     out = set()
     for c in utils.official_changes()['pending']:
         out |= set((c.get('role_of') or c.get('kinds') or {}).values())
-        if (c.get('new') or {}).get('role'):
-            out.add(c['new']['role'])
     return out
 
 
@@ -199,9 +197,7 @@ def _save_user():
     titles = [t for t in f.getlist('title') if t in known]
     alltitles = {o.get('title', '') for o in officials.all()}
     role_of = {k: k for k in all_roles() if k in titles and k not in alltitles}     # first holder of a role made on Roles
-    new_title = ' '.join(f.get('new_title', '').split())[:80]
-    new_role = f.get('new_role', '')
-    volunteer = f.get('volunteer') == 'yes' and not titles and not new_title
+    volunteer = f.get('volunteer') == 'yes' and not titles
     back = redirect(url_for('admin.home'))
     if not name or '@' not in email or ' ' in email:
         flash('A user needs a name and a valid email address.', 'danger')
@@ -212,9 +208,6 @@ def _save_user():
         return back
     if email != old_email and email in everyone:
         flash(f'{email} is already a user; edit that one instead.', 'warning')
-        return back
-    if new_title and (why := _name_taken(new_title) or ('' if new_role in all_roles() else 'Pick the role it belongs to.')):
-        flash(f'New job title: {why}', 'danger')
         return back
     was = everyone.get(old_email) or {'titles': [], 'volunteer': False, 'name': ''}
     was = dict(was, titles=[x for x in was['titles'] if not officials.follows(x, alltitles)])   # those follow their job
@@ -231,31 +224,26 @@ def _save_user():
         if kind in access.NEEDED and holders <= {old_email}:
             flash(f'{t} is needed: give it to someone else first (edit that person and tick it).', 'warning')
             return back
-    add_new = None
-    if new_title:
-        add_new = {'role': new_role, 'title': new_title}
-        if new_role == 'Director' and f.get('program'):
-            add_new['program'] = f.get('program')
-    official_change = (sorted(was['titles']) != sorted(titles) or add_new
+    official_change = (sorted(was['titles']) != sorted(titles)
                        or ((was['titles'] or titles) and (name != was['name'] or email != old_email)))
     if official_change:
         utils.queue_official_change({'op': 'person', 'from': old_email, 'name': name, 'email': email, 'titles': titles,
-                                     'role_of': role_of, 'new': add_new, 'drop_volunteer': bool(was['volunteer'] and (titles or add_new)), 'title': ', '.join(titles + ([new_title] if new_title else [])) or '(no roles)',
+                                     'role_of': role_of, 'drop_volunteer': bool(was['volunteer'] and titles), 'title': ', '.join(titles) or '(no roles)',
                                      'by': me.get('name', '')})
     vol = ''
     if volunteer:
         if old_email and old_email != email and was['volunteer']:
             auth.set_volunteer(old_email, None)
         vol = auth.set_volunteer(email, name, f.get('note', ''), me.get('name', ''))
-    elif was['volunteer'] and not (titles or add_new):
+    elif was['volunteer'] and not titles:
         vol = auth.set_volunteer(old_email or email, None)       # losing all access
     # A volunteer given a role stays on the Volunteers tab until the role is saved (the server takes them off then).
     log_audit_event('USER_SAVED', me.get('name', ''), {'email': email, 'was': old_email or '(new)', 'name': name,
-                                                       'roles': titles + ([new_title] if new_title else []) + (['Volunteer'] if volunteer else []),
+                                                       'roles': titles + (['Volunteer'] if volunteer else []),
                                                        'had': was['titles'] + (['Volunteer'] if was['volunteer'] else [])})
-    if not titles and not new_title and not volunteer and was.get('follows'):
+    if not titles and not volunteer and was.get('follows'):
         flash(f"{name} has no roles now. They stay listed as {', '.join(was['follows'])} until that job changes hands.", 'success')
-    elif not titles and not new_title and not volunteer:
+    elif not titles and not volunteer:
         flash(f'{name} will no longer be able to sign in{" once the change is saved (within a minute)" if official_change else ""}.', 'success')
     elif official_change:
         flash(f'{name}: roles saved; the officials list and email groups update within a minute.', 'success')

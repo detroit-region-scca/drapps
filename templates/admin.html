@@ -8,7 +8,7 @@
     {{ tab('audit_log', 'Audit log') }}
 {% endblock %}
 {% block content %}
-{% macro user_form(u, roles, programs) %}
+{% macro user_form(u, roles) %}
     <input type="hidden" name="action" value="user"><input type="hidden" name="old_email" value="{{ u.email if u else '' }}">
     <div class="row g-2 mb-2">
         <div class="col-12 col-md-6"><label class="form-label small">Name</label><input name="name" class="form-control form-control-sm" value="{{ u.name if u else '' }}" required></div>
@@ -21,20 +21,15 @@
     <div class="small text-muted mt-1">Volunteer</div>
     <div class="form-check"><input class="form-check-input" type="checkbox" name="volunteer" value="yes" id="{{ (u.email if u else 'new') }}-vol" {{ 'checked' if u and u.volunteer and not u.titles }}>
         <label class="form-check-label small" for="{{ (u.email if u else 'new') }}-vol">Volunteer (only if no role above)</label></div>
-    <details class="mt-2"><summary class="small text-muted">A new job title in a role</summary><div class="small text-muted mt-1">For example Karting Director in Director. A whole new role is added on <a href="{{ url_for('admin.roles') }}">Roles</a>.</div><div class="row g-2 mt-1">
-        <div class="col-12 col-md-5"><input name="new_title" class="form-control form-control-sm" placeholder="Job title, e.g. Karting Director"></div>
-        <div class="col-7 col-md-4"><select name="new_role" class="form-select form-select-sm" aria-label="Role">{% for role, _t in roles %}<option value="{{ role }}"{{ ' selected' if role == 'Director' }}>{{ role }}</option>{% endfor %}</select></div>
-        <div class="col-5 col-md-3"><select name="program" class="form-select form-select-sm"><option value="">Program</option>{% for code, pn in programs.items() %}<option value="{{ code }}">{{ pn }}</option>{% endfor %}</select></div>
-    </div></details>
     <button class="btn btn-sm btn-accent mt-3">Save</button>
 {% endmacro %}
 {% if view == 'users' %}
     <div class="page-title">Users</div>
-    <p class="text-muted small">Everyone who can sign in. Tick a person's roles; each role's permissions are set on <a href="{{ url_for('admin.roles') }}">Roles</a>. Untick everything to take away their access.</p>
+    <p class="text-muted small">Everyone who can sign in. Tick a person's roles; each role's permissions are set on <a href="{{ url_for('admin.roles') }}">Roles</a>. Untick everything to take away their access. New roles are added on Roles.</p>
     {% if changes.pending %}<div class="alert alert-info py-2 small">Being saved: {% for c in changes.pending %}{{ c.name }} ({{ c.title }}){{ ', ' if not loop.last }}{% endfor %}. Reload in a minute.</div>{% endif %}
     {% for c in changes.done if not c.ok %}<div class="alert alert-warning py-2 small">Not saved: {{ c.name }} ({{ c.title }}), {{ c.applied[:16] }}: {{ c.message }}</div>{% endfor %}
     <details class="mb-3" id="add"><summary class="btn btn-sm btn-accent">+ Add a user</summary>
-        <form method="post" class="card p-3 mt-2">{{ user_form(none, roles, programs) }}</form></details>
+        <form method="post" class="card p-3 mt-2">{{ user_form(none, roles) }}</form></details>
     <div class="list-group">
         {% for u in users %}<div class="list-group-item py-2">
             <div class="d-flex flex-wrap justify-content-between gap-2">
@@ -44,7 +39,7 @@
                     {% if u.volunteer and not u.titles %}<span class="badge rounded-pill text-bg-info">Volunteer</span>{% endif %}</div>
             </div>
             {% if u.region %}<div class="small text-muted mt-1">Region account: managed in Google Workspace.</div>
-            {% else %}<details class="mt-1"><summary class="small text-muted">Edit</summary><form method="post" class="mt-2 user-form">{{ user_form(u, roles, programs) }}</form>
+            {% else %}<details class="mt-1"><summary class="small text-muted">Edit</summary><form method="post" class="mt-2 user-form">{{ user_form(u, roles) }}</form>
                 {% set mine = u.titles|reject('in', followers)|list %}{% if mine %}<form method="post" class="border-top mt-3 pt-2">
                     <input type="hidden" name="action" value="handover"><input type="hidden" name="old_email" value="{{ u.email }}">
                     <div class="small fw-semibold">Hand over a role</div><div class="small text-muted mb-1">The role moves in one step, with its email group.</div>
@@ -61,7 +56,7 @@
     </div>
     <script>
     document.querySelectorAll('form.user-form, details#add form').forEach(f => f.addEventListener('submit', e => {
-        const any = f.querySelector('[name=title]:checked, [name=volunteer]:checked') || (f.querySelector('[name=new_title]')?.value || '').trim();
+        const any = f.querySelector('[name=title]:checked, [name=volunteer]:checked');
         if (!any && f.querySelector('[name=old_email]').value && !confirm('No role ticked: this person will no longer be able to sign in. Continue?')) e.preventDefault();
     }));
     document.querySelectorAll('.handover-to').forEach(s => { const show = () => s.closest('form').querySelectorAll('.handover-new').forEach(x => x.style.display = s.value === 'new' ? '' : 'none'); s.addEventListener('change', show); show(); });

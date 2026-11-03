@@ -69,9 +69,6 @@ def apply_person(rows, c):
             raise SystemExit(f'No role titled "{t}" to copy.')
         out.append({**{k: tpl[k] for k in ('role', 'program', 'notify') if tpl.get(k)}, 'title': t, 'name': name, 'email': email})
         print(f"officials.json: added {name} <{email}> as {t}")
-    if c.get('new'):
-        out.append(dict(c['new'], name=name, email=email))
-        print(f"officials.json: new role {c['new']['title']} for {name} <{email}>")
     return follow_jobs(out)
 
 
