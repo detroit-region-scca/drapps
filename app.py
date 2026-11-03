@@ -400,7 +400,10 @@ def index():
 @app.route('/audit')
 @login_required
 def audit_log():
-    """The shared audit log: every app writes to it, so it is filtered by app and action here."""
+    """The shared audit log: every app writes to it, so it is filtered by app and action here. Officers only."""
+    if (auth.user() or {}).get('level') != 'officer':
+        flash('The audit log is for the RE, ARE, Secretary and Treasurer.', 'warning')
+        return redirect(url_for('home'))
     lock = FileLock(f"{AUDIT_FILE}.lock")
     with lock:
         logs = load_audit_logs()

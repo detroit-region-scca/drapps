@@ -132,3 +132,16 @@ def test_old_password_session_is_dropped(app_):
     r = c.get('/officials')
     assert r.status_code == 302 and '/?next=' in r.location
 
+
+
+def test_audit_log_is_for_officers(monkeypatch):
+    import auth
+    from app import app
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s['email'] = 'someone@example.org'
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Some Director', 'level': 'official', 'roles': ['Director']} if e else None)
+    r = c.get('/audit')
+    assert r.status_code == 302 and '/audit' not in r.headers['Location']
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Pat Treasurer', 'level': 'officer', 'roles': ['Treasurer']} if e else None)
+    assert c.get('/audit').status_code == 200
