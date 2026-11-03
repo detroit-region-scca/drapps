@@ -23,7 +23,7 @@
         <label class="form-check-label small" for="{{ (u.email if u else 'new') }}-vol">Volunteer (only if no role above)</label></div>
     <details class="mt-2"><summary class="small text-muted">A new role</summary><div class="row g-2 mt-1">
         <div class="col-12 col-md-5"><input name="new_title" class="form-control form-control-sm" placeholder="Name of the role, e.g. Trophy Chair"></div>
-        <div class="col-7 col-md-4"><select name="new_kind" class="form-select form-select-sm"><option value="Committee">Committee member</option><option value="Equipment">Equipment Committee</option><option value="Director at Large">Director at Large (board)</option><option value="Director">Program director (board)</option></select></div>
+        <div class="col-7 col-md-4"><select name="new_kind" class="form-select form-select-sm"><option value="Committee">Committee</option><option value="Equipment">Equipment</option><option value="Director at Large">Director at Large</option><option value="Director">Director (runs a program)</option></select></div>
         <div class="col-5 col-md-3"><select name="program" class="form-select form-select-sm"><option value="">Program</option>{% for code, pn in programs.items() %}<option value="{{ code }}">{{ pn }}</option>{% endfor %}</select></div>
     </div></details>
     <button class="btn btn-sm btn-accent mt-3">Save</button>
@@ -39,8 +39,8 @@
         {% for u in users %}<div class="list-group-item py-2">
             <div class="d-flex flex-wrap justify-content-between gap-2">
                 <div><div class="fw-semibold">{{ u.name }}</div><div class="small text-muted">{{ u.email }}</div>
-                    <div class="small mt-1">{% if u.extra %}<span class="text-warning-emphasis">Extra powers: {{ u.extra|map('replace', 'ops', 'Operations')|map('replace', 'pay', 'mark paid')|map('replace', 'access', 'volunteers')|map('replace', 'audit', 'audit log')|map('replace', 'points', 'worker points')|map('replace', 'board', 'board decisions')|join(', ') }}</span>{% elif u.volunteer and not u.titles %}<span class="text-muted">Volunteer access</span>{% else %}<span class="text-muted">Everyday access</span>{% endif %}</div></div>
-                <div class="small text-md-end">{% for t in u.titles %}<span class="badge rounded-pill text-bg-secondary me-1 mb-1">{{ t }}</span>{% endfor %}
+                    <div class="small mt-1">{% if u.extra %}<span class="text-warning-emphasis">Extra powers: {{ u.extra|join(', ') }}</span>{% elif u.volunteer and not u.titles %}<span class="text-muted">Volunteer access</span>{% else %}<span class="text-muted">Everyday access</span>{% endif %}</div></div>
+                <div class="small text-md-end">{% for r in u.roles %}<span class="badge rounded-pill text-bg-secondary me-1 mb-1" title="{{ r.titles|join(', ') }}">{{ r.role }}{% if r.titles|length > 1 %} ×{{ r.titles|length }}{% endif %}</span>{% endfor %}
                     {% if u.volunteer and not u.titles %}<span class="badge rounded-pill text-bg-info">Volunteer</span>{% endif %}</div>
             </div>
             {% if u.region %}<div class="small text-muted mt-1">Region account: managed in Google Workspace.</div>

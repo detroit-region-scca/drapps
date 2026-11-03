@@ -72,7 +72,10 @@ def lookup(email):
         return None
     mine = [o for o in O.all() if (o.get('email') or '').strip().lower() == email]
     if mine:
-        roles = sorted({o.get('role', '') for o in mine})
+        # A bracketed entry ("Operations approver (Treasurer)") only routes approvals to that job's holder; it is
+        # not a role of its own, so it adds no permissions (the same roles the Users page shows).
+        alltitles = {o.get('title', '') for o in O.all()}
+        roles = sorted({o.get('role', '') for o in mine if not O.follows(o.get('title', ''), alltitles)} or {o.get('role', '') for o in mine})
         import access
         perms = access.perms_for(roles)
         level = 'officer' if 'board' in perms else 'official'

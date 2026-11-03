@@ -36,6 +36,20 @@ def _ctx(**kw):
 VOL_PERMS = {'funds', 'invoices', 'points_enter', 'show_members', 'show_funds', 'show_invoices'}    # volunteers only reach these pages
 NEEDED = ('RE', 'ARE', 'Secretary', 'Treasurer', 'Admin', 'Director', 'Financial Director', 'Points Keeper')
 VOLUNTEER = 'Volunteer'
+ROLE_ORDER = ['RE', 'ARE', 'Secretary', 'Treasurer', 'Financial Director', 'Director', 'Director at Large', 'Equipment', 'Points Keeper']
+EXTRA_SHORT = {'board': 'board decisions', 'pay': 'mark paid', 'minutes': 'minutes', 'points': 'worker points', 'ops': 'Operations',
+               'access': 'volunteers', 'audit': 'audit log', 'admin': 'admin'}
+
+
+def _role_key(k):
+    return (ROLE_ORDER.index(k) if k in ROLE_ORDER else len(ROLE_ORDER), k)
+
+
+def _own_rows():
+    """Officials entries a person holds themselves: not the bracketed ones that follow another job."""
+    rows = officials.all()
+    titles = {o.get('title', '') for o in rows}
+    return [o for o in rows if not officials.follows(o.get('title', ''), titles)]
 
 
 def users():
@@ -53,12 +67,19 @@ def users():
         u['volunteer'] = True
     import access
     kinds = {}
-    for o in officials.all():
+    for o in _own_rows():
         kinds.setdefault((o.get('email') or '').strip().lower(), set()).add(o.get('role', ''))
+    held = {}
+    for o in _own_rows():
+        if o.get('role'):
+            held.setdefault((o.get('email') or '').strip().lower(), {}).setdefault(o['role'], []).append(o.get('title', ''))
     for u in out.values():
         u['region'] = u['email'].endswith('@drscca.org')
         roles = kinds.get(u['email']) or ({access.VOLUNTEER} if u['volunteer'] else set())
-        u['extra'] = sorted(access.perms_for(roles) & set(access.EXTRA))
+        u['extra'] = [EXTRA_SHORT.get(p, p) for p in access.EXTRA if p in access.perms_for(roles)]
+        # The bubbles name the roles exactly as the Roles grid does; the job titles show on hover.
+        mine = held.get(u['email'], {})
+        u['roles'] = [{'role': 'Admin account' if k == 'Admin' else k, 'titles': mine[k]} for k in sorted(mine, key=_role_key)]
     return sorted(out.values(), key=lambda u: (u['region'], not u['titles'], u['name'].lower()))
 
 
@@ -70,7 +91,7 @@ def titles_by_kind():
     for o in rows:
         if o.get('role') and o.get('role') != 'Admin' and o.get('title') and not officials.follows(o['title'], titles):
             kinds.setdefault(o['role'], set()).add(o['title'])
-    return [(k, sorted(v)) for k, v in sorted(kinds.items())]
+    return [(k, sorted(v)) for k, v in sorted(kinds.items(), key=lambda kv: _role_key(kv[0]))]
 
 
 @bp.route('/', methods=['GET', 'POST'])
@@ -229,9 +250,9 @@ def roles():
     if (g := _guard()):
         return g
     import access
-    order = ['RE', 'ARE', 'Secretary', 'Treasurer', 'Financial Director', 'Director', 'Director at Large', 'Equipment', 'Points Keeper']
-    found = {o.get('role', '') for o in officials.all() if o.get('role') and o.get('role') != 'Admin'}
-    kinds = [k for k in order if k in found] + sorted(found - set(order)) + [access.VOLUNTEER]
+    own = _own_rows()
+    found = {o.get('role', '') for o in own if o.get('role') and o.get('role') != 'Admin'}
+    kinds = sorted(found, key=_role_key) + [access.VOLUNTEER]
     if request.method == 'POST':
         # The whole grid comes back; only roles whose boxes changed are saved, so the rest keep following defaults.
         changed = []
@@ -247,9 +268,9 @@ def roles():
             changed.append(role)
         flash(f"Saved: {', '.join(changed)}." if changed else 'Nothing changed.', 'success' if changed else 'info')
         return redirect(url_for('admin.roles'))
-    counts = {k: sum(1 for o in officials.all() if o.get('role') == k) for k in kinds}
+    counts = {k: sum(1 for o in own if o.get('role') == k) for k in kinds}
     counts[access.VOLUNTEER] = len(auth.volunteers())
-    titles = {k: sorted({o.get('title', '') for o in officials.all() if o.get('role') == k}) for k in kinds}
+    titles = {k: sorted({o.get('title', '') for o in own if o.get('role') == k}) for k in kinds}
     titles[access.VOLUNTEER] = ['added one by one on Users']
     cols = [{'role': k, 'perms': access.perms(k), 'n': counts[k], 'titles': titles[k],
              'choices': VOL_PERMS if k == access.VOLUNTEER else set(access.PERMS)} for k in kinds]
