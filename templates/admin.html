@@ -2,15 +2,15 @@
 {% from '_ui.html' import tab with context %}
 {% block app_name %}Admin{% endblock %}
 {% block nav %}
-    {{ tab('admin.home', 'People and roles') }}
-    {{ tab('admin.roles', 'Access by role') }}
+    {{ tab('admin.home', 'Users') }}
+    {{ tab('admin.roles', 'Roles') }}
     {{ tab('admin.programs', 'Programs') }}
     {{ tab('auth.access', 'Sign-in access') }}
     {{ tab('audit_log', 'Audit log') }}
 {% endblock %}
 {% block content %}
 {% if view == 'people' %}
-    <div class="page-title">People and roles</div>
+    <div class="page-title">Users</div>
     <p class="text-muted small">Funds request approvals go only to these people and addresses. To give a role to someone else, use Change: the list and the role's email groups update within a minute.</p>
     {% if changes.pending %}<div class="alert alert-info py-2 small">Being saved: {% for c in changes.pending %}{{ c.title }} to {{ c.name }}{{ ', ' if not loop.last }}{% endfor %}. Reload in a minute.</div>{% endif %}
     {% for c in changes.done if not c.ok %}<div class="alert alert-warning py-2 small">Not saved: {{ c.title }} to {{ c.name }} ({{ c.applied[:16] }}): {{ c.message }}</div>{% endfor %}
@@ -37,20 +37,17 @@
     </div><div class="form-text">An existing role keeps its kind and email group; the person is added to the group within a minute.</div></form></details>
 
 {% elif view == 'roles' %}
-    <div class="page-title">Access by role</div>
-    <p class="text-muted small mb-2">Whoever holds a role gets its access. <b>Full</b>: everything, including board decisions, approvals and the audit log. <b>Standard</b>: every app, no board decisions. Volunteers are added on Sign-in access.</p>
+    <div class="page-title">Roles</div>
+    <p class="text-muted small mb-2">Whoever holds a role gets what is ticked. Every official can use all the apps; these are the extra powers. Volunteers are added on Sign-in access.</p>
     <div class="list-group">
-        {% for r in rows %}<form method="post" class="list-group-item py-3"><input type="hidden" name="role" value="{{ r.role }}">
+        {% for r in rows %}<form method="post" class="list-group-item py-3" id="{{ r.role|replace(' ', '-') }}"><input type="hidden" name="role" value="{{ r.role }}">
             <div class="fw-semibold">{{ r.role }}</div>
             <div class="small text-muted mb-2">{{ r.titles|join(', ') }} · {{ r.n }} {{ 'person' if r.n == 1 else 'people' }}</div>
-            <div class="row g-2 align-items-center">
-                <div class="col-12 col-sm-5"><select name="level" class="form-select form-select-sm" aria-label="Access for {{ r.role }}">
-                    <option value="full" {{ 'selected' if r.level == 'full' }}>Full access</option><option value="standard" {{ 'selected' if r.level == 'standard' }}>Standard</option></select></div>
-                <div class="col-8 col-sm-4"><label class="small"><input type="checkbox" name="ops" value="yes" {{ 'checked' if r.ops }}> Edit Operations</label></div>
-                <div class="col-4 col-sm-3"><button class="btn btn-sm btn-outline-secondary w-100">Save</button></div>
-            </div></form>{% endfor %}
+            {% for k, label in perm_names.items() %}<div class="form-check"><input class="form-check-input" type="checkbox" name="{{ k }}" value="yes" id="{{ r.role|replace(' ', '-') }}-{{ k }}" {{ 'checked' if k in r.perms }}>
+                <label class="form-check-label small" for="{{ r.role|replace(' ', '-') }}-{{ k }}">{{ label }}</label></div>{% endfor %}
+            <button class="btn btn-sm btn-outline-secondary mt-2">Save {{ r.role }}</button></form>{% endfor %}
     </div>
-    <p class="small text-muted mt-2">Full access includes editing Operations. The admin account always has full access.</p>
+    <p class="small text-muted mt-2">The admin account always has every permission.</p>
 {% elif view == 'programs' %}
     <div class="page-title">Programs</div>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><tbody>

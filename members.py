@@ -27,7 +27,7 @@ def _me():
 
 def _keeper():
     me = _me()
-    return me.get('level') == 'officer' or KEEPER_ROLE in (me.get('roles') or [])
+    return 'points' in (me.get('perms') or ())
 
 
 def _who():

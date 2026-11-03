@@ -75,7 +75,7 @@
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('equip.home') }}">
             <span>Operations to-dos overdue<div class="small text-muted">Renewals, registrations, inspections</div></span><span class="fw-semibold">{{ jobs.equipment }}</span></a>
         <a class="list-group-item list-group-item-action" href="{{ url_for('export_events') }}">Export events (CSV)</a>
-        {% if me and me.level == 'officer' %}<a class="list-group-item list-group-item-action" href="{{ url_for('auth.access') }}">Who can sign in<div class="small text-muted">Add or remove volunteers</div></a>{% endif %}
+        {% if me and 'access' in (me.perms or []) %}<a class="list-group-item list-group-item-action" href="{{ url_for('auth.access') }}">Who can sign in<div class="small text-muted">Add or remove volunteers</div></a>{% endif %}
         <a class="list-group-item list-group-item-action" href="{{ url_for('officials_page') }}">Region officials<div class="small text-muted">Who holds each role</div></a>
     </div>
     {% elif not session.get('authenticated') %}
@@ -129,7 +129,7 @@
                     <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
                 </svg>
                 <div class="name">Admin</div>
-                <div class="what">People and roles, programs, sign-in access</div>
+                <div class="what">Users, roles, programs, sign-in access</div>
             </a>
         </div>
         {% endif %}

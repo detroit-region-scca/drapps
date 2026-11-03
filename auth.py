@@ -74,11 +74,12 @@ def lookup(email):
     if mine:
         roles = sorted({o.get('role', '') for o in mine})
         import access
-        level = 'officer' if access.full_roles(roles) else 'official'
-        return {'email': email, 'name': mine[0]['name'], 'level': level, 'roles': roles}
+        perms = access.perms_for(roles)
+        level = 'officer' if 'board' in perms else 'official'
+        return {'email': email, 'name': mine[0]['name'], 'level': level, 'roles': roles, 'perms': sorted(perms)}
     v = volunteers().get(email)
     if v:
-        return {'email': email, 'name': v.get('name') or email, 'level': 'volunteer', 'roles': []}
+        return {'email': email, 'name': v.get('name') or email, 'level': 'volunteer', 'roles': [], 'perms': []}
     return None
 
 
@@ -145,8 +146,7 @@ def gate():
         session['officer'] = {'email': u['email'], 'name': u['name']}
     else:
         session.pop('officer', None)
-    import access
-    if u['level'] == 'officer' or any(access.edits_ops(r) for r in u['roles']):   # set per role in Admin
+    if 'ops' in u.get('perms', ()):   # set per role in Admin > Roles
         session['equip_editor'] = {'email': u['email'], 'name': u['name']}
     else:
         session.pop('equip_editor', None)
@@ -345,8 +345,8 @@ def _vol_ws():
 @bp.route('/access', methods=['GET', 'POST'])
 def access():
     u = user()
-    if not u or u['level'] != 'officer':
-        flash('Volunteers are added by the officers (RE, ARE, secretary and treasurer).', 'warning')
+    if not u or 'access' not in u.get('perms', ()):
+        flash('Adding volunteers is for the roles the admin allows it.', 'warning')
         return redirect(url_for('home'))
     if not hasattr(store, 'sheet_id'):
         flash('The volunteers list needs the Google Sheets storage.', 'warning')
@@ -375,6 +375,6 @@ def access():
         store._invalidate()
         return redirect(url_for('auth.access'))
     import access
-    people = [dict(o, level='officer' if access.level(o.get('role', '')) == 'full' else 'official') for o in O.shown((u or {}).get('roles')) if o.get('email')]
+    people = [dict(o, level='officer' if 'board' in access.perms(o.get('role', '')) else 'official') for o in O.shown((u or {}).get('roles')) if o.get('email')]
     return render_template('home.html', title='Who can sign in', app_name='Access', view='access', people=people,
                            vols=sorted(volunteers().values(), key=lambda v: v.get('name', '').lower()))

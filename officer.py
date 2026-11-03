@@ -17,24 +17,35 @@ ROLES = ('RE', 'ARE', 'Secretary', 'Treasurer', 'Admin')   # officers per bylaws
 LINK_DAYS = 30
 
 
-def officers():
-    """{email: name} of the officers who can record board decisions, from the officials list only."""
+def officers(perm='board'):
+    """{email: name} of the officials whose role has this permission (Admin > Roles), from the officials list only."""
     import access
-    return {o['email'].lower(): o['name'] for o in O.all() if access.level(o.get('role', '')) == 'full' and o.get('email')}
+    return {o['email'].lower(): o['name'] for o in O.all() if perm in access.perms(o.get('role', '')) and o.get('email')}
 
 
-def current():
-    """The signed-in officer {'email', 'name'}, or None."""
-    o = session.get('officer')
-    return o if o and o.get('email', '').lower() in officers() else None
+def current(perm='board'):
+    """The signed-in person {'email', 'name'} when one of their roles has this permission, or None. An API key acts
+    as an officer with every permission."""
+    from flask import g
+    if getattr(g, 'api_user', None):
+        return session.get('officer')
+    from auth import user
+    u = user()
+    return {'email': u['email'], 'name': u['name']} if u and perm in (u.get('perms') or ()) else None
 
 
-def officer_required(f):
+MESSAGES = {'board': 'Recording a board decision', 'pay': 'Marking payments'}
+
+
+def officer_required(f=None, perm='board'):
+    """@officer_required (board decisions) or @officer_required(perm='pay')."""
+    if f is None:
+        return lambda fn: officer_required(fn, perm)
+
     @wraps(f)
     def wrapped(*a, **kw):
-        if not current():
-            session.pop('officer', None)
-            flash('Recording a board decision is for the RE, ARE or treasurer.', 'warning')
+        if not current(perm):
+            flash(f"{MESSAGES.get(perm, 'That')} is for the roles the admin allows it.", 'warning')
             back = request.form.get('back') or request.referrer or ''
             if back.startswith(request.host_url):
                 back = '/' + back[len(request.host_url):]

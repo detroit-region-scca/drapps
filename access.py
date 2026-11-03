@@ -1,20 +1,32 @@
-"""What each kind of role may do in the apps, set per role (not per person) by the admin account.
+"""What each kind of role may do in the apps: a set of permissions per role (not per person), set by the admin
+account in Admin > Roles. Whoever holds a role gets its permissions; someone holding several roles gets them all.
 
-Levels: 'full' (everything, including recording board decisions, approvals and the audit log) and 'standard'
-(every app, but no board decisions). 'ops' adds editing Operations (equipment, storage, bills). The admin
-account's own role is always full, so the admin cannot lock themselves out. Volunteers are not a role: they are
-added one by one on the Sign-in access page and see only the event schedule and their own requests.
+Everyone signed in as a region official can use every app (look, file requests and invoices, add events, enter
+worker points). The permissions below are the extra powers. The admin account's own role always has all of them,
+so the admin cannot lock themselves out. Volunteers are not a role: they are added one by one and see only the event
+schedule and their own requests.
 
-Kept in data/role-access.json; without it, the defaults below (the bylaws officers have full access).
+Kept in data/role-access.json as {role: {permission: true/false}}; a role or permission not in the file gets the
+defaults below (the bylaws officers have every permission).
 """
 import json
 import os
 import threading
 
 PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'role-access.json')
-DEFAULT_FULL = {'RE', 'ARE', 'Secretary', 'Treasurer', 'Admin'}
-DEFAULT_OPS = {'Equipment'}
-LEVELS = {'full': 'Full access (board decisions, approvals, audit log)', 'standard': 'Standard (every app, no board decisions)'}
+
+PERMS = {
+    'board': 'Record board decisions (budget approvals, votes, motions)',
+    'pay': 'Mark funds requests and invoices paid',
+    'minutes': 'Upload and publish board minutes',
+    'points': 'Manage worker points (milestones, auto add, books)',
+    'ops': 'Edit Operations (equipment, storage, bills)',
+    'access': 'Add and remove volunteers',
+    'audit': 'See the audit log',
+}
+OFFICERS = {'RE', 'ARE', 'Secretary', 'Treasurer', 'Admin'}      # bylaws Art. IV 4.2, plus the admin account
+DEFAULTS = {'Equipment': {'ops'}, 'Points Keeper': {'points'}}
+
 _lock = threading.Lock()
 _cache = {}
 
@@ -35,29 +47,41 @@ def _load():
         return dict(_cache['doc'])
 
 
-def level(role):
+def _default(role):
+    return set(PERMS) if role in OFFICERS else set(DEFAULTS.get(role, ()))
+
+
+def perms(role):
+    """The permissions one role has."""
     if role == 'Admin':
-        return 'full'
-    v = (_load().get(role) or {}).get('level')
-    return v if v in LEVELS else ('full' if role in DEFAULT_FULL else 'standard')
+        return set(PERMS)
+    saved = _load().get(role) or {}
+    if 'level' in saved:                        # the earlier full/standard + ops format
+        base = set(PERMS) if saved.get('level') == 'full' else set()
+        if saved.get('ops'):
+            base.add('ops')
+        return base
+    out = _default(role)
+    for p, on in saved.items():
+        if p in PERMS:
+            (out.add if on else out.discard)(p)
+    return out
 
 
-def edits_ops(role):
-    if level(role) == 'full':
-        return True
-    v = (_load().get(role) or {}).get('ops')
-    return bool(v) if v is not None else role in DEFAULT_OPS
+def perms_for(roles):
+    """Everything a person holding these roles may do."""
+    out = set()
+    for r in roles or ():
+        out |= perms(r)
+    return out
 
 
-def full_roles(roles):
-    return {r for r in roles if level(r) == 'full'}
-
-
-def save(role, lvl, ops):
-    if role == 'Admin' or lvl not in LEVELS:
+def save(role, on):
+    """on: the set of permissions this role should have."""
+    if role == 'Admin':
         return
     doc = _load()
-    doc[role] = {'level': lvl, 'ops': bool(ops)}
+    doc[role] = {p: p in on for p in PERMS}
     tmp = PATH + '.tmp'
     with open(tmp, 'w') as f:
         json.dump(doc, f, indent=1, sort_keys=True)

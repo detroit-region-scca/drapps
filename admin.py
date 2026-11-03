@@ -36,7 +36,7 @@ def _ctx(**kw):
 @bp.route('/', methods=['GET', 'POST'])
 @login_required
 def home():
-    """People and roles."""
+    """Users: who holds each role."""
     if (g := _guard()):
         return g
     if request.method == 'POST':
@@ -65,18 +65,17 @@ def roles():
     if request.method == 'POST':
         role = request.form.get('role', '')
         if role in kinds:
-            before = (access.level(role), access.edits_ops(role))
-            access.save(role, request.form.get('level', ''), request.form.get('ops') == 'yes')
-            after = (access.level(role), access.edits_ops(role))
+            before = access.perms(role)
+            access.save(role, {p for p in access.PERMS if request.form.get(p) == 'yes'})
+            after = access.perms(role)
             if after != before:
-                log_audit_event('ROLE_ACCESS_SAVED', _me().get('name', ''), {'role': role, 'level': after[0], 'operations': after[1],
-                                                                             'was': {'level': before[0], 'operations': before[1]}})
-            flash(f'{role}: {access.LEVELS[after[0]].split(" (")[0]}{", can edit Operations" if after[1] and after[0] != "full" else ""}.', 'success')
-        return redirect(url_for('admin.roles'))
+                log_audit_event('ROLE_ACCESS_SAVED', _me().get('name', ''), {'role': role, 'added': sorted(after - before), 'removed': sorted(before - after)})
+            flash(f'{role} saved.', 'success')
+        return redirect(url_for('admin.roles') + f'#{role.replace(" ", "-")}')
     counts = {k: sum(1 for o in officials.all() if o.get('role') == k) for k in kinds}
     titles = {k: sorted({o.get('title', '') for o in officials.all() if o.get('role') == k}) for k in kinds}
-    rows = [{'role': k, 'level': access.level(k), 'ops': access.edits_ops(k), 'n': counts[k], 'titles': titles[k]} for k in kinds]
-    return render_template('admin.html', **_ctx(view='roles', rows=rows, levels=access.LEVELS))
+    rows = [{'role': k, 'perms': access.perms(k), 'n': counts[k], 'titles': titles[k]} for k in kinds]
+    return render_template('admin.html', **_ctx(view='roles', rows=rows, perm_names=access.PERMS))
 
 
 def _post():

@@ -22,7 +22,7 @@ def _programs():
 
 
 def _ctx(**kw):
-    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Invoices", programs=_programs(), officer=officer_current(), **kw)
+    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Invoices", programs=_programs(), officer=officer_current('pay'), **kw)
 
 
 def _guard():
@@ -151,7 +151,7 @@ def pdf(inv_id):
 
 @bp.route('/<inv_id>/close', methods=['POST'])
 @login_required
-@officer_required   # paid, void and reopen are the treasurer's or an officer's call, as for funds requests
+@officer_required(perm='pay')   # paid, void and reopen are the treasurer's or an officer's call, as for funds requests
 def close(inv_id):
     if (g := _guard()):
         return g
@@ -159,7 +159,7 @@ def close(inv_id):
     inv = I.get(inv_id)
     if not inv:
         abort(404)
-    who = officer_current()['name']
+    who = officer_current('pay')['name']
     action = request.form.get('action')
     if action == 'paid':
         amount = _money(request.form.get('paid_amount') or inv['total'])

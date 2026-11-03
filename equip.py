@@ -46,7 +46,7 @@ def editors():
     """{email: name} allowed to edit: the equipment committee and the officers (full access to every app), from the
     officials list only."""
     import access
-    return {o['email'].lower(): o['name'] for o in O.all() if access.edits_ops(o.get('role', '')) and o.get('email')}
+    return {o['email'].lower(): o['name'] for o in O.all() if 'ops' in access.perms(o.get('role', '')) and o.get('email')}
 
 
 def editor_required(f):

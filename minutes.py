@@ -22,7 +22,7 @@ def _guard():
     if not S.enabled():
         flash('Minutes need MINUTES_PRIVATE_FOLDER_ID and MINUTES_PUBLIC_FOLDER_ID.', 'warning')
         return redirect(url_for('home'))
-    if _me().get('level') != 'officer':
+    if 'minutes' not in (_me().get('perms') or ()):
         flash('Minutes are uploaded by the Secretary and the other officers.', 'warning')
         return redirect(url_for('home'))
     return None

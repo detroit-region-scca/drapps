@@ -27,7 +27,7 @@ ADDR = ('address', 'city')
 
 def _ctx(**kw):
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Funds Requests", who=session.get('who', ''),
-                categories=F.CATEGORIES, methods=F.METHODS, officer=officer_current(), **kw)
+                categories=F.CATEGORIES, methods=F.METHODS, officer=officer_current('pay'), **kw)
 
 
 def _guard():
@@ -399,7 +399,7 @@ def approve_link(token):
 
 @bp.route('/<req_id>/close', methods=['POST'])
 @login_required
-@officer_required
+@officer_required(perm='pay')
 def close(req_id):
     if (g := _guard()):
         return g
@@ -408,7 +408,7 @@ def close(req_id):
     if not r:
         flash('Funds request not found.', 'warning')
         return redirect(url_for('fr.home'))
-    who = officer_current()['name']      # an officer signed in by email, not the typed app name
+    who = officer_current('pay')['name']      # signed in as themselves, with the pay permission
     action = request.form.get('action')
     if action == 'paid':
         if not FL.ready(Approvals().items(r)):
