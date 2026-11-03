@@ -17,3 +17,10 @@ def _open_with_token(self, *args, **kw):
 @pytest.fixture(autouse=True)
 def _csrf_token_in_posts(monkeypatch):
     monkeypatch.setattr(FlaskClient, 'open', _open_with_token)
+
+
+@pytest.fixture(autouse=True)
+def _role_access_in_tmp(tmp_path, monkeypatch):
+    """Tests never read or write the server's data/role-access.json."""
+    import access
+    monkeypatch.setattr(access, 'PATH', str(tmp_path / 'role-access.json'))

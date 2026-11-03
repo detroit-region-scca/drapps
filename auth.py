@@ -73,7 +73,8 @@ def lookup(email):
     mine = [o for o in O.all() if (o.get('email') or '').strip().lower() == email]
     if mine:
         roles = sorted({o.get('role', '') for o in mine})
-        level = 'officer' if set(roles) & set(OFFICER_ROLES) else 'official'
+        import access
+        level = 'officer' if access.full_roles(roles) else 'official'
         return {'email': email, 'name': mine[0]['name'], 'level': level, 'roles': roles}
     v = volunteers().get(email)
     if v:
@@ -144,7 +145,8 @@ def gate():
         session['officer'] = {'email': u['email'], 'name': u['name']}
     else:
         session.pop('officer', None)
-    if u['level'] == 'officer' or 'Equipment' in u['roles']:   # officers have full access to every app
+    import access
+    if u['level'] == 'officer' or any(access.edits_ops(r) for r in u['roles']):   # set per role in Admin
         session['equip_editor'] = {'email': u['email'], 'name': u['name']}
     else:
         session.pop('equip_editor', None)
@@ -372,6 +374,7 @@ def access():
         store._cache.pop('volunteers', None)
         store._invalidate()
         return redirect(url_for('auth.access'))
-    people = [dict(o, level='officer' if o.get('role') in OFFICER_ROLES else 'official') for o in O.shown((u or {}).get('roles')) if o.get('email')]
+    import access
+    people = [dict(o, level='officer' if access.level(o.get('role', '')) == 'full' else 'official') for o in O.shown((u or {}).get('roles')) if o.get('email')]
     return render_template('home.html', title='Who can sign in', app_name='Access', view='access', people=people,
                            vols=sorted(volunteers().values(), key=lambda v: v.get('name', '').lower()))

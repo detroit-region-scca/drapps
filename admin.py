@@ -54,6 +54,31 @@ def programs():
     return render_template('admin.html', **_ctx(view='programs'))
 
 
+@bp.route('/roles', methods=['GET', 'POST'])
+@login_required
+def roles():
+    """What each kind of role may do. Set per role, so it follows the job, not the person."""
+    if (g := _guard()):
+        return g
+    import access
+    kinds = sorted({o.get('role', '') for o in officials.all() if o.get('role') and o.get('role') != 'Admin'})
+    if request.method == 'POST':
+        role = request.form.get('role', '')
+        if role in kinds:
+            before = (access.level(role), access.edits_ops(role))
+            access.save(role, request.form.get('level', ''), request.form.get('ops') == 'yes')
+            after = (access.level(role), access.edits_ops(role))
+            if after != before:
+                log_audit_event('ROLE_ACCESS_SAVED', _me().get('name', ''), {'role': role, 'level': after[0], 'operations': after[1],
+                                                                             'was': {'level': before[0], 'operations': before[1]}})
+            flash(f'{role}: {access.LEVELS[after[0]].split(" (")[0]}{", can edit Operations" if after[1] and after[0] != "full" else ""}.', 'success')
+        return redirect(url_for('admin.roles'))
+    counts = {k: sum(1 for o in officials.all() if o.get('role') == k) for k in kinds}
+    titles = {k: sorted({o.get('title', '') for o in officials.all() if o.get('role') == k}) for k in kinds}
+    rows = [{'role': k, 'level': access.level(k), 'ops': access.edits_ops(k), 'n': counts[k], 'titles': titles[k]} for k in kinds]
+    return render_template('admin.html', **_ctx(view='roles', rows=rows, levels=access.LEVELS))
+
+
 def _post():
     me = _me()
     f = request.form

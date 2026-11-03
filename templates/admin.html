@@ -3,6 +3,7 @@
 {% block app_name %}Admin{% endblock %}
 {% block nav %}
     {{ tab('admin.home', 'People and roles') }}
+    {{ tab('admin.roles', 'Access by role') }}
     {{ tab('admin.programs', 'Programs') }}
     {{ tab('auth.access', 'Sign-in access') }}
     {{ tab('audit_log', 'Audit log') }}
@@ -35,6 +36,17 @@
         <div class="col-md-3 d-flex align-items-end"><button class="btn btn-accent w-100">Add</button></div>
     </div><div class="form-text">An existing role keeps its kind and email group; the person is added to the group within a minute.</div></form></details>
 
+{% elif view == 'roles' %}
+    <div class="page-title">Access by role</div>
+    <p class="text-muted small">What each kind of role may do. It follows the job: whoever holds the role gets this. Volunteers are added one by one on Sign-in access.</p>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><tbody>
+        {% for r in rows %}<tr><td class="ps-3"><div class="fw-semibold">{{ r.role }}</div><div class="small text-muted">{{ r.titles|join(', ') }} · {{ r.n }} {{ 'person' if r.n == 1 else 'people' }}</div></td>
+            <td class="pe-3"><form method="post" class="d-flex flex-wrap gap-2 align-items-center justify-content-end m-0"><input type="hidden" name="role" value="{{ r.role }}">
+                <select name="level" class="form-select form-select-sm w-auto">{% for k, label in levels.items() %}<option value="{{ k }}" {{ 'selected' if k == r.level }}>{{ label }}</option>{% endfor %}</select>
+                <label class="small text-nowrap"><input type="checkbox" name="ops" value="yes" {{ 'checked' if r.ops }}> Edit Operations</label>
+                <button class="btn btn-sm btn-outline-light">Save</button></form></td></tr>{% endfor %}
+    </tbody></table></div></div>
+    <p class="small text-muted mt-2">Full access includes editing Operations. The admin account always has full access.</p>
 {% elif view == 'programs' %}
     <div class="page-title">Programs</div>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><tbody>

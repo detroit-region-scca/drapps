@@ -19,7 +19,8 @@ LINK_DAYS = 30
 
 def officers():
     """{email: name} of the officers who can record board decisions, from the officials list only."""
-    return {o['email'].lower(): o['name'] for o in O.all() if o.get('role') in ROLES and o.get('email')}
+    import access
+    return {o['email'].lower(): o['name'] for o in O.all() if access.level(o.get('role', '')) == 'full' and o.get('email')}
 
 
 def current():

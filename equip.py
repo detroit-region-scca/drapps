@@ -45,7 +45,8 @@ def _guard():
 def editors():
     """{email: name} allowed to edit: the equipment committee and the officers (full access to every app), from the
     officials list only."""
-    return {o['email'].lower(): o['name'] for o in O.all() if o.get('role') in ('Equipment', 'RE', 'ARE', 'Secretary', 'Treasurer', 'Admin') and o.get('email')}
+    import access
+    return {o['email'].lower(): o['name'] for o in O.all() if access.edits_ops(o.get('role', '')) and o.get('email')}
 
 
 def editor_required(f):
