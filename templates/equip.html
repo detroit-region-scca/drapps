@@ -20,10 +20,10 @@
 {% macro done_button(t) -%}
     {% if editor and t.due %}<form method="post" action="{{ url_for('equip.task', task_id=t.id) }}" class="d-inline"><input type="hidden" name="action" value="done"><input type="hidden" name="back" value="{{ request.full_path.rstrip('?') }}"><button class="btn btn-sm btn-outline-light py-0">Done</button></form>{% endif %}
 {%- endmacro %}
-{% macro todo_rows(rows) -%}
+{% macro todo_rows(rows, short=false) -%}
     {% for t in rows %}<tr id="{{ t.id }}">
         <td class="ps-3">{% if editor %}<a href="{{ url_for('equip.task', task_id=t.id, back=request.full_path.rstrip('?')) }}">{{ t.task }}</a>{% else %}{{ t.task }}{% endif %}
-            <div class="small text-muted">{{ t.about }}{% if t.owner %} · {{ t.owner }}{% endif %}{% if t.repeat_months %} · {{ every_label(t.repeat_months)|lower }}{% endif %}{% if t.cost %} · {{ money(t.cost, 0) }}{% endif %}{% if t.notes %} · {{ t.notes }}{% endif %}</div>
+            <div class="small text-muted">{{ t.about }}{% if t.owner %} · {{ t.owner }}{% endif %}{% if t.repeat_months %} · {{ every_label(t.repeat_months)|lower }}{% endif %}{% if t.cost %} · {{ money(t.cost, 0) }}{% endif %}{% if t.notes and not short %} · {{ t.notes }}{% endif %}</div>
             {% if t.last_done %}<div class="small text-muted">Last done {{ t.last_done }} by {{ t.done_by }}</div>{% endif %}</td>
         <td class="text-nowrap">{{ due_badge(t) }}</td>
         <td class="pe-3 text-end text-nowrap no-print">{{ done_button(t) }}</td></tr>
@@ -67,13 +67,35 @@
         ul.where > li { padding: .45rem 1rem; border-top: 1px solid var(--border, rgba(255,255,255,.08)); }
         ul.where > li:first-child { border-top: 0; }
         ul.where-inside { list-style: none; padding-left: 1.1rem; margin: .25rem 0 0; border-left: 2px solid rgba(255,159,107,.35); }
+        /* Replacement lists: on a phone each item is a small card (name, then year, cost and Save on one line). */
+        @media (max-width: 575.98px) {
+            .stat .value { font-size: 1.3rem; }
+            .stat .value .h6 { font-size: .85rem; }
+            table.repl thead { display: none; }
+            table.repl tr { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .75rem; padding: .6rem 1rem; border-top: 1px solid var(--bs-border-color); }
+            table.repl tr:first-child { border-top: 0; }
+            table.repl td { display: block; border: 0; padding: 0 !important; width: auto !important; }
+            table.repl td.repl-name { order: -1; flex-basis: 100%; }
+            table.repl td[data-label]::before { content: attr(data-label) " "; font-size: .8rem; color: var(--bs-secondary-color); margin-right: .25rem; }
+            table.repl td[data-label] { display: flex; align-items: center; }
+            table.repl td.repl-save { margin-left: auto; }
+        }
         ul.where-inside li { padding: .1rem 0 .1rem .5rem; font-size: .92rem; }
 {% endblock %}
-{% macro repl_cells(r) %}{% if editor %}<td class="pe-3 text-end text-nowrap no-print" style="width: 1%"><form method="post" action="{{ url_for('equip.item', item_id=r.it.id) }}" class="d-inline-flex gap-1 m-0" onclick="event.stopPropagation()">
-    <input type="hidden" name="action" value="replacement">
-    <input name="replace_year" class="form-control form-control-sm" style="width: 5.2rem" inputmode="numeric" value="{{ r.year }}" aria-label="Year">
-    <input name="replace_cost" class="form-control form-control-sm" style="width: 7rem" inputmode="decimal" value="{{ '%d'|format(r.cost) }}" aria-label="Estimated cost">
-    <button class="btn btn-sm btn-outline-light">Save</button></form></td>{% endif %}{% endmacro %}
+{% macro repl_row(r, later) -%}
+    {% set f = 'rp-' ~ r.it.id %}
+    <tr id="{{ r.it.id }}">
+        <td class="ps-3" data-label="Year">{% if editor %}<input form="{{ f }}" name="replace_year" class="form-control form-control-sm repl-in" style="width: 4.6rem" inputmode="numeric" value="{{ r.year }}" aria-label="Year">{% else %}{{ r.year }}{% endif %}</td>
+        <td class="repl-name"><a href="{{ url_for('equip.item', item_id=r.it.id) }}">{{ r.it.name }}</a>{% if r.it.status == 'Planned' %} <span class="small text-muted">new</span>{% endif %}{% if r.big %} <span class="small text-muted">· big item</span>{% endif %}</td>
+        <td class="num" data-label="Cost">{% if editor %}<input form="{{ f }}" name="replace_cost" class="form-control form-control-sm repl-in ms-auto text-end" style="width: 6rem" inputmode="decimal" value="{{ '%d'|format(r.cost) }}" aria-label="Estimated cost">{% else %}{{ money(r.cost, 0) }}{% endif %}</td>
+        {% if later %}<td class="num {{ 'pe-3' if not editor }}" data-label="A month">{% if r.big and rp.big_total %}<span class="small text-muted">from the {{ money(rp.big_total, 0) }}</span>{% else %}{{ money(r.monthly, 0) }}{% endif %}</td>{% endif %}
+        {% if editor %}<td class="pe-3 text-end no-print repl-save" style="width: 1%"><form id="{{ f }}" method="post" action="{{ url_for('equip.item', item_id=r.it.id) }}" class="m-0">
+            <input type="hidden" name="action" value="replacement"><button class="btn btn-sm btn-outline-light">Save</button></form></td>{% endif %}
+    </tr>
+{%- endmacro %}
+{% macro repl_head(later) -%}
+    <thead><tr><th class="ps-3" style="width: 1%">Year</th><th>Item</th><th class="num">Estimated cost</th>{% if later %}<th class="num {{ 'pe-3' if not editor }}">Set aside a month</th>{% endif %}{% if editor %}<th class="no-print"></th>{% endif %}</tr></thead>
+{%- endmacro %}
 {% block content %}
     {% if not editor %}<div class="small text-muted mb-2 no-print">Changes are made by the equipment committee and the club officers.</div>{% endif %}
 
@@ -100,7 +122,8 @@
         <div class="small no-print">{% if editor %}<a href="{{ url_for('equip.task', back=request.path) }}">+ Add a to-do</a> · {% endif %}<a href="{{ url_for('equip.tasks') }}">All to-dos →</a></div>
     </div>
     <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <tbody>{{ todo_rows(due + undated) }}{% if not (due or undated) %}<tr><td class="ps-3 text-muted">Nothing due in the next 90 days.</td></tr>{% endif %}</tbody>
+        <thead><tr><th class="ps-3">To do</th><th>Due</th><th class="no-print"></th></tr></thead>
+        <tbody>{{ todo_rows(due + undated, true) }}{% if not (due or undated) %}<tr><td class="ps-3 text-muted">Nothing due in the next 90 days.</td></tr>{% endif %}</tbody>
     </table></div></div>
 
     <h2 class="h6 text-muted">Vehicles and trailers</h2>
@@ -302,7 +325,7 @@
         {{ editbar(none, url_for('equip.task', back=request.path), 'Add a to-do') }}</div>
     {% for name, rows in groups %}
     <h2 class="h6 mt-3 {{ 'text-danger' if name == 'Overdue' else 'text-muted' }}">{{ name }} ({{ rows|length }})</h2>
-    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><tbody>{{ todo_rows(rows) }}</tbody></table></div></div>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><thead><tr><th class="ps-3">To do</th><th>Due</th><th class="no-print"></th></tr></thead><tbody>{{ todo_rows(rows) }}</tbody></table></div></div>
     {% else %}<p class="text-muted">Nothing to do.</p>{% endfor %}
 
     {% elif view == 'task' %}
@@ -343,17 +366,17 @@
     {% if editor %}<div class="d-flex flex-wrap gap-2 mb-3 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item', status='Planned') }}">+ Add a planned purchase</a>
         <span class="small text-muted align-self-center">Change a year or cost right in the lists below; open an item for anything else.</span></div>{% endif %}
     <h2 class="h6 text-muted">Buy soon</h2>
-    <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <tbody>{% for r in rp.near %}<tr id="{{ r.it.id }}">{% if not editor %}<td class="ps-3">{{ r.year }}</td>{% endif %}<td class="{{ 'ps-3' if editor }}"><a href="{{ url_for('equip.item', item_id=r.it.id) }}">{{ r.it.name }}</a>{% if r.it.status == 'Planned' %} <span class="small text-muted">new</span>{% endif %}</td>{% if not editor %}<td class="num pe-3">{{ money(r.cost, 0) }}</td>{% endif %}{{ repl_cells(r) }}</tr>{% else %}<tr><td class="ps-3 text-muted">Nothing.</td></tr>{% endfor %}</tbody>
+    <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0 align-middle repl">
+        {{ repl_head(false) }}
+        <tbody>{% for r in rp.near %}{{ repl_row(r, false) }}{% else %}<tr><td class="ps-3 text-muted" colspan="4">Nothing.</td></tr>{% endfor %}</tbody>
     </table></div></div>
     <h2 class="h6 text-muted">Save for later</h2>
-    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <thead><tr>{% if not editor %}<th class="ps-3">Year</th>{% endif %}<th class="{{ 'ps-3' if editor }}">Item</th>{% if not editor %}<th class="num">Estimated cost</th>{% endif %}<th class="num pe-3">A month</th>{% if editor %}<th class="text-end pe-3 small text-muted fw-normal">Year · estimated cost</th>{% endif %}</tr></thead>
-        <tbody>{% for r in rp.later %}<tr id="{{ r.it.id }}">{% if not editor %}<td class="ps-3">{{ r.year }}</td>{% endif %}<td class="{{ 'ps-3' if editor }}"><a href="{{ url_for('equip.item', item_id=r.it.id) }}">{{ r.it.name }}</a>{% if r.big %} <span class="small text-muted">· big item</span>{% endif %}</td>
-            {% if not editor %}<td class="num">{{ money(r.cost, 0) }}</td>{% endif %}<td class="num pe-3">{% if r.big and rp.big_total %}<span class="small text-muted">from the {{ money(rp.big_total, 0) }}</span>{% else %}{{ money(r.monthly, 0) }}{% endif %}</td>{{ repl_cells(r) }}</tr>{% else %}<tr><td class="ps-3 text-muted" colspan="4">Nothing.</td></tr>{% endfor %}
-        {% if rp.later %}<tr class="fw-semibold"><td class="ps-3" colspan="{{ 1 if editor else 2 }}">Total{% if editor %} {{ money(rp.later|sum(attribute='cost'), 0) }}{% endif %}</td>{% if not editor %}<td class="num">{{ money(rp.later|sum(attribute='cost'), 0) }}</td>{% endif %}<td class="num pe-3">{{ money(rp.monthly_without_big if rp.big_total else rp.monthly, 0) }}</td>{% if editor %}<td></td>{% endif %}</tr>{% endif %}</tbody>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0 align-middle repl">
+        {{ repl_head(true) }}
+        <tbody>{% for r in rp.later %}{{ repl_row(r, true) }}{% else %}<tr><td class="ps-3 text-muted" colspan="5">Nothing.</td></tr>{% endfor %}
+        {% if rp.later %}<tr class="fw-semibold"><td class="ps-3" colspan="2">Total</td><td class="num">{{ money(rp.later|sum(attribute='cost'), 0) }}</td><td class="num {{ 'pe-3' if not editor }}">{{ money(rp.monthly_without_big if rp.big_total else rp.monthly, 0) }}</td>{% if editor %}<td></td>{% endif %}</tr>{% endif %}</tbody>
     </table></div></div>
-    <p class="small text-muted mt-2">A month = the item's estimated cost spread over the months from {{ rp.start_label }} to July of the year it is due.</p>
+    <p class="small text-muted mt-2">Set aside a month = the item's estimated cost spread over the months from {{ rp.start_label }} to July of the year it is due.</p>
     {% if missing %}<p class="small mt-3"><b>Over $2,500 with no replacement year</b>, so not in the plan: {% for i in missing %}<a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}</a>{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
 
     {% elif view == 'signin' %}
