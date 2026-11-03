@@ -342,6 +342,27 @@ def _vol_ws():
         return ws
 
 
+def set_volunteer(email, name=None, note='', by=''):
+    """Add or update (name given) or remove (name None) a volunteer on the Volunteers tab. Returns what changed."""
+    email = (email or '').strip().lower()
+    ws = _vol_ws()
+    col = [c.strip().lower() for c in ws.col_values(1)]
+    out = ''
+    if name is None:
+        if email in col:
+            ws.delete_rows(col.index(email) + 1)
+            out = 'removed'
+    elif email in col:
+        ws.update([[email, name]], f'A{col.index(email) + 1}', value_input_option='RAW')
+        out = 'updated'
+    else:
+        ws.append_row([email, name, (note or '')[:200], date.today().isoformat(), by], value_input_option='RAW')
+        out = 'added'
+    store._cache.pop('volunteers', None)
+    store._invalidate()
+    return out
+
+
 @bp.route('/access', methods=['GET', 'POST'])
 def access():
     u = user()

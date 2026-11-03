@@ -33,6 +33,14 @@ def all():  # noqa: A001 (module-level name, read as officials.all())
         return [dict(o) for o in _cache['rows']]
 
 
+def follows(title, titles):
+    """The job an entry follows, for entries named after one in brackets ("General Events approver (Region Executive)"
+    follows "Region Executive"): whoever holds that job holds this too. '' when it follows none."""
+    import re
+    m = re.search(r'\(([^()]+)\)\s*$', title or '')
+    return m.group(1) if m and m.group(1) in titles else ''
+
+
 def shown(viewer_roles=()):
     """The list as people see it: the admin account's own entry is only shown to the admin account."""
     rows = all()

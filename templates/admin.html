@@ -5,40 +5,50 @@
     {{ tab('admin.home', 'Users') }}
     {{ tab('admin.roles', 'Roles') }}
     {{ tab('admin.programs', 'Programs') }}
-    {{ tab('auth.access', 'Sign-in access') }}
     {{ tab('audit_log', 'Audit log') }}
 {% endblock %}
 {% block content %}
-{% if view == 'people' %}
+{% macro user_form(u, kinds, programs) %}
+    <input type="hidden" name="action" value="user"><input type="hidden" name="old_email" value="{{ u.email if u else '' }}">
+    <div class="row g-2 mb-2">
+        <div class="col-12 col-md-6"><label class="form-label small">Name</label><input name="name" class="form-control form-control-sm" value="{{ u.name if u else '' }}" required></div>
+        <div class="col-12 col-md-6"><label class="form-label small">Email (their own address; it is how they sign in)</label><input name="email" type="email" class="form-control form-control-sm" value="{{ u.email if u else '' }}" required></div>
+    </div>
+    <div class="small fw-semibold mt-2">Roles</div>
+    {% for kind, titles in kinds %}<div class="small text-muted mt-1">{{ kind }}</div>
+        {% for t in titles %}<div class="form-check"><input class="form-check-input" type="checkbox" name="title" value="{{ t }}" id="{{ (u.email if u else 'new') ~ '-' ~ loop.index ~ kind }}" {{ 'checked' if u and t in u.titles }}>
+            <label class="form-check-label small" for="{{ (u.email if u else 'new') ~ '-' ~ loop.index ~ kind }}">{{ t }}</label></div>{% endfor %}{% endfor %}
+    <div class="small text-muted mt-1">Volunteer</div>
+    <div class="form-check"><input class="form-check-input" type="checkbox" name="volunteer" value="yes" id="{{ (u.email if u else 'new') }}-vol" {{ 'checked' if u and u.volunteer and not u.titles }}>
+        <label class="form-check-label small" for="{{ (u.email if u else 'new') }}-vol">Volunteer (only if no role above)</label></div>
+    <details class="mt-2"><summary class="small text-muted">A new role</summary><div class="row g-2 mt-1">
+        <div class="col-12 col-md-5"><input name="new_title" class="form-control form-control-sm" placeholder="Name of the role, e.g. Trophy Chair"></div>
+        <div class="col-7 col-md-4"><select name="new_kind" class="form-select form-select-sm"><option value="Committee">Committee member</option><option value="Equipment">Equipment Committee</option><option value="Director at Large">Director at Large (board)</option><option value="Director">Program director (board)</option></select></div>
+        <div class="col-5 col-md-3"><select name="program" class="form-select form-select-sm"><option value="">Program</option>{% for code, pn in programs.items() %}<option value="{{ code }}">{{ pn }}</option>{% endfor %}</select></div>
+    </div></details>
+    <button class="btn btn-sm btn-accent mt-3">Save</button>
+{% endmacro %}
+{% if view == 'users' %}
     <div class="page-title">Users</div>
-    <p class="text-muted small">Funds request approvals go only to these people and addresses. To give a role to someone else, use Change: the list and the role's email groups update within a minute.</p>
-    {% if changes.pending %}<div class="alert alert-info py-2 small">Being saved: {% for c in changes.pending %}{{ c.title }} to {{ c.name }}{{ ', ' if not loop.last }}{% endfor %}. Reload in a minute.</div>{% endif %}
-    {% for c in changes.done if not c.ok %}<div class="alert alert-warning py-2 small">Not saved: {{ c.title }} to {{ c.name }} ({{ c.applied[:16] }}): {{ c.message }}</div>{% endfor %}
-    {% if people %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <tbody>{% for o in people %}<tr><td class="ps-3">{{ o.title }}</td><td>{{ o.name }}</td><td><a href="mailto:{{ o.email }}">{{ o.email }}</a></td>
-            <td class="pe-3 text-end">{% if not (o.email or '').lower().endswith('@drscca.org') %}<details class="d-inline-block text-start"><summary class="small text-muted">Change</summary>
-                <form method="post" class="d-flex flex-wrap gap-1 mt-1" style="min-width: 18rem"><input type="hidden" name="title" value="{{ o.title }}"><input type="hidden" name="from" value="{{ o.email }}">
-                    <input name="name" class="form-control form-control-sm" value="{{ o.name }}" required aria-label="Name">
-                    <input name="email" type="email" class="form-control form-control-sm" value="{{ o.email }}" required aria-label="Email">
-                    <button class="btn btn-sm btn-accent">Save</button></form>
-                <form method="post" class="mt-1"><input type="hidden" name="action" value="remove"><input type="hidden" name="title" value="{{ o.title }}"><input type="hidden" name="email" value="{{ o.email }}">
-                    <button class="btn btn-link btn-sm p-0 text-danger" onclick="return confirm('Take {{ o.name|e }} off {{ o.title|e }}?')">Remove from this role</button></form></details>{% endif %}</td></tr>{% endfor %}</tbody>
-    </table></div></div>{% else %}<p class="text-warning">No officials list on this server, so no approval emails are sent.</p>{% endif %}
-    <details class="mt-4" id="add"><summary class="fw-semibold">Add a person to a role</summary>
-    <form method="post" class="card p-3 mt-2"><input type="hidden" name="action" value="add"><div class="row g-2">
-        <div class="col-md-5"><label class="form-label small">Role (pick one, or type a new one)</label><input name="title" class="form-control" list="titleNames" required placeholder="Equipment Committee">
-            <datalist id="titleNames">{% for tt in people|map(attribute='title')|unique %}<option value="{{ tt }}">{% endfor %}</datalist></div>
-        <div class="col-md-3"><label class="form-label small">Name</label><input name="name" class="form-control" required></div>
-        <div class="col-md-4"><label class="form-label small">Email</label><input name="email" type="email" class="form-control" required></div>
-        <div class="col-md-5"><label class="form-label small">For a new role: what kind</label><select name="role" class="form-select">
-            <option value="Committee">Committee member</option><option value="Equipment">Equipment Committee</option><option value="Director at Large">Director at Large (board)</option><option value="Director">Program director (board, approves the program's spending)</option></select></div>
-        <div class="col-md-4"><label class="form-label small">Program (program directors)</label><select name="program" class="form-select"><option value="">-</option>{% for code, pn in programs.items() %}<option value="{{ code }}">{{ pn }}</option>{% endfor %}</select></div>
-        <div class="col-md-3 d-flex align-items-end"><button class="btn btn-accent w-100">Add</button></div>
-    </div><div class="form-text">An existing role keeps its kind and email group; the person is added to the group within a minute.</div></form></details>
-
+    <p class="text-muted small">Everyone who can sign in. Tick a person's roles; each role's permissions are set on <a href="{{ url_for('admin.roles') }}">Roles</a>. Untick everything to take away their access.</p>
+    {% if changes.pending %}<div class="alert alert-info py-2 small">Being saved: {% for c in changes.pending %}{{ c.name }} ({{ c.title }}){{ ', ' if not loop.last }}{% endfor %}. Reload in a minute.</div>{% endif %}
+    {% for c in changes.done if not c.ok %}<div class="alert alert-warning py-2 small">Not saved: {{ c.name }} ({{ c.title }}), {{ c.applied[:16] }}: {{ c.message }}</div>{% endfor %}
+    <details class="mb-3" id="add"><summary class="btn btn-sm btn-accent">+ Add a user</summary>
+        <form method="post" class="card p-3 mt-2">{{ user_form(none, kinds, programs) }}</form></details>
+    <div class="list-group">
+        {% for u in users %}<div class="list-group-item py-2">
+            <div class="d-flex flex-wrap justify-content-between gap-2">
+                <div><div class="fw-semibold">{{ u.name }}</div><div class="small text-muted">{{ u.email }}</div></div>
+                <div class="small text-md-end">{% for t in u.titles %}<span class="badge rounded-pill text-bg-secondary me-1 mb-1">{{ t }}</span>{% endfor %}
+                    {% if u.volunteer and not u.titles %}<span class="badge rounded-pill text-bg-info">Volunteer</span>{% endif %}</div>
+            </div>
+            {% if u.region %}<div class="small text-muted mt-1">Region account: managed in Google Workspace.</div>
+            {% else %}<details class="mt-1"><summary class="small text-muted">Edit</summary><form method="post" class="mt-2">{{ user_form(u, kinds, programs) }}</form></details>{% endif %}
+        </div>{% endfor %}
+    </div>
 {% elif view == 'roles' %}
     <div class="page-title">Roles</div>
-    <p class="text-muted small mb-2">Whoever holds a role gets what is ticked. Every official can use all the apps; these are the extra powers. Volunteers are added on Sign-in access.</p>
+    <p class="text-muted small mb-2">Whoever holds a role gets what is ticked. Every official can use all the apps; these are the extra powers. Volunteers are added on Users.</p>
     <div class="list-group">
         {% for r in rows %}<form method="post" class="list-group-item py-3" id="{{ r.role|replace(' ', '-') }}"><input type="hidden" name="role" value="{{ r.role }}">
             <div class="fw-semibold">{{ r.role }}</div>
@@ -46,6 +56,8 @@
             {% for k, label in perm_names.items() %}<div class="form-check"><input class="form-check-input" type="checkbox" name="{{ k }}" value="yes" id="{{ r.role|replace(' ', '-') }}-{{ k }}" {{ 'checked' if k in r.perms }}>
                 <label class="form-check-label small" for="{{ r.role|replace(' ', '-') }}-{{ k }}">{{ label }}</label></div>{% endfor %}
             <button class="btn btn-sm btn-outline-secondary mt-2">Save {{ r.role }}</button></form>{% endfor %}
+        <div class="list-group-item py-3"><div class="fw-semibold">Volunteer</div>
+            <div class="small text-muted">Added on Users. Sees the event schedule, enters worker points for their event, and files and sees only their own funds requests and invoices. None of the permissions above.</div></div>
     </div>
     <p class="small text-muted mt-2">The admin account always has every permission.</p>
 {% elif view == 'programs' %}

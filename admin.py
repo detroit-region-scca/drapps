@@ -33,15 +33,113 @@ def _ctx(**kw):
                 changes=utils.official_changes(), **kw)
 
 
+NEEDED = ('RE', 'ARE', 'Secretary', 'Treasurer', 'Admin', 'Director', 'Financial Director', 'Points Keeper')
+VOLUNTEER = 'Volunteer'
+
+
+def users():
+    """Everyone who can sign in, one row per person: officials (by email, with every role title they hold) and
+    volunteers. Region accounts (@drscca.org, e.g. the admin account) are listed but not editable here."""
+    out = {}
+    for o in officials.all():
+        e = (o.get('email') or '').strip().lower()
+        if not e:
+            continue
+        u = out.setdefault(e, {'email': e, 'name': o.get('name', ''), 'titles': [], 'volunteer': False})
+        u['titles'].append(o.get('title', ''))
+    for e, v in auth.volunteers().items():
+        u = out.setdefault(e, {'email': e, 'name': v.get('name') or e, 'titles': [], 'volunteer': True, 'note': v.get('note', '')})
+        u['volunteer'] = True
+    for u in out.values():
+        u['region'] = u['email'].endswith('@drscca.org')
+    return sorted(out.values(), key=lambda u: (u['region'], not u['titles'], u['name'].lower()))
+
+
+def titles_by_kind():
+    """[(kind, [titles])] that can be assigned (not the admin account's own)."""
+    kinds = {}
+    rows = officials.all()
+    titles = {o.get('title', '') for o in rows}
+    for o in rows:
+        if o.get('role') and o.get('role') != 'Admin' and o.get('title') and not officials.follows(o['title'], titles):
+            kinds.setdefault(o['role'], set()).add(o['title'])
+    return [(k, sorted(v)) for k, v in sorted(kinds.items())]
+
+
 @bp.route('/', methods=['GET', 'POST'])
 @login_required
 def home():
-    """Users: who holds each role."""
+    """Users: everyone who can sign in, and the roles each holds. Roles carry the permissions (Admin > Roles)."""
     if (g := _guard()):
         return g
     if request.method == 'POST':
-        return _post()
-    return render_template('admin.html', **_ctx(view='people'))
+        return _save_user() if request.form.get('action') == 'user' else _post()
+    return render_template('admin.html', **_ctx(view='users', users=users(), kinds=titles_by_kind()))
+
+
+def _save_user():
+    me = _me()
+    f = request.form
+    old_email = f.get('old_email', '').strip().lower()
+    name, email = ' '.join(f.get('name', '').split())[:80], f.get('email', '').strip().lower()
+    known = {t for _, ts in titles_by_kind() for t in ts}
+    titles = [t for t in f.getlist('title') if t in known]
+    alltitles = {o.get('title', '') for o in officials.all()}
+    new_title = ' '.join(f.get('new_title', '').split())[:80]
+    new_kind = f.get('new_kind', '')
+    volunteer = f.get('volunteer') == 'yes' and not titles and not new_title
+    back = redirect(url_for('admin.home'))
+    if not name or '@' not in email or ' ' in email:
+        flash('A user needs a name and a valid email address.', 'danger')
+        return back
+    everyone = {u['email']: u for u in users()}
+    if email.endswith('@drscca.org') or old_email.endswith('@drscca.org'):
+        flash('Region accounts (@drscca.org) are managed in Google Workspace, not here.', 'warning')
+        return back
+    if email != old_email and email in everyone:
+        flash(f'{email} is already a user; edit that one instead.', 'warning')
+        return back
+    if new_title and (new_title in known or new_kind not in ('Committee', 'Equipment', 'Director at Large', 'Director')):
+        flash('A new role needs a name not already used, and what kind it is.', 'danger')
+        return back
+    was = everyone.get(old_email) or {'titles': [], 'volunteer': False, 'name': ''}
+    was = dict(was, titles=[x for x in was['titles'] if not officials.follows(x, alltitles)])   # those follow their job
+    # A role the region needs keeps at least one holder.
+    rows = officials.all()
+    for t in set(was['titles']) - set(titles):
+        kind = next((o.get('role') for o in rows if o.get('title') == t), '')
+        holders = {(o.get('email') or '').lower() for o in rows if o.get('title') == t}
+        if kind in NEEDED and holders <= {old_email}:
+            flash(f'{t} is needed: give it to someone else first (edit that person and tick it).', 'warning')
+            return back
+    add_new = None
+    if new_title:
+        add_new = {'role': new_kind, 'title': new_title}
+        if new_kind == 'Director' and f.get('program'):
+            add_new['program'] = f.get('program')
+    official_change = (sorted(was['titles']) != sorted(titles) or add_new
+                       or ((was['titles'] or titles) and (name != was['name'] or email != old_email)))
+    if official_change:
+        utils.queue_official_change({'op': 'person', 'from': old_email, 'name': name, 'email': email, 'titles': titles,
+                                     'new': add_new, 'title': ', '.join(titles + ([new_title] if new_title else [])) or '(no roles)',
+                                     'by': me.get('name', '')})
+    vol = ''
+    if volunteer:
+        if old_email and old_email != email and was['volunteer']:
+            auth.set_volunteer(old_email, None)
+        vol = auth.set_volunteer(email, name, f.get('note', ''), me.get('name', ''))
+    elif was['volunteer']:
+        vol = auth.set_volunteer(old_email or email, None)
+    log_audit_event('USER_SAVED', me.get('name', ''), {'email': email, 'was': old_email or '(new)', 'name': name,
+                                                       'roles': titles + ([new_title] if new_title else []) + (['Volunteer'] if volunteer else []),
+                                                       'had': was['titles'] + (['Volunteer'] if was['volunteer'] else [])})
+    if not titles and not new_title and not volunteer:
+        flash(f'{name} will no longer be able to sign in{" once the change is saved (within a minute)" if official_change else ""}.', 'success')
+    elif official_change:
+        flash(f'{name}: roles saved; the officials list and email groups update within a minute.', 'success')
+    else:
+        flash(f'{name} saved{" as a volunteer" if vol else ""}.', 'success')
+    return back
 
 
 @bp.route('/programs', methods=['GET', 'POST'])
