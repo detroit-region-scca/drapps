@@ -33,6 +33,7 @@ def _ctx(**kw):
                 changes=utils.official_changes(), **kw)
 
 
+VOL_PERMS = {'funds', 'invoices', 'points_enter'}    # volunteers only reach these pages
 NEEDED = ('RE', 'ARE', 'Secretary', 'Treasurer', 'Admin', 'Director', 'Financial Director', 'Points Keeper')
 VOLUNTEER = 'Volunteer'
 
@@ -50,8 +51,14 @@ def users():
     for e, v in auth.volunteers().items():
         u = out.setdefault(e, {'email': e, 'name': v.get('name') or e, 'titles': [], 'volunteer': True, 'note': v.get('note', '')})
         u['volunteer'] = True
+    import access
+    kinds = {}
+    for o in officials.all():
+        kinds.setdefault((o.get('email') or '').strip().lower(), set()).add(o.get('role', ''))
     for u in out.values():
         u['region'] = u['email'].endswith('@drscca.org')
+        roles = kinds.get(u['email']) or ({access.VOLUNTEER} if u['volunteer'] else set())
+        u['extra'] = sorted(access.perms_for(roles) & set(access.EXTRA))
     return sorted(out.values(), key=lambda u: (u['region'], not u['titles'], u['name'].lower()))
 
 
@@ -159,21 +166,25 @@ def roles():
     if (g := _guard()):
         return g
     import access
-    kinds = sorted({o.get('role', '') for o in officials.all() if o.get('role') and o.get('role') != 'Admin'})
+    kinds = sorted({o.get('role', '') for o in officials.all() if o.get('role') and o.get('role') != 'Admin'}) + [access.VOLUNTEER]
     if request.method == 'POST':
         role = request.form.get('role', '')
         if role in kinds:
             before = access.perms(role)
-            access.save(role, {p for p in access.PERMS if request.form.get(p) == 'yes'})
+            allowed = VOL_PERMS if role == access.VOLUNTEER else set(access.PERMS)
+            access.save(role, {p for p in allowed if request.form.get(p) == 'yes'})
             after = access.perms(role)
             if after != before:
                 log_audit_event('ROLE_ACCESS_SAVED', _me().get('name', ''), {'role': role, 'added': sorted(after - before), 'removed': sorted(before - after)})
             flash(f'{role} saved.', 'success')
         return redirect(url_for('admin.roles') + f'#{role.replace(" ", "-")}')
     counts = {k: sum(1 for o in officials.all() if o.get('role') == k) for k in kinds}
+    counts[access.VOLUNTEER] = len(auth.volunteers())
     titles = {k: sorted({o.get('title', '') for o in officials.all() if o.get('role') == k}) for k in kinds}
-    rows = [{'role': k, 'perms': access.perms(k), 'n': counts[k], 'titles': titles[k]} for k in kinds]
-    return render_template('admin.html', **_ctx(view='roles', rows=rows, perm_names=access.PERMS))
+    titles[access.VOLUNTEER] = ['added one by one on Users']
+    rows = [{'role': k, 'perms': access.perms(k), 'n': counts[k], 'titles': titles[k],
+             'choices': VOL_PERMS if k == access.VOLUNTEER else set(access.PERMS)} for k in kinds]
+    return render_template('admin.html', **_ctx(view='roles', rows=rows, everyday=access.EVERYDAY, extra=access.EXTRA))
 
 
 def _post():

@@ -199,7 +199,7 @@ def home():
         return g
     status = request.args.get('status', 'Submitted')
     every = F.requests()
-    if auth.limited():
+    if auth.limited('funds'):
         every = [r for r in every if auth.owns_request(r)]
     this_year = str(date.today().year)
     years = sorted({r['submitted'][:4] for r in every if r['submitted'][:4].isdigit()} | {this_year}, reverse=True)

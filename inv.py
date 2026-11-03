@@ -57,7 +57,7 @@ def home():
         return g
     this_year = str(date.today().year)
     rows = I.invoices()
-    if auth.limited():
+    if auth.limited('invoices'):
         rows = [r for r in rows if auth.owns_invoice(r)]
     years = sorted({r['created'][:4] for r in rows} | {this_year}, reverse=True)
     year = request.args.get('year') if request.args.get('year') in years else this_year

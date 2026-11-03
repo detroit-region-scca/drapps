@@ -38,7 +38,8 @@
     <div class="list-group">
         {% for u in users %}<div class="list-group-item py-2">
             <div class="d-flex flex-wrap justify-content-between gap-2">
-                <div><div class="fw-semibold">{{ u.name }}</div><div class="small text-muted">{{ u.email }}</div></div>
+                <div><div class="fw-semibold">{{ u.name }}</div><div class="small text-muted">{{ u.email }}</div>
+                    <div class="small mt-1">{% if u.extra %}<span class="text-warning-emphasis">Extra powers: {{ u.extra|map('replace', 'ops', 'Operations')|map('replace', 'pay', 'mark paid')|map('replace', 'access', 'volunteers')|map('replace', 'audit', 'audit log')|map('replace', 'points', 'worker points')|map('replace', 'board', 'board decisions')|join(', ') }}</span>{% elif u.volunteer and not u.titles %}<span class="text-muted">Volunteer access</span>{% else %}<span class="text-muted">Everyday access</span>{% endif %}</div></div>
                 <div class="small text-md-end">{% for t in u.titles %}<span class="badge rounded-pill text-bg-secondary me-1 mb-1">{{ t }}</span>{% endfor %}
                     {% if u.volunteer and not u.titles %}<span class="badge rounded-pill text-bg-info">Volunteer</span>{% endif %}</div>
             </div>
@@ -48,18 +49,22 @@
     </div>
 {% elif view == 'roles' %}
     <div class="page-title">Roles</div>
-    <p class="text-muted small mb-2">Whoever holds a role gets what is ticked. Every official can use all the apps; these are the extra powers. Volunteers are added on Users.</p>
+    <p class="text-muted small mb-2">Whoever holds a role gets what is ticked. <b>Everyday</b> is the normal work; <b>Extra powers</b> are for the few who need them. Looking around the apps is never limited.</p>
+    {% macro boxes(r, group) %}{% for k, label in group.items() if k in r.choices %}<div class="form-check">
+        <input class="form-check-input" type="checkbox" name="{{ k }}" value="yes" id="{{ r.role|replace(' ', '-') }}-{{ k }}" {{ 'checked' if k in r.perms }}>
+        <label class="form-check-label small" for="{{ r.role|replace(' ', '-') }}-{{ k }}">{{ label }}</label></div>{% endfor %}{% endmacro %}
     <div class="list-group">
-        {% for r in rows %}<form method="post" class="list-group-item py-3" id="{{ r.role|replace(' ', '-') }}"><input type="hidden" name="role" value="{{ r.role }}">
-            <div class="fw-semibold">{{ r.role }}</div>
+        {% for r in rows %}{% set ev = everyday.keys()|select('in', r.choices)|list %}{% set ex = extra.keys()|select('in', r.choices)|list %}
+        <form method="post" class="list-group-item py-3" id="{{ r.role|replace(' ', '-') }}"><input type="hidden" name="role" value="{{ r.role }}">
+            <div class="d-flex flex-wrap justify-content-between gap-2"><div class="fw-semibold">{{ r.role }}</div>
+                <div class="small"><span class="badge rounded-pill text-bg-light border">Everyday {{ ev|select('in', r.perms)|list|length }}/{{ ev|length }}</span>
+                    {% if ex %}<span class="badge rounded-pill {{ 'text-bg-warning' if ex|select('in', r.perms)|list else 'text-bg-light border' }}">Extra {{ ex|select('in', r.perms)|list|length }}/{{ ex|length }}</span>{% endif %}</div></div>
             <div class="small text-muted mb-2">{{ r.titles|join(', ') }} · {{ r.n }} {{ 'person' if r.n == 1 else 'people' }}</div>
-            {% for k, label in perm_names.items() %}<div class="form-check"><input class="form-check-input" type="checkbox" name="{{ k }}" value="yes" id="{{ r.role|replace(' ', '-') }}-{{ k }}" {{ 'checked' if k in r.perms }}>
-                <label class="form-check-label small" for="{{ r.role|replace(' ', '-') }}-{{ k }}">{{ label }}</label></div>{% endfor %}
+            <div class="small fw-semibold">Everyday</div>{{ boxes(r, everyday) }}
+            {% if ex %}<div class="small fw-semibold mt-2">Extra powers</div>{{ boxes(r, extra) }}{% endif %}
             <button class="btn btn-sm btn-outline-secondary mt-2">Save {{ r.role }}</button></form>{% endfor %}
-        <div class="list-group-item py-3"><div class="fw-semibold">Volunteer</div>
-            <div class="small text-muted">Added on Users. Sees the event schedule, enters worker points for their event, and files and sees only their own funds requests and invoices. None of the permissions above.</div></div>
     </div>
-    <p class="small text-muted mt-2">The admin account always has every permission.</p>
+    <p class="small text-muted mt-2">"Write their own program's annual plan" covers the programs a person directs. The admin account always has everything.</p>
 {% elif view == 'programs' %}
     <div class="page-title">Programs</div>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><tbody>

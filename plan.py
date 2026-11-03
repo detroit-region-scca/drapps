@@ -272,6 +272,13 @@ def approve(year, program):
 @bp.route('/<year>/<program>/edit', methods=['GET', 'POST'])
 @login_required
 def edit(year, program):
+    from auth import user as _user
+    _u = _user() or {}
+    _perms = set(_u.get('perms') or ())
+    _mine = any((o.get('email') or '').lower() == _u.get('email') and o.get('program') == program for o in O.all())
+    if not ('plan_all' in _perms or ('plan_own' in _perms and _mine)):
+        flash("Your role can't write this program's plan. Ask the admin if you need it.", 'warning')
+        return redirect(url_for('plan.detail', year=year, program=program))
     if (g := _guard()):
         return g
     year, names = _year(year), dict(_programs())

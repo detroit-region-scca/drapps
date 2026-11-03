@@ -79,7 +79,9 @@ def lookup(email):
         return {'email': email, 'name': mine[0]['name'], 'level': level, 'roles': roles, 'perms': sorted(perms)}
     v = volunteers().get(email)
     if v:
-        return {'email': email, 'name': v.get('name') or email, 'level': 'volunteer', 'roles': [], 'perms': []}
+        import access
+        return {'email': email, 'name': v.get('name') or email, 'level': 'volunteer', 'roles': [access.VOLUNTEER],
+                'perms': sorted(access.perms(access.VOLUNTEER))}
     return None
 
 
@@ -101,10 +103,21 @@ def user():
     return g.auth_user
 
 
-def limited():
-    """True for a volunteer: lists show only their own requests and invoices."""
+def limited(what='funds'):
+    """True when lists show only the person's own funds requests (what='funds') or invoices ('invoices'):
+    their roles lack "See every ..." (Admin > Roles)."""
     u = user()
-    return bool(u and u['level'] == 'volunteer')
+    return bool(u and f'{what}_all' not in (u.get('perms') or ()))
+
+
+# Pages that need an everyday permission (Admin > Roles), for officials and volunteers alike. Looking is never gated.
+ENDPOINT_PERMS = {
+    'index': 'events', 'bud.edit': 'events', 'bud.delete': 'events', 'bud.tie': 'events',
+    'fr.new': 'funds', 'fr.receipts': 'funds', 'fr.ask': 'funds',
+    'inv.new': 'invoices',
+    'members.enter': 'points_enter',
+    'board.motions': 'board_ask',
+}
 
 
 def owns_request(r):
@@ -150,18 +163,22 @@ def gate():
         session['equip_editor'] = {'email': u['email'], 'name': u['name']}
     else:
         session.pop('equip_editor', None)
-    if u['level'] == 'volunteer':
-        if ep not in VOLUNTEER_ENDPOINTS:
-            flash('That part of the apps is for region officials.', 'warning')
-            return redirect(url_for('home'))
-        if ep in ('fr.detail', 'fr.ask', 'fr.receipts'):
-            import fr_store
-            if not owns_request(fr_store.get(request.view_args.get('req_id'))):
-                abort(403)
-        if ep in ('inv.detail', 'inv.pdf'):
-            import inv_store
-            if not owns_invoice(inv_store.get(request.view_args.get('inv_id'))):
-                abort(403)
+    if u['level'] == 'volunteer' and ep not in VOLUNTEER_ENDPOINTS:
+        flash('That part of the apps is for region officials.', 'warning')
+        return redirect(url_for('home'))
+    need = ENDPOINT_PERMS.get(ep)
+    if need and (request.method == 'POST' or ep in ('index', 'fr.new', 'inv.new', 'members.enter', 'bud.edit')) \
+            and need not in (u.get('perms') or ()):
+        flash("Your role doesn't include that. Ask the admin if you need it.", 'warning')
+        return redirect(request.referrer if (request.referrer or '').startswith(request.host_url) else url_for('home'))
+    if ep in ('fr.detail', 'fr.ask', 'fr.receipts') and limited('funds'):
+        import fr_store
+        if not owns_request(fr_store.get(request.view_args.get('req_id'))):
+            abort(403)
+    if ep in ('inv.detail', 'inv.pdf') and limited('invoices'):
+        import inv_store
+        if not owns_invoice(inv_store.get(request.view_args.get('inv_id'))):
+            abort(403)
     return None
 
 

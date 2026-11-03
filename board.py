@@ -97,6 +97,9 @@ def home():
             flash('Tick at least one item.', 'warning')
             return redirect(url_for('board.home'))
         if f.get('action') == 'ask':
+            if 'board_ask' not in set((_me().get('perms') or ())):
+                flash("Your role doesn't include sending items to the board.", 'warning')
+                return redirect(url_for('board.home'))
             blines, brows = [], []
             for y, codes in sorted(bcodes.items()):
                 ln, rw = bud.budget_vote_lines(y, codes) if B.enabled() else ([], [])

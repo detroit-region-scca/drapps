@@ -15,7 +15,18 @@ import threading
 
 PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'role-access.json')
 
-PERMS = {
+EVERYDAY = {
+    'events': 'Add events and build event budgets',
+    'funds': 'File funds requests',
+    'funds_all': 'See every funds request (otherwise only their own)',
+    'invoices': 'Create invoices',
+    'invoices_all': 'See every invoice (otherwise only their own)',
+    'plan_own': "Write their own program's annual plan",
+    'plan_all': "Write any program's annual plan",
+    'points_enter': 'Enter worker points for an event',
+    'board_ask': 'Send items to the board and propose motions',
+}
+EXTRA = {
     'board': 'Record board decisions (budget approvals, votes, motions)',
     'pay': 'Mark funds requests and invoices paid',
     'minutes': 'Upload and publish board minutes',
@@ -24,8 +35,12 @@ PERMS = {
     'access': 'Add and remove volunteers',
     'audit': 'See the audit log',
 }
+PERMS = {**EVERYDAY, **EXTRA}
 OFFICERS = {'RE', 'ARE', 'Secretary', 'Treasurer', 'Admin'}      # bylaws Art. IV 4.2, plus the admin account
 DEFAULTS = {'Equipment': {'ops'}, 'Points Keeper': {'points'}}
+EVERYDAY_DEFAULT = set(EVERYDAY) - {'plan_own'}            # what every official could do before roles had settings
+VOLUNTEER = 'Volunteer'
+VOLUNTEER_DEFAULT = {'funds', 'invoices', 'points_enter'}
 
 _lock = threading.Lock()
 _cache = {}
@@ -48,16 +63,18 @@ def _load():
 
 
 def _default(role):
-    return set(PERMS) if role in OFFICERS else set(DEFAULTS.get(role, ()))
+    if role == VOLUNTEER:
+        return set(VOLUNTEER_DEFAULT)
+    return set(PERMS) - {'plan_own'} if role in OFFICERS else EVERYDAY_DEFAULT | set(DEFAULTS.get(role, ()))
 
 
 def perms(role):
     """The permissions one role has."""
     if role == 'Admin':
-        return set(PERMS)
+        return set(PERMS) - {'plan_own'}
     saved = _load().get(role) or {}
     if 'level' in saved:                        # the earlier full/standard + ops format
-        base = set(PERMS) if saved.get('level') == 'full' else set()
+        base = (set(PERMS) - {'plan_own'}) if saved.get('level') == 'full' else set(EVERYDAY_DEFAULT)
         if saved.get('ops'):
             base.add('ops')
         return base
@@ -80,6 +97,8 @@ def save(role, on):
     """on: the set of permissions this role should have."""
     if role == 'Admin':
         return
+    if 'plan_all' in on:
+        on = set(on) - {'plan_own'}       # any program includes their own
     doc = _load()
     doc[role] = {p: p in on for p in PERMS}
     tmp = PATH + '.tmp'
