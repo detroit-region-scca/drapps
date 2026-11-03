@@ -93,7 +93,7 @@
             <tr class="group"><td class="perm">{{ gname }}</td>{% for c in cols %}<td></td>{% endfor %}<td></td></tr>
             {% for k, label in group.items() %}<tr><td class="perm">{{ label }}</td>
                 {% for c in cols %}<td class="cell">{% if k in c.choices %}<input class="form-check-input" type="checkbox" name="{{ c.role }}::{{ k }}" value="yes" aria-label="{{ c.role }}: {{ label }}" {{ 'checked' if k in c.perms }}>{% else %}<span class="text-muted">·</span>{% endif %}</td>{% endfor %}
-                <td class="cell admin-col">{% if (gname != 'Apps on the home page' or k == 'admin') and k != 'plan_own' %}✓{% else %}<span class="text-muted">·</span>{% endif %}</td></tr>{% endfor %}
+                <td class="cell admin-col">{% if gname != 'Apps on the home page' and k != 'plan_own' %}✓{% else %}<span class="text-muted">·</span>{% endif %}</td></tr>{% endfor %}
         {% endfor %}
         </tbody>
     </table></div></div>
