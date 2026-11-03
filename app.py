@@ -124,6 +124,7 @@ def login():
 
 from utils import qbo_state as _qbo_state  # noqa: E402
 app.jinja_env.globals['qbo_state'] = _qbo_state
+app.jinja_env.globals['google_on'] = auth.google_on
 
 
 @app.context_processor

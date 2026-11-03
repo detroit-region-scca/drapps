@@ -217,6 +217,18 @@ def home():
                                              n_ready=sum(1 for r in reqs if r['status'] == 'Submitted' and not r.get('waiting'))))
 
 
+def _last_submitter():
+    """The signed-in person's details from their most recent funds request, so the form is filled in for them."""
+    me = (session.get('email') or '').lower()
+    if not me:
+        return {}
+    mine = [r for r in F.requests() if (r.get('submitter_email') or '').lower() == me]
+    if not mine:
+        return {}
+    r = max(mine, key=lambda r: (r.get('submitted') or '', r.get('id') or ''))
+    return {k: r.get(k, '') for k in ('submitter_name', 'submitter_email', 'submitter_phone', 'submitter_address')}
+
+
 @bp.route('/new', methods=['GET', 'POST'])
 @login_required
 def new():
@@ -224,7 +236,7 @@ def new():
         return g
     events = _events()
     if request.method == 'GET':
-        last = session.get('fr_submitter', {})
+        last = session.get('fr_submitter') or _last_submitter()
         return render_template('fr.html', **_ctx(view='new', events=events, programs=dict(load_programs(), OPS='Operations'), directors=directors(), signers=[n for n, m in O.signers()], form={'program': request.args.get('program', '')}, last=last,
                                                  pick=request.args.get('event', ''), events_js=_events_js(events, request.args.get('event', '')),
                                                  rows=[{}] * 3))

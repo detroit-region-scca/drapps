@@ -47,7 +47,7 @@ VOLUNTEER_ENDPOINTS = {
     'inv.home', 'inv.new', 'inv.detail', 'inv.pdf',
 }
 # Reachable without signing in: the sign-in itself, and the emailed approval and confirmation links.
-PUBLIC_ENDPOINTS = {'home', 'static', 'logout', 'fr.approve_link', 'inv.delete_confirm'}
+PUBLIC_ENDPOINTS = {'home', 'static', 'logout', 'fr.approve_link', 'inv.delete_confirm', 'auth.google', 'auth.google_back'}
 
 
 # ---------- who is who ----------
@@ -262,6 +262,67 @@ def verify():
     return render_template('home.html', title='Sign in', view='code', next_url=nxt,
                            email=(request.args.get('e') or session.get('signin_email') or '').strip().lower(),
                            code=request.args.get('c', ''), minutes=CODE_MINUTES)
+
+
+# ---------- or sign in with Google (an option next to the emailed code) ----------
+# Turned on by GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET (an OAuth web client; its redirect URI is
+# <site>/signin/google/back). Google only proves the address: the same lists decide who gets in, as with a code.
+GOOGLE_AUTH = 'https://accounts.google.com/o/oauth2/v2/auth'
+GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token'
+
+
+def google_on():
+    return bool(os.environ.get('GOOGLE_OAUTH_CLIENT_ID') and os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET'))
+
+
+def _google_back_url():
+    return request.url_root.rstrip('/') + url_for('auth.google_back')
+
+
+@bp.route('/signin/google')
+def google():
+    if not google_on():
+        return redirect(url_for('home'))
+    from urllib.parse import urlencode
+    state, nonce = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
+    session['g_signin'] = {'state': state, 'nonce': nonce, 'next': _safe_next(request.args.get('next'))}
+    q = {'client_id': os.environ['GOOGLE_OAUTH_CLIENT_ID'], 'redirect_uri': _google_back_url(), 'response_type': 'code',
+         'scope': 'openid email', 'state': state, 'nonce': nonce, 'prompt': 'select_account'}
+    return redirect(f'{GOOGLE_AUTH}?{urlencode(q)}')
+
+
+@bp.route('/signin/google/back')
+def google_back():
+    import requests
+    from google.auth.transport.requests import Request
+    from google.oauth2 import id_token
+    want = session.pop('g_signin', None) or {}
+    if not google_on() or not want or not hmac.compare_digest(request.args.get('state', ''), want.get('state', '')) or not request.args.get('code'):
+        flash('Google sign-in did not finish. Try again, or use the emailed code.', 'warning')
+        return redirect(url_for('home'))
+    try:
+        r = requests.post(GOOGLE_TOKEN, data={'code': request.args['code'], 'client_id': os.environ['GOOGLE_OAUTH_CLIENT_ID'],
+                                              'client_secret': os.environ['GOOGLE_OAUTH_CLIENT_SECRET'],
+                                              'redirect_uri': _google_back_url(), 'grant_type': 'authorization_code'}, timeout=20)
+        r.raise_for_status()
+        info = id_token.verify_oauth2_token(r.json()['id_token'], Request(), os.environ['GOOGLE_OAUTH_CLIENT_ID'])
+    except Exception as e:
+        logging.warning(f'Google sign-in failed: {e}')
+        flash('Google sign-in did not work. Use the emailed code instead.', 'warning')
+        return redirect(url_for('home'))
+    email = (info.get('email') or '').strip().lower()
+    if not info.get('email_verified') or info.get('nonce') != want.get('nonce'):
+        flash('Google did not confirm that address. Use the emailed code instead.', 'warning')
+        return redirect(url_for('home'))
+    u = lookup(email)
+    if not u:
+        flash(f'{email} is not on the apps list. Sign in with the email code, using the address the region has for you.', 'warning')
+        return redirect(url_for('home'))
+    session.clear()
+    session.permanent = True
+    session['email'] = email
+    log_audit_event('SIGNIN', u['name'], {'email': email, 'level': u['level'], 'with': 'Google'})
+    return redirect(want.get('next') or url_for('home'))
 
 
 # ---------- the Volunteers list, kept by officers ----------
