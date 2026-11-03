@@ -80,8 +80,42 @@ def home():
     if (g := _guard()):
         return g
     if request.method == 'POST':
-        return _save_user() if request.form.get('action') == 'user' else _post()
-    return render_template('admin.html', **_ctx(view='users', users=users(), kinds=titles_by_kind()))
+        act = request.form.get('action')
+        return _save_user() if act == 'user' else _hand_over() if act == 'handover' else _post()
+    alltitles = {o.get('title', '') for o in officials.all()}
+    followers = sorted(x for x in alltitles if officials.follows(x, alltitles))
+    return render_template('admin.html', **_ctx(view='users', users=users(), kinds=titles_by_kind(), followers=followers))
+
+
+def _hand_over():
+    """Give one of a person's roles to someone else in one step (the role is never left empty in between)."""
+    me = _me()
+    f = request.form
+    frm, title = f.get('old_email', '').strip().lower(), f.get('title', '')
+    back = redirect(url_for('admin.home'))
+    held = next((o for o in officials.all() if (o.get('email') or '').lower() == frm and o.get('title') == title), None)
+    if not held or held.get('role') == 'Admin' or frm.endswith('@drscca.org'):
+        flash('Pick one of their roles to hand over.', 'warning')
+        return back
+    to = f.get('to', '').strip().lower()
+    if to == 'new':
+        email, name = f.get('email', '').strip().lower(), ' '.join(f.get('name', '').split())[:80]
+    else:
+        email = to
+        name = next((u['name'] for u in users() if u['email'] == to), '')
+    if not name or '@' not in email or ' ' in email or email == frm or email.endswith('@drscca.org'):
+        flash('Pick who gets the role, or give a new name and email.', 'danger')
+        return back
+    pending = utils.official_changes()['pending']
+    busy = {(c.get('from') or '').lower() for c in pending} | {(c.get('email') or '').lower() for c in pending}
+    if frm in busy or email in busy:
+        flash('A change for one of them is still being saved. Reload in a minute, then try again.', 'warning')
+        return back
+    utils.queue_official_change({'op': 'change', 'title': title, 'from': frm, 'name': name, 'email': email,
+                                 'drop_volunteer': email in auth.volunteers(), 'by': me.get('name', '')})
+    log_audit_event('USER_ROLE_HANDED_OVER', me.get('name', ''), {'title': title, 'from': f"{held.get('name')} <{frm}>", 'to': f'{name} <{email}>'})
+    flash(f"{title} goes from {held.get('name')} to {name} within a minute, with its email group.", 'success')
+    return back
 
 
 def _after_pending(rows, pending):

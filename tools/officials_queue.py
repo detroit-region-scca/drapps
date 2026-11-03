@@ -123,6 +123,8 @@ def apply_one(c):
             op = c.get('op', 'change')
             if op == 'change':
                 handover.cmd_hand(argparse.Namespace(title=c['title'], email=c['email'], name=c['name'], old=c.get('from') or None, apply=True))
+                if c.get('drop_volunteer'):
+                    _drop_volunteer(c['email'].lower())
                 return True, out.getvalue()
             doc = handover.load()
             before = [dict(o) for o in doc['officials']]

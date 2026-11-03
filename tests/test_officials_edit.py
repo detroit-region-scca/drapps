@@ -128,3 +128,20 @@ def test_roles_grid_saves_only_changed_roles(monkeypatch):
     c.post('/admin/roles', data=form)
     assert 'audit' in access.perms('Director')
     assert set(access._load()) == {'Director'}           # Equipment and Volunteer untouched, still on defaults
+
+
+def test_hand_over_queues_one_change(tmp_path, monkeypatch):
+    import auth
+    import officials
+    monkeypatch.setattr(utils, 'OFFICIALS_QUEUE', str(tmp_path / 'q.json'))
+    monkeypatch.setattr(utils, 'OFFICIALS_DONE', str(tmp_path / 'd.json'))
+    monkeypatch.setattr(officials, 'all', lambda: [{'role': 'Treasurer', 'title': 'Treasurer', 'name': 'A', 'email': 'a@x.com'},
+                                                   {'role': 'Director at Large', 'title': 'Director at Large', 'name': 'B', 'email': 'b@x.com'}])
+    monkeypatch.setattr(auth, 'volunteers', lambda: {})
+    c = app.test_client()
+    _as(c, monkeypatch, ['Admin'])
+    c.post('/admin/', data={'action': 'handover', 'old_email': 'a@x.com', 'title': 'Treasurer', 'to': 'b@x.com'})
+    q = json.loads((tmp_path / 'q.json').read_text())['changes']
+    assert len(q) == 1 and (q[0]['op'], q[0]['title'], q[0]['from'], q[0]['email'], q[0]['name']) == ('change', 'Treasurer', 'a@x.com', 'b@x.com', 'B')
+    c.post('/admin/', data={'action': 'handover', 'old_email': 'a@x.com', 'title': 'Treasurer', 'to': 'b@x.com'})
+    assert len(json.loads((tmp_path / 'q.json').read_text())['changes']) == 1     # still pending: refused
