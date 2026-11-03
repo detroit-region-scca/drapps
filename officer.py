@@ -13,7 +13,7 @@ from utils import local_path
 
 bp = Blueprint('officer', __name__, url_prefix='/officer')
 
-ROLES = ('RE', 'ARE', 'Secretary', 'Treasurer')   # officers per bylaws Art. IV 4.2
+ROLES = ('RE', 'ARE', 'Secretary', 'Treasurer', 'Admin')   # officers per bylaws Art. IV 4.2, plus the admin account
 LINK_DAYS = 30
 
 
