@@ -27,6 +27,7 @@ log = logging.getLogger(__name__)
 
 DB = os.environ.get('SHEET_CACHE_DB', os.path.join(DATA_DIR, 'sheet_cache.sqlite'))
 POLL_SECONDS = int(os.environ.get('SHEET_CACHE_POLL_SECONDS', '15'))
+ERROR_SECONDS = 300      # a remembered refusal (missing tab, lost access) is retried after this long
 LEADER_LOCK = os.path.join(DATA_DIR, 'sheet_cache.leader.lock')
 DRIVE = 'https://www.googleapis.com/drive/v3/files/'
 
@@ -103,11 +104,13 @@ def batch_get(sheet_id, ranges, params=None, fresh=False):
     _start_poller()
     key = json.dumps([ranges, params], sort_keys=True)
     if not fresh:
-        row = _db().execute('SELECT data, error, stale FROM snaps WHERE sheet_id = ? AND key = ?', (sheet_id, key)).fetchone()
+        row = _db().execute('SELECT data, error, stale, fetched FROM snaps WHERE sheet_id = ? AND key = ?', (sheet_id, key)).fetchone()
         if row and not row[2]:
-            if row[1]:
+            if not row[1]:
+                return json.loads(row[0])
+            if time.time() - (row[3] or 0) < ERROR_SECONDS:
                 raise _api_error(row[1])
-            return json.loads(row[0])
+            # an old refusal: ask Google again (the tab may exist now, or access may be back)
     data, err = _fetch(sheet_id, key, ranges, params)
     if err:
         raise _api_error(err)
@@ -159,9 +162,15 @@ def forget(prefix):
 
 # ---------- keeping the copy current ----------
 
+class SheetGone(Exception):
+    """Drive says the sheet does not exist (deleted, or no longer shared with the app)."""
+
+
 def _modified(sheet_id):
     r = sheets_client().http_client.session.get(DRIVE + sheet_id, params={'fields': 'modifiedTime', 'supportsAllDrives': 'true'},
                                                 timeout=20)
+    if r.status_code == 404:
+        raise SheetGone(sheet_id)
     r.raise_for_status()
     return r.json().get('modifiedTime', '')
 
@@ -173,6 +182,12 @@ def poll_once():
                                       ' LEFT JOIN sheets m ON m.sheet_id = s.sheet_id').fetchall():
         try:
             mod = _modified(sheet_id)
+        except SheetGone:
+            # Stop checking a sheet that is gone; if a page asks for it again it is fetched (and fails) afresh.
+            log.warning('sheet cache: %s no longer exists in Drive; dropped from the local copy', sheet_id)
+            c.execute('DELETE FROM snaps WHERE sheet_id = ?', (sheet_id,))
+            _bump(c, sheet_id)
+            continue
         except Exception as e:
             log.warning('sheet cache: modifiedTime for %s failed: %s', sheet_id, e)
             continue

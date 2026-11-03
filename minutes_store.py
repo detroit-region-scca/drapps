@@ -33,6 +33,21 @@ def _list(parent, q_extra=''):
     return r.json().get('files', [])
 
 
+LIST_SECONDS = 120   # folder listings for the Minutes page; the app's own changes clear them at once
+
+
+def _listed(parent, q_extra=''):
+    """_list for showing pages: shared by every worker for a couple of minutes (Drive is slow to list)."""
+    import sheet_cache
+    return sheet_cache.remember(f'minutes:{parent}:{q_extra}', LIST_SECONDS, lambda: _list(parent, q_extra))
+
+
+def _changed():
+    """After any upload, replace, publish or delete: the next page lists Drive afresh."""
+    import sheet_cache
+    sheet_cache.forget('minutes:')
+
+
 def year_folder(parent, year):
     DRIVE, _ = _drive()
     hit = [f for f in _list(parent, f" and mimeType='{FOLDER}'") if f['name'] == str(year)]
@@ -41,6 +56,7 @@ def year_folder(parent, year):
     r = _s().post(DRIVE, params={'supportsAllDrives': 'true', 'fields': 'id'},
                   json={'name': str(year), 'mimeType': FOLDER, 'parents': [parent]})
     r.raise_for_status()
+    _changed()
     return r.json()['id']
 
 
@@ -52,6 +68,7 @@ def _upload(parent, name, data, mime, as_google_doc=False):
     files = {'metadata': ('metadata', json.dumps(meta), 'application/json'), 'file': (name, data, mime)}
     r = _s().post(UPLOAD, params={'uploadType': 'multipart', 'supportsAllDrives': 'true', 'fields': 'id,name,webViewLink'}, files=files)
     r.raise_for_status()
+    _changed()
     return r.json()
 
 
@@ -60,6 +77,7 @@ def _replace_content(file_id, data, mime):
     r = _s().patch(f'{UPLOAD}/{file_id}', params={'uploadType': 'media', 'supportsAllDrives': 'true', 'fields': 'id,name,webViewLink'},
                    data=data, headers={'Content-Type': mime})
     r.raise_for_status()
+    _changed()
     return r.json()
 
 
@@ -92,8 +110,8 @@ def keep_original(year, name, data, mime):
 
 
 def published(year):
-    folder = [f for f in _list(os.environ['MINUTES_PUBLIC_FOLDER_ID'], f" and mimeType='{FOLDER}'") if f['name'] == str(year)]
-    return [f for f in _list(folder[0]['id'])] if folder else []
+    folder = [f for f in _listed(os.environ['MINUTES_PUBLIC_FOLDER_ID'], f" and mimeType='{FOLDER}'") if f['name'] == str(year)]
+    return [f for f in _listed(folder[0]['id'])] if folder else []
 
 
 def save_draft(name, pdf):
@@ -104,7 +122,7 @@ def save_draft(name, pdf):
 
 
 def drafts():
-    return [f for f in _list(os.environ['MINUTES_DRAFTS_FOLDER_ID']) if f['name'].endswith('.pdf')]
+    return [f for f in _listed(os.environ['MINUTES_DRAFTS_FOLDER_ID']) if f['name'].endswith('.pdf')]
 
 
 def delete_draft(file_id):
@@ -114,6 +132,7 @@ def delete_draft(file_id):
         raise ValueError('Not a draft.')
     r = _s().patch(f'{DRIVE}/{file_id}', params={'supportsAllDrives': 'true'}, json={'trashed': True})
     r.raise_for_status()
+    _changed()
     return f['name']
 
 

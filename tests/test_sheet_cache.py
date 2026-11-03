@@ -100,3 +100,25 @@ def test_off_switch_reads_google_every_time(cache, monkeypatch):
     cache.batch_get('s1', ['A:A'])
     cache.batch_get('s1', ['A:A'])
     assert cache.book.calls == 2
+
+
+def test_remembered_refusal_is_retried_after_a_while(cache, monkeypatch):
+    cache.book.fail = _err(400)
+    with pytest.raises(gspread.exceptions.APIError):
+        cache.batch_get('s1', ['Missing!A:A'])
+    cache.book.fail = None
+    with pytest.raises(gspread.exceptions.APIError):     # still remembered
+        cache.batch_get('s1', ['Missing!A:A'])
+    assert cache.book.calls == 1
+    real = cache.time.time
+    monkeypatch.setattr(cache.time, 'time', lambda: real() + cache.ERROR_SECONDS + 1)
+    assert cache.batch_get('s1', ['Missing!A:A'])['valueRanges'][0]['values'] == [['A']]
+
+
+def test_a_deleted_sheet_is_dropped_from_the_poll(cache, monkeypatch):
+    cache.batch_get('gone', ['A:A'])
+    def missing(sid):
+        raise cache.SheetGone(sid)
+    monkeypatch.setattr(cache, '_modified', missing)
+    cache.poll_once()
+    assert cache._db().execute("SELECT COUNT(*) FROM snaps WHERE sheet_id = 'gone'").fetchone()[0] == 0

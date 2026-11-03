@@ -123,8 +123,10 @@ def _pub():
     return os.environ['PUBLIC_SHEET_ID']
 
 
-def milestone_rows():
-    vals = worksheet(_pub(), 'Member Milestones').get_all_values()
+def milestone_rows(fresh=False):
+    """The public Member Milestones tab, from the shared local copy (fresh=True reads Google, for a write)."""
+    res = C.batch_get(_pub(), ["'Member Milestones'!A:D"], fresh=fresh)
+    vals = (res.get('valueRanges') or [{}])[0].get('values', [])
     return [r for r in vals[1:] if any(str(c).strip() for c in r)]
 
 
@@ -132,12 +134,13 @@ def save_milestones(month, new_rows):
     """Replace one month on the public Member Milestones tab (newest month first)."""
     with _lock:
         ws = worksheet(_pub(), 'Member Milestones')
-        keep = [list(r) for r in milestone_rows() if str((list(r) + [''])[0]).strip() != month]
+        keep = [list(r) for r in milestone_rows(fresh=True) if str((list(r) + [''])[0]).strip() != month]
         out = sorted(keep + [list(r) for r in new_rows], key=lambda r: str(r[0]), reverse=True)
         ws.batch_clear(['A2:D'])
         if out:
             ws.update([[int(c) if i == 2 and str(c).strip().isdigit() else str(c) for i, c in enumerate((list(r) + [''] * 4)[:4])] for r in out],
                       'A2', value_input_option='RAW')
+        C.invalidate(_pub())
     return len(new_rows)
 
 
@@ -182,9 +185,17 @@ def _auto_ws():
         return ws
 
 
-def auto_rows():
+def auto_rows(fresh=False):
+    """The Auto add tab, from the shared local copy (made on first use if the tab is missing)."""
+    import gspread
+    try:
+        res = C.batch_get(_sid(), ["'Auto add'!A:E"], fresh=fresh)
+        vals = (res.get('valueRanges') or [{}])[0].get('values', [])
+    except gspread.exceptions.APIError:
+        vals = _auto_ws().get_all_values()
+        C.invalidate(_sid())
     out = []
-    for i, r in enumerate(_auto_ws().get_all_values()[1:], start=2):
+    for i, r in enumerate(vals[1:], start=2):
         r = list(r) + [''] * 5
         if str(r[0]).strip() or str(r[2]).strip():
             out.append({'row': i, 'member': str(r[0]).strip().lstrip("'"), 'name': r[1], 'role': r[2], 'season': L.num(r[3]), 'offseason': L.num(r[4])})
@@ -197,11 +208,12 @@ def save_auto_rows(rows):
     if rows:
         ws.update([["'" + r['member'], _text(r['name']), _text(r['role']), r['season'], r['offseason']] for r in rows], 'A2',
                   value_input_option='USER_ENTERED')
+    C.invalidate(_sid())
 
 
 def prepare_auto(year, month, who='Auto add (monthly)'):
     """Add this month's auto-add points (once). They count right away: the user asked for these to be automatic."""
-    rows = L.auto_entries(auto_rows(), entries(), year, month)
+    rows = L.auto_entries(auto_rows(fresh=True), entries(), year, month)
     return add_entries(rows, L.APPROVED, who) if rows else 0
 
 
