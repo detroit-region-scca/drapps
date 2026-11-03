@@ -51,3 +51,27 @@ def test_half_written_officials_file_keeps_the_last_good_list(tmp_path, monkeypa
     f.write_text('{"officials": [ {"role": "Tre')          # caught mid-write
     os.utime(f, ns=(1, 1))
     assert [o['name'] for o in officials.all()] == ['Pat']
+
+
+def test_add_and_remove_role(tmp_path, monkeypatch):
+    import access
+    monkeypatch.setattr(access, 'PATH', str(tmp_path / 'role-access.json'))
+    access._cache.clear()
+    access.add_role('Trophy Committee')
+    assert 'Trophy Committee' in access.saved_roles()
+    assert 'funds' in access.perms('Trophy Committee') and 'pay' not in access.perms('Trophy Committee')
+    access.add_role('Helper', like='Treasurer')
+    assert 'pay' in access.perms('Helper')
+    access.remove_role('Trophy Committee')
+    assert 'Trophy Committee' not in access.saved_roles()
+
+
+def test_first_holder_of_new_role():
+    import importlib.util, pathlib
+    spec = importlib.util.spec_from_file_location('oq', pathlib.Path(__file__).parent.parent / 'tools' / 'officials_queue.py')
+    oq = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(oq)
+    rows = [{'role': 'Treasurer', 'title': 'Treasurer', 'name': 'A', 'email': 'a@x.test'}]
+    out = oq.apply_person(rows, {'from': '', 'name': 'B', 'email': 'b@x.test', 'titles': ['Trophy Committee'],
+                                 'kinds': {'Trophy Committee': 'Trophy Committee'}})
+    assert {'role': 'Trophy Committee', 'title': 'Trophy Committee', 'name': 'B', 'email': 'b@x.test'} in out

@@ -116,6 +116,28 @@ def perms(role):
     return out | shown
 
 
+def saved_roles():
+    """Roles set on Admin > Roles, including ones nobody holds yet."""
+    return set(_load())
+
+
+def add_role(role, like=None):
+    """A new role, starting with the permissions of `like` (or just the everyday ones)."""
+    save(role, perms(like) if like else EVERYDAY_DEFAULT | _apps_for(EVERYDAY_DEFAULT))
+
+
+def remove_role(role):
+    doc = _load()
+    if doc.pop(role, None) is None:
+        return
+    tmp = PATH + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(doc, f, indent=1, sort_keys=True)
+    os.replace(tmp, PATH)
+    with _lock:
+        _cache.clear()
+
+
 def perms_for(roles):
     """Everything a person holding these roles may do."""
     out = set()

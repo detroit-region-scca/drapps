@@ -21,9 +21,9 @@
     <div class="small text-muted mt-1">Volunteer</div>
     <div class="form-check"><input class="form-check-input" type="checkbox" name="volunteer" value="yes" id="{{ (u.email if u else 'new') }}-vol" {{ 'checked' if u and u.volunteer and not u.titles }}>
         <label class="form-check-label small" for="{{ (u.email if u else 'new') }}-vol">Volunteer (only if no role above)</label></div>
-    <details class="mt-2"><summary class="small text-muted">A new role</summary><div class="row g-2 mt-1">
-        <div class="col-12 col-md-5"><input name="new_title" class="form-control form-control-sm" placeholder="Name of the role, e.g. Trophy Chair"></div>
-        <div class="col-7 col-md-4"><select name="new_kind" class="form-select form-select-sm"><option value="Committee">Committee</option><option value="Equipment">Equipment</option><option value="Director at Large">Director at Large</option><option value="Director">Director (runs a program)</option></select></div>
+    <details class="mt-2"><summary class="small text-muted">A new job title in a role</summary><div class="small text-muted mt-1">For example Karting Director in Director. A whole new role is added on <a href="{{ url_for('admin.roles') }}">Roles</a>.</div><div class="row g-2 mt-1">
+        <div class="col-12 col-md-5"><input name="new_title" class="form-control form-control-sm" placeholder="Job title, e.g. Karting Director"></div>
+        <div class="col-7 col-md-4"><select name="new_kind" class="form-select form-select-sm" aria-label="Role">{% for kind, _t in kinds %}<option value="{{ kind }}"{{ ' selected' if kind == 'Director' }}>{{ kind }}</option>{% endfor %}</select></div>
         <div class="col-5 col-md-3"><select name="program" class="form-select form-select-sm"><option value="">Program</option>{% for code, pn in programs.items() %}<option value="{{ code }}">{{ pn }}</option>{% endfor %}</select></div>
     </div></details>
     <button class="btn btn-sm btn-accent mt-3">Save</button>
@@ -86,7 +86,7 @@
     <div class="card"><div class="table-responsive" style="max-height: 75vh;">
     <table class="perm-grid mb-0">
         <thead><tr><th class="perm text-start">Permission</th>
-            {% for c in cols %}<th title="{{ c.titles|join(', ') }}">{{ c.role }}<div class="fw-normal text-muted">{{ c.n }}</div></th>{% endfor %}
+            {% for c in cols %}<th title="{{ c.titles|join(', ') }}">{{ c.role }}<div class="fw-normal text-muted">{{ c.n }}</div>{% if c.removable %}<button form="rm-{{ c.role|replace(" ", "-") }}" class="btn btn-link btn-sm p-0 fw-normal" onclick="return confirm('Remove the {{ c.role }} role?')">remove</button>{% endif %}</th>{% endfor %}
             <th class="admin-col" title="admin@drscca.org">Admin<br>account</th></tr></thead>
         <tbody>
         {% for gname, group in groups %}
@@ -106,6 +106,13 @@
     <div class="d-flex flex-wrap gap-2 align-items-center mt-2"><button class="btn btn-accent">Save</button><span class="unsaved small text-warning-emphasis fw-semibold" hidden>Unsaved changes</span>
         <span class="small text-muted">Only roles you changed are saved. "Their own program's plan" covers the programs a person directs. Volunteers can only reach events, worker points and their own requests and invoices.</span></div>
     </form>
+    {% for c in cols if c.removable %}<form id="rm-{{ c.role|replace(" ", "-") }}" method="post" class="d-none"><input type="hidden" name="action" value="remove_role"><input type="hidden" name="role" value="{{ c.role }}"></form>{% endfor %}
+    <details class="mt-3"><summary class="btn btn-sm btn-outline-light">+ Add a role</summary>
+    <form method="post" class="card p-3 mt-2"><input type="hidden" name="action" value="add_role"><div class="row g-2 align-items-end">
+        <div class="col-12 col-md-5"><label class="form-label small">Name</label><input name="role" class="form-control form-control-sm" maxlength="40" required placeholder="e.g. Trophy Committee"></div>
+        <div class="col-12 col-md-5"><label class="form-label small">Start with the permissions of</label><select name="like" class="form-select form-select-sm"><option value="">Everyday only</option>{% for c in cols %}<option value="{{ c.role }}">{{ c.role }}</option>{% endfor %}</select></div>
+        <div class="col-12 col-md-2"><button class="btn btn-sm btn-accent w-100">Add</button></div>
+    </div><div class="small text-muted mt-2">It shows as a column here; give it to someone on Users.</div></form></details>
 {% elif view == 'programs' %}
     <div class="page-title">Programs</div>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><tbody>

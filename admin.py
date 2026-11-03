@@ -83,14 +83,24 @@ def users():
     return sorted(out.values(), key=lambda u: (u['region'], not u['titles'], u['name'].lower()))
 
 
+def all_roles():
+    """Every role: the ones people hold and the ones made on Roles that nobody holds yet (not Admin or Volunteer)."""
+    import access
+    found = {o.get('role', '') for o in _own_rows() if o.get('role')} | access.saved_roles()
+    return sorted(found - {'', 'Admin', VOLUNTEER}, key=_role_key)
+
+
 def titles_by_kind():
-    """[(kind, [titles])] that can be assigned (not the admin account's own)."""
+    """[(kind, [titles])] that can be assigned (not the admin account's own). A role nobody holds yet is ticked by
+    its own name."""
     kinds = {}
     rows = officials.all()
     titles = {o.get('title', '') for o in rows}
     for o in rows:
         if o.get('role') and o.get('role') != 'Admin' and o.get('title') and not officials.follows(o['title'], titles):
             kinds.setdefault(o['role'], set()).add(o['title'])
+    for k in all_roles():
+        kinds.setdefault(k, {k})
     return [(k, sorted(v)) for k, v in sorted(kinds.items(), key=lambda kv: _role_key(kv[0]))]
 
 
@@ -169,6 +179,8 @@ def _save_user():
     name, email = ' '.join(f.get('name', '').split())[:80], f.get('email', '').strip().lower()
     known = {t for _, ts in titles_by_kind() for t in ts}
     titles = [t for t in f.getlist('title') if t in known]
+    held = {o.get('title', '') for o in officials.all()}
+    unheld = {k: k for k in all_roles() if k in titles and k not in held}     # first holder of a role made on Roles
     alltitles = {o.get('title', '') for o in officials.all()}
     new_title = ' '.join(f.get('new_title', '').split())[:80]
     new_kind = f.get('new_kind', '')
@@ -184,8 +196,8 @@ def _save_user():
     if email != old_email and email in everyone:
         flash(f'{email} is already a user; edit that one instead.', 'warning')
         return back
-    if new_title and (new_title in known or new_kind not in ('Committee', 'Equipment', 'Director at Large', 'Director')):
-        flash('A new role needs a name not already used, and what kind it is.', 'danger')
+    if new_title and (new_title in known or new_kind not in all_roles()):
+        flash('A new job title needs a name not already used, and the role it belongs to.', 'danger')
         return back
     was = everyone.get(old_email) or {'titles': [], 'volunteer': False, 'name': ''}
     was = dict(was, titles=[x for x in was['titles'] if not officials.follows(x, alltitles)])   # those follow their job
@@ -211,7 +223,7 @@ def _save_user():
                        or ((was['titles'] or titles) and (name != was['name'] or email != old_email)))
     if official_change:
         utils.queue_official_change({'op': 'person', 'from': old_email, 'name': name, 'email': email, 'titles': titles,
-                                     'new': add_new, 'drop_volunteer': bool(was['volunteer'] and (titles or add_new)), 'title': ', '.join(titles + ([new_title] if new_title else [])) or '(no roles)',
+                                     'kinds': unheld, 'new': add_new, 'drop_volunteer': bool(was['volunteer'] and (titles or add_new)), 'title': ', '.join(titles + ([new_title] if new_title else [])) or '(no roles)',
                                      'by': me.get('name', '')})
     vol = ''
     if volunteer:
@@ -251,8 +263,27 @@ def roles():
         return g
     import access
     own = _own_rows()
-    found = {o.get('role', '') for o in own if o.get('role') and o.get('role') != 'Admin'}
-    kinds = sorted(found, key=_role_key) + [access.VOLUNTEER]
+    kinds = all_roles() + [access.VOLUNTEER]
+    if request.method == 'POST' and request.form.get('action') == 'add_role':
+        name = ' '.join(request.form.get('role', '').split())[:40]
+        like = request.form.get('like', '')
+        taken = {k.lower() for k in kinds} | {'admin', 'admin account'} | {o.get('title', '').lower() for o in officials.all()}
+        if not name or name.lower() in taken or ':' in name:
+            flash('A new role needs a name not already used.', 'danger')
+        else:
+            access.add_role(name, like if like in kinds else None)
+            log_audit_event('ROLE_ADDED', _me().get('name', ''), {'role': name, 'like': like or 'everyday only'})
+            flash(f'{name} added. Set what it may do below, then give it to someone on Users.', 'success')
+        return redirect(url_for('admin.roles'))
+    if request.method == 'POST' and request.form.get('action') == 'remove_role':
+        name = request.form.get('role', '')
+        if name in kinds and name != access.VOLUNTEER and not any(o.get('role') == name for o in officials.all()) and name not in ROLE_ORDER:
+            access.remove_role(name)
+            log_audit_event('ROLE_REMOVED', _me().get('name', ''), {'role': name})
+            flash(f'{name} removed.', 'success')
+        else:
+            flash('Only a role nobody holds can be removed.', 'warning')
+        return redirect(url_for('admin.roles'))
     if request.method == 'POST':
         # The whole grid comes back; only roles whose boxes changed are saved, so the rest keep following defaults.
         changed = []
@@ -273,6 +304,7 @@ def roles():
     titles = {k: sorted({o.get('title', '') for o in own if o.get('role') == k}) for k in kinds}
     titles[access.VOLUNTEER] = ['added one by one on Users']
     cols = [{'role': k, 'perms': access.perms(k), 'n': counts[k], 'titles': titles[k],
+             'removable': counts[k] == 0 and k != access.VOLUNTEER and k not in ROLE_ORDER,
              'choices': VOL_PERMS if k == access.VOLUNTEER else set(access.PERMS)} for k in kinds]
     groups = [('Everyday', access.EVERYDAY), ('Extra powers', access.EXTRA), ('Apps on the home page', access.APPS)]
     return render_template('admin.html', **_ctx(view='roles', cols=cols, groups=groups))

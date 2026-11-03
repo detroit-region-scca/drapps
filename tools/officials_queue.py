@@ -61,6 +61,8 @@ def apply_person(rows, c):
         if t in have:
             continue
         tpl = next((o for o in rows if o.get('title') == t), None)
+        if not tpl and t in (c.get('kinds') or {}):
+            tpl = {'role': c['kinds'][t]}       # a role made on Admin > Roles that nobody held yet
         if not tpl:
             raise SystemExit(f'No role titled "{t}" to copy.')
         out.append({**{k: tpl[k] for k in ('role', 'program', 'notify') if tpl.get(k)}, 'title': t, 'name': name, 'email': email})
