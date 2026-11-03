@@ -84,6 +84,29 @@ def home():
     return render_template('admin.html', **_ctx(view='users', users=users(), kinds=titles_by_kind()))
 
 
+def _after_pending(rows, pending):
+    """The officials list as it will be once the queued changes are applied."""
+    import contextlib
+    import io
+    import sys
+    tools = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tools')
+    if tools not in sys.path:
+        sys.path.insert(0, tools)
+    try:
+        from officials_queue import apply_person
+    except Exception:          # without the tools, judge by the saved list
+        return rows
+    rows = [dict(o) for o in rows]
+    for c in pending:
+        if c.get('op') == 'person':
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    rows = apply_person(rows, c)
+            except SystemExit:
+                pass
+    return rows
+
+
 def _save_user():
     me = _me()
     f = request.form
@@ -111,8 +134,13 @@ def _save_user():
         return back
     was = everyone.get(old_email) or {'titles': [], 'volunteer': False, 'name': ''}
     was = dict(was, titles=[x for x in was['titles'] if not officials.follows(x, alltitles)])   # those follow their job
-    # A role the region needs keeps at least one holder.
-    rows = officials.all()
+    pending = utils.official_changes()['pending']
+    busy = {(c.get('from') or '').lower() for c in pending} | {(c.get('email') or '').lower() for c in pending}
+    if (old_email and old_email in busy) or email in busy:
+        flash(f'A change for {name} is still being saved. Reload in a minute, then edit again.', 'warning')
+        return back
+    # A role the region needs keeps at least one holder, counting changes still being saved.
+    rows = _after_pending(officials.all(), pending)
     for t in set(was['titles']) - set(titles):
         kind = next((o.get('role') for o in rows if o.get('title') == t), '')
         holders = {(o.get('email') or '').lower() for o in rows if o.get('title') == t}
@@ -128,15 +156,16 @@ def _save_user():
                        or ((was['titles'] or titles) and (name != was['name'] or email != old_email)))
     if official_change:
         utils.queue_official_change({'op': 'person', 'from': old_email, 'name': name, 'email': email, 'titles': titles,
-                                     'new': add_new, 'title': ', '.join(titles + ([new_title] if new_title else [])) or '(no roles)',
+                                     'new': add_new, 'drop_volunteer': bool(was['volunteer'] and (titles or add_new)), 'title': ', '.join(titles + ([new_title] if new_title else [])) or '(no roles)',
                                      'by': me.get('name', '')})
     vol = ''
     if volunteer:
         if old_email and old_email != email and was['volunteer']:
             auth.set_volunteer(old_email, None)
         vol = auth.set_volunteer(email, name, f.get('note', ''), me.get('name', ''))
-    elif was['volunteer']:
-        vol = auth.set_volunteer(old_email or email, None)
+    elif was['volunteer'] and not (titles or add_new):
+        vol = auth.set_volunteer(old_email or email, None)       # losing all access
+    # A volunteer given a role stays on the Volunteers tab until the role is saved (the server takes them off then).
     log_audit_event('USER_SAVED', me.get('name', ''), {'email': email, 'was': old_email or '(new)', 'name': name,
                                                        'roles': titles + ([new_title] if new_title else []) + (['Volunteer'] if volunteer else []),
                                                        'had': was['titles'] + (['Volunteer'] if was['volunteer'] else [])})
@@ -210,58 +239,5 @@ def _post():
         log_audit_event('PROGRAM_SAVED', me.get('name', ''), {'code': code, 'name': pname, 'was': known.get(code, '')})
         flash(f'{code} is now "{pname}".' if code in known else f'Added the program {code} {pname}. Its money needs QuickBooks accounts named "Club {code} {pname} ...".', 'success')
         return redirect(url_for('admin.programs'))
-    if act in ('add', 'remove'):
-        title = ' '.join(f.get('title', '').split())
-        name, email = ' '.join(f.get('name', '').split()), f.get('email', '').strip().lower()
-        rows = officials.all()
-        same = [o for o in rows if o.get('title') == title]
-        if act == 'remove':
-            who = next((o for o in same if (o.get('email') or '').lower() == email), None)
-            needed = who and who.get('role') in ('RE', 'ARE', 'Secretary', 'Treasurer', 'Admin', 'Director', 'Financial Director', 'Points Keeper')
-            if not who:
-                flash('Nobody with that address holds that role.', 'warning')
-            elif needed and len(same) == 1:
-                flash(f'{title} is needed; use Change to give it to someone else instead.', 'warning')
-            elif (who.get('email') or '').lower().endswith('@drscca.org'):
-                flash('That is a region account; it stays.', 'warning')
-            else:
-                utils.queue_official_change({'op': 'remove', 'title': title, 'from': who['email'], 'name': who['name'], 'email': who['email'], 'by': me.get('name', '')})
-                log_audit_event('OFFICIAL_CHANGE_REQUESTED', me.get('name', ''), {'remove': f"{who['name']} <{who['email']}>", 'title': title})
-                flash(f"{who['name']} will be taken off {title} within a minute.", 'success')
-            return redirect(url_for('admin.home'))
-        if not title or not name or '@' not in email or ' ' in email:
-            flash('Give the role, the name and a valid email address.', 'danger')
-            return redirect(url_for('admin.home') + '#add')
-        if any((o.get('email') or '').lower() == email for o in same):
-            flash(f'{name} already holds {title}.', 'info')
-            return redirect(url_for('admin.home'))
-        base = same[0] if same else {}
-        role = base.get('role') or f.get('role', '')
-        if role not in ('Equipment', 'Director at Large', 'Director', 'Committee'):
-            if not same:
-                flash('Pick what kind of role a new one is.', 'danger')
-                return redirect(url_for('admin.home') + '#add')
-        entry = {k: base[k] for k in ('role', 'program', 'notify') if base.get(k)}
-        entry.update(role=role, title=title, name=name, email=email)
-        if not same and role == 'Director' and f.get('program'):
-            entry['program'] = f.get('program')
-        utils.queue_official_change({'op': 'add', 'entry': entry, 'title': title, 'name': name, 'email': email, 'by': me.get('name', '')})
-        log_audit_event('OFFICIAL_CHANGE_REQUESTED', me.get('name', ''), {'add': f'{name} <{email}>', 'title': title})
-        flash(f'{name} will be added as {title} within a minute.', 'success')
-        return redirect(url_for('admin.home'))
-    title = f.get('title', '').strip()
-    old = next((o for o in officials.all() if o.get('title') == title and (o.get('email') or '').lower() == f.get('from', '').lower()), None)
-    name, email = ' '.join(f.get('name', '').split()), f.get('email', '').strip().lower()
-    if not old or not name or '@' not in email or ' ' in email:
-        flash('Give the name and a valid email address.', 'danger')
-        return redirect(url_for('admin.home'))
-    if (old.get('email') or '').lower().endswith('@drscca.org'):
-        flash('That role uses a region account; change its password holder in Google Workspace instead.', 'warning')
-        return redirect(url_for('admin.home'))
-    if name == old.get('name') and email == (old.get('email') or '').lower():
-        flash('Nothing changed.', 'info')
-        return redirect(url_for('admin.home'))
-    utils.queue_official_change({'title': title, 'from': old.get('email', ''), 'name': name, 'email': email, 'by': me.get('name', '')})
-    log_audit_event('OFFICIAL_CHANGE_REQUESTED', me.get('name', ''), {'title': title, 'from': f"{old.get('name')} <{old.get('email')}>", 'to': f'{name} <{email}>'})
-    flash(f'{title}: {name} ({email}) will be saved within a minute, and the role\'s email group updated.', 'success')
+    flash('That action is no longer used; edit people on Users.', 'warning')
     return redirect(url_for('admin.home'))

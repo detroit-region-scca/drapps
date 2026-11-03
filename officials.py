@@ -26,10 +26,11 @@ def all():  # noqa: A001 (module-level name, read as officials.all())
         if _cache.get('mtime') != mtime:
             try:
                 with open(PATH) as f:
-                    _cache['rows'] = [o for o in json.load(f).get('officials', []) if o.get('name')]
+                    rows = [o for o in json.load(f).get('officials', []) if o.get('name')]
             except (OSError, ValueError):
-                _cache['rows'] = []
-            _cache['mtime'] = mtime
+                # Caught mid-write (the file is rewritten in place): keep the last good list and read again next time.
+                return [dict(o) for o in _cache.get('rows', [])]
+            _cache['rows'], _cache['mtime'] = rows, mtime
         return [dict(o) for o in _cache['rows']]
 
 

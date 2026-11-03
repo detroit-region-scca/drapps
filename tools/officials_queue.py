@@ -86,46 +86,95 @@ def follow_jobs(rows):
     return rows
 
 
-def main():
-    with FileLock(QUEUE + '.lock'):
-        changes = _read(QUEUE, {}).get('changes', [])
-        if not changes:
-            return
-        _write(QUEUE, {'changes': []})
-    done = _read(DONE, {'results': []})
-    for c in changes:
-        out = io.StringIO()
-        ok, msg = True, ''
+NEEDED = ('RE', 'ARE', 'Secretary', 'Treasurer', 'Admin', 'Director', 'Financial Director', 'Points Keeper')
+
+
+def check_needed(before, after):
+    """Refuse a result that leaves a needed role (one that had a holder) with nobody."""
+    def holders(rows):
+        out = {}
+        for o in rows:
+            if o.get('role') in NEEDED and (o.get('email') or '').strip():
+                out.setdefault(o.get('title', ''), set()).add(o['email'].lower())
+        return out
+    lost = sorted(set(holders(before)) - set(holders(after)))
+    if lost:
+        raise SystemExit(f"That would leave nobody as {', '.join(lost)}. Give it to someone else first.")
+
+
+def _drop_volunteer(email):
+    """Take a new official off the Volunteers tab, now that their role is in officials.json."""
+    try:
+        os.environ['GOOGLE_SERVICE_ACCOUNT_FILE'] = os.environ.get('GOOGLE_SA_KEY_HOST') or os.environ.get('GOOGLE_SERVICE_ACCOUNT_FILE', '')
+        sys.path.insert(0, os.path.dirname(HERE))
+        import auth
+        if email in auth.volunteers():
+            auth.set_volunteer(email, None)
+            print(f'Volunteers tab: removed {email} (now an official)')
+    except Exception as e:      # noqa: BLE001
+        print(f'Volunteers tab: could not remove {email}: {e}')
+
+
+def apply_one(c):
+    """Apply one queued change. Returns (ok, message): officials.json and the email groups are reported separately."""
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            op = c.get('op', 'change')
+            if op == 'change':
+                handover.cmd_hand(argparse.Namespace(title=c['title'], email=c['email'], name=c['name'], old=c.get('from') or None, apply=True))
+                return True, out.getvalue()
+            doc = handover.load()
+            before = [dict(o) for o in doc['officials']]
+            rows = doc['officials']
+            if op == 'person':
+                rows = apply_person(rows, c)
+            elif op == 'add':
+                if any(o.get('title') == c['title'] and (o.get('email') or '').lower() == c['email'].lower() for o in rows):
+                    print(f"officials.json: {c['name']} already holds {c['title']}")
+                else:
+                    rows.append(c['entry'])
+                    print(f"officials.json: added {c['name']} <{c['email']}> as {c['title']}")
+            else:
+                keep = [o for o in rows if not (o.get('title') == c['title'] and (o.get('email') or '').lower() == c['email'].lower())]
+                if len(keep) == len(rows):
+                    raise SystemExit(f"{c['email']} does not hold {c['title']}.")
+                rows = keep
+                print(f"officials.json: removed {c['name']} <{c['email']}> from {c['title']}")
+            check_needed(before, rows)
+            doc['officials'] = rows
+            handover.save(doc)
+            if c.get('drop_volunteer'):
+                _drop_volunteer(c['email'].lower())
         try:
             with contextlib.redirect_stdout(out):
-                op = c.get('op', 'change')
-                if op == 'change':
-                    handover.cmd_hand(argparse.Namespace(title=c['title'], email=c['email'], name=c['name'], old=c.get('from') or None, apply=True))
-                else:
-                    doc = handover.load()
-                    rows = doc['officials']
-                    if op == 'person':
-                        rows = doc['officials'] = apply_person(rows, c)
-                    elif op == 'add':
-                        rows.append(c['entry'])
-                        print(f"officials.json: added {c['name']} <{c['email']}> as {c['title']}")
-                    else:
-                        keep = [o for o in rows if not (o.get('title') == c['title'] and (o.get('email') or '').lower() == c['email'].lower())]
-                        if len(keep) == len(rows):
-                            raise SystemExit(f"{c['email']} does not hold {c['title']}.")
-                        doc['officials'] = rows = keep
-                        print(f"officials.json: removed {c['name']} <{c['email']}> from {c['title']}")
-                    handover.save(doc)
-                    handover.run(handover.plan(handover.wanted(rows)), True)
-        except SystemExit as e:
-            ok, msg = False, str(e)
-        except Exception as e:      # noqa: BLE001
-            ok, msg = False, f'{type(e).__name__}: {e}'
-        done['results'].append(dict(c, ok=ok, applied=datetime.now().astimezone().isoformat(timespec='seconds'),
-                                    message=(msg or out.getvalue()).strip()[-1500:]))
-        print(('OK ' if ok else 'FAILED ') + f"{c['title']}: {c['name']} <{c['email']}>" + ('' if ok else f' ({msg})'))
-    done['results'] = done['results'][-50:]
-    _write(DONE, done)
+                handover.run(handover.plan(handover.wanted(rows)), True)
+        except (SystemExit, Exception) as e:     # noqa: BLE001
+            return True, out.getvalue() + f'\nSaved, but the email groups did not update: {e}. Run handover.py sync.'
+        return True, out.getvalue()
+    except SystemExit as e:
+        return False, str(e)
+    except Exception as e:      # noqa: BLE001
+        return False, f'{type(e).__name__}: {e}'
+
+
+def main():
+    """Apply everything queued, and keep going until the queue stays empty: a save made while this runs would not
+    start another run (the path unit merges it into this one)."""
+    done = _read(DONE, {'results': []})
+    while True:
+        with FileLock(QUEUE + '.lock'):
+            changes = _read(QUEUE, {}).get('changes', [])
+            if not changes:
+                break
+            _write(QUEUE, {'changes': []})
+        for c in changes:
+            ok, msg = apply_one(c)
+            done['results'].append(dict(c, ok=ok, applied=datetime.now().astimezone().isoformat(timespec='seconds'),
+                                        message=(msg or '').strip()[-1500:]))
+            print(('OK ' if ok else 'FAILED ') + f"{c.get('title')}: {c.get('name')} <{c.get('email')}>" + ('' if ok else f' ({msg})'))
+        done['results'] = done['results'][-50:]
+        _write(DONE, done)
 
 
 if __name__ == '__main__':

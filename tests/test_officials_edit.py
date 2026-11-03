@@ -14,34 +14,43 @@ def _as(c, monkeypatch, roles):
 
 
 def test_only_admin_can_queue_a_change(tmp_path, monkeypatch):
+    import auth
     import officials
     monkeypatch.setattr(utils, 'OFFICIALS_QUEUE', str(tmp_path / 'q.json'))
     monkeypatch.setattr(utils, 'OFFICIALS_DONE', str(tmp_path / 'd.json'))
-    monkeypatch.setattr(officials, 'all', lambda: [{'role': 'Director', 'title': 'Autocross Director', 'name': 'Old', 'email': 'old@x.com'}])
+    monkeypatch.setattr(officials, 'all', lambda: [{'role': 'Equipment', 'title': 'Equipment Committee', 'name': 'Old', 'email': 'old@x.com'}])
+    monkeypatch.setattr(auth, 'volunteers', lambda: {})
+    form = {'action': 'user', 'old_email': 'old@x.com', 'name': 'Old Name', 'email': 'old@x.com', 'title': ['Equipment Committee']}
     c = app.test_client()
-    _as(c, monkeypatch, ['Director'])          # no Admin permission
-    c.post('/admin/', data={'title': 'Autocross Director', 'from': 'old@x.com', 'name': 'New', 'email': 'new@x.com'})
+    _as(c, monkeypatch, ['Director'])
+    assert c.post('/admin/', data=form).status_code == 404
     assert not (tmp_path / 'q.json').exists()
     _as(c, monkeypatch, ['Admin'])
-    c.post('/admin/', data={'title': 'Autocross Director', 'from': 'old@x.com', 'name': 'New Person', 'email': 'new@x.com'})
+    c.post('/admin/', data=form)
     q = json.loads((tmp_path / 'q.json').read_text())['changes']
-    assert q[0]['title'] == 'Autocross Director' and q[0]['email'] == 'new@x.com' and q[0]['from'] == 'old@x.com'
+    assert q[0]['op'] == 'person' and q[0]['name'] == 'Old Name'
 
 
-def test_needed_role_cannot_lose_its_only_holder(tmp_path, monkeypatch):
+def test_old_actions_cannot_make_someone_admin(tmp_path, monkeypatch):
     import officials
     monkeypatch.setattr(utils, 'OFFICIALS_QUEUE', str(tmp_path / 'q.json'))
-    monkeypatch.setattr(utils, 'OFFICIALS_DONE', str(tmp_path / 'd.json'))
-    monkeypatch.setattr(officials, 'all', lambda: [{'role': 'Director', 'title': 'Autocross Director', 'name': 'Old', 'email': 'old@x.com'},
-                                                   {'role': 'Equipment', 'title': 'Equipment Committee', 'name': 'Ed', 'email': 'ed@x.com'}])
+    monkeypatch.setattr(officials, 'all', lambda: [{'role': 'Admin', 'title': 'Administrator', 'name': 'Admin', 'email': 'admin@drscca.org'}])
     c = app.test_client()
-    _as(c, monkeypatch, ['Admin'])
-    c.post('/admin/', data={'action': 'remove', 'title': 'Autocross Director', 'email': 'old@x.com'})
+    _as(c, monkeypatch, ['Treasurer'])
+    c.post('/admin/', data={'action': 'add', 'title': 'Administrator', 'name': 'Me', 'email': 'me@x.com'})
     assert not (tmp_path / 'q.json').exists()
-    c.post('/admin/', data={'action': 'remove', 'title': 'Equipment Committee', 'email': 'ed@x.com'})
-    c.post('/admin/', data={'action': 'add', 'title': 'Equipment Committee', 'name': 'New Member', 'email': 'nm@x.com'})
-    q = json.loads((tmp_path / 'q.json').read_text())['changes']
-    assert [x['op'] for x in q] == ['remove', 'add'] and q[1]['entry']['role'] == 'Equipment'
+
+
+def test_applier_refuses_to_leave_a_needed_role_empty():
+    import sys
+    import pytest
+    sys.path.insert(0, 'tools')
+    import officials_queue as Q
+    before = [{'role': 'Treasurer', 'title': 'Treasurer', 'name': 'A', 'email': 'a@x.com'},
+              {'role': 'Treasurer', 'title': 'Treasurer', 'name': 'B', 'email': 'b@x.com'}]
+    with pytest.raises(SystemExit):
+        Q.check_needed(before, [])
+    Q.check_needed(before, before[:1])                    # one holder left is fine
 
 
 def test_apply_person_keeps_drops_and_adds_titles():

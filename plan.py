@@ -269,14 +269,23 @@ def approve(year, program):
     return redirect(url_for('plan.detail', year=year, program=program))
 
 
+def may_write(program):
+    """Whether the signed-in person may write this program's plan: "any program's plan", or "their own" for a program
+    one of their roles is tied to. An API key acts as an officer."""
+    from flask import g
+    from auth import user
+    if getattr(g, 'api_user', None):
+        return True
+    u = user() or {}
+    p = set(u.get('perms') or ())
+    mine = any((o.get('email') or '').lower() == u.get('email') and o.get('program') == program for o in O.all())
+    return 'plan_all' in p or ('plan_own' in p and mine)
+
+
 @bp.route('/<year>/<program>/edit', methods=['GET', 'POST'])
 @login_required
 def edit(year, program):
-    from auth import user as _user
-    _u = _user() or {}
-    _perms = set(_u.get('perms') or ())
-    _mine = any((o.get('email') or '').lower() == _u.get('email') and o.get('program') == program for o in O.all())
-    if not ('plan_all' in _perms or ('plan_own' in _perms and _mine)):
+    if not may_write(program):
         flash("Your role can't write this program's plan. Ask the admin if you need it.", 'warning')
         return redirect(url_for('plan.detail', year=year, program=program))
     if (g := _guard()):

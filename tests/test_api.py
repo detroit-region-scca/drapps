@@ -92,3 +92,18 @@ def test_invoice_lines(client):
 def test_approve_role_is_checked(client):
     r = client.post('/api/v1/funds/FR-1/approve', json={'role': 'king'}, headers=auth())
     assert r.status_code == 400 and not client.sent
+
+
+def test_plan_permission_lets_an_api_key_through(monkeypatch):
+    import auth
+    import officials
+    import plan
+    from flask import g
+    from app import app
+    monkeypatch.setattr(officials, 'all', lambda: [{'role': 'Director', 'program': 'RY', 'name': 'R', 'email': 'r@x.com'}])
+    with app.test_request_context('/'):
+        g.api_user = {'email': 'treasurer@example.org', 'name': 'Pat'}
+        assert plan.may_write('AX')
+    with app.test_request_context('/'):
+        monkeypatch.setattr(auth, 'user', lambda: {'email': 'r@x.com', 'perms': ['plan_own']})
+        assert plan.may_write('RY') and not plan.may_write('AX')

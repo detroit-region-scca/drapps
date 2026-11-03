@@ -37,3 +37,17 @@ def test_earlier_full_standard_format_still_reads(monkeypatch, tmp_path):
     monkeypatch.setattr(access, 'PATH', str(p))
     access._cache.clear()
     assert core('Director') >= set(access.EXTRA) - {'admin'} and core('Equipment') == EVERY | {'ops'}
+
+
+def test_half_written_officials_file_keeps_the_last_good_list(tmp_path, monkeypatch):
+    import json
+    import os
+    import officials
+    f = tmp_path / 'o.json'
+    f.write_text(json.dumps({'officials': [{'role': 'Treasurer', 'name': 'Pat', 'email': 'p@x.com'}]}))
+    monkeypatch.setattr(officials, 'PATH', str(f))
+    officials._cache.clear()
+    assert [o['name'] for o in officials.all()] == ['Pat']
+    f.write_text('{"officials": [ {"role": "Tre')          # caught mid-write
+    os.utime(f, ns=(1, 1))
+    assert [o['name'] for o in officials.all()] == ['Pat']
