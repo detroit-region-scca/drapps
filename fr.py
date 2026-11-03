@@ -399,9 +399,6 @@ def approve_link(token):
     return render_template('fr.html', **_ctx(view='link', r=r, role=FL.ROLES[t['role']], role_key=t['role'], name=t['name'], msg=msg))
 
 
-@bp.route('/<req_id>/close', methods=['POST'])
-@login_required
-@officer_required(perm='pay')
 def tell_submitter(req_id):
     """Email whoever filed the request that it was paid or rejected, if they ticked "Email me" on the form."""
     F.refresh()
@@ -411,6 +408,9 @@ def tell_submitter(req_id):
         send_mail(*msg, r['submitter_email'])
 
 
+@bp.route('/<req_id>/close', methods=['POST'])
+@login_required
+@officer_required(perm='pay')
 def close(req_id):
     if (g := _guard()):
         return g

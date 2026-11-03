@@ -103,3 +103,9 @@ def test_reimbursement_and_rejection_wording():
     assert 'on its way to you' in body
     subject, body = L.closed_message(_closed(status='Rejected', closed_note='No receipt'))
     assert subject.endswith('rejected') and 'Why: No receipt' in body
+
+
+def test_funds_routes_registered():
+    import app as A
+    eps = {r.endpoint for r in A.app.url_map.iter_rules()}
+    assert {'fr.close', 'fr.detail'} <= eps and 'fr.tell_submitter' not in eps
