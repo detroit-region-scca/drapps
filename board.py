@@ -71,7 +71,12 @@ def _motion_lines(ms):
 
 
 def _picked(f):
-    budgets = [v.split(':', 1)[1] for v in f.getlist('item') if v.startswith('budget:')]
+    """Ticked items: ({year: [budget codes]}, [motion ids]). A budget's value is budget:<year>:<code>."""
+    budgets = {}
+    for v in f.getlist('item'):
+        if v.startswith('budget:') and v.count(':') >= 2:
+            _, y, code = v.split(':', 2)
+            budgets.setdefault(y, []).append(code)
     motions = [v.split(':', 1)[1] for v in f.getlist('item') if v.startswith('motion:')]
     return budgets, motions
 
@@ -84,49 +89,52 @@ def home():
     if (g := _guard()):
         return g
     import bud
-    year = request.args.get('year') or str(date.today().year)
     if request.method == 'POST':
         f = request.form
         bcodes, mids = _picked(f)
         ms = [m for m in M.motions() if m['id'] in mids and m['status'] == 'open']
         if not bcodes and not ms:
             flash('Tick at least one item.', 'warning')
-            return redirect(url_for('board.home', year=year))
+            return redirect(url_for('board.home'))
         if f.get('action') == 'ask':
-            blines, brows = bud.budget_vote_lines(year, bcodes) if B.enabled() else ([], [])
+            blines, brows = [], []
+            for y, codes in sorted(bcodes.items()):
+                ln, rw = bud.budget_vote_lines(y, codes) if B.enabled() else ([], [])
+                blines += ln
+                brows += rw
             lines = blines + _motion_lines(ms)
             n = len(lines)
             if not n:
                 flash('Nothing to send: those items are already decided.', 'warning')
-                return redirect(url_for('board.home', year=year))
+                return redirect(url_for('board.home'))
             who = session.get('who', '')
             first = (brows[0]['b']['event_name'] if brows else ms[0]['title']) if n == 1 else f'{n} items'
             body = (f"{who} asks the board to vote on {'this' if n == 1 else f'these {n} items'}:\n\n" + '\n\n'.join(lines) +
                     "\n\nPlease reply all with your vote (yes or no on each) so it stays in one thread. Everything waiting for the board:\n"
-                    + url_for('board.home', year=year, _external=True))
+                    + url_for('board.home', _external=True))
             send_mail(f"Board vote: {first}", body, board_email(), reply_to=board_email())
             for m in ms:
                 M.update(m['id'], asked=date.today().isoformat())
-            log_audit_event('BOARD_ASKED', who, {'budgets': [r['b']['event_code'] for r in brows], 'motions': [m['id'] for m in ms], 'year': year})
+            log_audit_event('BOARD_ASKED', who, {'budgets': [r['b']['event_code'] for r in brows], 'motions': [m['id'] for m in ms]})
             flash(f"Sent to the board ({board_email()}): {n} item{'s' if n != 1 else ''}.", 'success')
-            return redirect(url_for('board.home', year=year))
+            return redirect(url_for('board.home'))
         off = officer_current()
         if not off:
             flash('Recording a board decision is for the RE, ARE or treasurer.', 'warning')
-            return redirect(url_for('board.home', year=year))
+            return redirect(url_for('board.home'))
         try:
             decided = date.fromisoformat(f.get('decided', '')).isoformat()
         except ValueError:
             flash('The date must be a date.', 'danger')
-            return redirect(url_for('board.home', year=year))
+            return redirect(url_for('board.home'))
         result = f.get('result')
         if result not in ('passed', 'failed'):
             flash('Choose passed or failed.', 'warning')
-            return redirect(url_for('board.home', year=year))
+            return redirect(url_for('board.home'))
         how = bud._how_vote(f)
         said = []
         if bcodes and result == 'passed':
-            n = bud.record_budgets(year, bcodes, decided, how)
+            n = sum(bud.record_budgets(y, codes, decided, how) for y, codes in bcodes.items())
             said.append(f"{n} budget{'s' if n != 1 else ''} approved")
         elif bcodes:
             said.append('budgets left waiting (a budget is only recorded when the board approves it; ask the director to revise it)')
@@ -137,10 +145,11 @@ def home():
         if ms:
             said.append(f"{len(ms)} motion{'s' if len(ms) != 1 else ''} {result}")
         flash(f"Recorded for {decided}: " + '; '.join(said) + '.', 'success')
-        return redirect(url_for('board.home', year=year))
-    rows = bud._pending_rows(year) if B.enabled() else []
+        return redirect(url_for('board.home'))
+    rows = [dict(r, year=y) for y in bud.pending_years() for r in bud._pending_rows(y)] if B.enabled() else []
+    rows.sort(key=lambda r: str(r['b'].get('date', '')))
     open_m = [m for m in M.motions() if m['status'] == 'open']
-    return render_template('board.html', **_ctx(view='waiting', rows=rows, motions=open_m, year=year, years=_years(),
+    return render_template('board.html', **_ctx(view='waiting', rows=rows, motions=open_m,
                                                   prefill=dict(title=request.args.get('title', ''), amount=request.args.get('amount', ''),
                                                                link=request.args.get('link', ''), details=request.args.get('details', ''))))
 

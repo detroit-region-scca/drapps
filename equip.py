@@ -367,7 +367,7 @@ def plan():
     try:
         import motions_store as MS
         if MS.enabled():
-            motion = next((m for m in MS.motions() if m['link'].rstrip('/') == url_for('equip.plan').rstrip('/') and m['status'] != 'withdrawn'), None)
+            motion = next((m for m in MS.motions() if 'replacement' in m['title'].lower() and m['status'] != 'withdrawn'), None)
     except Exception:
         motion = None
     return render_template('equip.html', **_ctx(view='plan', rp=rp, by_year=by_year, missing=missing, motion=motion))

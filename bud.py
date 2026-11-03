@@ -308,11 +308,36 @@ def record_budgets(year, picked, approved, how):
     return len(codes) + ops
 
 
-@bp.route('/approve')
+def pending_years():
+    """Years with a budget not approved yet (event budgets, and the Operations budget in its plan)."""
+    ys = {str(b.get('date', ''))[:4] for b in B.budgets().values() if str(b.get('date', ''))[:4].isdigit() and _status(b) != 'approved'}
+    this = date.today().year
+    ys |= {str(y) for y in range(this - 1, this + 3) if ops_budget_row(str(y))}
+    return sorted(ys)
+
+
+@bp.route('/approve', methods=['GET', 'POST'])
 @login_required
 def approve_many():
-    """The budgets waiting for the board are listed (and voted on) in the Board app now."""
-    return redirect(url_for('board.home', year=request.args.get('year') or str(date.today().year)))
+    """GET: the list lives in the Board app. POST (the API's approve_budgets): record one approval for several budgets."""
+    year = request.args.get('year') or str(date.today().year)
+    if request.method == 'GET':
+        return redirect(url_for('board.home'))
+    if not officer_current():
+        flash('Recording a board decision is for the RE, ARE or treasurer.', 'warning')
+        return redirect(url_for('board.home'))
+    try:
+        approved = date.fromisoformat(request.form.get('approved', '')).isoformat()
+    except ValueError:
+        flash('The approval date must be a date.', 'danger')
+        return redirect(url_for('board.home'))
+    picked = request.form.getlist('code')
+    if not picked:
+        flash('Tick at least one budget.', 'warning')
+        return redirect(url_for('board.home'))
+    n = record_budgets(year, picked, approved, _how_vote(request.form))
+    flash(f'Board approval on {approved} recorded for {n} budget{"s" if n != 1 else ""}.', 'success')
+    return redirect(url_for('board.home'))
 
 
 @bp.route('/event/<path:code>/approve', methods=['POST'])
