@@ -137,9 +137,10 @@ def add_role(role, like=None):
 
 
 def remove_role(role):
-    doc = _load()
-    if doc.pop(role, None) is not None:
-        _write(doc)
+    with _file_lock():
+        doc = _load()
+        if doc.pop(role, None) is not None:
+            _write(doc)
 
 
 def perms_for(roles):
@@ -156,14 +157,20 @@ def save(role, on):
         return
     if 'plan_all' in on:
         on = set(on) - {'plan_own'}       # any program includes their own
-    doc = _load()
-    doc[role] = {p: p in on for p in PERMS}
-    _write(doc)
+    with _file_lock():          # the app runs several workers: read, change and write as one step
+        doc = _load()
+        doc[role] = {p: p in on for p in PERMS}
+        _write(doc)
+
+
+def _file_lock():
+    from filelock import FileLock
+    return FileLock(PATH + '.lock', timeout=10)
 
 
 def _write(doc):
     """Replace the file in one step, so a reader never sees half of it."""
-    tmp = PATH + '.tmp'
+    tmp = f'{PATH}.{os.getpid()}.tmp'
     with open(tmp, 'w') as f:
         json.dump(doc, f, indent=1, sort_keys=True)
     os.replace(tmp, PATH)
