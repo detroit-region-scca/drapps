@@ -255,10 +255,12 @@ def approve(year, program):
         try:
             approved = date.fromisoformat(approved).isoformat()
         except ValueError:
-            flash('The meeting date must be a date.', 'danger')
+            flash('The approval date must be a date.', 'danger')
             return redirect(url_for('plan.detail', year=year, program=program))
     try:
-        P.set_approved(year, program, approved, who)
+        from bud import _how_vote
+        how = _how_vote(request.form) if approved else ''
+        P.set_approved(year, program, approved, f"{who} ({how})" if how else who)
     except ValueError as e:
         flash(str(e), 'warning')
         return redirect(url_for('plan.detail', year=year, program=program))

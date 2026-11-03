@@ -13,7 +13,7 @@ import fr_store as F
 import officials as O
 import plan_store as P
 from officer import current as officer_current, officer_required
-from utils import load_events, load_programs, local_path, log_audit_event, login_required, request_qbo_refresh, to_number
+from utils import load_events, load_programs, local_path, log_audit_event, login_required, request_qbo_refresh, send_mail, to_number
 
 bp = Blueprint('bud', __name__, url_prefix='/events')
 
@@ -244,53 +244,108 @@ def ops_budget_row(year):
             'link': url_for('plan.detail', year=year, program='OPS')}
 
 
+HOW = {'meeting': 'board meeting', 'email': 'email vote'}
+
+
+def _how_vote(f):
+    """'Name (email vote, 7-0)' for the approved_by column, from the form's how and vote fields."""
+    how = HOW.get(f.get('how', ''), '')
+    vote = re.sub(r'[^0-9 -]', '', f.get('vote', '')).strip()
+    bits = ', '.join(x for x in (how, vote) if x)
+    return bits
+
+
+def _pending_rows(year, only=''):
+    plan = P.plan(year) if P.enabled() else {}
+    if only:
+        plan = {k: v for k, v in plan.items() if k == only}
+    plan_by_code = {ln['event_code']: ln['net'] for x in plan.values() for ln in x['lines'] if ln['event_code']}
+    rows = [{'b': b, 'status': _status(b), 'surplus': ((b['totals'].get('budget') or {}).get('surplus')), 'plan': plan_by_code.get(code)}
+            for code, b in B.budgets().items() if str(b.get('date', '')).startswith(year) and _status(b) != 'approved'
+            and (not only or b.get('program') == only)]
+    rows.sort(key=lambda r: (r['b'].get('program', ''), r['b'].get('date', '')))
+    if not only or only == 'OPS':
+        if (ops := ops_budget_row(year)):
+            rows.append(ops)
+    return rows
+
+
+def _ask_board(year, codes):
+    """Email the board one message listing these budgets, with links, so the vote (meeting or email) has one thread."""
+    rows = [r for r in _pending_rows(year) if r['b']['event_code'] in codes]
+    if not rows:
+        return 0
+    lines = []
+    for r in rows:
+        b = r['b']
+        link = r.get('link') or url_for('bud.detail', code=b['event_code'], _external=True)
+        if link.startswith('/'):
+            link = request.host_url.rstrip('/') + link
+        money = '' if r['surplus'] is None else f", expected {'profit' if r['surplus'] >= 0 else 'loss'} ${abs(r['surplus']):,.2f}"
+        changed = ' (changed since approved ' + b['approved'] + ')' if r['status'] == 'changed' else ''
+        when = '' if str(b.get('date', '')) in b['event_name'] else f", {b.get('date', '')}"
+        prog = load_programs().get(b.get('program', ''), '')
+        lines.append(f"- {b['event_name']}{when}{f' ({prog})' if prog else ''}{money}{changed}\n  {link}")
+    who = session.get('who', '')
+    n = len(rows)
+    body = (f"{who} asks the board to approve {'this budget' if n == 1 else f'these {n} budgets'}:\n\n" + '\n\n'.join(lines) +
+            "\n\nPlease reply all with your vote (approve or not) so it stays in one thread. Everything waiting for the board:\n"
+            + url_for('bud.approve_many', year=year, _external=True))
+    board = os.environ.get('BOARD_EMAIL', 'bod@drscca.org')
+    send_mail(f"Budget approval vote: {rows[0]['b']['event_name'] if n == 1 else f'{n} budgets'}", body, board, reply_to=board)
+    log_audit_event('BOARD_ASKED', who, {'codes': [r['b']['event_code'] for r in rows], 'year': year})
+    return n
+
+
 @bp.route('/approve', methods=['GET', 'POST'])
 @login_required
-@officer_required
 def approve_many():
-    """After a board meeting: tick the budgets the board approved and record them all with one meeting date."""
+    """Budgets waiting for the board: anyone signed in can see the list and ask the board to vote; the RE, ARE or
+    treasurer records the decision (meeting or email vote, and the count) for the ticked budgets."""
     if (g := _guard()):
         return g
     year = request.args.get('year') or str(date.today().year)
     if request.method == 'POST':
         f = request.form
+        picked = f.getlist('code')
+        if not picked:
+            flash('Tick at least one budget.', 'warning')
+            return redirect(url_for('bud.approve_many', year=year))
+        if f.get('action') == 'ask':
+            n = _ask_board(year, picked)
+            flash(f"Sent to the board ({os.environ.get('BOARD_EMAIL', 'bod@drscca.org')}): {n} budget{'s' if n != 1 else ''}." if n
+                  else 'Nothing to send: those budgets are already approved.', 'success' if n else 'warning')
+            return redirect(url_for('bud.approve_many', year=year))
+        if not officer_current():
+            flash('Recording a board decision is for the RE, ARE or treasurer.', 'warning')
+            return redirect(url_for('bud.approve_many', year=year))
         who = officer_current()['name']
-        ops = 'OPS' in f.getlist('code') and ops_budget_row(year) is not None
-        codes = [c for c in f.getlist('code') if c != 'OPS' and B.get(c)]
+        how = _how_vote(f)
+        rec = f"{who} ({how})" if how else who
+        ops = 'OPS' in picked and ops_budget_row(year) is not None
+        codes = [c for c in picked if c != 'OPS' and B.get(c)]
         try:
             approved = date.fromisoformat(f.get('approved', '')).isoformat()
         except ValueError:
-            flash('The meeting date must be a date.', 'danger')
-            return redirect(url_for('bud.approve_many', year=year))
-        if not codes and not ops:
-            flash('Tick at least one budget.', 'warning')
+            flash('The approval date must be a date.', 'danger')
             return redirect(url_for('bud.approve_many', year=year))
         if codes:
-            B.set_approved(codes, approved, who)
+            B.set_approved(codes, approved, rec)
         for c in codes:
-            log_audit_event('BUDGET_APPROVED', who, {'event_code': c, 'approved': approved})
+            log_audit_event('BUDGET_APPROVED', who, {'event_code': c, 'approved': approved, 'how': how})
         if ops:
-            P.set_approved(year, 'OPS', approved, who)
-            log_audit_event('PLAN_APPROVED', who, {'year': year, 'program': 'OPS', 'approved': approved})
+            P.set_approved(year, 'OPS', approved, rec)
+            log_audit_event('PLAN_APPROVED', who, {'year': year, 'program': 'OPS', 'approved': approved, 'how': how})
         n = len(codes) + ops
         flash(f'Board approval on {approved} recorded for {n} budget{"s" if n != 1 else ""}.', 'success')
-        return redirect(url_for('bud.home', year=year))
-    plan = P.plan(year) if P.enabled() else {}
-    # ?program=RX: one program's view (a director's page): its events, plan, totals and open funds requests.
-    only = request.args.get('program', '')
-    if only:
-        plan = {k: v for k, v in plan.items() if k == only}
-    plan_by_code = {ln['event_code']: ln['net'] for x in plan.values() for ln in x['lines'] if ln['event_code']}
-    rows = [{'b': b, 'status': _status(b), 'surplus': ((b['totals'].get('budget') or {}).get('surplus')), 'plan': plan_by_code.get(code)}
-            for code, b in B.budgets().items() if str(b.get('date', '')).startswith(year) and _status(b) != 'approved']
-    rows.sort(key=lambda r: (r['b'].get('program', ''), r['b'].get('date', '')))
-    if not only or only == 'OPS':
-        if (ops := ops_budget_row(year)):
-            rows.append(ops)
+        return redirect(url_for('bud.approve_many', year=year))
+    # ?program=RX: one program's view (a director's page)
+    rows = _pending_rows(year, request.args.get('program', ''))
     this = date.today().year
     years = sorted({str(this - 1), str(this), str(this + 1)} | {str(b.get('date', ''))[:4] for b in B.budgets().values()
                                                                 if str(b.get('date', ''))[:4].isdigit()}, reverse=True)
-    return render_template('bud.html', **_ctx(view='approve', rows=rows, year=year, years=years, today=date.today().isoformat()))
+    return render_template('bud.html', **_ctx(view='approve', rows=rows, year=year, years=years, today=date.today().isoformat(),
+                                              programs=load_programs(), board_email=os.environ.get('BOARD_EMAIL', 'bod@drscca.org')))
 
 
 @bp.route('/event/<path:code>/approve', methods=['POST'])
@@ -310,8 +365,9 @@ def approve(code):
         except ValueError:
             flash('The approval date must be a date.', 'danger')
             return redirect(url_for('bud.detail', code=code))
-    B.set_approved(code, approved, who)
-    log_audit_event('BUDGET_APPROVED' if approved else 'BUDGET_UNAPPROVED', who, {'event_code': code, 'approved': approved})
+    how = _how_vote(request.form) if approved else ''
+    B.set_approved(code, approved, f"{who} ({how})" if how else who)
+    log_audit_event('BUDGET_APPROVED' if approved else 'BUDGET_UNAPPROVED', who, {'event_code': code, 'approved': approved, 'how': how})
     flash(f'Board approval recorded: {approved}.' if approved else 'Board approval cleared.', 'success')
     return redirect(url_for('bud.detail', code=code))
 

@@ -134,7 +134,7 @@ def _plain_to_html(text):
             + ''.join(out) + '</div>')
 
 
-def send_mail(subject, body, recipient=None, attachments=(), cc=None):
+def send_mail(subject, body, recipient=None, attachments=(), cc=None, reply_to=None):
     """Send a plain-text email in the background (see the SMTP notes inside).
     attachments: [(filename, bytes, mime type)], e.g. an invoice PDF."""
     recipient = recipient or os.environ.get('NOTIFICATION_EMAIL', 'treasurer@drscca.org')
@@ -165,8 +165,8 @@ def send_mail(subject, body, recipient=None, attachments=(), cc=None):
         msg['From'] = from_email
         msg['To'] = recipient
         msg['Subject'] = subject
-        if os.environ.get('SMTP_REPLY_TO'):
-            msg['Reply-To'] = os.environ['SMTP_REPLY_TO']    # replies go to the shared inbox
+        if reply_to or os.environ.get('SMTP_REPLY_TO'):
+            msg['Reply-To'] = reply_to or os.environ['SMTP_REPLY_TO']    # replies go to the shared inbox (or the board)
         if cc:
             msg['Cc'] = cc
         footer = os.environ.get('MAIL_FOOTER', 'This is an automated message from the DRSCCA apps. Replies to this address are not read: '
