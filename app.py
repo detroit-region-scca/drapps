@@ -132,6 +132,12 @@ def _officials():
     return {'officials': officials, 'me': auth.user()}
 
 
+@app.route('/privacy')
+def privacy():
+    """The apps' privacy notice (public; Google sign-in asks for one)."""
+    return render_template('privacy.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Apps privacy")
+
+
 @app.route('/officials')
 @login_required
 def officials_page():

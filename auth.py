@@ -47,7 +47,7 @@ VOLUNTEER_ENDPOINTS = {
     'inv.home', 'inv.new', 'inv.detail', 'inv.pdf',
 }
 # Reachable without signing in: the sign-in itself, and the emailed approval and confirmation links.
-PUBLIC_ENDPOINTS = {'home', 'static', 'logout', 'fr.approve_link', 'inv.delete_confirm', 'auth.google', 'auth.google_back'}
+PUBLIC_ENDPOINTS = {'home', 'static', 'logout', 'fr.approve_link', 'inv.delete_confirm', 'auth.google', 'auth.google_back', 'privacy'}
 
 
 # ---------- who is who ----------
