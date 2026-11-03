@@ -16,18 +16,19 @@ import httpx
 from mcp.server.mcpserver import MCPServer
 
 
-def _load_env():
+def _config():
+    """(api url, key), read fresh on every call from the environment or the DREVENT_ENV file, so a changed address
+    or key takes effect without restarting every Claude session that runs this server."""
+    env = {}
     f = Path(os.path.expanduser(os.environ.get('DREVENT_ENV', '~/.secrets/drevent-api.env')))
     if f.exists():
         for line in f.read_text().splitlines():
             k, _, v = line.partition('=')
             if k.strip() and not k.startswith('#'):
-                os.environ.setdefault(k.strip(), v.strip())
+                env[k.strip()] = v.strip()
+    url = os.environ.get('DREVENT_URL') or env.get('DREVENT_URL') or 'https://drapps.drscca.org'
+    return url.rstrip('/') + '/api/v1', os.environ.get('DREVENT_API_KEY') or env.get('DREVENT_API_KEY', '')
 
-
-_load_env()
-URL = os.environ.get('DREVENT_URL', 'https://drapps.drscca.org').rstrip('/') + '/api/v1'
-KEY = os.environ.get('DREVENT_API_KEY', '')
 
 server = MCPServer('drevent', instructions=(
     'DRSCCA (Detroit Region SCCA) event and money app: events, event and program budgets, annual plans, funds requests, '
@@ -37,10 +38,11 @@ server = MCPServer('drevent', instructions=(
 
 
 def _call(method: str, path: str, body: dict | None = None, params: dict | None = None) -> Any:
-    if not KEY:
+    url, key = _config()
+    if not key:
         return {'error': 'DREVENT_API_KEY is not set (see ~/.secrets/drevent-api.env).'}
-    r = httpx.request(method, URL + path, json=body, params={k: v for k, v in (params or {}).items() if v not in (None, '')},
-                      headers={'Authorization': f'Bearer {KEY}'}, timeout=120)
+    r = httpx.request(method, url + path, json=body, params={k: v for k, v in (params or {}).items() if v not in (None, '')},
+                      headers={'Authorization': f'Bearer {key}'}, timeout=120)
     try:
         data = r.json()
     except ValueError:
