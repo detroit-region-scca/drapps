@@ -103,3 +103,19 @@ def test_bracketed_approver_follows_its_job():
     ge = next(o for o in out if o['title'].startswith('General Events'))
     assert (ge['email'], ge['program']) == ('b@x.com', 'DR')
     assert not any(o['email'] == 'a@x.com' for o in out)
+
+
+def test_roles_grid_saves_only_changed_roles(monkeypatch):
+    import access
+    import auth
+    import officials
+    monkeypatch.setattr(officials, 'all', lambda: [{'role': 'Director', 'title': 'Autocross Director', 'name': 'M', 'email': 'm@x.com'},
+                                                   {'role': 'Equipment', 'title': 'Equipment Committee', 'name': 'E', 'email': 'e@x.com'}])
+    monkeypatch.setattr(auth, 'volunteers', lambda: {})
+    c = app.test_client()
+    _as(c, monkeypatch, ['Admin'])
+    form = {f'{r}::{p}': 'yes' for r in ('Director', 'Equipment', 'Volunteer') for p in access.perms(r)}
+    form['Director::audit'] = 'yes'                     # one new box
+    c.post('/admin/roles', data=form)
+    assert 'audit' in access.perms('Director')
+    assert set(access._load()) == {'Director'}           # Equipment and Volunteer untouched, still on defaults

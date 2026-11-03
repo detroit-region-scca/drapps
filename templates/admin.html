@@ -49,23 +49,38 @@
     </div>
 {% elif view == 'roles' %}
     <div class="page-title">Roles</div>
-    <p class="text-muted small mb-2">Whoever holds a role gets what is ticked. <b>Everyday</b> is the normal work; <b>Extra powers</b> are for the few who need them. Looking around the apps is never limited.</p>
-    {% macro boxes(r, group) %}{% for k, label in group.items() if k in r.choices %}<div class="form-check">
-        <input class="form-check-input" type="checkbox" name="{{ k }}" value="yes" id="{{ r.role|replace(' ', '-') }}-{{ k }}" {{ 'checked' if k in r.perms }}>
-        <label class="form-check-label small" for="{{ r.role|replace(' ', '-') }}-{{ k }}">{{ label }}</label></div>{% endfor %}{% endmacro %}
-    <div class="list-group">
-        {% for r in rows %}{% set ev = everyday.keys()|select('in', r.choices)|list %}{% set ex = extra.keys()|select('in', r.choices)|list %}
-        <form method="post" class="list-group-item py-3" id="{{ r.role|replace(' ', '-') }}"><input type="hidden" name="role" value="{{ r.role }}">
-            <div class="d-flex flex-wrap justify-content-between gap-2"><div class="fw-semibold">{{ r.role }}</div>
-                <div class="small"><span class="badge rounded-pill text-bg-light border">Everyday {{ ev|select('in', r.perms)|list|length }}/{{ ev|length }}</span>
-                    {% if ex %}<span class="badge rounded-pill {{ 'text-bg-warning' if ex|select('in', r.perms)|list else 'text-bg-light border' }}">Extra {{ ex|select('in', r.perms)|list|length }}/{{ ex|length }}</span>{% endif %}</div></div>
-            <div class="small text-muted mb-2">{{ r.titles|join(', ') }} · {{ r.n }} {{ 'person' if r.n == 1 else 'people' }}</div>
-            <div class="small fw-semibold">Everyday</div>{{ boxes(r, everyday) }}
-            {% if ex %}<div class="small fw-semibold mt-2">Extra powers</div>{{ boxes(r, extra) }}{% endif %}
-            <div class="small fw-semibold mt-2">Apps on the home page</div><div class="small text-muted">Events is always shown; Admin with the Admin permission.</div>{{ boxes(r, apps) }}
-            <button class="btn btn-sm btn-outline-secondary mt-2">Save {{ r.role }}</button></form>{% endfor %}
-    </div>
-    <p class="small text-muted mt-2">"Write their own program's annual plan" covers the programs a person directs. The admin account always has everything.</p>
+    <p class="text-muted small mb-2">Whoever holds a role gets what is ticked in its column. Looking around the apps is never limited. Hover a role for its job titles.</p>
+    <style>
+        .perm-grid { border-collapse: separate; border-spacing: 0; }
+        .perm-grid th, .perm-grid td { padding: .35rem .5rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+        .perm-grid thead th { position: sticky; top: 0; background: var(--surface); z-index: 2; font-size: .78rem; text-align: center; vertical-align: bottom; }
+        .perm-grid .perm { position: sticky; left: 0; background: var(--surface); z-index: 1; white-space: normal; min-width: 13rem; max-width: 20rem; font-size: .85rem; }
+        .perm-grid thead th.perm { z-index: 3; }
+        .perm-grid td.cell { text-align: center; }
+        .perm-grid tr.group td { background: var(--surface-2); font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
+        .perm-grid tr.group td.perm { background: var(--surface-2); }
+        .perm-grid tbody tr:not(.group):hover td { background: var(--surface-2); }
+        .perm-grid .admin-col { color: var(--muted); }
+        @media (max-width: 575.98px) { .perm-grid .perm { min-width: 9.5rem; max-width: 9.5rem; font-size: .8rem; } .perm-grid th, .perm-grid td { padding: .35rem .4rem; } }
+    </style>
+    <form method="post">
+    <div class="card"><div class="table-responsive" style="max-height: 75vh;">
+    <table class="perm-grid mb-0">
+        <thead><tr><th class="perm text-start">Permission</th>
+            {% for c in cols %}<th title="{{ c.titles|join(', ') }}">{{ c.role }}<div class="fw-normal text-muted">{{ c.n }}</div></th>{% endfor %}
+            <th class="admin-col" title="admin@drscca.org">Admin<br>account</th></tr></thead>
+        <tbody>
+        {% for gname, group in groups %}
+            <tr class="group"><td class="perm">{{ gname }}</td>{% for c in cols %}<td></td>{% endfor %}<td></td></tr>
+            {% for k, label in group.items() %}<tr><td class="perm">{{ label }}</td>
+                {% for c in cols %}<td class="cell">{% if k in c.choices %}<input class="form-check-input" type="checkbox" name="{{ c.role }}::{{ k }}" value="yes" aria-label="{{ c.role }}: {{ label }}" {{ 'checked' if k in c.perms }}>{% else %}<span class="text-muted">·</span>{% endif %}</td>{% endfor %}
+                <td class="cell admin-col">{% if gname != 'Apps on the home page' and k != 'plan_own' %}✓{% else %}<span class="text-muted">·</span>{% endif %}</td></tr>{% endfor %}
+        {% endfor %}
+        </tbody>
+    </table></div></div>
+    <div class="d-flex flex-wrap gap-2 align-items-center mt-2"><button class="btn btn-accent">Save</button>
+        <span class="small text-muted">Only roles you changed are saved. "Their own program's plan" covers the programs a person directs. Volunteers can only reach events, worker points and their own requests and invoices.</span></div>
+    </form>
 {% elif view == 'programs' %}
     <div class="page-title">Programs</div>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><tbody>

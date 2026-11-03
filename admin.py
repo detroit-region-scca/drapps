@@ -166,25 +166,32 @@ def roles():
     if (g := _guard()):
         return g
     import access
-    kinds = sorted({o.get('role', '') for o in officials.all() if o.get('role') and o.get('role') != 'Admin'}) + [access.VOLUNTEER]
+    order = ['RE', 'ARE', 'Secretary', 'Treasurer', 'Financial Director', 'Director', 'Director at Large', 'Equipment', 'Points Keeper']
+    found = {o.get('role', '') for o in officials.all() if o.get('role') and o.get('role') != 'Admin'}
+    kinds = [k for k in order if k in found] + sorted(found - set(order)) + [access.VOLUNTEER]
     if request.method == 'POST':
-        role = request.form.get('role', '')
-        if role in kinds:
-            before = access.perms(role)
+        # The whole grid comes back; only roles whose boxes changed are saved, so the rest keep following defaults.
+        changed = []
+        for role in kinds:
             allowed = VOL_PERMS if role == access.VOLUNTEER else set(access.PERMS)
-            access.save(role, {p for p in allowed if request.form.get(p) == 'yes'})
+            want = {p for p in allowed if request.form.get(f'{role}::{p}') == 'yes'}
+            before = access.perms(role)
+            if want == before & allowed:
+                continue
+            access.save(role, want)
             after = access.perms(role)
-            if after != before:
-                log_audit_event('ROLE_ACCESS_SAVED', _me().get('name', ''), {'role': role, 'added': sorted(after - before), 'removed': sorted(before - after)})
-            flash(f'{role} saved.', 'success')
-        return redirect(url_for('admin.roles') + f'#{role.replace(" ", "-")}')
+            log_audit_event('ROLE_ACCESS_SAVED', _me().get('name', ''), {'role': role, 'added': sorted(after - before), 'removed': sorted(before - after)})
+            changed.append(role)
+        flash(f"Saved: {', '.join(changed)}." if changed else 'Nothing changed.', 'success' if changed else 'info')
+        return redirect(url_for('admin.roles'))
     counts = {k: sum(1 for o in officials.all() if o.get('role') == k) for k in kinds}
     counts[access.VOLUNTEER] = len(auth.volunteers())
     titles = {k: sorted({o.get('title', '') for o in officials.all() if o.get('role') == k}) for k in kinds}
     titles[access.VOLUNTEER] = ['added one by one on Users']
-    rows = [{'role': k, 'perms': access.perms(k), 'n': counts[k], 'titles': titles[k],
+    cols = [{'role': k, 'perms': access.perms(k), 'n': counts[k], 'titles': titles[k],
              'choices': VOL_PERMS if k == access.VOLUNTEER else set(access.PERMS)} for k in kinds]
-    return render_template('admin.html', **_ctx(view='roles', rows=rows, everyday=access.EVERYDAY, extra=access.EXTRA, apps=access.APPS))
+    groups = [('Everyday', access.EVERYDAY), ('Extra powers', access.EXTRA), ('Apps on the home page', access.APPS)]
+    return render_template('admin.html', **_ctx(view='roles', cols=cols, groups=groups))
 
 
 def _post():
