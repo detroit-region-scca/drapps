@@ -27,7 +27,7 @@
                 <td><label for="b{{ loop.index }}"><span class="badge rounded-pill text-bg-secondary me-1">Budget</span><a href="{{ r.link or url_for('bud.detail', code=r.b.event_code) }}">{{ r.b.event_name }}</a></label>
                     <div class="small text-muted">{{ programs.get(r.b.program, 'Operations' if r.b.program == 'OPS' else r.b.program) }}{% if r.b.date and r.b.date not in r.b.event_name %} · {{ r.b.date }}{% endif %}{% if r.plan is not none and r.plan != r.surplus %} · annual plan {{ money(r.plan) }}{% endif %}</div>
                     {% if r.status == 'changed' %}<span class="badge rounded-pill text-bg-info">Changed since approved {{ r.b.approved }}</span>{% endif %}</td>
-                <td class="num pe-3">{{ money(r.surplus) }}<div class="small text-muted">{{ 'profit' if (r.surplus or 0) >= 0 else 'loss' }}</div></td>
+                <td class="num pe-3">{{ money(r.surplus) }}<div class="small text-muted">{% if r.equipment %}{{ money(r.surplus + r.equipment, 0) }} running, {{ money(-r.equipment, 0) }} equipment{% else %}{{ 'profit' if (r.surplus or 0) >= 0 else 'loss' }}{% endif %}</div></td>
             </tr>{% endfor %}
             {% for m in motions %}<tr id="{{ m.id }}">
                 <td class="ps-3"><input type="checkbox" class="form-check-input" name="item" value="motion:{{ m.id }}" id="m{{ loop.index }}"></td>

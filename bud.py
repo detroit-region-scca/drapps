@@ -241,7 +241,8 @@ def ops_budget_row(year):
     b = {'event_code': 'OPS', 'event_name': f'Operations budget {year}', 'date': str(year), 'program': 'OPS',
          'approved': p['info'].get('approved', '')}
     return {'b': b, 'status': 'changed' if st == 'changed' else 'budget', 'surplus': p['net'], 'plan': p['net'],
-            'savings': p.get('savings') or 0, 'link': url_for('plan.detail', year=year, program='OPS')}
+            'savings': p.get('savings') or 0, 'equipment': round(-sum(ln['net'] or 0 for ln in p['lines'] if str(ln.get('account', '')).startswith('Capital Equipment')), 2),
+            'link': url_for('plan.detail', year=year, program='OPS')}
 
 
 HOW = {'meeting': 'board meeting', 'email': 'email vote'}
@@ -280,6 +281,10 @@ def budget_vote_lines(year, codes):
         if link.startswith('/'):
             link = request.host_url.rstrip('/') + link
         money = '' if r['surplus'] is None else f", expected {'profit' if r['surplus'] >= 0 else 'loss'} ${abs(r['surplus']):,.2f}"
+        if r.get('equipment'):
+            run = r['surplus'] + r['equipment']
+            money = (f", income minus running costs {'+' if run >= 0 else '-'}${abs(run):,.0f}, plus ${r['equipment']:,.0f} of equipment to buy"
+                     f" (total ${abs(r['surplus']):,.0f} {'surplus' if r['surplus'] >= 0 else 'out'})")
         changed = ' (changed since approved ' + b['approved'] + ')' if r['status'] == 'changed' else ''
         when = '' if str(b.get('date', '')) in b['event_name'] else f", {b.get('date', '')}"
         prog = load_programs().get(b.get('program', ''), '')

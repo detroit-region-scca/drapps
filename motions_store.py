@@ -108,5 +108,5 @@ def update(mid, **fields):
 
 def summary(m):
     """One line for an email or a list: the title, and the amount when there is one."""
-    amt = f" (${m['amount']:,.2f})" if m.get('amount') else ''
+    amt = f" (${m['amount']:,.0f})" if m.get('amount') and f"${m['amount']:,.0f}" not in m['title'] else ''
     return f"{m['title']}{amt}"
