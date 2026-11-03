@@ -102,4 +102,4 @@ def test_reimbursement_and_rejection_wording():
     _, body = L.closed_message(_closed(method='Reimburse me'))
     assert 'on its way to you' in body
     subject, body = L.closed_message(_closed(status='Rejected', closed_note='No receipt'))
-    assert subject.endswith('not approved') and 'Why: No receipt' in body
+    assert subject.endswith('rejected') and 'Why: No receipt' in body

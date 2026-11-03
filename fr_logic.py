@@ -118,9 +118,9 @@ def closed_message(r, link=''):
         body = [f"Your funds request {what} ({for_}) has been paid: {how}; {to}."]
         subject = f"Funds request {r['id']} paid"
     elif r['status'] == 'Rejected':
-        body = [f"Your funds request {what} ({for_}) was not approved.", '', f"Why: {r.get('closed_note') or 'no reason given'}",
+        body = [f"Your funds request {what} ({for_}) was rejected.", '', f"Why: {r.get('closed_note') or 'no reason given'}",
                 '', 'Questions go to treasurer@drscca.org.']
-        subject = f"Funds request {r['id']} not approved"
+        subject = f"Funds request {r['id']} rejected"
     else:
         return None
     if link:
