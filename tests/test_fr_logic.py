@@ -79,3 +79,27 @@ def test_add_and_parse_strip_separators():
     t = L.add(L.add('', 'chair', 'Pat; Smith', '2026-10-01'), 'board', 'Board', '2026-11-12', 'a|b')
     assert [a['role'] for a in L.parse(t)] == ['chair', 'board']
     assert L.parse(t)[0]['name'] == 'Pat, Smith' and L.parse(t)[1]['note'] == 'a,b'
+
+
+def _closed(**kw):
+    return dict({'id': 'FR-2026-001', 'status': 'Paid', 'notify': 'yes', 'submitter_email': 'filer@example.org',
+                 'payee_name': 'Example Hall', 'net': 1200.0, 'event_name': 'Solo #1', 'program': 'AX',
+                 'method': 'Check to the payee', 'paid_ref': 'Check 6100', 'paid_amount': 1200.0, 'paid_date': '2026-11-04',
+                 'closed_note': ''}, **kw)
+
+
+def test_submitter_told_when_paid_only_if_they_asked():
+    subject, body = L.closed_message(_closed(), 'https://example.org/funds/FR-2026-001')
+    assert subject == 'Funds request FR-2026-001 paid'
+    assert 'Check 6100 for $1,200.00 on 2026-11-04' in body and 'goes to Example Hall' in body
+    assert body.endswith('https://example.org/funds/FR-2026-001')
+    assert L.closed_message(_closed(notify='')) is None
+    assert L.closed_message(_closed(submitter_email='')) is None
+    assert L.closed_message(_closed(status='Submitted')) is None
+
+
+def test_reimbursement_and_rejection_wording():
+    _, body = L.closed_message(_closed(method='Reimburse me'))
+    assert 'on its way to you' in body
+    subject, body = L.closed_message(_closed(status='Rejected', closed_note='No receipt'))
+    assert subject.endswith('not approved') and 'Why: No receipt' in body

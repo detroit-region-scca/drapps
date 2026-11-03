@@ -101,3 +101,28 @@ def waiting_on(items):
     names = {'receipt': 'receipt', 'chair': 'director approval', 'budget': 'board (budget)', 'overrun': 'board (over budget)',
              'second': 'second signer'}
     return [names[i['key']] for i in items if not i['done']]
+
+
+def closed_message(r, link=''):
+    """The email to the person who filed a request when it is paid or rejected: (subject, body), or None when they
+    did not ask to be told (the 'Email me' box on the form) or left no address."""
+    if (r.get('notify') or '').lower() != 'yes' or not (r.get('submitter_email') or '').strip():
+        return None
+    what = f"{r['id']}: {r.get('payee_name') or 'payee not given'} ${float(r.get('net') or 0):,.2f}"
+    for_ = r.get('event_name') or f"program {r.get('program', '')}"
+    if r['status'] == 'Paid':
+        ref, amt = r.get('paid_ref') or '', float(r.get('paid_amount') or r.get('net') or 0)
+        how = (f"{ref} for ${amt:,.2f}" if ref else f"${amt:,.2f}") + (f" on {r['paid_date']}" if r.get('paid_date') else '')
+        to = ('it is on its way to you' if r.get('method') == 'Reimburse me' else
+              'the region card was charged' if 'card' in ref.lower() else f"it goes to {r.get('payee_name') or 'the payee'}")
+        body = [f"Your funds request {what} ({for_}) has been paid: {how}; {to}."]
+        subject = f"Funds request {r['id']} paid"
+    elif r['status'] == 'Rejected':
+        body = [f"Your funds request {what} ({for_}) was not approved.", '', f"Why: {r.get('closed_note') or 'no reason given'}",
+                '', 'Questions go to treasurer@drscca.org.']
+        subject = f"Funds request {r['id']} not approved"
+    else:
+        return None
+    if link:
+        body += ['', link]
+    return subject, '\n'.join(body)

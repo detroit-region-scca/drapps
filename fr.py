@@ -290,7 +290,8 @@ def new():
     req = {'event_code': f.get('event_code', '') if ev else '', 'event_name': ev['event_name'] if ev else '', 'program': program,
            **{f'submitter_{k}': v for k, v in sub.items()}, **{f'payee_{k}': v for k, v in payee.items()},
            'method': F.METHODS[method], 'total': total, 'advances': advances, 'net': round(total - advances, 2),
-           'notes': f.get('notes', '').strip(), 'entered_by': session.get('who') or sub['name']}
+           'notes': f.get('notes', '').strip(), 'entered_by': session.get('who') or sub['name'],
+           'notify': 'yes' if f.get('notify') else ''}
     # A director filing a request for their own program has approved it: they are signed in as themselves
     # (emailed code or Google), so their filing is their approval.
     me = (session.get('email') or '').lower()
@@ -383,7 +384,8 @@ def approve_link(token):
             F.close(r['id'], 'Rejected', closed_by=who, closed_note=f'Rejected by the {FL.ROLES[t["role"]].lower()}: {note}')
             log_audit_event('FUNDS_REJECTED', who, {'id': r['id'], 'note': note, 'via': 'email link'})
             send_mail(f"Funds request {r['id']} rejected by {who}", note)
-            msg = "Rejected. The treasurer has been told."
+            tell_submitter(r['id'])
+            msg = "Rejected. The treasurer and the person who filed it have been told."
         else:
             note = f"by email link ({t['email']})"
             if t['role'] == 'board':
@@ -400,6 +402,15 @@ def approve_link(token):
 @bp.route('/<req_id>/close', methods=['POST'])
 @login_required
 @officer_required(perm='pay')
+def tell_submitter(req_id):
+    """Email whoever filed the request that it was paid or rejected, if they ticked "Email me" on the form."""
+    F.refresh()
+    r = F.get(req_id)
+    msg = r and FL.closed_message(r, url_for('fr.detail', req_id=req_id, _external=True))
+    if msg:
+        send_mail(*msg, r['submitter_email'])
+
+
 def close(req_id):
     if (g := _guard()):
         return g
@@ -422,6 +433,7 @@ def close(req_id):
         F.close(req_id, 'Paid', paid_date=request.form.get('paid_date') or date.today().isoformat(), paid_ref=ref,
                 paid_amount=amount, closed_by=who, closed_note=request.form.get('note', '').strip())
         log_audit_event('FUNDS_PAID', who, {'id': req_id, 'ref': ref, 'amount': amount})
+        tell_submitter(req_id)
         flash(f'{req_id} marked paid ({ref}).', 'success')
     elif action == 'reject':
         note = request.form.get('note', '').strip()
@@ -430,6 +442,7 @@ def close(req_id):
             return redirect(url_for('fr.detail', req_id=req_id))
         F.close(req_id, 'Rejected', closed_by=who, closed_note=note)
         log_audit_event('FUNDS_REJECTED', who, {'id': req_id, 'note': note})
+        tell_submitter(req_id)
         flash(f'{req_id} rejected.', 'warning')
     elif action == 'reopen':
         F.close(req_id, 'Submitted', paid_date='', paid_ref='', paid_amount='', closed_by=who, closed_note='')

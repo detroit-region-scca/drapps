@@ -28,7 +28,8 @@ import fr_store as F  # noqa: E402
 import plan_store as P  # noqa: E402
 import qbo_logic as Q  # noqa: E402
 import members_store as W  # noqa: E402
-from utils import load_events, log_audit_event  # noqa: E402
+import fr_logic as FL  # noqa: E402
+from utils import load_events, log_audit_event, send_mail  # noqa: E402
 
 WHO = 'QuickBooks sync'
 DRY = '--dry-run' in sys.argv
@@ -66,6 +67,10 @@ def main():
             F.close(r['id'], 'Paid', paid_date=paid['paid_date'], paid_ref=paid['paid_ref'], paid_amount=paid['paid_amount'],
                     closed_by=WHO, closed_note=paid['note'])
             log_audit_event('FUNDS_PAID', WHO, {'id': r['id'], 'ref': paid['paid_ref'], 'amount': paid['paid_amount']})
+            F.refresh()
+            msg = FL.closed_message(F.get(r['id']) or {}, f"https://drapps.drscca.org/funds/{r['id']}")
+            if msg:
+                send_mail(*msg, r['submitter_email'])
     if not DRY:
         F.refresh()
         reqs = F.requests() if F.enabled() else []

@@ -19,7 +19,7 @@ import sheet_cache as C
 REQ_COLS = ['id', 'submitted', 'status', 'event_code', 'event_name', 'program', 'submitter_name', 'submitter_email',
             'submitter_phone', 'submitter_address', 'payee_name', 'payee_address', 'payee_email', 'payee_phone', 'method',
             'total', 'advances', 'net', 'notes', 'receipts_url', 'entered_by', 'paid_date', 'paid_ref', 'paid_amount',
-            'closed_by', 'closed_note', 'approvals']
+            'closed_by', 'closed_note', 'approvals', 'notify']
 LINE_COLS = ['request_id', 'date', 'description', 'category', 'amount']
 NUMERIC = ('total', 'advances', 'net', 'paid_amount')
 CATEGORIES = ['Site Rental', 'Supplies', 'Professional Service', 'Storage', 'Travel Cost', 'Other']
@@ -49,7 +49,7 @@ def _snapshot():
     hit = _cache.get('snap')
     if hit and hit[0] == C.version(os.environ['FUNDS_SHEET_ID']):
         return hit[1]
-    res = C.batch_get(os.environ['FUNDS_SHEET_ID'], ['Requests!A:AA', 'Lines!A:E'],
+    res = C.batch_get(os.environ['FUNDS_SHEET_ID'], ['Requests!A:AB', 'Lines!A:E'],
                                                                    params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], []]
     reqs = [dict(zip(REQ_COLS, [str(v) for v in r] + [''] * len(REQ_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
