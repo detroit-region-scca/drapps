@@ -62,6 +62,7 @@
             <div class="small text-muted mb-2">{{ r.titles|join(', ') }} · {{ r.n }} {{ 'person' if r.n == 1 else 'people' }}</div>
             <div class="small fw-semibold">Everyday</div>{{ boxes(r, everyday) }}
             {% if ex %}<div class="small fw-semibold mt-2">Extra powers</div>{{ boxes(r, extra) }}{% endif %}
+            <div class="small fw-semibold mt-2">Apps on the home page</div><div class="small text-muted">Events is always shown; Admin with the Admin permission.</div>{{ boxes(r, apps) }}
             <button class="btn btn-sm btn-outline-secondary mt-2">Save {{ r.role }}</button></form>{% endfor %}
     </div>
     <p class="small text-muted mt-2">"Write their own program's annual plan" covers the programs a person directs. The admin account always has everything.</p>

@@ -36,7 +36,32 @@ EXTRA = {
     'audit': 'See the audit log',
     'admin': 'Run the Admin app (users, roles, programs)',
 }
-PERMS = {**EVERYDAY, **EXTRA}
+APPS = {
+    'show_members': 'Members',
+    'show_board': 'Board',
+    'show_funds': 'Funds Requests',
+    'show_invoices': 'Invoices',
+    'show_plan': 'Annual Plan',
+    'show_operations': 'Operations',
+    'show_treasurer': 'Treasurer',
+    'show_volunteers': 'Volunteers',
+}
+PERMS = {**EVERYDAY, **EXTRA, **APPS}
+
+
+def _apps_for(p, volunteer=False):
+    """The home-page apps that fit these permissions: the default for a role's "Apps on the home page" boxes."""
+    show = {
+        'show_members': bool(p & {'points_enter', 'points'}),
+        'show_board': not volunteer and bool(p & {'board_ask', 'board', 'minutes'}),
+        'show_funds': bool(p & {'funds', 'funds_all', 'pay'}),
+        'show_invoices': bool(p & {'invoices', 'invoices_all', 'pay'}),
+        'show_plan': not volunteer and bool(p & {'plan_own', 'plan_all', 'board', 'pay'}),
+        'show_operations': not volunteer and bool(p & {'ops', 'board', 'pay'}),
+        'show_treasurer': not volunteer and bool(p & {'pay', 'audit'}),
+        'show_volunteers': not volunteer and 'access' in p and 'admin' not in p and not (p & {'pay', 'audit'}),
+    }
+    return {k for k, v in show.items() if v}
 OFFICERS = {'RE', 'ARE', 'Secretary', 'Treasurer', 'Admin'}      # bylaws Art. IV 4.2, plus the admin account
 DEFAULTS = {'Equipment': {'ops'}, 'Points Keeper': {'points'}}
 EVERYDAY_DEFAULT = set(EVERYDAY) - {'plan_own'}            # what every official could do before roles had settings
@@ -66,24 +91,29 @@ def _load():
 def _default(role):
     if role == VOLUNTEER:
         return set(VOLUNTEER_DEFAULT)
-    return set(PERMS) - {'plan_own'} if role in OFFICERS else EVERYDAY_DEFAULT | set(DEFAULTS.get(role, ()))
+    return (set(EVERYDAY) | set(EXTRA)) - {'plan_own'} if role in OFFICERS else EVERYDAY_DEFAULT | set(DEFAULTS.get(role, ()))
 
 
 def perms(role):
     """The permissions one role has."""
     if role == 'Admin':
-        return set(PERMS) - {'plan_own'}
+        base = set(EVERYDAY) | set(EXTRA)
+        return (base - {'plan_own'}) | _apps_for(base - {'plan_own'})
     saved = _load().get(role) or {}
     if 'level' in saved:                        # the earlier full/standard + ops format
-        base = (set(PERMS) - {'plan_own', 'admin'}) if saved.get('level') == 'full' else set(EVERYDAY_DEFAULT)
+        base = ((set(EVERYDAY) | set(EXTRA)) - {'plan_own', 'admin'}) if saved.get('level') == 'full' else set(EVERYDAY_DEFAULT)
         if saved.get('ops'):
             base.add('ops')
-        return base
-    out = _default(role)
+        return base | _apps_for(base)
+    out = _default(role) - set(APPS)
     for p, on in saved.items():
-        if p in PERMS:
+        if p in PERMS and p not in APPS:
             (out.add if on else out.discard)(p)
-    return out
+    shown = _apps_for(out, role == VOLUNTEER)          # apps follow the permissions unless set by hand
+    for p, on in saved.items():
+        if p in APPS:
+            (shown.add if on else shown.discard)(p)
+    return out | shown
 
 
 def perms_for(roles):

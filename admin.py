@@ -33,7 +33,7 @@ def _ctx(**kw):
                 changes=utils.official_changes(), **kw)
 
 
-VOL_PERMS = {'funds', 'invoices', 'points_enter'}    # volunteers only reach these pages
+VOL_PERMS = {'funds', 'invoices', 'points_enter', 'show_members', 'show_funds', 'show_invoices'}    # volunteers only reach these pages
 NEEDED = ('RE', 'ARE', 'Secretary', 'Treasurer', 'Admin', 'Director', 'Financial Director', 'Points Keeper')
 VOLUNTEER = 'Volunteer'
 
@@ -184,7 +184,7 @@ def roles():
     titles[access.VOLUNTEER] = ['added one by one on Users']
     rows = [{'role': k, 'perms': access.perms(k), 'n': counts[k], 'titles': titles[k],
              'choices': VOL_PERMS if k == access.VOLUNTEER else set(access.PERMS)} for k in kinds]
-    return render_template('admin.html', **_ctx(view='roles', rows=rows, everyday=access.EVERYDAY, extra=access.EXTRA))
+    return render_template('admin.html', **_ctx(view='roles', rows=rows, everyday=access.EVERYDAY, extra=access.EXTRA, apps=access.APPS))
 
 
 def _post():
