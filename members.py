@@ -258,7 +258,7 @@ def milestones():
                         new.append([month, ' '.join(line.split()), y, ''])
         S.save_milestones(month, new)
         log_audit_event('MILESTONES_SAVED', _who(), {'month': month, 'names': len(new)})
-        flash(f'{month}: {len(new)} names saved. The website post draft is ready within the hour.' if new else f'Removed {month}.', 'success')
+        flash(f'{month}: {len(new)} names saved. Click Review and publish to open the draft.' if new else f'Removed {month}.', 'success')
         return redirect(url_for('members.milestones', month=month))
     norm = lambda g: {k: sorted(x.lower() for x in v) for k, v in g.items() if v}
     lists = [m['listed'] for m in mem if m.get('listed')]
@@ -270,7 +270,7 @@ def milestones():
                                                   public_url=S.public_sheet_url(), list_url=S.list_folder_url(),
                                                   scca_reports=SCCA_REPORTS,
                                                   website_drafts=os.environ.get('WEBSITE_URL', 'https://drscca.org').rstrip('/')
-                                                  + '/wp-admin/edit.php?post_status=draft&category_name=service-awards'))
+                                                  + f'/wp-admin/admin-post.php?action=drscca_sa_review&month={month}'))
 
 
 @bp.route('/use', methods=['GET', 'POST'])

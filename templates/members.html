@@ -299,7 +299,7 @@
 <div class="card mb-3"><div class="card-body">
     {% if published %}<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2"><span class="badge text-bg-success">Saved for the website</span>
         <div class="text-end"><a class="btn btn-accent btn-sm" href="{{ website_drafts }}" target="_blank">Review and publish ›</a>
-        <div class="small text-muted mt-1">Opens the draft post on the website (ready within the hour).</div></div></div>{{ groups(published) }}
+        <div class="small text-muted mt-1">Makes the website's draft post now and opens it.</div></div></div>{{ groups(published) }}
         {% if differs %}<form method="post" class="mt-3"><input type="hidden" name="month" value="{{ month }}"><input type="hidden" name="action" value="publish">
             <span class="small text-warning me-2">The newest member list gives a different list for {{ month_label }}.</span><button class="btn btn-sm btn-warning">Use the newer list</button></form>{% endif %}
     {% elif proposed %}<div class="mb-2"><span class="badge text-bg-secondary">Not saved yet</span></div>{{ groups(proposed) }}
