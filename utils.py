@@ -156,7 +156,7 @@ def send_mail(subject, body, recipient=None, attachments=(), cc=None):
         if cc:
             msg['Cc'] = cc
         footer = os.environ.get('MAIL_FOOTER', 'This is an automated message from the DRSCCA apps. Replies to this address are not read: '
-                                 'use the links above, or write to your program group or treasurer@drscca.org.')
+                                 'use the links above, or write to your program group or admin@drscca.org.')
         msg.attach(MIMEText(f"{body}\n\n--\n{footer}" if footer else body, 'plain'))
         for name, data, mime in attachments:
             main, _, sub = (mime or 'application/octet-stream').partition('/')
