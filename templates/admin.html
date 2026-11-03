@@ -38,14 +38,18 @@
 
 {% elif view == 'roles' %}
     <div class="page-title">Access by role</div>
-    <p class="text-muted small">What each kind of role may do. It follows the job: whoever holds the role gets this. Volunteers are added one by one on Sign-in access.</p>
-    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><tbody>
-        {% for r in rows %}<tr><td class="ps-3"><div class="fw-semibold">{{ r.role }}</div><div class="small text-muted">{{ r.titles|join(', ') }} · {{ r.n }} {{ 'person' if r.n == 1 else 'people' }}</div></td>
-            <td class="pe-3"><form method="post" class="d-flex flex-wrap gap-2 align-items-center justify-content-end m-0"><input type="hidden" name="role" value="{{ r.role }}">
-                <select name="level" class="form-select form-select-sm w-auto">{% for k, label in levels.items() %}<option value="{{ k }}" {{ 'selected' if k == r.level }}>{{ label }}</option>{% endfor %}</select>
-                <label class="small text-nowrap"><input type="checkbox" name="ops" value="yes" {{ 'checked' if r.ops }}> Edit Operations</label>
-                <button class="btn btn-sm btn-outline-light">Save</button></form></td></tr>{% endfor %}
-    </tbody></table></div></div>
+    <p class="text-muted small mb-2">Whoever holds a role gets its access. <b>Full</b>: everything, including board decisions, approvals and the audit log. <b>Standard</b>: every app, no board decisions. Volunteers are added on Sign-in access.</p>
+    <div class="list-group">
+        {% for r in rows %}<form method="post" class="list-group-item py-3"><input type="hidden" name="role" value="{{ r.role }}">
+            <div class="fw-semibold">{{ r.role }}</div>
+            <div class="small text-muted mb-2">{{ r.titles|join(', ') }} · {{ r.n }} {{ 'person' if r.n == 1 else 'people' }}</div>
+            <div class="row g-2 align-items-center">
+                <div class="col-12 col-sm-5"><select name="level" class="form-select form-select-sm" aria-label="Access for {{ r.role }}">
+                    <option value="full" {{ 'selected' if r.level == 'full' }}>Full access</option><option value="standard" {{ 'selected' if r.level == 'standard' }}>Standard</option></select></div>
+                <div class="col-8 col-sm-4"><label class="small"><input type="checkbox" name="ops" value="yes" {{ 'checked' if r.ops }}> Edit Operations</label></div>
+                <div class="col-4 col-sm-3"><button class="btn btn-sm btn-outline-secondary w-100">Save</button></div>
+            </div></form>{% endfor %}
+    </div>
     <p class="small text-muted mt-2">Full access includes editing Operations. The admin account always has full access.</p>
 {% elif view == 'programs' %}
     <div class="page-title">Programs</div>
