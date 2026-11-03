@@ -45,11 +45,11 @@
         {% if reserve and (total * point_value - reserve.amount)|abs >= 0.005 %}<div class="value text-warning">${{ '{:,.2f}'.format(total * point_value - reserve.amount) }}</div><div class="label">off: see what to book</div>
         {% elif reserve %}<div class="value text-success">Ties</div><div class="label">to the reserve</div>{% else %}<div class="value">·</div><div class="label">no sync yet</div>{% endif %}</a></div>
     <div class="col-6 col-lg-3"><div class="card stat p-3 h-100"><div class="label">SCCA member list</div><div class="value">{{ day(latest_list) if latest_list else 'not loaded' }}</div>
-        <div class="label"><a href="#" onclick="document.getElementById('loadlist').hidden=false; return false">load a new list</a></div></div></div>
+        <div class="label"><a href="{{ url_for('members.home', load=1) }}#loadlist">load a new list</a></div></div></div>
     <div class="col-6 col-lg-3"><a class="card stat p-3 h-100 text-decoration-none" href="#lapsed" onclick="var d=document.getElementById('lapsed'); if(d) d.open=true"><div class="label">Not current members</div>
         <div class="value {{ 'text-warning' if lapsed }}">{{ lapsed|length }}</div><div class="label">with {{ '{:,.1f}'.format(lapsed|sum(attribute='points')) }} points</div></a></div>
 </div>
-<form id="loadlist" method="post" action="{{ url_for('members.upload') }}" enctype="multipart/form-data" class="card card-body mb-3" hidden><input type="hidden" name="back" value="{{ url_for('members.home') }}">
+<form id="loadlist" method="post" action="{{ url_for('members.upload') }}" enctype="multipart/form-data" class="card card-body mb-3"{{ '' if request.args.get('load') else ' hidden' }}><input type="hidden" name="back" value="{{ url_for('members.home') }}">
     <div class="d-flex flex-wrap gap-2 align-items-center">
         <span class="small">Download the Member List from <a href="{{ scca_reports }}">my.scca.com › Region Reporting</a>, then:</span>
         <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" required><button class="btn btn-sm btn-accent">Load list</button>
