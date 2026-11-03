@@ -85,7 +85,7 @@ def titles_by_role():
 
 
 def _name_taken(name):
-    """Why a new role or job title can't use this name, or ''. Names are compared ignoring case, and may not end in
+    """Why a new role can't use this name, or ''. Names are compared ignoring case, and may not end in
     brackets (those are kept for entries that follow another job, e.g. "Operations approver (Treasurer)")."""
     used = {k.lower() for k in all_roles()} | {'admin', 'admin account', access.VOLUNTEER.lower()} | \
         {(o.get('title') or '').lower() for o in officials.all()}
