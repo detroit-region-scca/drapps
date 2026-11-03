@@ -65,7 +65,7 @@ def mirror_to_sheet():
         ws = book.add_worksheet('Officials', rows=100, cols=5)
     out = [['Role', 'Title', 'Name', 'Email', 'Program'],
            *[[o.get('role', ''), o.get('title', ''), o['name'], o.get('email', ''), o.get('program', '')] for o in rows],
-           [], ['Copy for reference, refreshed nightly. The app sends approval emails only from the list the treasurer keeps on the server; '
+           [], ['Copy for reference, refreshed nightly. The app sends approval emails only from the list the admin keeps on the server; '
                 'changing this tab does not change who approves.']]
     ws.clear()
     ws.update(out, 'A1', value_input_option='RAW')

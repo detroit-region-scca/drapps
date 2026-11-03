@@ -194,7 +194,7 @@
         <div class="card p-3 mb-3"><div class="row g-2">
             {% set d = officials.director(program) %}<div class="col-md-8"><div class="form-label">Program director</div>
                 <div>{{ d[0] or 'None listed' }}{% if d[1] %} <span class="text-muted">· {{ d[1] }}</span>{% endif %}</div>
-                <div class="form-text">From the region's officials list, which the treasurer keeps.</div></div>
+                <div class="form-text">From the region's officials list, which the admin keeps.</div></div>
             <input type="hidden" name="entered_by" value="{{ session.get('who', '') }}">
         </div></div>
         <div class="card p-3 mb-3">

@@ -43,18 +43,18 @@
         <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
             <tbody>{% for o in people %}<tr><td class="ps-3">{{ o.title or o.role }}</td><td>{{ o.name }}</td><td>{{ o.email }}</td><td class="pe-3 small text-muted">{{ 'Everything, including board decisions' if o.level == 'officer' else 'Full access' }}</td></tr>{% endfor %}</tbody>
         </table></div></div>
-        <p class="form-text mt-2">To change an official, edit the officials list on the server (ask the treasurer).</p>
+        <p class="form-text mt-2">To change an official, ask the admin (admin@drscca.org); the list is kept on the server.</p>
     {% elif view == 'name' %}
     <div class="card mx-auto mt-4" style="max-width: 380px;"><div class="card-body p-4">
         <div class="page-title">Your name</div>
-        <p class="text-muted small">Everything you do in the apps is signed with it, so the treasurer and the audit log know who did what.</p>
+        <p class="text-muted small">Everything you do in the apps is signed with it, so the audit log shows who did what.</p>
         <form method="post"><input type="hidden" name="next" value="{{ next_url }}">
             <input class="form-control mb-3" name="name" required autofocus autocomplete="name" value="{{ session.get('who', '') }}" placeholder="First and last name">
             <button class="btn btn-accent w-100">Continue</button></form>
     </div></div>
     {% elif view == 'officials' %}
     <div class="page-title">Region officials</div>
-    <p class="text-muted small">Funds request approvals go only to these people and addresses. The list can't be changed in the apps; the treasurer keeps it.</p>
+    <p class="text-muted small">Funds request approvals go only to these people and addresses. The list can't be changed in the apps; the admin keeps it.</p>
     {% if people %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
         <tbody>{% for o in people %}<tr><td class="ps-3">{{ o.title }}</td><td>{{ o.name }}</td><td class="pe-3"><a href="mailto:{{ o.email }}">{{ o.email }}</a></td></tr>{% endfor %}</tbody>
     </table></div></div>{% else %}<p class="text-warning">No officials list on this server, so no approval emails are sent.</p>{% endif %}
@@ -91,7 +91,7 @@
                     <input type="email" class="form-control mb-3" id="email" name="email" required autofocus autocomplete="email" value="{{ session.get('signin_email', '') }}" placeholder="you@example.com">
                     <button type="submit" class="btn btn-accent w-100">Email me a code</button>
                 </form>
-                <p class="small text-muted mt-3 mb-0 text-center">For region officials and volunteers the treasurer has added.</p>
+                <p class="small text-muted mt-3 mb-0 text-center">For region officials and volunteers. Access is managed by the admin (admin@drscca.org).</p>
             </div>
         </div>
     </div>

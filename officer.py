@@ -50,7 +50,7 @@ def _serializer():
 @bp.route('/signin/<token>')
 def signin(token=None):
     """Old separate sign-in: everyone now signs in once by email code, and the role comes from the officials list."""
-    flash('This needs the RE, ARE or treasurer, signed in with their own email address.', 'warning')
+    flash('This needs an officer (RE, ARE, secretary or treasurer), signed in with their own email address.', 'warning')
     return redirect(url_for('home'))
 
 

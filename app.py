@@ -128,7 +128,7 @@ def _officials():
 @app.route('/officials')
 @login_required
 def officials_page():
-    """Who holds which region role, read-only: the treasurer keeps the list on the server."""
+    """Who holds which region role, read-only: the admin keeps the list on the server."""
     return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Officials", app_name='Officials', view='officials',
                            people=officials.all(), programs=load_programs())
 
@@ -269,7 +269,7 @@ def sheets_busy(e):
     logging.error(f"Google Sheets error on {request.path}: {e}")
     busy = getattr(getattr(e, 'response', None), 'status_code', None) == 429
     msg = ('Google Sheets is busy (too many reads this minute). Wait a minute and reload.' if busy
-           else 'Google Sheets returned an error. Reload in a moment; if it keeps happening, tell the treasurer.')
+           else 'Google Sheets returned an error. Reload in a moment; if it keeps happening, tell the admin (admin@drscca.org).')
     return render_template('base.html', title='Busy', busy_msg=msg), 503
 
 def _budget_codes():

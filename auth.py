@@ -132,7 +132,7 @@ def gate():
     if session.get('email') and not u:
         # Removed from the lists since signing in.
         session.clear()
-        flash('Your address no longer has access to the apps. Ask the treasurer if that is a mistake.', 'warning')
+        flash('Your address no longer has access to the apps. Ask the admin (admin@drscca.org) if that is a mistake.', 'warning')
         return redirect(url_for('home'))
     if not u:
         session.pop('authenticated', None)
@@ -282,7 +282,7 @@ def _vol_ws():
 def access():
     u = user()
     if not u or u['level'] != 'officer':
-        flash('The access list is kept by the RE, ARE and treasurer.', 'warning')
+        flash('Volunteers are added by the officers (RE, ARE, secretary and treasurer).', 'warning')
         return redirect(url_for('home'))
     if not hasattr(store, 'sheet_id'):
         flash('The volunteers list needs the Google Sheets storage.', 'warning')

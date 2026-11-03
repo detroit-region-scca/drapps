@@ -272,7 +272,7 @@
         note.className = 'form-text' + (progSel.value && !d ? ' text-warning' : '');
         note.textContent = !progSel.value ? '' : d
             ? `Approval email goes to ${d}` + (note.dataset.signers ? `. Over $2,500, also to ${note.dataset.signers} as second signer.` : '.')
-            : 'No director is listed for this program, so no approval email can go out. Ask the treasurer.';
+            : 'No director is listed for this program, so no approval email can go out. Ask the admin to add one.';
     }
     if (progSel) { progSel.addEventListener('change', showApprover); showApprover(); }
     function syncForm() {

@@ -320,7 +320,7 @@ def ask(req_id):
     if (g := _guard()):
         return g
     sent = ask_approvals(req_id)
-    flash(f"Emailed {', '.join(sorted(set(sent)))}." if sent else 'Nobody to email: this program has no director in the officials list. Ask the treasurer.',
+    flash(f"Emailed {', '.join(sorted(set(sent)))}." if sent else 'Nobody to email: this program has no director in the officials list. Ask the admin to add one.',
           'success' if sent else 'warning')
     return redirect(url_for('fr.detail', req_id=req_id))
 
