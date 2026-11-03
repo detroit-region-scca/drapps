@@ -2,8 +2,6 @@
 {% from '_ui.html' import money with context %}
 {% block app_name %}Board{% endblock %}
 {% block nav %}{% include '_board_nav.html' %}{% endblock %}
-{% macro year_pick(endpoint, blank=false) %}<form method="get" action="{{ url_for(endpoint) }}" class="m-0"><select name="year" class="form-select form-select-sm w-auto" aria-label="Year" onchange="this.form.submit()">
-    {% if blank %}<option value="">All years</option>{% endif %}{% for y in years %}<option {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>{% endmacro %}
 {% macro record_fields(date_name) %}
     <div class="col-6 col-md-3"><label class="form-label small">Date</label><input type="date" name="{{ date_name }}" class="form-control form-control-sm" value="{{ today }}"></div>
     <div class="col-6 col-md-3"><label class="form-label small">How</label><select name="how" class="form-select form-select-sm"><option value="meeting">Board meeting</option><option value="email">Email vote</option></select></div>
@@ -32,7 +30,7 @@
                     {% if m.details %}<details class="small mt-1"><summary class="text-muted">Details</summary><div class="mt-1" style="white-space: pre-line">{{ m.details }}</div>
                         <div class="text-muted mt-1">{{ m.id }} · proposed {{ m.proposed }} by {{ m.proposed_by }}{% if officer or m.proposed_by == who %} · <button form="w{{ loop.index }}" class="btn btn-link btn-sm p-0 align-baseline" onclick="return confirm('Withdraw this motion?')">withdraw</button>{% endif %}</div></details>{% endif %}
                     {% if m.asked %}<div class="small text-muted">Sent to the board {{ m.asked }}</div>{% endif %}</td>
-                <td class="num pe-3">{{ money(m.amount) if m.amount else '' }}</td>
+                <td class="pe-3"></td>
             </tr>{% endfor %}
             </tbody>
         </table></div></div>
@@ -53,18 +51,14 @@
         <div class="row g-2">
             <div class="col-12"><label class="form-label">Motion</label><input name="title" class="form-control" maxlength="200" required value="{{ prefill.title }}" placeholder="Approve the 2027 Solo trophy order"></div>
             <div class="col-12"><label class="form-label">Details <span class="text-muted small">(optional)</span></label><textarea name="details" class="form-control" rows="3">{{ prefill.details }}</textarea></div>
-            <div class="col-6 col-md-3"><label class="form-label">Amount <span class="text-muted small">(optional)</span></label><input name="amount" class="form-control" inputmode="decimal" value="{{ prefill.amount }}"></div>
-            <div class="col-12 col-md-9"><label class="form-label">Link <span class="text-muted small">(optional)</span></label><input name="link" class="form-control" value="{{ prefill.link }}"></div>
+            <div class="col-12"><label class="form-label">Link <span class="text-muted small">(optional)</span></label><input name="link" class="form-control" value="{{ prefill.link }}"></div>
         </div>
         <div class="mt-3"><button class="btn btn-accent">Add to the list</button></div>
     </form>
     </details>
 
 {% elif view == 'decisions' %}
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <div class="page-title">Board decisions, {{ year }}</div>
-        {{ year_pick('board.decisions_page') }}
-    </div>
+    <div class="page-title">Board decisions, {{ year }}</div>
     <p class="text-muted">Every recorded vote, budgets and motions together, by date, with that meeting's minutes once they are posted.</p>
     {% if since %}
     <div class="alert alert-info py-2">Email votes since the last board meeting{% if last %} ({{ last }}){% endif %}, for the next meeting's minutes:

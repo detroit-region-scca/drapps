@@ -201,43 +201,6 @@
     </div>
     {% endif %}
 
-    {% elif view == 'approve' %}
-    <div class="crumbs"><a href="{{ url_for('bud.home', year=year) }}">Events</a> / Waiting for the board</div>
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <div class="page-title">Budgets waiting for the board, {{ year }}</div>
-        <form method="get" class="m-0"><select name="year" class="form-select form-select-sm w-auto" aria-label="Year" onchange="this.form.submit()">
-            {% for y in years %}<option {{ 'selected' if y == year }}>{{ y }}</option>{% endfor %}</select></form>
-    </div>
-    <p class="text-muted">Every {{ year }} budget the board has not approved yet, or that changed after it was approved. Tick budgets to send them to the board for a vote{% if officer %}, or to record the board's decision{% endif %}.</p>
-    {% if rows %}
-    <form method="post">
-        <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-            <thead><tr><th class="ps-3" style="width:2.5rem"><input type="checkbox" class="form-check-input" aria-label="Tick all" onclick="document.querySelectorAll('[name=code]').forEach(c => c.checked = this.checked)"></th>
-                <th>Budget</th><th>Program</th><th>Date</th><th class="num">Annual plan</th><th class="num pe-3">Budget</th></tr></thead>
-            <tbody>{% for r in rows %}<tr>
-                <td class="ps-3"><input type="checkbox" class="form-check-input" name="code" value="{{ r.b.event_code }}" id="c{{ loop.index }}"></td>
-                <td><label for="c{{ loop.index }}"><a href="{{ r.link or url_for('bud.detail', code=r.b.event_code) }}">{{ r.b.event_name }}</a></label>
-                    {% if r.status == 'changed' %}<br><span class="badge rounded-pill text-bg-info">Changed since approved {{ r.b.approved }}</span>{% endif %}</td>
-                <td>{{ programs.get(r.b.program, r.b.program) if programs is defined else r.b.program }}</td>
-                <td class="text-nowrap">{{ r.b.date }}</td>
-                <td class="num">{{ money(r.plan) }}</td><td class="num pe-3">{{ money(r.surplus) }}</td>
-            </tr>{% endfor %}</tbody>
-        </table></div></div>
-        <div class="card p-3 mb-3"><div class="d-flex flex-wrap gap-2 align-items-center">
-            <span class="small text-muted">Emails the board ({{ board_email }}) one message with a link to each ticked budget; replies go to the whole board.</span>
-            <button name="action" value="ask" class="btn btn-outline-primary ms-auto">Ask the board to approve</button>
-        </div></div>
-        {% if officer %}
-        <div class="card p-3"><div class="section-label">Record the board's decision</div><div class="row g-2 align-items-end">
-            <div class="col-6 col-md-3"><label class="form-label">Approved on</label><input type="date" name="approved" class="form-control" value="{{ today }}"></div>
-            <div class="col-6 col-md-3"><label class="form-label">How</label><select name="how" class="form-select"><option value="meeting">Board meeting</option><option value="email">Email vote</option></select></div>
-            <div class="col-6 col-md-2"><label class="form-label">Vote</label><input name="vote" class="form-control" placeholder="7-0" inputmode="numeric"></div>
-            <div class="col-12 col-md-4"><button name="action" value="record" class="btn btn-accent w-100">Record approval</button></div>
-        </div><div class="form-text">Recorded as {{ officer.name }} (signed in by email).</div></div>
-        {% endif %}
-    </form>
-    {% else %}<div class="card p-4 text-center text-muted">Every {{ year }} budget is approved.</div>{% endif %}
-
     {% elif view == 'edit' %}
     <div class="crumbs">{% if e.program_budget %}<a href="{{ url_for('plan.detail', year=e.date[:4], program=e.program_code) }}">Annual Plan</a>{% else %}<a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Budgets</a>{% endif %} / <a href="{{ url_for('bud.detail', code=code) }}">{{ code }}</a> / Edit</div>
     <div class="page-title">{{ e.event_name }} <span class="text-muted fs-6">{{ e.date[:4] if e.program_budget else e.date }} · {{ e.program_code }} · {{ code }}</span></div>

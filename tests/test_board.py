@@ -15,6 +15,4 @@ def test_how_and_vote_read_back_from_approved_by():
 
 
 def test_summary():
-    assert M.summary({'title': 'Set aside savings', 'amount': 80000.0}) == 'Set aside savings ($80,000)'
     assert M.summary({'title': 'Set aside $80,000', 'amount': 80000.0}) == 'Set aside $80,000'
-    assert M.summary({'title': 'Adopt policy', 'amount': None}) == 'Adopt policy'

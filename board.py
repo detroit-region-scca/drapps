@@ -168,12 +168,6 @@ def motions():
         flash('Write the motion in one line.', 'warning')
         return redirect(url_for('board.home') + '#propose')
     amount = None
-    if f.get('amount', '').strip():
-        from utils import to_number
-        amount = to_number(f.get('amount', '').replace('$', '').replace(',', ''))
-        if amount is None:
-            flash('The amount must be a number.', 'warning')
-            return redirect(url_for('board.home') + '#propose')
     link = f.get('link', '').strip()
     if link and not (link.startswith('https://') or local_path(link)):
         link = ''
