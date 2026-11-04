@@ -198,7 +198,6 @@
             </{{ 'a' if on else 'div' }}>
         </div>
         {% set on = shows('volunteers') %}
-        {% if on or not (me and ((me.perms or []) | select('in', ['show_treasurer', 'admin']) | list)) %}
         <div class="col">
             <{{ 'a' if on else 'div' }} class="app-tile{{ '' if on else ' off' }}"{% if on %} href="{{ url_for('auth.access') }}"{% else %} title="Not part of your role" aria-disabled="true"{% endif %} style="--tile: #17a2b8;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="#17a2b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -208,7 +207,6 @@
                 <div class="what">Let a volunteer sign in</div>
             </{{ 'a' if on else 'div' }}>
         </div>
-        {% endif %}
         {% set on = shows('treasurer') %}
         <div class="col">
             <{{ 'a' if on else 'div' }} class="app-tile{{ '' if on else ' off' }}"{% if on %} href="{{ url_for('treasurer') }}"{% else %} title="Not part of your role" aria-disabled="true"{% endif %} style="--tile: #9aa3ad;">
