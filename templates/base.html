@@ -16,6 +16,8 @@
         a { color: var(--link); }
         a:hover { color: var(--red); }
         .text-muted { color: var(--muted) !important; }
+        /* Bootstrap's yellow is unreadable on white: a dark amber that passes contrast (about 5:1). */
+        .text-warning, a.text-warning { color: #8a5a00 !important; }
 
         .app-bar { background: #fff; border-bottom: 3px solid var(--red); }
         .site-brand { display: inline-flex; align-items: center; gap: .6rem; color: var(--text); margin-right: 1rem; }
