@@ -7,13 +7,10 @@
     {{ tab('equip.tasks', 'To do', request.endpoint == 'equip.tasks' or (request.endpoint == 'equip.task' and not bill)) }}
     {{ tab('equip.costs', 'Bills', request.endpoint == 'equip.costs' or (request.endpoint == 'equip.task' and bill)) }}
     {{ tab('equip.vehicles', 'Vehicles') }}
-    {{ tab('equip.items', 'Gear', request.endpoint in ('equip.items', 'equip.item', 'equip.places', 'equip.place', 'equip.documents')) }}
+    {{ tab('equip.documents', 'Documents') }}
+    {{ tab('equip.items', 'Gear', request.endpoint in ('equip.items', 'equip.item', 'equip.places', 'equip.place')) }}
     {{ tab('equip.plan', 'Replacement') }}
 {% endblock %}
-{% macro gear_pills(which) %}<ul class="nav nav-pills mb-3 small">
-    <li class="nav-item"><a class="nav-link {{ 'active' if which == 'where' }}" href="{{ url_for('equip.items') }}">Where things are</a></li>
-    <li class="nav-item"><a class="nav-link {{ 'active' if which == 'documents' }}" href="{{ url_for('equip.documents') }}">Documents</a></li>
-</ul>{% endmacro %}
 {% macro due_badge(t) -%}
     {% if not t.due %}<span class="badge rounded-pill text-bg-secondary">No date</span>
     {% elif t.due < today %}<span class="badge rounded-pill text-bg-danger">Overdue</span>
@@ -207,7 +204,6 @@
     {% endfor %}
 
     {% elif view == 'where' %}
-    {{ gear_pills('where') }}
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="text-muted small">Where all {{ n_live }} things are (planned purchases are on Replacement): each storage place, what's in each trailer and motorhome, and who has the rest. <a href="{{ url_for('equip.items', by='category') }}">List by category</a></div>
         {% if editor %}<div class="d-flex flex-wrap gap-2 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item') }}">+ Add an item</a><a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.place') }}">+ Add a storage place</a></div>{% endif %}
@@ -229,7 +225,6 @@
     <p class="small text-muted">To move or remove something, open it. To close a storage place, open the place.</p>
 
     {% elif view == 'documents' %}
-    {{ gear_pills('documents') }}
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
         <div><div class="page-title m-0">{% if n_missing %}{{ n_missing }} documents missing{% else %}Every document is in Drive{% endif %}</div>
             <div class="text-muted small">Each vehicle, trailer and storage place has a folder in Drive (Operations › Documents). Found one? Open the vehicle, trailer or place (or use "Add a document" below its row), say what it is and upload the file or take a photo; it is named and filed for you.

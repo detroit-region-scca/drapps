@@ -112,7 +112,7 @@ def test_roles_set_officer_and_editor(app_):
 
 def test_volunteer_kept_in_lane(app_):
     c = _signed_in(app_, 'vol@example.org')
-    for path in ('/treasurer', '/audit', '/officials', '/plan/', '/operations/', '/operations/vehicles', '/operations/tasks', '/events/new', '/access'):
+    for path in ('/treasurer', '/audit', '/officials', '/plan/', '/operations/', '/operations/vehicles', '/operations/tasks', '/operations/documents', '/events/new', '/access'):
         r = c.get(path)
         assert r.status_code == 302 and r.location.endswith('/'), path
 
