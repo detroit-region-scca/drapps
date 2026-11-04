@@ -32,9 +32,6 @@
 {% endblock %}
 {% block content %}
 {% if view == 'home' %}
-    <div class="d-flex flex-wrap justify-content-end align-items-center gap-2 mb-3">
-        <button class="btn btn-sm btn-outline-secondary no-print" onclick="window.print()">Print for the board</button>
-    </div>
     {% if future %}
     <div class="alert alert-info">Plans for {{ year }}: <b>{{ sent }} of {{ rows|length }}</b> programs are in{% if drafts %}, {{ drafts }} more in draft{% endif %}. Directors: open your program below, then start from last year's plan or a blank one.</div>
     {% else %}
