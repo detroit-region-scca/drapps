@@ -315,7 +315,7 @@ def send_books(who='DRSCCA Apps'):
     first, last = min(e['date'] for e in open_entries), max(e['date'] for e in open_entries)
     subject, body = L.books_email(bk, f"{first:%-m/%-d/%Y} to {last:%-m/%-d/%Y}", st and st['amount'], value)
     send_mail(subject, body, recipient=os.environ.get('NOTIFICATION_EMAIL', 'treasurer@drscca.org'))
-    log_audit_event('POINTS_BOOKS_EMAILED', who, {'entries': len(open_entries), 'lines': len(bk['lines'])})
+    log_audit_event('POINTS_BOOKS_EMAILED', who, {'entries': len(open_entries), 'journal_entries': len(jes)})
     return len(open_entries)
 
 
