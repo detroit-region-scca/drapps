@@ -149,6 +149,15 @@ def home():
             log_audit_event('MOTION_DECIDED', off['name'], {'id': m['id'], 'result': result, 'decided': decided, 'how': how})
         if ms:
             said.append(f"{len(ms)} motion{'s' if len(ms) != 1 else ''} {result}")
+        if result == 'passed':
+            import fr
+            import fr_store as F
+            rids = [m['link'].rstrip('/').rsplit('/', 1)[-1] for m in ms if '/funds/' in (m.get('link') or '')]
+            codes = {c for cs in bcodes.values() for c in cs}
+            rids += [x['id'] for x in F.requests() if x['status'] == 'Submitted' and (x['event_code'] in codes or (
+                not x['event_code'] and bud.program_code(x['program'], x['submitted'][:4]) in codes))]
+            if rids:
+                fr.announce_ready(rids)
         flash(f"Recorded for {decided}: " + '; '.join(said) + '.', 'success')
         return redirect(url_for('board.home'))
     rows = [dict(r, year=y) for y in bud.pending_years() for r in bud._pending_rows(y)] if B.enabled() else []

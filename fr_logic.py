@@ -52,7 +52,7 @@ def is_points(r):
     return r.get('event_name') == 'Worker points redemption'
 
 
-def review(r, budget_status=None, budget_expense=None, spent=0.0, scope='event'):
+def review(r, budget_status=None, budget_expense=None, spent=0.0, scope='event', board_vote=None):
     """What the request still needs: [{'key', 'label', 'done', 'by'}] in order.
 
     budget_status: 'approved', 'changed', 'budget' or None (the budget it is paid against, see bud._status)
@@ -60,6 +60,9 @@ def review(r, budget_status=None, budget_expense=None, spent=0.0, scope='event')
     scope: 'event' (the event's budget), 'program' (a request not tied to an event: its program's budget for the
     year) or 'ops' (Operations, whose annual plan is its budget, and 2026 and earlier, when a program's annual plan
     covered its spending outside events; no overrun check)
+    board_vote: the passed board motion that approved this request ({'id', 'decided', 'how', 'vote'}), recorded on the
+    Board page after the vote. It stands in for a missing budget or an overrun. (Older requests may carry a 'board'
+    entry in their approvals; those still count, but nothing adds new ones.)
     """
     got = {}
     for a in parse(r.get('approvals')):
@@ -76,6 +79,9 @@ def review(r, budget_status=None, budget_expense=None, spent=0.0, scope='event')
         c = got.get('chair')
         item('chair', 'Approved by the program director', c, by(c) if c else '')
         board = got.get('board')
+        if board_vote:
+            board = {'name': f"Board, motion {board_vote['id']}", 'date': board_vote.get('decided', ''),
+                     'note': ', '.join(x for x in (board_vote.get('how'), board_vote.get('vote')) if x)}
         what = {'event': 'Event budget', 'program': 'Program budget', 'ops': 'Operations budget' if r.get('program') == 'OPS' else 'Annual plan'}[scope]
         ok = budget_status == 'approved'
         label = {'changed': f'{what} approved by the board (it was changed after approval)',
@@ -126,3 +132,9 @@ def closed_message(r, link=''):
     if link:
         body += ['', link]
     return subject, '\n'.join(body)
+
+
+def motion_for(rid, motions):
+    """The board motion made for a funds request (its link points at the request), newest first: passed if any."""
+    mine = [m for m in motions if (m.get('link') or '').rstrip('/').endswith(f'/funds/{rid}') and m.get('status') != 'withdrawn']
+    return next((m for m in mine if m['status'] == 'passed'), None) or next((m for m in reversed(mine)), None)

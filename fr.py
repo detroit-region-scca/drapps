@@ -69,6 +69,17 @@ class Approvals:
         self.qbo = B.qbo_actuals() if B.enabled() else {}
         self.plans = {}
         self.other = {}
+        self._motions = None
+
+    def motions(self):
+        if self._motions is None:
+            import motions_store as M
+            self._motions = M.motions() if M.enabled() else []
+        return self._motions
+
+    def board_vote(self, r):
+        m = FL.motion_for(r['id'], self.motions())
+        return m if m and m['status'] == 'passed' else None
 
     def _plan(self, year):
         if year not in self.plans:
@@ -95,10 +106,11 @@ class Approvals:
             info = self._plan(year).get('OPS', {}).get('info', {})
             st = P.plan_status(dict(info, program='OPS'))
             status = st if st in ('approved', 'changed') else ('budget' if st else None)
-            return FL.review(r, status, None, 0.0, scope='ops')
+            return FL.review(r, status, None, 0.0, scope='ops', board_vote=self.board_vote(r))
         elif year < PROGRAM_BUDGETS_FROM:
             # Before program budgets existed, a program's annual plan covered its spending outside events.
-            return FL.review(r, 'approved' if self._plan(year).get(program, {}).get('lines') else None, None, 0.0, scope='ops')
+            return FL.review(r, 'approved' if self._plan(year).get(program, {}).get('lines') else None, None, 0.0, scope='ops',
+                             board_vote=self.board_vote(r))
         else:
             b, scope = self.budgets.get(BUD.program_code(program, year)), 'program'
         status, expense = None, None
@@ -112,7 +124,7 @@ class Approvals:
             spent = self._other_spent(program, year) if b else 0.0
             spent += sum(x['net'] for x in self.reqs if not x['event_code'] and x['program'] == program and x['submitted'][:4] == year
                          and x['status'] == 'Submitted' and x['id'] != r['id'])
-        return FL.review(r, status, expense, round(spent, 2), scope=scope)
+        return FL.review(r, status, expense, round(spent, 2), scope=scope, board_vote=self.board_vote(r))
 
 
 def _serializer():
@@ -138,29 +150,26 @@ def directors():
 
 
 def ask_approvals(rid, roles=None):
-    """Email whoever still has to approve, at their address in the read-only officials list: the program director, the
-    RE and ARE as second signers over the limit, and the RE and ARE to confirm a board approval when the budget or
-    annual plan does not cover the request. Approving is only possible from these links."""
+    """Ask whoever still has to approve. The program director, and the RE and ARE as second signers over the limit,
+    get an emailed link (at their address in the read-only officials list; approving is only possible from these
+    links). When the budget does not cover the request, it goes on the Board page as a motion instead: only a vote
+    the board has taken, recorded there, counts. Returns who was asked (addresses, and "the board (motion ...)")."""
     r = F.get(rid)
     if not r or r['status'] != 'Submitted':
         return []
     a = Approvals()
     missing = {i['key'] for i in a.items(r) if not i['done']}
-    if missing & {'budget', 'overrun'}:
-        missing.add('board')
+    need_board = bool(missing & {'budget', 'overrun'})
     missing &= set(roles or ('chair', 'second', 'board'))
     to = []
     if 'chair' in missing:
         name, mail = a.director(r)
         if mail:
             to.append(('chair', name, mail))
-    for role in ('second', 'board'):
-        if role in missing:
-            to += [(role, n, m) for n, m in O.signers()]
+    if 'second' in missing:
+        to += [('second', n, m) for n, m in O.signers()]
     why = {'chair': 'Region policy asks the program director to approve each expense before the treasurer pays.',
-           'second': f'It is over ${FL.SECOND_SIGNER_LIMIT:,.0f}, so the bylaws ask the RE or ARE to approve it as second signer.',
-           'board': 'Its event or program budget does not cover it yet, so it needs the board. If the board approved it, '
-                    'confirm with the meeting date; if not, please put it on the next board agenda.'}
+           'second': f'It is over ${FL.SECOND_SIGNER_LIMIT:,.0f}, so the bylaws ask the RE or ARE to approve it as second signer.'}
     for role, name, mail in to:
         body = '\n'.join([
             f"{r['submitter_name']} asked the region to pay {r['payee_name'] or '(payee not given)'} ${r['net']:,.2f} ({rid}).",
@@ -168,9 +177,42 @@ def ask_approvals(rid, roles=None):
             *[f"  {ln['date']}  {ln['description']}  ${ln['amount']:,.2f}" for ln in r['lines']], '',
             why[role],
             f"Approve or reject (no password needed; the link only works for this request): {_link(rid, role, name, mail)}"])
-        subject = ('Board approval for' if role == 'board' else 'Please approve') + f" funds request {rid}: {r['payee_name']} ${r['net']:,.2f}"
-        send_mail(subject, body, mail)
-    return [m for _, _, m in to]
+        send_mail(f"Please approve funds request {rid}: {r['payee_name']} ${r['net']:,.2f}", body, mail)
+    out = [m for _, _, m in to]
+    if need_board and (roles is None or 'board' in roles):
+        mid = board_motion(r, 'budget' in missing)
+        if mid:
+            out.append(f'the Board page (motion {mid})')
+    return out
+
+
+def board_motion(r, no_budget=True):
+    """Put the request on the Board page as a motion, once. Returns its id."""
+    import motions_store as M
+    if not M.enabled():
+        return None
+    m = FL.motion_for(r['id'], M.motions())
+    if m and m['status'] in ('open', 'passed'):
+        return m['id']
+    why = 'no approved budget' if no_budget else 'over its budget by more than 10%'
+    title = f"Pay funds request {r['id']}: {r['payee_name']} ${r['net']:,.2f} for {r['event_name'] or 'program ' + r['program']} ({why})"
+    details = '\n'.join([f"{ln['date']}  {ln['description']}  ${ln['amount']:,.2f}" for ln in r['lines']] +
+                        ([f"Notes from {r['submitter_name']}: {r['notes']}"] if r.get('notes') else []))
+    mid = M.propose(title[:200], details, r['net'], url_for('fr.detail', req_id=r['id']), r['submitter_name'])
+    log_audit_event('MOTION_PROPOSED', r['submitter_name'], {'id': mid, 'funds_request': r['id']})
+    return mid
+
+
+def announce_ready(rids):
+    """Tell the treasurer about each of these open requests that now has everything (after a board vote)."""
+    F.refresh()
+    a = Approvals()
+    for rid in rids:
+        r = F.get(rid)
+        if r and r['status'] == 'Submitted' and FL.ready(a.items(r)):
+            send_mail(f"Funds request {rid} is ready to pay: {r['payee_name']} ${r['net']:,.2f}",
+                      f"The board's approval is recorded. Everything the policy asks for is in.\n\n"
+                      f"{url_for('fr.detail', req_id=rid, _external=True)}")
 
 
 def notify(rid, req, lines, n_files):
@@ -373,6 +415,8 @@ def approve_link(token):
         abort(404)
     done = next((a for a in FL.parse(r.get('approvals')) if a['role'] == t['role']), None)
     msg = (f"{r['id']} is already {r['status'].lower()}." if r['status'] != 'Submitted' else
+           "Board approval is no longer confirmed from an email. The board votes on it (Board page, Request email vote), "
+           "and the RE, ARE or treasurer records the result there." if t['role'] == 'board' else
            f"Already approved by {done['name']} on {done['date']}." if done else '')
     if request.method == 'POST' and not msg:
         who = t['name'] or t['email']
@@ -388,12 +432,6 @@ def approve_link(token):
             msg = "Rejected. The treasurer and the person who filed it have been told."
         else:
             note = f"by email link ({t['email']})"
-            if t['role'] == 'board':
-                try:
-                    note = f"board meeting {date.fromisoformat(request.form.get('meeting', '')).isoformat()}, confirmed {note}"
-                except ValueError:
-                    flash('Give the date of the board meeting that approved it.', 'danger')
-                    return redirect(request.url)
             _approved(r['id'], t['role'], who, note)
             msg = 'Approved. Thank you; the treasurer has it from here.'
     return render_template('fr.html', **_ctx(view='link', r=r, role=FL.ROLES[t['role']], role_key=t['role'], name=t['name'], msg=msg))

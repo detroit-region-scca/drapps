@@ -109,3 +109,38 @@ def test_funds_routes_registered():
     import app as A
     eps = {r.endpoint for r in A.app.url_map.iter_rules()}
     assert {'fr.close', 'fr.detail'} <= eps and 'fr.tell_submitter' not in eps
+
+
+def test_only_a_passed_board_motion_stands_in_for_a_missing_budget():
+    r = req(approvals='chair|Pat Smith|2026-11-03|filed it themselves')
+    r['id'] = 'FR-2026-200'
+    assert not L.ready(L.review(r, None))
+    vote = {'id': 'M-2026-005', 'decided': '2026-11-10', 'how': 'email vote', 'vote': '7-0'}
+    items = L.review(r, None, board_vote=vote)
+    assert L.ready(items)
+    assert next(i for i in items if i['key'] == 'budget')['by'] == 'Board, motion M-2026-005, 2026-11-10 (email vote, 7-0)'
+
+
+def test_motion_for_a_request():
+    ms = [{'id': 'M-1', 'link': '/funds/FR-2026-200', 'status': 'withdrawn'},
+          {'id': 'M-2', 'link': '/funds/FR-2026-200', 'status': 'open'},
+          {'id': 'M-3', 'link': '/funds/FR-2026-201', 'status': 'passed'}]
+    assert L.motion_for('FR-2026-200', ms)['id'] == 'M-2'
+    assert L.motion_for('FR-2026-201', ms)['id'] == 'M-3'
+    assert L.motion_for('FR-2026-20', ms) is None
+
+
+def test_board_link_no_longer_approves(monkeypatch):
+    import app as A
+    import fr
+    r = {'id': 'FR-2026-200', 'status': 'Submitted', 'approvals': '', 'payee_name': 'X', 'net': 10.0, 'lines': []}
+    monkeypatch.setattr(fr.F, 'refresh', lambda: None)
+    monkeypatch.setattr(fr.F, 'get', lambda rid: r)
+    monkeypatch.setattr(fr, '_guard', lambda: None)
+    called = []
+    monkeypatch.setattr(fr, '_approved', lambda *a, **k: called.append(a))
+    with A.app.test_request_context('/'):
+        token = fr._serializer().dumps({'id': 'FR-2026-200', 'role': 'board', 'name': 'Someone', 'email': 's@example.org'})
+    c = A.app.test_client()
+    page = c.post(f'/funds/approve/{token}', data={'meeting': '2026-11-03'}).get_data(as_text=True)
+    assert not called and 'no longer confirmed from an email' in page
