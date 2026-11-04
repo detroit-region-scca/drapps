@@ -91,10 +91,14 @@ def test_users_page_rules(tmp_path, monkeypatch):
     # dropping Equipment, keeping Autocross: queued as one person change
     c.post('/admin/', data={'action': 'user', 'old_email': 'm@x.com', 'name': 'Mike', 'email': 'm@x.com', 'title': ['Autocross Director']})
     assert q()[-1]['op'] == 'person' and q()[-1]['titles'] == ['Autocross Director']
-    # a new volunteer goes to the volunteers list, not the officials list
+    # volunteers are added only on the Volunteers page: a new user with no role is refused here
     n = len(q())
     c.post('/admin/', data={'action': 'user', 'old_email': '', 'name': 'Val', 'email': 'val@x.com', 'volunteer': 'yes'})
-    assert calls == [('val@x.com', 'Val')] and len(q()) == n
+    assert calls == [] and len(q()) == n
+    # saving an existing volunteer with no role keeps them a volunteer
+    vols['val@x.com'] = {'email': 'val@x.com', 'name': 'Val'}
+    c.post('/admin/', data={'action': 'user', 'old_email': 'val@x.com', 'name': 'Val', 'email': 'val@x.com'})
+    assert calls == [] and len(q()) == n
     # region accounts are not editable here
     c.post('/admin/', data={'action': 'user', 'old_email': 'admin@drscca.org', 'name': 'X', 'email': 'admin@drscca.org'})
     assert len(q()) == n

@@ -18,9 +18,7 @@
     {% for role, titles in roles %}<div class="small text-muted mt-1">{{ role }}</div>
         {% for t in titles %}<div class="form-check"><input class="form-check-input" type="checkbox" name="title" value="{{ t }}" id="{{ (u.email if u else 'new') ~ '-' ~ loop.index ~ role }}" {{ 'checked' if u and t in u.titles }}>
             <label class="form-check-label small" for="{{ (u.email if u else 'new') ~ '-' ~ loop.index ~ role }}">{{ t }}</label></div>{% endfor %}{% endfor %}
-    <div class="small text-muted mt-1">Volunteer</div>
-    <div class="form-check"><input class="form-check-input" type="checkbox" name="volunteer" value="yes" id="{{ (u.email if u else 'new') }}-vol" {{ 'checked' if u and u.volunteer and not u.titles }}>
-        <label class="form-check-label small" for="{{ (u.email if u else 'new') }}-vol">Volunteer (only if no role above)</label></div>
+    {% if u and u.volunteer and not u.titles %}<div class="small text-muted mt-2">Volunteer. Add and remove volunteers on <a href="{{ url_for('auth.access') }}">Volunteers</a>.</div>{% endif %}
     <button class="btn btn-sm btn-accent mt-3">Save</button>
 {% endmacro %}
 {% if view == 'users' %}
@@ -39,7 +37,7 @@
                     {% if u.volunteer and not u.titles %}<span class="badge rounded-pill text-bg-info">Volunteer</span>{% endif %}</div>
             </div>
             {% if u.region %}<div class="small text-muted mt-1">Region account: managed in Google Workspace.</div>
-            {% else %}<details class="mt-1"><summary class="small text-muted">Edit</summary><form method="post" class="mt-2 user-form">{{ user_form(u, roles) }}</form>
+            {% else %}<details class="mt-1"><summary class="small text-muted">Edit</summary><form method="post" class="mt-2 user-form"{% if u.volunteer and not u.titles %} data-volunteer="1"{% endif %}>{{ user_form(u, roles) }}</form>
                 {% set mine = u.titles|reject('in', followers)|list %}{% if mine %}<form method="post" class="border-top mt-3 pt-2">
                     <input type="hidden" name="action" value="handover"><input type="hidden" name="old_email" value="{{ u.email }}">
                     <div class="small fw-semibold">Hand over a role</div><div class="small text-muted mb-1">The role moves in one step, with its email group.</div>
@@ -56,8 +54,8 @@
     </div>
     <script>
     document.querySelectorAll('form.user-form, details#add form').forEach(f => f.addEventListener('submit', e => {
-        const any = f.querySelector('[name=title]:checked, [name=volunteer]:checked');
-        if (!any && f.querySelector('[name=old_email]').value && !confirm('No role ticked: this person will no longer be able to sign in. Continue?')) e.preventDefault();
+        const any = f.querySelector('[name=title]:checked');
+        if (!any && f.querySelector('[name=old_email]').value && !f.dataset.volunteer && !confirm('No role ticked: this person will no longer be able to sign in. Continue?')) e.preventDefault();
     }));
     document.querySelectorAll('.handover-to').forEach(s => { const show = () => s.closest('form').querySelectorAll('.handover-new').forEach(x => x.style.display = s.value === 'new' ? '' : 'none'); s.addEventListener('change', show); show(); });
     </script>

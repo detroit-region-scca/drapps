@@ -410,7 +410,5 @@ def access():
                 log_audit_event('ACCESS_ADDED', u['name'], {'email': email, 'name': name})
                 flash(f'{name} can now sign in with {email}.', 'success')
         return redirect(url_for('auth.access'))
-    import access
-    people = [dict(o, level='officer' if 'board' in access.perms(o.get('role', '')) else 'official') for o in O.shown((u or {}).get('roles')) if o.get('email')]
-    return render_template('home.html', title='Who can sign in', app_name='Access', view='access', people=people,
+    return render_template('home.html', title='Volunteers', app_name='Volunteers', view='access',
                            vols=sorted(volunteers().values(), key=lambda v: v.get('name', '').lower()))

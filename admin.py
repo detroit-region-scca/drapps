@@ -3,7 +3,7 @@
 - People and roles: who holds each role; change, add or remove a holder. Changes are queued in data/ and applied on the
   server (tools/officials_queue.py, drscca-officials.path): officials.json and the drscca.org Google Groups follow.
 - Programs: rename one, or add one (the Registry sheet's Programs tab).
-- Sign-in access (volunteers) and the audit log are linked from here.
+- Volunteers are added and removed only on the Volunteers page (auth.access); the audit log is linked from here.
 """
 import os
 import re as _re
@@ -197,7 +197,6 @@ def _save_user():
     titles = [t for t in f.getlist('title') if t in known]
     alltitles = {o.get('title', '') for o in officials.all()}
     role_of = {k: k for k in all_roles() if k in titles and k not in alltitles}     # first holder of a role made on Roles
-    volunteer = f.get('volunteer') == 'yes' and not titles
     back = redirect(url_for('admin.home'))
     if not name or '@' not in email or ' ' in email:
         flash('A user needs a name and a valid email address.', 'danger')
@@ -211,6 +210,10 @@ def _save_user():
         return back
     was = everyone.get(old_email) or {'titles': [], 'volunteer': False, 'name': ''}
     was = dict(was, titles=[x for x in was['titles'] if not officials.follows(x, alltitles)])   # those follow their job
+    volunteer = bool(was['volunteer']) and not titles      # added and removed only on the Volunteers page
+    if not titles and not old_email:
+        flash('Tick a role. Volunteers are added on the Volunteers page.', 'warning')
+        return back
     pending = utils.official_changes()['pending']
     busy = {(c.get('from') or '').lower() for c in pending} | {(c.get('email') or '').lower() for c in pending}
     if (old_email and old_email in busy) or email in busy:
@@ -231,12 +234,10 @@ def _save_user():
                                      'role_of': role_of, 'drop_volunteer': bool(was['volunteer'] and titles), 'title': ', '.join(titles) or '(no roles)',
                                      'by': me.get('name', '')})
     vol = ''
-    if volunteer:
-        if old_email and old_email != email and was['volunteer']:
+    if volunteer and (email != old_email or name != was['name']):
+        if old_email != email:
             auth.set_volunteer(old_email, None)
-        vol = auth.set_volunteer(email, name, f.get('note', ''), me.get('name', ''))
-    elif was['volunteer'] and not titles:
-        vol = auth.set_volunteer(old_email or email, None)       # losing all access
+        vol = auth.set_volunteer(email, name, was.get('note', ''), me.get('name', ''))
     # A volunteer given a role stays on the Volunteers tab until the role is saved (the server takes them off then).
     log_audit_event('USER_SAVED', me.get('name', ''), {'email': email, 'was': old_email or '(new)', 'name': name,
                                                        'roles': titles + (['Volunteer'] if volunteer else []),

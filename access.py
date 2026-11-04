@@ -61,7 +61,7 @@ def _apps_for(p, volunteer=False):
         'show_plan': not volunteer and bool(p & {'plan_own', 'plan_all', 'board', 'pay'}),
         'show_operations': not volunteer and bool(p & {'ops', 'board', 'pay'}),
         'show_treasurer': not volunteer and bool(p & {'pay', 'audit'}),
-        'show_volunteers': not volunteer and 'access' in p and 'admin' not in p and not (p & {'pay', 'audit'}),
+        'show_volunteers': not volunteer and 'access' in p,
     }
     return {k for k, v in show.items() if v}
 # The order roles are listed in everywhere (Users, Roles, the Drive copy); roles added later follow alphabetically.

@@ -135,8 +135,6 @@ def _shows(app_name):
     page). Tiles off the role are grayed out, not hidden."""
     u = auth.user() or {}
     p = set(u.get('perms') or ())
-    if app_name == 'volunteers':
-        return 'access' in p  # anyone who can add volunteers, treasurers and admins included
     return f'show_{app_name}' in p
 
 

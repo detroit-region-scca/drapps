@@ -25,9 +25,8 @@
         </div></div>
     </div>
     {% elif view == 'access' %}
-        <div class="page-title">Who can sign in</div>
-        <p class="text-muted">People sign in with a code emailed to their address. Region officials come from the officials list (kept on the server); volunteers are added here and can see the event schedule and file funds requests and invoices, seeing only their own.</p>
-        <h2 class="h6 text-muted mt-4">Volunteers</h2>
+        <div class="page-title">Volunteers</div>
+        <p class="text-muted">Volunteers sign in with a code emailed to them. They can see events, enter worker points, and file funds requests and invoices, seeing only their own.</p>
         <div class="card mb-3"><div class="card-body">
             <form method="post" class="row g-2 align-items-end">
                 <div class="col-md-4"><label class="form-label small">Name</label><input class="form-control" name="name" required></div>
@@ -36,16 +35,11 @@
                 <div class="col-md-1"><button class="btn btn-accent w-100">Add</button></div>
             </form>
         </div></div>
-        <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
             <tbody>{% for v in vols %}<tr><td class="ps-3">{{ v.name }}</td><td>{{ v.email }}</td><td class="small text-muted">{{ v.note }}{% if v.added %} · added {{ v.added }}{% if v.added_by %} by {{ v.added_by }}{% endif %}{% endif %}</td>
                 <td class="text-end pe-3"><form method="post" class="m-0"><input type="hidden" name="action" value="remove"><input type="hidden" name="email" value="{{ v.email }}"><button class="btn btn-sm btn-outline-secondary py-0">Remove</button></form></td></tr>
             {% else %}<tr><td class="ps-3 text-muted">No volunteers yet.</td></tr>{% endfor %}</tbody>
         </table></div></div>
-        <h2 class="h6 text-muted">Region officials</h2>
-        <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-            <tbody>{% for o in people %}<tr><td class="ps-3">{{ o.title or o.role }}</td><td>{{ o.name }}</td><td>{{ o.email }}</td><td class="pe-3 small text-muted">{{ 'Everything, including board decisions' if o.level == 'officer' else 'Full access' }}</td></tr>{% endfor %}</tbody>
-        </table></div></div>
-        <p class="form-text mt-2">To change an official, ask the admin (admin@drscca.org); the list is kept on the server.</p>
     {% elif view == 'name' %}
     <div class="card mx-auto mt-4" style="max-width: 380px;"><div class="card-body p-4">
         <div class="page-title">Your name</div>
@@ -81,7 +75,6 @@
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('equip.home') }}">
             <span>Operations to-dos overdue<div class="small text-muted">Renewals, registrations, inspections</div></span><span class="fw-semibold">{{ jobs.equipment }}</span></a>
         <a class="list-group-item list-group-item-action" href="{{ url_for('export_events') }}">Export events (CSV)</a>
-        {% if me and 'access' in (me.perms or []) %}<a class="list-group-item list-group-item-action" href="{{ url_for('auth.access') }}">Who can sign in<div class="small text-muted">Add or remove volunteers</div></a>{% endif %}
         <a class="list-group-item list-group-item-action" href="{{ url_for('officials_page') }}">Region officials<div class="small text-muted">Who holds each role</div></a>
     </div>
     {% elif not session.get('authenticated') %}
