@@ -43,16 +43,33 @@
 {% macro where_list(entries) -%}
     <ul class="where mb-0">{% for e in entries %}{{ item_line(e) }}{% endfor %}</ul>
 {%- endmacro %}
+{% macro add_doc_form(d) -%}
+    {% if editor %}<form method="post" action="{{ url_for('equip.add_document') }}" enctype="multipart/form-data" class="add-doc row g-2 align-items-end no-print">
+        <input type="hidden" name="row_id" value="{{ d.id }}"><input type="hidden" name="for_id" value="{{ d.for_id }}">
+        <input type="hidden" name="back" value="{{ request.full_path.rstrip('?') }}">
+        <div class="col-12 col-md-4"><label class="form-label small mb-1">What is it?</label>
+            <select name="doc" class="form-select form-select-sm" onchange="this.form.querySelector('.add-doc-other').hidden = this.value !== '_other'">
+                {% for k in d.kinds %}<option value="{{ k }}">{{ k }}{% if k in d.missing %} (missing){% endif %}</option>{% endfor %}
+                <option value="_other">Something else…</option></select>
+            <input name="other" class="form-control form-control-sm mt-1 add-doc-other" placeholder="What it is, e.g. Repair invoice" hidden></div>
+        <div class="col-6 col-md-2"><label class="form-label small mb-1">Year or note</label><input name="note" class="form-control form-control-sm" placeholder="2026"></div>
+        <div class="col-12 col-md-4"><label class="form-label small mb-1">File or photo</label>
+            <input type="file" name="files" multiple required class="form-control form-control-sm" accept="image/*,.pdf,.heic,.doc,.docx"></div>
+        <div class="col-6 col-md-2"><button class="btn btn-sm btn-accent w-100">Upload</button></div>
+        <div class="col-12 small text-muted">Saved in {% if d.folder %}its Drive folder{% else %}a new Drive folder for it{% endif %} as "{{ d.kinds[0] if d.kinds else 'Title' }} - {{ d.for_name or 'name' }} - 2026.pdf", so it counts.</div>
+    </form>{% endif %}
+{%- endmacro %}
 {% macro docs_box(d) -%}
-    {% if d %}<div class="card p-3 mb-3">
+    {% if d %}<div class="card p-3 mb-3" id="documents">
         <div class="d-flex justify-content-between flex-wrap gap-2"><h2 class="h6 m-0">Documents</h2>{% if d.folder %}<a class="small" href="{{ d.folder }}" target="_blank" rel="noopener">Open the Drive folder</a>{% endif %}</div>
         {% if d.error %}<div class="small text-warning mt-2">Couldn't read Drive just now.</div>{% endif %}
-        <ul class="small mb-0 mt-2 list-unstyled">
+        <ul class="small mb-2 mt-2 list-unstyled">
             {% for doc, files in d.have %}<li><span class="text-success">✓</span> {{ doc }}: {% for f in files %}<a href="{{ f.webViewLink }}" target="_blank" rel="noopener">{{ f.name }}</a>{{ ', ' if not loop.last }}{% endfor %}</li>{% endfor %}
             {% for doc in d.missing %}<li><span class="text-warning">✗</span> {{ doc }}: <span class="text-warning">missing</span></li>{% endfor %}
             {% for f in d.others %}<li><span class="text-muted">·</span> <a href="{{ f.webViewLink }}" target="_blank" rel="noopener">{{ f.name }}</a></li>{% endfor %}
         </ul>
-        {% if d.notes %}<div class="small text-muted mt-2">{{ d.notes }}</div>{% endif %}
+        {% if d.notes %}<div class="small text-muted mb-2">{{ d.notes }}</div>{% endif %}
+        {% if editor %}<div class="border-top pt-2"><div class="small fw-semibold mb-1">Add a document</div>{{ add_doc_form(d) }}</div>{% endif %}
     </div>{% endif %}
 {%- endmacro %}
 {% macro editbar(edit_url, new_url=none, new_label='') -%}
@@ -158,12 +175,13 @@
     {% for cat in ('Vehicle', 'Trailer') %}{% set rows = big|selectattr('category', 'equalto', cat)|list %}
     <h2 class="h6 text-muted">{{ cat }}s</h2>
     <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <thead><tr><th class="ps-3">Name</th><th>Kept at</th><th>Condition</th><th class="num">Value left</th><th class="num pe-3">Replace in</th></tr></thead>
+        <thead><tr><th class="ps-3">Name</th><th>Kept at</th><th>Condition</th><th>Documents</th><th class="num">Value left</th><th class="num pe-3">Replace in</th></tr></thead>
         <tbody>{% for i in rows %}<tr class="row-link" onclick="location.href='{{ url_for('equip.item', item_id=i.id) }}'">
             <td class="ps-3"><a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}</a> <span class="small text-muted">{{ i.program }}</span></td>
             <td>{{ i.place }}</td><td class="small">{{ i.condition or i.status }}</td>
+            <td class="small"><a href="{{ url_for('equip.item', item_id=i.id) }}#documents" class="{{ 'text-warning' if i.docs.missing else 'text-success' }}">{% if i.docs.error %}?{% elif i.docs.missing %}Missing {{ i.docs.missing|join(', ')|lower }}{% else %}✓ all on file{% endif %}</a></td>
             <td class="num">{{ money(i.lc.left, 0) if i.lc and i.lc.left is not none else '' }}</td><td class="num pe-3">{{ i.lc.replace if i.lc else '' }}</td></tr>
-        {% else %}<tr><td class="ps-3 text-muted" colspan="5">None.</td></tr>{% endfor %}</tbody>
+        {% else %}<tr><td class="ps-3 text-muted" colspan="6">None.</td></tr>{% endfor %}</tbody>
     </table></div></div>
     {% endfor %}
 
@@ -214,8 +232,8 @@
     {{ gear_pills('documents') }}
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
         <div><div class="page-title m-0">{% if n_missing %}{{ n_missing }} documents missing{% else %}Every document is in Drive{% endif %}</div>
-            <div class="text-muted small">Each vehicle, trailer and storage place has a folder in Drive (Operations › Documents). Put scans or photos in its folder and start the file name with what it is,
-                for example "Title - front.jpg", "Registration 2026.pdf", "Insurance card 2026-27.pdf" or "Agreement 2026.pdf". The list updates within a few minutes.</div></div>
+            <div class="text-muted small">Each vehicle, trailer and storage place has a folder in Drive (Operations › Documents). Found one? Open the vehicle, trailer or place (or use "Add a document" below its row), say what it is and upload the file or take a photo; it is named and filed for you.
+                Files put straight into the Drive folder count too when the name starts with what it is, for example "Title - front.jpg".</div></div>
         <div class="d-flex gap-2 no-print">{% if root %}<a class="btn btn-sm btn-outline-light" href="{{ root }}" target="_blank" rel="noopener">Open Documents in Drive</a>{% endif %}
             <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('equip.documents', fresh=1) }}">Check again</a></div>
     </div>
@@ -231,7 +249,8 @@
                 {% for f in r.others %}<div class="text-muted">· <a class="text-muted" href="{{ f.webViewLink }}" target="_blank" rel="noopener">{{ f.name }}</a></div>{% endfor %}
                 {% if not r.have and not r.others %}<span class="text-muted">nothing yet</span>{% endif %}</td>
             <td class="small text-warning">{{ r.missing|join(', ') }}</td>
-            <td class="pe-3 text-end small"><a href="{{ r.folder }}" target="_blank" rel="noopener">Open</a></td></tr>{% endfor %}</tbody>
+            <td class="pe-3 text-end small text-nowrap"><a href="{{ r.folder }}" target="_blank" rel="noopener">Open</a></td></tr>
+            {% if editor %}<tr class="no-print"><td colspan="4" class="ps-3 pe-3 pt-0 border-top-0"><details{% if r.missing %} class="add-doc-details"{% endif %}><summary class="small text-muted">Add a document for {{ r.for_name }}</summary><div class="pt-2">{{ add_doc_form(r) }}</div></details></td></tr>{% endif %}{% endfor %}</tbody>
     </table></div></div>
     {% endfor %}
 

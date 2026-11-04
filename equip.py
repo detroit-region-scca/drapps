@@ -156,8 +156,13 @@ def vehicles():
         return g
     today = date.today()
     big = sorted([i for i in E.items() if i['status'] not in ('Gone', 'Planned') and i['category'] in ('Vehicle', 'Trailer')], key=lambda i: (i['category'], i['name']))
+    import equip_docs as D
+    docs = {r['for_id']: r for r in D.status([d for d in E.documents() if d['for_id']])}
     for i in big:
         i['lc'] = E.lifecycle(i, today)
+        d = docs.get(i['id'])
+        i['docs'] = {'have': len(d['have']), 'missing': d['missing'], 'error': d['error']} if d else \
+            {'have': 0, 'missing': D.needed({'needed': D.DEFAULT_NEEDED.get(i['category'], '')}), 'error': ''}
     return render_template('equip.html', **_ctx(view='vehicles', big=big))
 
 
@@ -189,10 +194,21 @@ def _location_names():
             + [f'With {n}' for n in sorted(held)])
 
 
-def _docs_for(rid):
+def _docs_for(rid, kind=None, name=''):
+    """The item's or place's Documents row with what is there; a blank one (no folder yet) for a vehicle, trailer or
+    place, so its page can still offer an upload."""
     import equip_docs as D
     rows = [d for d in E.documents() if d['for_id'] == rid]
-    return D.status(rows)[0] if rows else None
+    if rows:
+        d = D.status(rows)[0]
+    elif kind in D.DEFAULT_NEEDED:
+        need = D.DEFAULT_NEEDED[kind]
+        d = {'id': '', 'for_id': rid, 'for_name': name, 'folder': '', 'needed': need, 'notes': '', 'have': [], 'others': [], 'error': '',
+             'missing': D.needed({'needed': need})}
+    else:
+        return None
+    d['kinds'] = D.kinds_for(d)
+    return d
 
 
 @bp.route('/items/new', methods=['GET', 'POST'])
@@ -215,7 +231,7 @@ def item(item_id=None):
     lc = E.lifecycle(it) if item_id else None
     tasks = [t for t in E.tasks() if it and t['about'] == it.get('name')]
     return render_template('equip.html', **_ctx(view='item', it=it, lc=lc, edit=edit, locations=_location_names(), tasks=tasks,
-                                                docs=_docs_for(it['id']) if it and not edit else None, today=date.today().isoformat()))
+                                                docs=_docs_for(it['id'], it.get('category'), it.get('name', '')) if it and it.get('id') and not edit else None, today=date.today().isoformat()))
 
 
 def _is_editor():
@@ -290,9 +306,62 @@ def documents():
     kinds = [('Insurance and region', [r for r in rows if not r['for_id']]),
              ('Vehicles and trailers', [r for r in rows if r['for_id'].startswith('EQ')]),
              ('Storage places', [r for r in rows if r['for_id'].startswith('PL')])]
+    for r in rows:
+        r['kinds'] = D.kinds_for(r)
     return render_template('equip.html', **_ctx(view='documents', kinds=[(k, r) for k, r in kinds if r], n_missing=sum(len(r['missing']) for r in rows),
                                                 error=next((r['error'] for r in rows if r['error']), ''),
                                                 root=os.environ.get('OPERATIONS_DOCS_FOLDER_URL', '')))
+
+
+@bp.route('/documents/add', methods=['POST'])
+@login_required
+@editor_required
+def add_document():
+    """Upload scans or photos of a document straight into the right Drive folder, named so they count. A vehicle, trailer
+    or place with no documents folder yet gets one (and a Documents row) on its first upload."""
+    if (g := _guard()):
+        return g
+    import equip_docs as D
+    from storage import drive_folder
+    f = request.form
+    back = local_path(f.get('back')) or url_for('equip.documents')
+    files = [x for x in request.files.getlist('files') if x and x.filename]
+    doc = (f.get('other') if f.get('doc') == '_other' else f.get('doc') or '').strip()
+    if not files or not doc:
+        flash('Choose what the document is and pick a file or take a photo.', 'warning')
+        return redirect(back)
+    rows = E.documents()
+    row = next((r for r in rows if r['id'] and r['id'] == f.get('row_id')), None) \
+        or next((r for r in rows if r['for_id'] and r['for_id'] == f.get('for_id')), None)
+    if not row:
+        rid = f.get('for_id', '')
+        it = next((i for i in E.items() if i['id'] == rid), None) if rid.startswith('EQ') else None
+        p = next((x for x in E.places() if x['id'] == rid), None) if rid.startswith('PL') else None
+        if not (it or p):
+            abort(404)
+        root = D.folder_id(os.environ.get('OPERATIONS_DOCS_FOLDER_URL', ''))
+        if not root:
+            flash('No Documents folder is set up in Drive (OPERATIONS_DOCS_FOLDER_URL).', 'warning')
+            return redirect(back)
+        name = it['name'] if it else p['name']
+        folder = drive_folder(name, root)
+        row = {'for_id': rid, 'for_name': name, 'folder': folder['webViewLink'],
+               'needed': D.DEFAULT_NEEDED.get(it['category'] if it else 'place', ''), 'notes': ''}
+        row['id'] = E.save('Documents', row)
+        log_audit_event('EQUIP_DOCS_FOLDER_MADE', _who(), {'id': row['id'], 'for': rid, 'name': name})
+    folder = D.folder_id(row['folder'])
+    if not folder:
+        flash(f"{row['for_name']} has no Drive folder link on the Documents tab.", 'warning')
+        return redirect(back)
+    names = []
+    for n, x in enumerate(files, 1):
+        name = D.file_name(doc, row['for_name'], f.get('note', ''), x.filename, n if len(files) > 1 else 1)
+        D.upload(folder, name, x, _who())
+        names.append(name)
+    D.refresh()
+    log_audit_event('EQUIP_DOCS_UPLOADED', _who(), {'id': row['id'], 'for': row['for_name'], 'doc': doc, 'files': names})
+    flash(f"Saved {doc} for {row['for_name']}" + (f' ({len(names)} files)' if len(names) > 1 else '') + '.', 'success')
+    return redirect(back)
 
 
 @bp.route('/places/new', methods=['GET', 'POST'])
@@ -312,7 +381,7 @@ def place(place_id=None):
     held = [i for i in E.items() if p and i['place'] == p.get('name') and i['status'] != 'Gone']
     back = request.args.get('back', '')
     return render_template('equip.html', **_ctx(view='place', p=p, edit=edit, held=held, back=local_path(back),
-                                                docs=_docs_for(p['id']) if p and not edit else None))
+                                                docs=_docs_for(p['id'], 'place', p.get('name', '')) if p and p.get('id') and not edit else None))
 
 
 @editor_required

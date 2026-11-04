@@ -81,3 +81,45 @@ def status(rows):
         out.append(dict(r, have=[(d, m) for d, m in have if m], missing=[d for d, m in have if not m] if not error else [],
                         others=[f for f in fs if f['name'] not in used], error=error))
     return out
+
+
+# What a new vehicle, trailer or storage place should have on file, when its folder is made by its first upload.
+DEFAULT_NEEDED = {'Vehicle': 'Title, Registration, Insurance card', 'Trailer': 'Title, Registration', 'place': 'Agreement'}
+# Offered in the upload form's "What is it?" list after the ones the row needs.
+KINDS = ['Title', 'Registration', 'Insurance card', 'Bill of sale', 'Agreement', 'Policy', 'Receipt', 'Photo']
+ACCEPT = 'image/*,.pdf,.heic,.doc,.docx'
+
+
+def kinds_for(row):
+    """The "What is it?" choices: missing documents first, then the rest of what this row needs, then common ones."""
+    need = needed(row or {})
+    missing = (row or {}).get('missing') or need
+    out = missing + [d for d in need if d not in missing]
+    return out + [k for k in KINDS if k.lower() not in {d.lower() for d in out}]
+
+
+def _clean(s):
+    return re.sub(r'\s+', ' ', re.sub(r'[\\/:*?"<>|]+', ' ', s or '')).strip()
+
+
+def file_name(doc, for_name, note, original, n=1):
+    """"Title - 2003 Gulf Stream motorhome - 2026.jpg": the document's name first, so it matches what the row needs."""
+    ext = ''
+    m = re.search(r'\.([A-Za-z0-9]{1,5})$', original or '')
+    if m:
+        ext = '.' + m.group(1).lower()
+    parts = [_clean(doc), _clean(for_name)] + ([_clean(note)] if _clean(note) else [])
+    return ' - '.join(p for p in parts if p) + (f' ({n})' if n > 1 else '') + ext
+
+
+def upload(folder, name, f, who):
+    """Put one uploaded file (Werkzeug FileStorage) into a documents folder under the given name."""
+    import json
+    from storage import UPLOAD
+    meta = {'name': name, 'parents': [folder], 'description': f'Uploaded in DRSCCA Apps by {who}'}
+    files = {'metadata': ('metadata', json.dumps(meta), 'application/json'),
+             'file': (name, f.stream, f.mimetype or 'application/octet-stream')}
+    r = sheets_client().http_client.session.post(UPLOAD, params={'uploadType': 'multipart', 'supportsAllDrives': 'true',
+                                                                  'fields': 'id,name,webViewLink'}, files=files)
+    r.raise_for_status()
+    return r.json()
