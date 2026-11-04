@@ -22,6 +22,7 @@ bp = Blueprint('equip', __name__, url_prefix='/operations')
 
 LINK_DAYS = 30
 SOON_DAYS = 90
+NEXT_DAYS = 30  # the Overview's coming-up window
 
 
 def _ctx(**kw):
@@ -105,25 +106,59 @@ def signout():
 @bp.route('/')
 @login_required
 def home():
-    """The one page: what needs doing, what the bills come to, and the fleet at a glance."""
+    """The highlights: what needs attention now, what is coming up in the next 30 days, and the four numbers that matter."""
     if (g := _guard()):
         return g
     today = date.today()
-    tasks, places, items = E.tasks(), E.places(), [i for i in E.items() if i['status'] != 'Gone']
+    t_iso = today.isoformat()
+    month = (today + timedelta(days=NEXT_DAYS)).isoformat()
     soon = (today + timedelta(days=SOON_DAYS)).isoformat()
+    tasks, places, items = E.tasks(), E.places(), [i for i in E.items() if i['status'] != 'Gone']
     todo = [t for t in tasks if not E.is_auto(t)]
-    due = [t for t in todo if t['due'] and t['due'] <= soon]
+    overdue = sorted([t for t in todo if t['due'] and t['due'] < t_iso], key=lambda t: t['due'])
     bills = E.recurring_costs(places, tasks)
+    # The next 30 days, to-dos and automatic card charges together, by date. Monthly charges are left out: they are every month.
+    auto = {t['id'] for t in tasks if E.is_auto(t)}
+    coming = sorted([{'date': t['due'], 'what': t['task'], 'about': t['about'], 'kind': 'todo', 't': t} for t in todo if t['due'] and t_iso <= t['due'] <= month]
+                    + [{'date': _roll(b, t_iso), 'what': b['what'], 'about': b['paid_how'], 'kind': 'bill', 'amount': b['each'], 'b': b}
+                       for b in bills if b['id'] in auto and (b['every'] or 0) > 1 and t_iso <= _roll(b, t_iso) <= month and not (b.get('ends') and _roll(b, t_iso) > b['ends'])],
+                    key=lambda r: r['date'])
     rp = E.reserve_plan(items, today)
-    big = sorted([i for i in items if i['category'] in ('Vehicle', 'Trailer')], key=lambda i: (i['category'], i['name']))
+    big = [i for i in items if i['category'] in ('Vehicle', 'Trailer') and i['status'] != 'Planned']
     for i in big:
         i['lc'] = E.lifecycle(i, today)
+    replace_soon = sorted([i for i in big if i['lc'] and i['lc'].get('replace') and i['lc']['replace'] <= today.year + 1], key=lambda i: i['lc']['replace'])
     import equip_docs as D
     docs = D.status(E.documents())
-    return render_template('equip.html', **_ctx(view='home', today=today.isoformat(), due=due, undated=[t for t in todo if not t['due'] and not t['last_done']],
+    return render_template('equip.html', **_ctx(view='home', today=t_iso, overdue=overdue, coming=coming,
+                                                n_due=sum(1 for t in todo if t['due'] and t['due'] <= soon), undated=[t for t in todo if not t['due'] and not t['last_done']],
                                                 docs_missing=sum(len(r['missing']) for r in docs), docs_total=sum(len(D.needed(r)) for r in docs),
-                                                late=sum(1 for t in due if t['due'] < today.isoformat()), bills_year=sum(b['per_year'] for b in bills),
-                                                n_bills=len(bills), rp=rp, big=big))
+                                                bills_year=sum(b['per_year'] for b in bills), n_bills=len(bills), rp=rp,
+                                                n_vehicles=sum(1 for i in big if i['category'] == 'Vehicle'), n_trailers=sum(1 for i in big if i['category'] == 'Trailer'),
+                                                replace_soon=replace_soon))
+
+
+def _roll(b, today):
+    """An automatic charge's next date on or after today; the sheet's date can be a past one nobody moved on."""
+    d = b['next']
+    for _ in range(240):
+        if not d or d >= today:
+            break
+        d = E.next_due({'due': d, 'repeat_months': b['every']})
+    return d or ''
+
+
+@bp.route('/vehicles')
+@login_required
+def vehicles():
+    """Vehicles and trailers the region has (planned purchases are on Replacement): where each one is kept, its condition, value left and when to replace it."""
+    if (g := _guard()):
+        return g
+    today = date.today()
+    big = sorted([i for i in E.items() if i['status'] not in ('Gone', 'Planned') and i['category'] in ('Vehicle', 'Trailer')], key=lambda i: (i['category'], i['name']))
+    for i in big:
+        i['lc'] = E.lifecycle(i, today)
+    return render_template('equip.html', **_ctx(view='vehicles', big=big))
 
 
 @bp.route('/items')
