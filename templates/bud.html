@@ -1,5 +1,4 @@
 {% extends 'base.html' %}
-{% from '_qbo_refresh.html' import qbo_refresh with context %}
 {% from '_ui.html' import tab, money with context %}
 {% block app_name %}Events{% endblock %}
 {% block nav %}{% include '_events_nav.html' %}{% endblock %}
@@ -130,7 +129,7 @@
                 <button class="btn btn-sm btn-danger ms-auto">Delete budget</button></form></div>{% endif %}
     </div>
     {% if b or q %}
-    <h2 class="h6 text-muted">Budget vs actual (QuickBooks{% if q %}, as of {{ q.as_of }}{% endif %}) {{ qbo_refresh() }}</h2>
+    <h2 class="h6 text-muted">Budget vs actual (QuickBooks{% if q %}, as of {{ q.as_of }}{% endif %})</h2>
     <div class="card mb-3"><div class="card-body p-0 table-responsive">
         <table class="table mb-0">
             <thead><tr><th class="ps-3"></th><th class="num">Annual plan</th><th class="num">Budget</th><th class="num">Actual</th><th class="num pe-3">Actual vs budget</th></tr></thead>

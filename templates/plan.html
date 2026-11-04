@@ -1,5 +1,4 @@
 {% extends 'base.html' %}
-{% from '_qbo_refresh.html' import qbo_refresh with context %}
 {% from '_ui.html' import tab, money as cents with context %}
 {% macro money(v) %}{{ cents(v, 0) }}{% endmacro %}
 {% block body_class %}app-plan{% endblock %}
@@ -79,7 +78,7 @@
         </table>
     </div></div>
     <div class="small text-muted mt-3">
-        <div class="mb-1">{% if not future %}Actuals are from QuickBooks{% if as_of %}, as of {{ as_of }}{% endif %}. {{ qbo_refresh() }}{% endif %}</div>
+        <div class="mb-1">{% if not future %}Actuals are from QuickBooks{% if as_of %}, as of {{ as_of }}{% endif %}.{% endif %}</div>
         <ul class="mb-0 ps-3">
             <li>Amounts are profit: income is positive, costs are negative.</li>
             <li>"Other, not in an event project" is program money not tagged to an event, such as season trophies.</li>
