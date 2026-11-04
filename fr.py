@@ -200,8 +200,10 @@ def board_motion(r, no_budget=True):
     title = f"Pay funds request {r['id']}: {r['payee_name']} ${r['net']:,.2f} for {r['event_name'] or 'program ' + r['program']} ({why})"
     details = '\n'.join([f"{ln['date']}  {ln['description']}  ${ln['amount']:,.2f}" for ln in r['lines']] +
                         ([f"Notes from {r['submitter_name']}: {r['notes']}"] if r.get('notes') else []))
-    mid = M.propose(title[:200], details, r['net'], url_for('fr.detail', req_id=r['id']), r['submitter_name'])
-    log_audit_event('MOTION_PROPOSED', r['submitter_name'], {'id': mid, 'funds_request': r['id']})
+    # Made by the app, not proposed by anyone: say so, rather than putting it in the submitter's name.
+    who = f"DRSCCA Apps (for {r['id']})"
+    mid = M.propose(title[:200], details, r['net'], url_for('fr.detail', req_id=r['id']), who)
+    log_audit_event('MOTION_PROPOSED', who, {'id': mid, 'funds_request': r['id'], 'automatic': True})
     return mid
 
 
