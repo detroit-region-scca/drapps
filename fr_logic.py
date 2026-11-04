@@ -136,5 +136,6 @@ def closed_message(r, link=''):
 
 def motion_for(rid, motions):
     """The board motion made for a funds request (its link points at the request), newest first: passed if any."""
-    mine = [m for m in motions if (m.get('link') or '').rstrip('/').endswith(f'/funds/{rid}') and m.get('status') != 'withdrawn']
-    return next((m for m in mine if m['status'] == 'passed'), None) or next((m for m in reversed(mine)), None)
+    mine = [m for m in motions if (m.get('link') or '').rstrip('/').endswith(f'/funds/{rid}')]
+    live = [m for m in mine if m.get('status') != 'withdrawn']
+    return next((m for m in live if m['status'] == 'passed'), None) or next(reversed(live), None) or next(reversed(mine), None)

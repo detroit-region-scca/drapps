@@ -194,6 +194,8 @@ def board_motion(r, no_budget=True):
     m = FL.motion_for(r['id'], M.motions())
     if m and m['status'] in ('open', 'passed'):
         return m['id']
+    if m and m['status'] == 'withdrawn':
+        return None     # taken off the board's list on purpose (paid against a budget instead): never put it back
     why = 'no approved budget' if no_budget else 'over its budget by more than 10%'
     title = f"Pay funds request {r['id']}: {r['payee_name']} ${r['net']:,.2f} for {r['event_name'] or 'program ' + r['program']} ({why})"
     details = '\n'.join([f"{ln['date']}  {ln['description']}  ${ln['amount']:,.2f}" for ln in r['lines']] +

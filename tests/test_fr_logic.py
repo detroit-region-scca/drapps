@@ -128,6 +128,7 @@ def test_motion_for_a_request():
     assert L.motion_for('FR-2026-200', ms)['id'] == 'M-2'
     assert L.motion_for('FR-2026-201', ms)['id'] == 'M-3'
     assert L.motion_for('FR-2026-20', ms) is None
+    assert L.motion_for('FR-2026-200', ms[:1])['status'] == 'withdrawn'
 
 
 def test_board_link_no_longer_approves(monkeypatch):
