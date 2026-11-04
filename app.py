@@ -132,7 +132,7 @@ app.jinja_env.globals['google_on'] = auth.google_on
 
 def _shows(app_name):
     """Whether an app's tile is on the signed-in person's home page: set per role in Admin > Roles (Apps on the home
-    page). Hiding is for tidiness; looking at a page is never blocked."""
+    page). Tiles off the role are grayed out, not hidden."""
     u = auth.user() or {}
     p = set(u.get('perms') or ())
     if app_name == 'volunteers' and (p & {'show_treasurer', 'admin'}):
