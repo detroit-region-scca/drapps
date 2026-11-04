@@ -23,13 +23,8 @@
         .site-brand .site-name { display: block; font-weight: 700; font-size: 1.1rem; line-height: 1.1; white-space: nowrap; color: var(--text); text-decoration: none; }
         .site-brand .app-line { white-space: nowrap; font-weight: 500; font-size: .85rem; color: var(--muted); }
         .year-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: 1.25rem; }
-        .year-bar .yb-label { font-size: .85rem; color: var(--muted); margin-right: .25rem; }
-        .year-bar .yb-years { display: inline-flex; border: 1px solid var(--border, #ddd); border-radius: 8px; overflow: hidden; background: #fff; }
-        .year-bar .yb-years a { padding: .35rem .9rem; font-weight: 600; color: var(--text); text-decoration: none; border-left: 1px solid var(--border, #ddd); }
-        .year-bar .yb-years a:first-child { border-left: 0; }
-        .year-bar .yb-years a:hover { background: #fdf0f0; color: var(--red); }
-        .year-bar .yb-years a.active { background: var(--red); color: #fff; }
-        .year-bar select { width: auto; }
+        .year-bar .yb-label { font-size: .9rem; color: var(--muted); margin: 0; }
+        .year-bar select { width: auto; min-width: 7rem; font-weight: 700; font-size: 1.05rem; padding-top: .3rem; padding-bottom: .3rem; cursor: pointer; }
         .app-bar .apps-btn { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); text-decoration: none;
                              padding: .3rem .55rem; border: 1px solid var(--border); border-radius: 6px; margin-right: .75rem; font-size: .9rem; }
         .app-bar .apps-btn:hover { color: var(--text); border-color: var(--muted); }
@@ -121,16 +116,14 @@
 {% endif %}
 <main class="container pb-5" style="max-width: {{ self.width() }};">
     {% if years is defined and years and year is defined and request.endpoint != 'home' %}
-    {# One year switch, at the top of every page that is organized by year: the newest years as buttons, oldest on the left. #}
+    {# One year picker, at the top of every page that is organized by year. #}
     {% set keep = request.args.items()|selectattr(0, 'in', ['status', 'program'])|list %}
-    {% set ys = (years|map('string')|list|sort)[-5:] %}
-    {% set older = (years|map('string')|list|sort)[:-5]|reverse|list %}
-    <nav class="year-bar no-print" aria-label="Year">
-        <span class="yb-label">Year</span>
-        <span class="yb-years">{% for y in ys %}<a href="{{ request.path }}?{{ (keep + [('year', y)])|urlencode }}" class="{{ 'active' if y == year|string }}"{% if y == year|string %} aria-current="page"{% endif %}>{{ y }}</a>{% endfor %}</span>
-        {% if older %}<form method="get" action="{{ request.path }}" class="m-0">{% for k, v in keep %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
-            <select name="year" class="form-select form-select-sm" aria-label="Older years" onchange="this.form.submit()"><option value="">Older…</option>{% for y in older %}<option {% if y == year|string %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></form>{% endif %}
-    </nav>
+    <form method="get" action="{{ request.path }}" class="year-bar no-print">
+        {% for k, v in keep %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+        <label for="year-pick" class="yb-label">Year</label>
+        <select id="year-pick" name="year" class="form-select" onchange="this.form.submit()">{% for y in years|map('string')|list|sort|reverse %}<option {% if y == year|string %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
+        <noscript><button class="btn btn-sm btn-outline-secondary">Show</button></noscript>
+    </form>
     {% endif %}
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for cat, msg in messages %}
