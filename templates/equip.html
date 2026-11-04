@@ -117,7 +117,7 @@
 
     {% if view == 'home' %}
     <p class="text-muted mb-3">What the region pays for and looks after between events: bills, chores, vehicles, trailers and gear.
-        <a class="no-print" href="{{ url_for('equip.one_pager') }}" target="_blank">One-page PDF</a></p>
+        <a class="no-print" href="{{ url_for('equip.report_pdf') }}" target="_blank">Operations report (PDF)</a></p>
     <div class="row g-3 mb-4">
         <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.tasks') }}"><div class="label">To do</div>
             <div class="value">{{ n_due }} <span class="h6 text-muted">in the next 90 days</span></div>

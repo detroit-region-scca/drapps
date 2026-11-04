@@ -479,16 +479,24 @@ def _save_task(t):
     return redirect(local_path(back) or url_for('equip.tasks'))
 
 
-@bp.route('/one-pager.pdf')
+@bp.route('/report.pdf')
 @login_required
-def one_pager():
-    """Operations at a glance, one printable page."""
+def report_pdf():
+    """The Operations report: every section of these pages, laid out for printing."""
     if (g := _guard()):
         return g
+    import equip_docs as D
     import equip_pdf
     from flask import Response
-    data = equip_pdf.build(E.items(), E.places(), E.tasks())
-    return Response(data, mimetype='application/pdf', headers={'Content-Disposition': 'inline; filename="DRSCCA Operations at a glance.pdf"'})
+    docs = D.status(E.documents())
+    data = equip_pdf.build(E.items(), E.places(), E.tasks(), docs=None if any(r['error'] for r in docs) else docs)
+    name = f'DRSCCA Operations report {date.today().isoformat()}.pdf'
+    return Response(data, mimetype='application/pdf', headers={'Content-Disposition': f'inline; filename="{name}"'})
+
+
+@bp.route('/one-pager.pdf')
+def one_pager():
+    return redirect(url_for('equip.report_pdf'), 301)
 
 
 @bp.route('/bills')
