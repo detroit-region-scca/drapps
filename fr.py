@@ -159,7 +159,7 @@ def ask_approvals(rid, roles=None):
         return []
     a = Approvals()
     missing = {i['key'] for i in a.items(r) if not i['done']}
-    need_board = bool(missing & {'budget', 'overrun'})
+    need_board, no_budget = bool(missing & {'budget', 'overrun'}), 'budget' in missing
     missing &= set(roles or ('chair', 'second', 'board'))
     to = []
     if 'chair' in missing:
@@ -180,7 +180,7 @@ def ask_approvals(rid, roles=None):
         send_mail(f"Please approve funds request {rid}: {r['payee_name']} ${r['net']:,.2f}", body, mail)
     out = [m for _, _, m in to]
     if need_board and (roles is None or 'board' in roles):
-        mid = board_motion(r, 'budget' in missing)
+        mid = board_motion(r, no_budget)
         if mid:
             out.append(f'the Board page (motion {mid})')
     return out
