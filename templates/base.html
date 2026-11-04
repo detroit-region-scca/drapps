@@ -35,6 +35,14 @@
         @media (min-width: 1200px) { .app-bar .nav-link { padding: .4rem .6rem !important; } }
         .app-bar .nav-link.active { color: var(--red); box-shadow: inset 0 -2px 0 var(--red); border-radius: 0; }
         .app-bar .btn-logout { color: var(--muted); }
+        @media (max-width: 1199.98px) {
+            .app-bar .navbar-collapse { border-top: 1px solid var(--border, #ddd); margin-top: .6rem; padding: .75rem 0 .5rem; }
+            .app-bar .navbar-collapse .apps-btn { margin: 0 0 .5rem !important; padding: .5rem .8rem; font-size: 1rem; }
+            .app-bar .navbar-collapse .nav-link { padding: .55rem 0 !important; }
+            .app-bar .navbar-collapse .nav-link.active { box-shadow: inset 3px 0 0 var(--red); padding-left: .75rem !important; }
+            .app-bar .navbar-collapse .btn-logout { padding: .45rem 0; }
+            .app-bar .navbar-collapse .nav-user { border-top: 1px solid var(--border, #ddd); margin-top: .5rem; padding-top: .75rem; }
+        }
         .app-bar .btn-logout:hover { color: var(--red); }
 
         .card { background: var(--surface); border-color: var(--border); border-radius: 8px; color: var(--text); }
@@ -104,7 +112,7 @@
             <ul class="navbar-nav me-auto gap-xl-1">
                 <li class="nav-item"><a class="apps-btn mt-1 mt-xl-0" href="{{ url_for('home') }}" title="All apps"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Apps</span></a></li>
                 {% block nav %}{% endblock %}</ul>
-            <span class="btn btn-logout px-xl-2 px-0 d-block text-start" title="{{ me.email if me }}">{{ session.get('who', '') }}</span>
+            <span class="btn btn-logout nav-user px-xl-2 px-0 d-block text-start" title="{{ me.email if me }}">{{ session.get('who', '') }}</span>
             {% if me and 'audit' in (me.perms or []) %}<a class="btn btn-link btn-logout text-decoration-none px-xl-2 px-0 d-block text-start{% if request.endpoint == 'audit_log' %} fw-semibold{% endif %}" href="{{ url_for('audit_log') }}">Audit log</a>{% endif %}
             <form action="{{ url_for('logout') }}" method="POST" class="m-0">
                 <button type="submit" class="btn btn-link btn-logout text-decoration-none px-xl-2 px-0">Log out</button>
