@@ -4,7 +4,13 @@
 [Unit]
 Description=DRSCCA apps: nightly backup of the Google Sheets
 OnFailure=drscca-backup-failed.service
+# An interrupted run (the app container restarted mid-backup, e.g. by a deploy) tries again 5 minutes later, up
+# to 3 more times; only then is it reported as failed.
+StartLimitIntervalSec=1800
+StartLimitBurst=4
 
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/docker exec event-drscca python backup_sheets.py
+Restart=on-failure
+RestartSec=300
