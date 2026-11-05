@@ -224,11 +224,10 @@ def home():
                            "Everything waiting for the board:\n" + board_url),
                           board_email(), reply_to=board_email())
             for p in people:
-                mine = '\n\n'.join(f"{line}\n\n- Your vote: {_vote_link(bid, p)}" for (_, _, line), bid in zip(items, bids))
+                mine = '\n\n'.join(f"{line}\n\nVote here:\n\n{_vote_link(bid, p)}\n" for (_, _, line), bid in zip(items, bids))
                 send_mail(f"{u}Vote: {first}",
-                          f"Hi {p['name'].split(' (')[0].split()[0]},\n\n{mine}\n\n"
-                          f"This link is just for you and works for {shortlinks.DAYS} days; after that, vote on the Board page. "
-                          f"To discuss, reply all to \"{subject}\". The vote closes {BL.closes(today)}.",
+                          f"Hi {p['name'].split(' (')[0].split()[0]},\n\n{mine}\n"
+                          f"Discuss on \"{subject}\". Closes {BL.closes(today)}.",
                           p['email'])
             for m in ms:
                 M.update(m['id'], asked=today)
