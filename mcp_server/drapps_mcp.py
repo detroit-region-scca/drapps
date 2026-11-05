@@ -433,5 +433,12 @@ def mark_money_deposited(report_id: str, deposit_date: str = '', deposit_ref: st
                                                             'deposit_amount': deposit_amount, 'reopen': reopen})
 
 
+
+@server.tool()
+def delete_money_received(report_id: str) -> Any:
+    """Delete a money received report that is not deposited yet (a mistake or a duplicate). Kept in the audit log."""
+    return _call('DELETE', f'/received/{report_id}')
+
+
 if __name__ == '__main__':
     server.run()

@@ -650,3 +650,12 @@ def received_deposit(rid):
     st, loc, fl = _forward(f'/funds/in/{rid}/deposit', form)
     ok, errors = _result(st, loc, fl)
     return (jsonify(report=R.get(rid), flashes=fl), 200) if ok and not errors else _err('Not recorded.', errors=errors, flashes=fl)
+
+
+@bp.delete('/received/<rid>')
+def received_delete(rid):
+    """Delete a report not yet deposited (a mistake or a duplicate). Kept in the audit log."""
+    import received_store as R
+    st, loc, fl = _forward(f'/funds/in/{rid}/delete', {})
+    gone = R.get(rid) is None
+    return (jsonify(deleted=rid, flashes=fl), 200) if gone else _err('Not deleted.', errors=[f['message'] for f in fl], flashes=fl)

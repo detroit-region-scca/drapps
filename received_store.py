@@ -150,6 +150,19 @@ def update(rid, **fields):
         return cur
 
 
+def delete(rid):
+    """Remove a report and its lines from the sheet (its photos stay in Drive). Returns what was removed."""
+    with FileLock(ID_LOCK), _lock:
+        r = get(rid)
+        for title in (LINES_TAB, TAB):
+            ws = _ws(title)
+            ids = ws.col_values(1)
+            for i in sorted((i for i, v in enumerate(ids) if v == rid), reverse=True):
+                ws.delete_rows(i + 1)
+        refresh()
+        return r
+
+
 def add_files(rid, files):
     files = [f for f in files if f and f.filename]
     if not files:

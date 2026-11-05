@@ -91,3 +91,20 @@ def test_report_goes_through_the_form(client):
 def test_form_refuses_bad_reports(client, bad):
     r = client.post('/api/v1/received', json=body(**bad), headers={'Authorization': f'Bearer {KEY}'})
     assert r.status_code == 400 and not client.made
+
+
+def test_delete_only_before_deposit_and_by_owner_or_officer(monkeypatch):
+    import fr
+    from flask import Flask
+    monkeypatch.setattr(fr, 'officer_current', lambda perm='board': None)
+    app = Flask(__name__)
+    app.secret_key = 'test'
+    with app.test_request_context():
+        from flask import session
+        session.update(email='val@example.org', who='Val')
+        mine = rep(reported_email='val@example.org', reported_by='Val')
+        assert fr.can_delete_report(mine)
+        assert not fr.can_delete_report(dict(mine, status='Deposited'))
+        assert not fr.can_delete_report(rep(reported_email='someone@example.org', reported_by='Someone'))
+        monkeypatch.setattr(fr, 'officer_current', lambda perm='board': {'name': 'Pat'})
+        assert fr.can_delete_report(rep(reported_email='someone@example.org', reported_by='Someone'))

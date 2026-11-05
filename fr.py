@@ -614,7 +614,8 @@ def in_detail(rid):
     if not r or (auth.limited('funds') and not _owns_report(r)):
         flash('Not found.', 'warning')
         return redirect(url_for('fr.in_list'))
-    return render_template('fr.html', **_ctx(view='in_detail', r=r, single=R.single_count(r), today=date.today().isoformat()))
+    return render_template('fr.html', **_ctx(view='in_detail', r=r, single=R.single_count(r), today=date.today().isoformat(),
+                                             can_delete=can_delete_report(r)))
 
 
 @bp.route('/in/<rid>/files', methods=['POST'])
@@ -659,3 +660,33 @@ def in_deposit(rid):
     flash(f'{rid} marked deposited.' + (f' Note: ${amount:,.2f} deposited against ${r["total"]:,.2f} reported.' if abs(amount - r['total']) >= 0.005 else ''),
           'success' if abs(amount - r['total']) < 0.005 else 'warning')
     return redirect(url_for('fr.in_detail', rid=rid))
+
+
+def can_delete_report(r):
+    """Before it is deposited: whoever reported it, or the treasurer, RE or ARE."""
+    return bool(r and r['status'] == 'Received' and (_owns_report(r) or officer_current('pay')))
+
+
+@bp.route('/in/<rid>/delete', methods=['POST'])
+@login_required
+def in_delete(rid):
+    if (g := _guard()):
+        return g
+    R.refresh()
+    r = R.get(rid)
+    if not r:
+        abort(404)
+    if r['status'] != 'Received':
+        flash('A deposited report is part of the books. Mark it not deposited first if it really has to go.', 'warning')
+        return redirect(url_for('fr.in_detail', rid=rid))
+    if not can_delete_report(r):
+        flash('Only whoever reported it, or the treasurer, RE or ARE, can delete it.', 'warning')
+        return redirect(url_for('fr.in_detail', rid=rid))
+    gone = R.delete(rid)
+    who = session.get('who') or 'Unknown'
+    log_audit_event('MONEY_RECEIVED_DELETED', who, {'id': rid, 'total': gone['total'], 'cash': gone['cash'], 'event_code': gone['event_code'],
+                                                     'received': gone['received'], 'reported_by': gone['reported_by'],
+                                                     'lines': [{k: ln[k] for k in ('description', 'category', 'form', 'check_number', 'amount')} for ln in gone['lines']],
+                                                     'files_url': gone['files_url']})
+    flash(f'{rid} deleted.' + (' Its photos are still in Drive.' if gone['files_url'] else ''), 'info')
+    return redirect(url_for('fr.in_list'))

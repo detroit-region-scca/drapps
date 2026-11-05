@@ -331,7 +331,8 @@
         <form method="post" action="{{ url_for('fr.in_files', rid=r.id) }}" enctype="multipart/form-data" class="d-flex gap-2 no-print">
             <input type="file" name="files" multiple class="form-control form-control-sm" accept="image/*,.pdf" aria-label="Add photos">
             <button class="btn btn-sm btn-outline-light text-nowrap">Add</button></form>
-        <button class="btn btn-sm btn-outline-secondary no-print" onclick="window.print()">Print</button></div>
+        <button class="btn btn-sm btn-outline-secondary no-print" onclick="window.print()">Print</button>
+        {% if can_delete %}<form method="post" action="{{ url_for('fr.in_delete', rid=r.id) }}" class="ms-auto no-print"><button class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete {{ r.id }}? Use this for a mistake or a duplicate. It is kept in the audit log.')">Delete</button></form>{% endif %}</div>
 
     {% if r.status == 'Received' %}
     {% if officer %}
