@@ -9,13 +9,12 @@ tools/qbo_nightly.py on the machine with the QuickBooks connection. The app only
 """
 import os
 import threading
-import time
 from datetime import date
 
 import gspread
 from filelock import FileLock
 
-from storage import DATA_DIR, drive_folder, drive_upload, open_book, worksheet
+from storage import DATA_DIR, drive_folder, drive_upload, worksheet
 import sheet_cache as C
 
 BUD_COLS = ['event_code', 'event_name', 'program', 'date', 'chair', 'location', 'updated', 'updated_by', 'notes', 'files_url',
@@ -152,7 +151,7 @@ def _heading(ws):
 
 
 def history(code, years=6):
-    """This event and the earlier ones its budgets point back to ("Same event last year"), newest first:
+    """This event and the earlier ones its budgets point back to ("Last year's event"), newest first:
     [{'code', 'b'}]. Only links a person chose; stops at a gap or a loop."""
     buds, out, seen = budgets(), [], set()
     while code and code not in seen and len(out) < years:
@@ -181,7 +180,7 @@ def save(header, lines, files=(), actuals_only=False):
         code = header['event_code']
         old = next((b for b in buds if b['event_code'] == code), None)
         files = [f for f in files if f and f.filename]
-        # Changing only "Same event last year" is not a change to the budget: an approved one stays approved.
+        # Changing only "Last year's event" is not a change to the budget: an approved one stays approved.
         same = old and not files and (actuals_only or _same_budget(old, header, [ln for ln in all_lines if ln['event_code'] == code], lines))
         header = dict(header, updated=old['updated'] if same else date.today().isoformat(), files_url=(old or {}).get('files_url', ''),
                       approved=(old or {}).get('approved', ''), approved_by=(old or {}).get('approved_by', ''))

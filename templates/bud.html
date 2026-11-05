@@ -4,6 +4,10 @@
 {% block nav %}{% include '_events_nav.html' %}{% endblock %}
 {% macro amt(v) %}{{ '' if v is none or v == '' else (v if v is string else '%.2f'|format(v)) }}{% endmacro %}
 {% block style %}
+        @media (max-width: 575.98px) {
+            .bud-actions { display: grid !important; grid-template-columns: 1fr 1fr; width: 100%; }
+            .bud-actions > .btn, .bud-actions > .dropdown > .btn { width: 100%; white-space: normal; }
+        }
 
         .sched .month-row td { background: var(--surface-2); font-weight: 600; border-top: 2px solid var(--border); text-transform: uppercase; letter-spacing: .05em; font-size: .85rem; }
         .sched .day { width: 4.5rem; }
@@ -93,7 +97,7 @@
                     {% elif e.program_budget %}<span class="text-muted">Its surplus is a line of its own in the <a href="{{ url_for('plan.detail', year=e.date[:4], program=e.program_code) }}">{{ e.date[:4] }} annual plan</a>.</span>
                     {% elif e.date %}<span class="text-muted">Not in the {{ e.date[:4] }} annual plan.</span>{% endif %}</div>
             </div>
-            <div class="d-flex flex-wrap gap-2 no-print">
+            <div class="d-flex flex-wrap gap-2 no-print bud-actions">
                 {% if budgets_on %}<a class="btn btn-sm btn-accent" href="{{ url_for('bud.edit', code=code) }}">{{ 'Edit budget' if b else 'Create budget' }}</a>{% endif %}
                 {% if budgets_on and b and not e.program_budget %}<a class="btn btn-sm btn-outline-light" href="{{ url_for('bud.actuals', code=code) }}">Enter reported results</a>{% endif %}
                 {% if e.id or e.program_budget %}<div class="dropdown">
@@ -144,11 +148,13 @@
     <h2 class="h6 text-muted">Budget vs QuickBooks{% if q %} (as of {{ q.as_of }}){% endif %}</h2>
     <div class="card mb-3"><div class="card-body p-0 table-responsive">
         <table class="table mb-0">
-            <thead><tr><th class="ps-3"></th><th class="num">Annual plan</th><th class="num">Budget</th><th class="num">QuickBooks</th><th class="num pe-3">QuickBooks vs budget</th></tr></thead>
+            <thead><tr><th class="ps-3"></th><th class="num d-none d-sm-table-cell">Annual plan</th><th class="num">Budget</th><th class="num">QuickBooks</th><th class="num pe-3">Difference</th></tr></thead>
             <tbody>{% for k, label in [('income', 'Income'), ('expense', 'Expense'), ('surplus', 'Surplus (loss)')] %}
                 {% set bv = b.totals.budget[k] if b and b.totals.budget else none %}{% set av = q.totals[k] if q else none %}
-                <tr class="{{ 'fw-semibold' if k == 'surplus' }}"><td class="ps-3">{{ label }}</td><td class="num">{{ money(plan.net if plan and k == 'surplus' else none) }}</td><td class="num">{{ money(bv) }}</td><td class="num">{{ money(av) }}</td>
-                <td class="num pe-3">{{ money(av - bv) if (av is not none and bv is not none) else money(none) }}</td></tr>
+                <tr class="{{ 'fw-semibold' if k == 'surplus' }}"><td class="ps-3">{{ label }}</td><td class="num d-none d-sm-table-cell">{{ money(plan.net if plan and k == 'surplus' else none) }}</td><td class="num">{{ money(bv) }}</td><td class="num">{{ money(av) }}</td>
+                <td class="num pe-3">{% if av is not none and bv is not none %}{% set d = av - bv %}{% set good = (d < 0) if k == 'expense' else (d > 0) %}
+                    {% if d|abs < 0.005 %}<span class="text-muted">on budget</span>{% else %}<span class="{{ 'text-success' if good else 'text-danger' }}">${{ '{:,.2f}'.format(d|abs) }} {{ 'over' if d > 0 else 'under' }}</span>{% endif %}
+                    {% else %}{{ money(none) }}{% endif %}</td></tr>
             {% endfor %}</tbody>
         </table>
     </div></div>
@@ -241,7 +247,7 @@
         {% for section, key in [('Income', 'inc'), ('Expense', 'exp')] %}
         {% set qt = (q.totals.income if section == 'Income' else q.totals.expense) if q else none %}
         <div class="card p-3 mb-3">
-            <div class="section-label">{{ section }}</div>
+            <div class="section-label">{{ section }}{% if section == 'Expense' %} <span class="text-muted text-lowercase fw-normal" style="letter-spacing:0">(costs, as positive amounts)</span>{% endif %}</div>
             <div class="row g-2 text-muted small mb-1"><div class="col-6 col-md-7">Line</div><div class="col-3 col-md-2 text-end">Budget</div><div class="col-3 col-md-3 text-end">Reported</div></div>
             {% for ln in b.lines %}{% if ln.section == section %}
             <div class="row g-2 align-items-center mb-2"><div class="col-6 col-md-7">{{ ln.description }}</div>
@@ -290,7 +296,7 @@
         {% set starter = {'Income': ['Entry fees', 'Weekend memberships'], 'Expense': ['Site rental', 'SCCA insurance and sanction fees', 'Worker points', 'Trophies', 'Supplies']} %}
         {% for section, key in [('Income', 'inc'), ('Expense', 'exp')] %}
         <div class="card p-3 mb-3">
-            <div class="section-label">{{ section }}</div>
+            <div class="section-label">{{ section }}{% if section == 'Expense' %} <span class="text-muted text-lowercase fw-normal" style="letter-spacing:0">(costs, as positive amounts)</span>{% endif %}</div>
             <div class="row g-2 d-none d-md-flex text-muted small mb-1"><div class="col-md-6">Description</div><div class="col-md-2 text-end">Last year reported</div><div class="col-md-3 text-end">This year budget</div></div>
             <div class="row g-2 d-md-none text-muted small mb-1"><div class="col-5 text-end">Last yr</div><div class="col-6 text-end">Budget</div></div>
             <div class="lines" data-key="{{ key }}">

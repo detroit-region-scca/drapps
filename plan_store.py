@@ -11,7 +11,6 @@
 import os
 import re
 import threading
-import time
 from datetime import date
 
 import gspread

@@ -11,7 +11,6 @@ Only equipment committee members signed in through an emailed link can change an
 """
 import os
 import threading
-import time
 from datetime import date
 
 from filelock import FileLock

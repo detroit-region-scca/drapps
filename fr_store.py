@@ -8,12 +8,11 @@ in anyone's My Drive.
 import os
 import re
 import threading
-import time
 from datetime import date
 
 from filelock import FileLock
 
-from storage import DATA_DIR, drive_folder, drive_upload, open_book, worksheet
+from storage import DATA_DIR, drive_folder, drive_upload, worksheet
 import sheet_cache as C
 
 REQ_COLS = ['id', 'submitted', 'status', 'event_code', 'event_name', 'program', 'submitter_name', 'submitter_email',

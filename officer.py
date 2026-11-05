@@ -4,11 +4,10 @@ their address in the read-only officials list; the link sets an officer session 
 """
 from functools import wraps
 
-from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, session, url_for
-from itsdangerous import BadSignature, URLSafeTimedSerializer
+from flask import Blueprint, current_app, flash, redirect, request, session, url_for
+from itsdangerous import URLSafeTimedSerializer
 
 import officials as O
-from utils import log_audit_event, login_required, send_mail
 from utils import local_path
 
 bp = Blueprint('officer', __name__, url_prefix='/officer')

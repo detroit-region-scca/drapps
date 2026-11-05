@@ -4,7 +4,6 @@ counts as there when a file in that folder has its name in the file name ("Title
 Drive folders in Operations/Documents, so people can add files there directly, without the app.
 """
 import re
-import time
 
 from storage import DRIVE, sheets_client
 

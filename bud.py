@@ -136,7 +136,7 @@ def _last_year_events(code, e, keep=''):
 
 
 def _year_over_year(code):
-    """Rows for the event page when "Same event last year" is set: each year's budgeted net and QuickBooks result."""
+    """Rows for the event page when "Last year's event" is set: each year's budgeted net and QuickBooks result."""
     b = B.get(code)
     if not b or not b.get('last_year_event'):
         return []

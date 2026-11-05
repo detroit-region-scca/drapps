@@ -14,7 +14,6 @@ import json
 import logging
 import os
 import threading
-import time
 
 from dotenv import load_dotenv
 from filelock import FileLock

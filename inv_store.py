@@ -9,12 +9,11 @@ Plain column headers, so the region can keep invoicing by hand from the sheet if
 import io
 import os
 import threading
-import time
 from datetime import date, timedelta
 
 from filelock import FileLock
 
-from storage import DATA_DIR, open_book, worksheet
+from storage import DATA_DIR, worksheet
 import sheet_cache as C
 
 INV_COLS = ['id', 'created', 'status', 'program', 'event_code', 'event_name', 'bill_name', 'bill_contact', 'bill_email', 'bill_address',

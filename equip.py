@@ -12,11 +12,11 @@ from datetime import date, timedelta
 from functools import wraps
 
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, session, url_for
-from itsdangerous import BadSignature, URLSafeTimedSerializer
+from itsdangerous import URLSafeTimedSerializer
 
 import equip_store as E
 import officials as O
-from utils import local_path, log_audit_event, login_required, send_mail
+from utils import local_path, log_audit_event, login_required
 
 bp = Blueprint('equip', __name__, url_prefix='/operations')
 

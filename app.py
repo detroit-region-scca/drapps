@@ -3,7 +3,6 @@ import os
 import string
 import random
 import logging
-import hmac
 import calendar
 import csv
 import gspread
@@ -77,7 +76,6 @@ app.register_blueprint(officer_bp)
 import api  # noqa: E402
 app.before_request(api.signin_from_key)   # a valid API key signs the request in (see api.py)
 import auth  # noqa: E402
-import utils  # noqa: E402
 app.before_request(auth.gate)               # email-code sign-in: who is signed in and what they may open
 import csrf  # noqa: E402
 app.before_request(csrf.check)              # forged-form protection (after the API key check, which exempts)
@@ -262,7 +260,7 @@ def logout():
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
-    """Login form, or once signed in the apps: Events, Worker Points, Funds Requests, Annual Plan."""
+    """Login form, or once signed in the apps home page (the tiles)."""
     if request.method == 'POST':
         # The create-event form used to post to '/'; a page left open from before keeps working.
         return index()

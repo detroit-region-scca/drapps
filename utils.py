@@ -4,7 +4,6 @@ import random
 import string
 import logging
 from datetime import datetime
-from filelock import FileLock
 import pytz
 from functools import wraps
 from flask import g, has_request_context, session, redirect, url_for, request

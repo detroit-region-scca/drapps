@@ -1,7 +1,6 @@
 """Board minutes: originals and approved PDFs in the private Board Minutes folder (by year), approved PDFs in the public
 website folder (by year) that drscca.org lists, and drafts in the DRSCCA Apps drive (MINUTES_DRAFTS_FOLDER_ID), where
 the app may delete them. The app's service account can add files to the two Board Minutes folders but not delete."""
-import io
 import json
 import os
 
