@@ -213,14 +213,15 @@ def home():
                        f"vote closes {BL.closes(today)}. Who has voted so far:\n{board_url}")
             else:
                 how = "\n\nPlease reply all with your vote (yes or no on each) so it stays in one thread. Everything waiting for the board:\n" + board_url
-            send_mail(f"{'URGENT ' if urgent else ''}Board vote: {first}", head + '\n\n'.join(i[2] for i in items) + how,
+            subject = f"{'URGENT ' if urgent else ''}{'Board vote discussion' if bids else 'Board vote'}: {first}"
+            send_mail(subject, head + '\n\n'.join(i[2] for i in items) + how,
                       board_email(), reply_to=board_email())
             for p in people:
                 mine = '\n\n'.join(f"{line}\n\n  Your vote: {_vote_link(bid, p)}" for (_, _, line), bid in zip(items, bids))
                 send_mail(f"{'URGENT ' if urgent else ''}Your board vote: {first}",
                           f"Hi {p['name'].split(' (')[0].split()[0]},\n\n" + head + mine +
                           f"\n\nThese links are yours alone, so please don't forward them. You can change your vote until it is "
-                          f"decided. To discuss it, reply all to the \"{'URGENT ' if urgent else ''}Board vote: {first}\" email sent to {board_email()} "
+                          f"decided. To discuss it, reply all to the \"{subject}\" email sent to {board_email()} "
                           f"at the same time. The vote closes {BL.closes(today)}.\n\nThe roll call: {board_url}",
                           p['email'])
             for m in ms:

@@ -149,7 +149,7 @@ def test_request_email_vote_sends_board_thread_and_a_personal_link_each(env):
     c, sent, store = env['c'], env['sent'], env['store']
     c.post('/board/', data={'action': 'ask', 'item': 'motion:M-2026-009'})
     assert len(store.rows) == 1 and store.rows[0]['item'] == 'motion:M-2026-009'
-    thread = [s for s in sent if s[0] == 'Board vote: Buy a trailer']
+    thread = [s for s in sent if s[0] == 'Board vote discussion: Buy a trailer']
     personal = [s for s in sent if s[0].startswith('Your board vote')]
     assert len(thread) == 1 and 'reply all with your vote' not in thread[0][1] and 'Discuss here by replying all' in thread[0][1]
     assert sorted(s[2] for s in personal) == sorted(p['email'] for p in BL.roster(OFFICIALS))
