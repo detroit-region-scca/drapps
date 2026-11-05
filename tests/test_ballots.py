@@ -128,6 +128,8 @@ def env(monkeypatch):
     monkeypatch.setattr(board.M, 'update', lambda mid, **k: updates.append((mid, k)))
     monkeypatch.setattr(board, 'send_mail', lambda subject, body, to=None, *a, **k: sent.append((subject, body, to)))
     monkeypatch.setattr(board, 'log_audit_event', lambda *a, **k: None)
+    import fr_store
+    monkeypatch.setattr(fr_store, 'requests', lambda: [])     # no funds requests sheet in tests
     me = {'email': 'four@example.org'}
     monkeypatch.setattr(auth, 'lookup', lambda e: e and {'email': e, 'name': 'Kim Four', 'level': 'officer', 'roles': ['Treasurer'], 'perms': {'board_ask'}})
     monkeypatch.setattr(board, '_me', lambda: {'level': 'officer', 'perms': {'board_ask'}})
