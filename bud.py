@@ -118,60 +118,21 @@ def _month_label(d):
         return str(d)[:4]
 
 
-def _ranked(e, pool):
-    """pool [{'code', 'date', 'name', 'program'}] best first for this event: same program, a shared word in the name,
-    about a year earlier. Each gets 'label' and 'score'."""
-    import plan_store as P
-    words, prog = P._words(e.get('event_name')), e.get('program_code', '')
-    try:
-        target = date.fromisoformat(str(e.get('date', ''))[:10]).toordinal() - 365
-    except ValueError:
-        target = None
-    out = []
-    for x in pool:
-        sc = (4 if x['program'] == prog else 0) + 3 * len(words & P._words(x['name']))
-        try:
-            gap = abs(date.fromisoformat(x['date'][:10]).toordinal() - target) if target else 999
-            sc += 3 if gap <= 45 else 1 if gap <= 120 else 0
-        except ValueError:
-            pass
-        out.append(dict(x, score=sc, label=f"{x['name']} · {_month_label(x['date'])}"))
-    out.sort(key=lambda x: x['date'], reverse=True)          # newest first among equals
-    return sorted(out, key=lambda x: -x['score'])
-
-
-def _suggest(ranked, n=3):
-    """The few worth a button: same program and a shared word, or the same program about a year earlier."""
-    return [x for x in ranked if x['score'] >= 7][:n]
-
-
-def _last_year_choices(code, e):
-    """Earlier events of the same program, newest first, for "Same event last year" (chosen by a person, never guessed)."""
+def _last_year_events(code, e, keep=''):
+    """This program's events from the year before this one, by date, plus `keep` (an earlier link) if it is older.
+    Each: code, label, has_budget."""
     if program_of(code):
         return []
-    prog, day = e.get('program_code', ''), str(e.get('date', ''))
-    evs = [x for x in load_events() if x.get('program_code') == prog and str(x.get('date', '')) < day
-           and (x.get('custom_tag') or x.get('unique_code')) != code]
-    return _ranked(e, [{'code': x.get('custom_tag') or x.get('unique_code'), 'date': str(x.get('date', '')), 'name': x.get('event_name', ''),
-                        'program': prog} for x in evs])
-
-
-def _pick_items(code, e):
-    """One list for "Last year's event": earlier events of the program (can be linked) and any other budget (can be
-    copied), best first. Each: code, label, date, program, score, linkable, has_budget."""
-    link = {c['code']: c for c in _last_year_choices(code, e)}
-    buds = B.budgets()
-    pool = dict(link)
-    for k, x in buds.items():
-        if k != code and k not in pool:
-            pool[k] = {'code': k, 'date': str(x.get('date', '')), 'name': x.get('event_name', ''), 'program': x.get('program', '')}
-    return [dict(x, linkable=x['code'] in link, has_budget=x['code'] in buds)
-            for x in _ranked(e, [{k: v[k] for k in ('code', 'date', 'name', 'program')} for v in pool.values()])]
-
-
-def _ly_names():
-    """{code: 'Name · Mon YYYY'} for showing the chosen last year's event."""
-    return {(x.get('custom_tag') or x.get('unique_code')): f"{x.get('event_name', '')} · {_month_label(x.get('date', ''))}" for x in load_events()}
+    try:
+        last = str(int(str(e.get('date', ''))[:4]) - 1)
+    except ValueError:
+        return []
+    prog, buds = e.get('program_code', ''), B.budgets()
+    evs = [x for x in load_events() if x.get('program_code') == prog and (x.get('custom_tag') or x.get('unique_code')) != code
+           and (str(x.get('date', '')).startswith(last) or (keep and (x.get('custom_tag') or x.get('unique_code')) == keep))]
+    evs.sort(key=lambda x: str(x.get('date', '')))
+    return [{'code': c, 'label': f"{x.get('event_name', '')} · {_month_label(x.get('date', ''))}", 'has_budget': c in buds}
+            for x in evs for c in [x.get('custom_tag') or x.get('unique_code')]]
 
 
 def _year_over_year(code):
@@ -503,12 +464,12 @@ def edit(code):
             for msg in errors:
                 flash(msg, 'danger')
             return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=f, lines=_form_lines(f), funds=_funds(code),
-                                                      items=_pick_items(code, e), ly_names=_ly_names(), pick=f.get('last_year_event', ''),
+                                                      ly_events=_last_year_events(code, e, f.get('last_year_event', '')), pick=f.get('last_year_event', ''),
                                                       link=bool(f.get('link_last_year')),
                                                       plan=_plan_line(code))), 400
         ly = f.get('last_year_event', '').strip() if f.get('link_last_year') else ''
-        if ly and ly not in {c['code'] for c in _last_year_choices(code, e)}:
-            ly = ''          # only an earlier event of the same program can be linked
+        if ly and ly not in {c['code'] for c in _last_year_events(code, e, (b or {}).get('last_year_event', ''))}:
+            ly = ''          # only last year's events (or the one already linked)
         header = {'event_code': code, 'event_name': e.get('event_name', ''), 'program': e.get('program_code', ''), 'date': e.get('date', ''),
                   'chair': f.get('chair', '').strip(), 'location': f.get('location', '').strip(), 'notes': f.get('notes', '').strip(),
                   'updated_by': who, 'last_year_event': ly}
@@ -530,14 +491,14 @@ def edit(code):
         form = {'chair': sb.get('chair', ''), 'location': sb.get('location', '')}
         # The event copied from stays chosen; linked unless the box was unticked (and only if it can be linked).
         pick = src
-        link = request.args.get('link') != '0' and src in {c['code'] for c in _last_year_choices(code, e)}
+        link = request.args.get('link') != '0' and src in {c['code'] for c in _last_year_events(code, e)}
     elif (pg := program_of(code)):
         lines, form = [], {'chair': O.director(pg[0])[0]}
     else:
         lines, form = [], {}
     copied = bool(src and not b and B.get(src))
     return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=form, lines=lines, funds=_funds(code),
-                                              items=_pick_items(code, e), ly_names=_ly_names(), pick=pick, link=link, copied=copied, plan=_plan_line(code), src=B.get(src) if copied else None,
+                                              ly_events=_last_year_events(code, e, pick), pick=pick, link=link, copied=copied, plan=_plan_line(code), src=B.get(src) if copied else None,
                                               src_q=_short_accounts(B.qbo_actuals().get(src)) if copied else None))
 
 

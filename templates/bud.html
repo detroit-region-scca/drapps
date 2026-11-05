@@ -4,9 +4,7 @@
 {% block nav %}{% include '_events_nav.html' %}{% endblock %}
 {% macro amt(v) %}{{ '' if v is none or v == '' else (v if v is string else '%.2f'|format(v)) }}{% endmacro %}
 {% block style %}
-        .pick { position: relative; }
-        .pick-list { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; max-height: 18rem; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,.12); }
-        .pick-list .list-group-item { cursor: pointer; font-size: .9rem; }
+
         .sched .month-row td { background: var(--surface-2); font-weight: 600; border-top: 2px solid var(--border); text-transform: uppercase; letter-spacing: .05em; font-size: .85rem; }
         .sched .day { width: 4.5rem; }
         .sched .day .fw-semibold { font-size: 1.35rem; line-height: 1; }
@@ -236,27 +234,20 @@
         <div class="card p-3 mb-3"><div class="row g-2">
             <div class="col-md-4"><label class="form-label">Event chair</label><input name="chair" class="form-control" value="{{ form.get('chair', '') }}"></div>
             <div class="col-md-4"><label class="form-label">Location</label><input name="location" class="form-control" value="{{ form.get('location', '') }}"></div>
-            {% if items %}{% set chosen = items|selectattr('code', 'equalto', pick)|first %}<div class="col-12" id="lyBox"
+            {% if ly_events %}{% set chosen = ly_events|selectattr('code', 'equalto', pick)|first %}<div class="col-12" id="lyBox"
                  data-copy-url="{{ url_for('bud.edit', code=code) }}" data-can-copy="{{ '' if lines else '1' }}">
-                <label class="form-label mb-1">Last year's event</label>
-                <input type="hidden" name="last_year_event" id="lyCode" value="{{ pick }}">
-                <div id="lySet" class="{{ '' if pick else 'd-none' }}">
-                    <span id="lyName" class="fw-semibold">{{ chosen.label if chosen else ly_names.get(pick, pick) }}</span>
-                    · <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="lyChange()">Change</button>
-                    <div class="d-flex flex-wrap align-items-center gap-3 mt-1">
-                        <div class="form-check m-0 {{ '' if (chosen and chosen.linkable) else 'd-none' }}" id="lyLinkBox">
-                            <input class="form-check-input" type="checkbox" name="link_last_year" value="yes" id="lyLink" {{ 'checked' if link }}>
-                            <label class="form-check-label" for="lyLink">Link for year over year results</label></div>
-                        <button type="button" id="lyCopy" class="btn btn-sm btn-outline-light {{ '' if chosen and chosen.has_budget and not lines else 'd-none' }}" onclick="lyCopy()">Copy its budget</button>
-                    </div></div>
-                <div id="lyPick" class="{{ 'd-none' if pick else '' }}">
-                    <div class="d-flex flex-wrap gap-2 align-items-center">
-                        {% for c in items[:3] if c.score >= 7 %}<button type="button" class="btn btn-sm btn-outline-light" onclick="lyChoose({{ loop.index0 }})">{{ c.label }}</button>{% endfor %}
-                        <div class="pick flex-grow-1" style="max-width:24rem" data-items='{{ items|tojson }}' data-set="ly">
-                            <input class="form-control form-control-sm" placeholder="Search events and budgets…" aria-label="Search last year's event" autocomplete="off">
-                            <div class="pick-list list-group d-none"></div></div>
-                    </div></div>
-                <div class="form-text">Optional. Pick it to copy its budget, or link it to see this event's results year over year.</div></div>{% endif %}
+                <label class="form-label" for="lyCode">Last year's event</label>
+                <div class="d-flex flex-wrap align-items-center gap-3">
+                    <select name="last_year_event" id="lyCode" class="form-select" style="max-width:28rem" onchange="lyChanged()">
+                        <option value="" data-budget="">None</option>
+                        {% for x in ly_events %}<option value="{{ x.code }}" data-budget="{{ '1' if x.has_budget else '' }}" {% if x.code == pick %}selected{% endif %}>{{ x.label }}</option>{% endfor %}
+                    </select>
+                    <div class="form-check m-0 {{ '' if pick else 'd-none' }}" id="lyLinkBox">
+                        <input class="form-check-input" type="checkbox" name="link_last_year" value="yes" id="lyLink" {{ 'checked' if link }}>
+                        <label class="form-check-label" for="lyLink">Link for year over year</label></div>
+                    <button type="button" id="lyCopy" class="btn btn-sm btn-outline-light {{ '' if chosen and chosen.has_budget and not lines else 'd-none' }}" onclick="lyCopy()">Copy its budget</button>
+                </div>
+                <div class="form-text">Optional. Link it to see this event's results year over year on its page, or copy its budget to start from.</div></div>{% endif %}
             <input type="hidden" name="entered_by" value="{{ session.get('who', '') }}">
         </div></div>
         {% set starter = {'Income': ['Entry fees', 'Weekend memberships'], 'Expense': ['Site rental', 'SCCA insurance and sanction fees', 'Worker points', 'Trophies', 'Supplies']} %}
@@ -298,45 +289,11 @@
 {% endblock %}
 {% block scripts %}
 <script>
-    // Type-to-search picker: shows at most 8 matches; each word typed must appear in the name or code.
-    document.querySelectorAll('.pick').forEach(box => {
-        const items = JSON.parse(box.dataset.items || '[]'), input = box.querySelector('input'), list = box.querySelector('.pick-list');
-        const esc = t => String(t).replace(/[&<>"]/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[ch]);
-        function show() {
-            const words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
-            const hits = items.filter(x => words.every(w => (x.label + ' ' + x.code).toLowerCase().includes(w))).slice(0, 8);
-            list.innerHTML = hits.map((x, i) => `<a class="list-group-item list-group-item-action" data-i="${items.indexOf(x)}">${esc(x.label)} <span class="text-muted small">${esc(x.code)}</span></a>`).join('')
-                || '<div class="list-group-item text-muted">No match</div>';
-            list.classList.remove('d-none');
-        }
-        input.addEventListener('focus', show);
-        input.addEventListener('input', show);
-        document.addEventListener('click', ev => { if (!box.contains(ev.target)) list.classList.add('d-none'); });
-        list.addEventListener('click', ev => {
-            const a = ev.target.closest('[data-i]');
-            if (!a) return;
-            const x = items[+a.dataset.i];
-            if (box.dataset.go) location.href = box.dataset.go + encodeURIComponent(x.code);
-            else if (box.dataset.set === 'ly') { lySet(x.code, x.label); input.value = ''; list.classList.add('d-none'); }
-        });
-    });
-    const lyItems = JSON.parse((document.querySelector('#lyBox .pick') || {dataset: {}}).dataset.items || '[]');
-    function lySet(code, label) {
-        const x = lyItems.find(i => i.code === code), box = document.getElementById('lyBox');
-        document.getElementById('lyCode').value = code;
-        document.getElementById('lyName').textContent = label;
-        document.getElementById('lySet').classList.toggle('d-none', !code);
-        document.getElementById('lyPick').classList.toggle('d-none', !!code);
-        const linkable = !!(x && x.linkable);
-        document.getElementById('lyLinkBox').classList.toggle('d-none', !linkable);
-        document.getElementById('lyLink').checked = linkable;
-        document.getElementById('lyCopy').classList.toggle('d-none', !(x && x.has_budget && box.dataset.canCopy));
-    }
-    function lyChoose(i) { const x = lyItems[i]; lySet(x.code, x.label); }
-    function lyChange() {
-        document.getElementById('lySet').classList.add('d-none');
-        document.getElementById('lyPick').classList.remove('d-none');
-        document.querySelector('#lyPick .pick input').focus();
+    function lyChanged() {
+        const sel = document.getElementById('lyCode'), opt = sel.selectedOptions[0], box = document.getElementById('lyBox');
+        document.getElementById('lyLinkBox').classList.toggle('d-none', !sel.value);
+        document.getElementById('lyLink').checked = !!sel.value;
+        document.getElementById('lyCopy').classList.toggle('d-none', !(sel.value && opt.dataset.budget && box.dataset.canCopy));
     }
     function lyCopy() {
         const box = document.getElementById('lyBox'), code = document.getElementById('lyCode').value;
