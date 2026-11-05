@@ -31,3 +31,17 @@ def test_link_only_change_keeps_the_budget_unchanged():
     assert B._same_budget(old, dict(old, last_year_event='#A'), lines, new_lines)
     assert not B._same_budget(old, dict(old, chair='Sam'), lines, new_lines)
     assert not B._same_budget(old, old, lines, [dict(new_lines[0], budget=1100.0)])
+
+
+def test_one_list_for_copy_and_link(monkeypatch):
+    evs = [{'unique_code': '#A', 'program_code': 'RY', 'date': '2026-01-10', 'event_name': 'Son of Sno Drift XXVIII'},
+           {'unique_code': '#C', 'program_code': 'RY', 'date': '2027-01-09', 'event_name': 'Son of Sno Drift XXIX'},
+           {'unique_code': '#X', 'program_code': 'AX', 'date': '2026-05-01', 'event_name': 'Solo School'}]
+    monkeypatch.setattr(bud, 'load_events', lambda: evs)
+    monkeypatch.setattr(B, 'budgets', lambda: {'#X': {'event_name': 'Solo School', 'date': '2026-05-01', 'program': 'AX'},
+                                               '#C': {'event_name': 'Son of Sno Drift XXIX', 'date': '2027-01-09', 'program': 'RY'}})
+    items = {x['code']: x for x in bud._pick_items('#C', evs[1])}
+    assert set(items) == {'#A', '#X'}                       # never itself
+    assert items['#A']['linkable'] and not items['#A']['has_budget']
+    assert not items['#X']['linkable'] and items['#X']['has_budget']     # another program: copy only
+    assert bud._pick_items('#C', evs[1])[0]['code'] == '#A'              # the obvious one first

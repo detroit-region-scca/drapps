@@ -156,6 +156,19 @@ def _last_year_choices(code, e):
                         'program': prog} for x in evs])
 
 
+def _pick_items(code, e):
+    """One list for "Last year's event": earlier events of the program (can be linked) and any other budget (can be
+    copied), best first. Each: code, label, date, program, score, linkable, has_budget."""
+    link = {c['code']: c for c in _last_year_choices(code, e)}
+    buds = B.budgets()
+    pool = dict(link)
+    for k, x in buds.items():
+        if k != code and k not in pool:
+            pool[k] = {'code': k, 'date': str(x.get('date', '')), 'name': x.get('event_name', ''), 'program': x.get('program', '')}
+    return [dict(x, linkable=x['code'] in link, has_budget=x['code'] in buds)
+            for x in _ranked(e, [{k: v[k] for k in ('code', 'date', 'name', 'program')} for v in pool.values()])]
+
+
 def _ly_names():
     """{code: 'Name · Mon YYYY'} for showing the chosen last year's event."""
     return {(x.get('custom_tag') or x.get('unique_code')): f"{x.get('event_name', '')} · {_month_label(x.get('date', ''))}" for x in load_events()}
@@ -490,11 +503,12 @@ def edit(code):
             for msg in errors:
                 flash(msg, 'danger')
             return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=f, lines=_form_lines(f), funds=_funds(code),
-                                                      ly_choices=_last_year_choices(code, e), ly_names=_ly_names(),
+                                                      items=_pick_items(code, e), ly_names=_ly_names(), pick=f.get('last_year_event', ''),
+                                                      link=bool(f.get('link_last_year')),
                                                       plan=_plan_line(code))), 400
-        ly = f.get('last_year_event', '').strip()
+        ly = f.get('last_year_event', '').strip() if f.get('link_last_year') else ''
         if ly and ly not in {c['code'] for c in _last_year_choices(code, e)}:
-            ly = ''          # only an earlier event of the same program
+            ly = ''          # only an earlier event of the same program can be linked
         header = {'event_code': code, 'event_name': e.get('event_name', ''), 'program': e.get('program_code', ''), 'date': e.get('date', ''),
                   'chair': f.get('chair', '').strip(), 'location': f.get('location', '').strip(), 'notes': f.get('notes', '').strip(),
                   'updated_by': who, 'last_year_event': ly}
@@ -505,23 +519,25 @@ def edit(code):
     # GET: the saved budget, or a copy of another event's to start from (its budget becomes this budget, any
     # actuals typed on its old form become "last year", and its QuickBooks results are shown above), or a blank form.
     src = request.args.get('copy')
+    pick, link = '', False
     if b:
         lines, form = b['lines'], b
+        pick = b.get('last_year_event', '')
+        link = bool(pick)
     elif src and (sb := B.get(src)):
         lines = [{'section': ln['section'], 'description': ln['description'], 'last_year': ln['actual'],
                   'budget': ln['budget'], 'actual': None} for ln in sb['lines']]
         form = {'chair': sb.get('chair', ''), 'location': sb.get('location', '')}
-        if src in {c['code'] for c in _last_year_choices(code, e)}:
-            form['last_year_event'] = src        # copied from an earlier event of the program: linked, and changeable
+        # The event copied from stays chosen; linked unless the box was unticked (and only if it can be linked).
+        pick = src
+        link = request.args.get('link') != '0' and src in {c['code'] for c in _last_year_choices(code, e)}
     elif (pg := program_of(code)):
         lines, form = [], {'chair': O.director(pg[0])[0]}
     else:
         lines, form = [], {}
-    others = _ranked(e, [{'code': k, 'date': str(x.get('date', '')), 'name': x.get('event_name', ''), 'program': x.get('program', '')}
-                         for k, x in B.budgets().items() if k != code])
     copied = bool(src and not b and B.get(src))
-    return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=form, lines=lines, others=others, funds=_funds(code),
-                                              ly_choices=_last_year_choices(code, e), ly_names=_ly_names(), copied=copied, plan=_plan_line(code), src=B.get(src) if copied else None,
+    return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=form, lines=lines, funds=_funds(code),
+                                              items=_pick_items(code, e), ly_names=_ly_names(), pick=pick, link=link, copied=copied, plan=_plan_line(code), src=B.get(src) if copied else None,
                                               src_q=_short_accounts(B.qbo_actuals().get(src)) if copied else None))
 
 
