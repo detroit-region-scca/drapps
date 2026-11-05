@@ -289,12 +289,17 @@
 {% endblock %}
 {% block scripts %}
 <script>
-    function lastYearChanged() {
-        const sel = document.getElementById('lyCode'), opt = sel.selectedOptions[0], box = document.getElementById('lyBox');
+    // Show the link box and copy button for whatever the dropdown holds. On a change, tick the box; on page load (a
+    // refresh can bring back the browser's earlier choice), leave the box as it is.
+    function lastYearChanged(fromLoad) {
+        const sel = document.getElementById('lyCode');
+        if (!sel) return;
+        const opt = sel.selectedOptions[0], box = document.getElementById('lyBox');
         document.getElementById('lyLinkBox').classList.toggle('d-none', !sel.value);
-        document.getElementById('lyLink').checked = !!sel.value;
+        if (!fromLoad) document.getElementById('lyLink').checked = !!sel.value;
         document.getElementById('lyCopy').classList.toggle('d-none', !(sel.value && opt.dataset.budget && box.dataset.canCopy));
     }
+    window.addEventListener('pageshow', () => lastYearChanged(true));
     function copyLastYearBudget() {
         const box = document.getElementById('lyBox'), code = document.getElementById('lyCode').value;
         location.href = box.dataset.copyUrl + '?copy=' + encodeURIComponent(code) + '&link=' + (document.getElementById('lyLink').checked ? '1' : '0');
