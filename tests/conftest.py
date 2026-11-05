@@ -31,3 +31,11 @@ def _role_access_in_tmp(tmp_path, monkeypatch):
     """Tests never read or write the server's data/role-access.json."""
     import access
     monkeypatch.setattr(access, 'PATH', str(tmp_path / 'role-access.json'))
+
+
+@pytest.fixture(autouse=True)
+def _short_links_in_tmp(tmp_path, monkeypatch):
+    """Tests never read or write the server's data/short_links.json."""
+    import shortlinks
+    monkeypatch.setattr(shortlinks, 'PATH', str(tmp_path / 'short_links.json'))
+    monkeypatch.setattr(shortlinks, 'LOCK', str(tmp_path / 'short_links.json.lock'))

@@ -142,7 +142,10 @@ def env(monkeypatch):
 
 
 def _links(body):
-    return re.findall(r'https?://[^\s]+/board/vote/[^\s]+', body)
+    """The personal vote links in an email: short links, resolved to the signed link each one stands for."""
+    import shortlinks
+    short = re.findall(r'https?://[^\s]+/l/([^\s]+)', body)
+    return [u for u in (shortlinks._load()[sid]['url'] for sid in short) if '/board/vote/' in u]
 
 
 def test_request_email_vote_sends_board_thread_and_a_personal_link_each(env):

@@ -86,6 +86,8 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'   # other sites' pages can't post 
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
 app.register_blueprint(api.bp)
+import shortlinks  # noqa: E402
+app.register_blueprint(shortlinks.bp)
 app.config['MAX_CONTENT_LENGTH'] = 40 * 1024 * 1024  # funds request receipts
 
 # Mandatory Secret Key in Production

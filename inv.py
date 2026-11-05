@@ -11,6 +11,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 import inv_store as I
 import officials as O
+import shortlinks
 from officer import current as officer_current, officer_required
 from utils import load_events, load_programs, log_audit_event, login_required, send_mail, to_number
 
@@ -210,7 +211,7 @@ def delete_request(inv_id):
         return redirect(url_for('inv.detail', inv_id=inv_id))
     who = session.get('who', '') or 'Unknown'
     token = _delete_serializer().dumps({'id': inv_id, 'by': who, 'why': why})
-    link = f"{request.url_root.rstrip('/')}{url_for('inv.delete_confirm', token=token)}"
+    link = shortlinks.make(f"{request.url_root.rstrip('/')}{url_for('inv.delete_confirm', token=token)}", DELETE_DAYS)
     send_mail(f"Confirm deleting invoice {inv_id}: {inv['bill_name']} {I.money(inv['total'])}",
               f"{who} asked to delete invoice {inv_id} ({inv['bill_name']}, {I.money(inv['total'])}, {inv['status'].lower()}).\n"
               f"Why: {why}\n\nTo delete it, open this link (good for {DELETE_DAYS} days) and confirm:\n{link}\n\n"

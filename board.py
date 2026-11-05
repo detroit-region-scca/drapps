@@ -24,6 +24,7 @@ import bud_store as B
 import motions_store as M
 import officials as O
 import plan_store as P
+import shortlinks
 from officer import current as officer_current
 from utils import load_programs, local_path, log_audit_event, login_required, send_mail
 
@@ -88,7 +89,8 @@ def _ser():
 
 
 def _vote_link(bid, p):
-    return url_for('board.vote_link', token=_ser().dumps({'b': bid, 'e': p['email'], 'n': p['name']}), _external=True)
+    url = url_for('board.vote_link', token=_ser().dumps({'b': bid, 'e': p['email'], 'n': p['name']}), _external=True)
+    return shortlinks.make(url, BL.OPEN_DAYS + 5)
 
 
 def _ballot_views(people=None, me=''):

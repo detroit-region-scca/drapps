@@ -16,8 +16,9 @@ import bud_store as B
 import fr_logic as FL
 import fr_store as F
 import officials as O
-from officer import current as officer_current, officer_required
 import plan_store as P
+import shortlinks
+from officer import current as officer_current, officer_required
 from utils import load_events, load_programs, log_audit_event, login_required, send_mail, to_number
 
 bp = Blueprint('fr', __name__, url_prefix='/funds')
@@ -133,7 +134,7 @@ def _serializer():
 
 def _link(rid, role, name, mail):
     token = _serializer().dumps({'id': rid, 'role': role, 'name': name, 'email': mail})
-    return f"{request.url_root.rstrip('/')}{url_for('fr.approve_link', token=token)}"
+    return shortlinks.make(f"{request.url_root.rstrip('/')}{url_for('fr.approve_link', token=token)}", LINK_DAYS)
 
 
 def approvers(r):
