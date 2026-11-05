@@ -24,6 +24,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(os.path.join(ROOT, '.env'))
 os.environ['GOOGLE_SERVICE_ACCOUNT_FILE'] = os.environ.get('GOOGLE_SA_KEY_HOST') or os.environ['GOOGLE_SERVICE_ACCOUNT_FILE']
 import bud_store as B  # noqa: E402
+from storage import open_book  # noqa: E402
 import fr_store as F  # noqa: E402
 import plan_store as P  # noqa: E402
 import qbo_logic as Q  # noqa: E402
@@ -100,7 +101,7 @@ def main():
         for e in exc:
             say.append(f"  {e['kind']}: {e['detail']}")
     else:
-        bw = B.open_book(os.environ['BUDGETS_SHEET_ID'])
+        bw = open_book(os.environ['BUDGETS_SHEET_ID'])
         try:
             ws = bw.worksheet('QBO Actuals')
         except Exception:
