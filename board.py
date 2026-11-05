@@ -212,8 +212,9 @@ def home():
             if bids:
                 subject = f"{u}Discussion: {first}"
                 send_mail(subject,
-                          f"{who} asks the board to vote on:\n\n{listed}\n\nDiscuss here (reply all). Each director gets "
-                          f"a personal vote link by email. {BL.needed()} votes decide it. Closes {BL.closes(today)}.\n\n"
+                          f"This email is for discussion. Reply all to discuss.\n\n"
+                          f"{who} asks the board to vote on:\n\n{listed}\n\n"
+                          f"Your vote link comes in a separate email. Closes {BL.closes(today)}.\n\n"
                           f"Who has voted: {board_url}",
                           board_email(), reply_to=board_email())
             else:
@@ -224,10 +225,10 @@ def home():
                            "Everything waiting for the board:\n" + board_url),
                           board_email(), reply_to=board_email())
             for p in people:
-                mine = '\n\n'.join(f"{line}\n\nVote here:\n\n{_vote_link(bid, p)}\n" for (_, _, line), bid in zip(items, bids))
-                send_mail(f"{u}Vote: {first}",
-                          f"Hi {p['name'].split(' (')[0].split()[0]},\n\n{mine}\n"
-                          f"Discuss on \"{subject}\". Closes {BL.closes(today)}.",
+                mine = '\n\n'.join(f"{title}:\n\n{_vote_link(bid, p)}" for (_, title, _), bid in zip(items, bids))
+                send_mail(f"{u}Your vote link: {first}",
+                          f"This email has your vote link.\n\n{mine}\n\n"
+                          f"Closes {BL.closes(today)}. To discuss, see the \"{subject}\" email.",
                           p['email'])
             for m in ms:
                 M.update(m['id'], asked=today)
