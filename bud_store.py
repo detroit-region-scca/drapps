@@ -163,6 +163,15 @@ def history(code, years=6):
     return out
 
 
+def _same_budget(old, header, old_lines, new_lines):
+    """True when the header and lines are what was saved before (only last_year_event may differ)."""
+    keys = ('chair', 'location', 'notes', 'event_name', 'program', 'date')
+    if any(str(old.get(k) or '') != str(header.get(k) or '') for k in keys):
+        return False
+    pick = lambda ls: [(ln['section'], ln['description'], *(ln.get(k) for k in AMOUNTS)) for ln in ls]  # noqa: E731
+    return pick(sorted(old_lines, key=lambda ln: ln['sort'])) == pick(new_lines)
+
+
 def save(header, lines, files=()):
     """Replace one event's budget: header row upserted, its lines rewritten. Other events are untouched."""
     with FileLock(SAVE_LOCK), _lock:
@@ -170,9 +179,11 @@ def save(header, lines, files=()):
         buds, all_lines, _ = _snapshot()
         code = header['event_code']
         old = next((b for b in buds if b['event_code'] == code), None)
-        header = dict(header, updated=date.today().isoformat(), files_url=(old or {}).get('files_url', ''),
-                      approved=(old or {}).get('approved', ''), approved_by=(old or {}).get('approved_by', ''))
         files = [f for f in files if f and f.filename]
+        # Changing only "Same event last year" is not a change to the budget: an approved one stays approved.
+        same = old and not files and _same_budget(old, header, [ln for ln in all_lines if ln['event_code'] == code], lines)
+        header = dict(header, updated=old['updated'] if same else date.today().isoformat(), files_url=(old or {}).get('files_url', ''),
+                      approved=(old or {}).get('approved', ''), approved_by=(old or {}).get('approved_by', ''))
         if files:
             if not header['files_url']:
                 header['files_url'] = drive_folder(f"{code} {header['event_name']}"[:120], os.environ['BUDGETS_FILES_FOLDER_ID'])['webViewLink']

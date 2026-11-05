@@ -471,6 +471,8 @@ def edit(code):
         lines = [{'section': ln['section'], 'description': ln['description'], 'last_year': ln['actual'],
                   'budget': ln['budget'], 'actual': None} for ln in sb['lines']]
         form = {'chair': sb.get('chair', ''), 'location': sb.get('location', '')}
+        if src in {c['code'] for c in _last_year_choices(code, e)}:
+            form['last_year_event'] = src        # copied from an earlier event of the program: linked, and changeable
     elif (pg := program_of(code)):
         lines, form = [], {'chair': O.director(pg[0])[0]}
     else:

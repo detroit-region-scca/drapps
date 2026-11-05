@@ -22,3 +22,12 @@ def test_choices_are_earlier_events_of_the_same_program(monkeypatch):
     got = [c['code'] for c in bud._last_year_choices('#B', evs[1])]
     assert got == ['#A']
     assert [c['code'] for c in bud._last_year_choices('#C', evs[2])] == ['#B', '#A']
+
+
+def test_link_only_change_keeps_the_budget_unchanged():
+    old = {'chair': 'Pat', 'location': 'Here', 'notes': '', 'event_name': 'Sno', 'program': 'RY', 'date': '2027-01-09'}
+    lines = [{'section': 'Income', 'description': 'Entries', 'last_year': 900.0, 'budget': 1000.0, 'actual': None, 'sort': 0}]
+    new_lines = [{'section': 'Income', 'description': 'Entries', 'last_year': 900.0, 'budget': 1000.0, 'actual': None}]
+    assert B._same_budget(old, dict(old, last_year_event='#A'), lines, new_lines)
+    assert not B._same_budget(old, dict(old, chair='Sam'), lines, new_lines)
+    assert not B._same_budget(old, old, lines, [dict(new_lines[0], budget=1100.0)])
