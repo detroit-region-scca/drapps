@@ -171,6 +171,18 @@
     {% else %}
     <div class="card p-4 text-center text-muted mb-3">No budget for {{ 'this program' if e.program_budget else 'this event' }} yet.</div>
     {% endif %}
+    {% if yoy %}
+    <h2 class="h6 text-muted">Year over year</h2>
+    <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <thead><tr><th class="ps-3">Year</th><th>Event</th><th class="num">Budgeted net</th><th class="num">Income</th><th class="num">Expenses</th><th class="num pe-3">Net</th></tr></thead>
+        <tbody>{% for r in yoy %}<tr{% if loop.first %} class="fw-semibold"{% endif %}><td class="ps-3">{{ r.date[:4] }}</td>
+            <td>{% if loop.first %}{{ r.name }}{% else %}<a href="{{ url_for('bud.detail', code=r.code) }}">{{ r.name }}</a>{% endif %} <span class="small text-muted">{{ r.code }}</span></td>
+            <td class="num">{{ money(r.budget) }}</td>
+            <td class="num">{{ money(r.qbo.income if r.qbo else none) }}</td><td class="num">{{ money(r.qbo.expense if r.qbo else none) }}</td>
+            <td class="num pe-3">{{ money(r.qbo.surplus if r.qbo else none) }}</td></tr>{% endfor %}</tbody>
+    </table></div></div>
+    <p class="form-text">Income, expenses and net are from QuickBooks. Each year comes from the budget's "Same event last year"; change it with Edit budget.</p>
+    {% endif %}
     {% if funds %}
     <h2 class="h6 text-muted">Funds requests {{ 'not tied to an event' if e.program_budget else 'for this event' }}</h2>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
@@ -226,6 +238,12 @@
         <div class="card p-3 mb-3"><div class="row g-2">
             <div class="col-md-4"><label class="form-label">Event chair</label><input name="chair" class="form-control" value="{{ form.get('chair', '') }}"></div>
             <div class="col-md-4"><label class="form-label">Location</label><input name="location" class="form-control" value="{{ form.get('location', '') }}"></div>
+            {% if ly_choices %}<div class="col-md-4"><label class="form-label" for="lastYear">Same event last year</label>
+                <select name="last_year_event" id="lastYear" class="form-select">
+                    <option value="">None</option>
+                    {% for c in ly_choices %}<option value="{{ c.code }}" {% if form.get('last_year_event') == c.code %}selected{% endif %}>{{ c.date }} · {{ c.name }} {{ c.code }}</option>{% endfor %}
+                </select>
+                <div class="form-text">Optional. Shows this event's year over year results on its page.</div></div>{% endif %}
             <input type="hidden" name="entered_by" value="{{ session.get('who', '') }}">
         </div></div>
         {% set starter = {'Income': ['Entry fees', 'Weekend memberships'], 'Expense': ['Site rental', 'SCCA insurance and sanction fees', 'Worker points', 'Trophies', 'Supplies']} %}

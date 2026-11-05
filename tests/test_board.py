@@ -28,6 +28,7 @@ def test_request_email_vote_can_be_marked_urgent(monkeypatch):
                                                    'perms': {'board_ask'}})
     monkeypatch.setattr(board, '_me', lambda: {'level': 'officer', 'perms': {'board_ask'}})
     monkeypatch.setattr(board.M, 'enabled', lambda: True)
+    monkeypatch.setattr(board.B, 'enabled', lambda: False)   # no live budgets sheet in tests
     monkeypatch.setattr(board.M, 'motions', lambda: [motion])
     monkeypatch.setattr(board.M, 'update', lambda *a, **k: None)
     monkeypatch.setattr(board, 'send_mail', lambda subject, body, *a, **k: sent.append((subject, body)))

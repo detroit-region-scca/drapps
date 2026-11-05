@@ -110,6 +110,32 @@ def _status(b):
     return 'budget'
 
 
+def _last_year_choices(code, e):
+    """Earlier events of the same program, newest first, for "Same event last year" (chosen by a person, never guessed)."""
+    if program_of(code):
+        return []
+    prog, day = e.get('program_code', ''), str(e.get('date', ''))
+    evs = [x for x in load_events() if x.get('program_code') == prog and str(x.get('date', '')) < day
+           and (x.get('custom_tag') or x.get('unique_code')) != code]
+    return [{'code': x.get('custom_tag') or x.get('unique_code'), 'date': str(x.get('date', '')), 'name': x.get('event_name', '')}
+            for x in sorted(evs, key=lambda x: str(x.get('date', '')), reverse=True)[:60]]
+
+
+def _year_over_year(code):
+    """Rows for the event page when "Same event last year" is set: each year's budgeted net and QuickBooks result."""
+    b = B.get(code)
+    if not b or not b.get('last_year_event'):
+        return []
+    q, ev = B.qbo_actuals(), {(x.get('custom_tag') or x.get('unique_code')): x for x in load_events()}
+    rows = []
+    for h in B.history(code):
+        bb, x = h['b'] or {}, ev.get(h['code']) or {}
+        qt = (q.get(h['code']) or {}).get('totals')
+        rows.append({'code': h['code'], 'date': str(x.get('date') or bb.get('date') or ''), 'name': x.get('event_name') or bb.get('event_name', h['code']),
+                     'budget': ((bb.get('totals') or {}).get('budget') or {}).get('surplus'), 'qbo': qt})
+    return rows
+
+
 def _received(code):
     """Money reported received at this event (cash and checks), newest first."""
     import received_store as R
@@ -206,7 +232,7 @@ def detail(code):
     pg = program_of(code)
     q = program_actuals(*pg) if pg else (B.qbo_actuals().get(code) if B.enabled() else None)
     plan = None if pg else _plan_line(code)
-    return render_template('bud.html', **_ctx(view='detail', code=code, e=e or {}, b=b, funds=_funds(code), received=_received(code),
+    return render_template('bud.html', **_ctx(view='detail', code=code, e=e or {}, b=b, funds=_funds(code), received=_received(code), yoy=_year_over_year(code),
                                               q=q, plan=plan,
                                               status=_status(b), today=date.today().isoformat(), programs=load_programs(),
                                               open_lines=_open_lines(e)))
@@ -424,10 +450,14 @@ def edit(code):
             for msg in errors:
                 flash(msg, 'danger')
             return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=f, lines=_form_lines(f), funds=_funds(code),
+                                                      ly_choices=_last_year_choices(code, e),
                                                       plan=_plan_line(code))), 400
+        ly = f.get('last_year_event', '').strip()
+        if ly and ly not in {c['code'] for c in _last_year_choices(code, e)}:
+            ly = ''          # only an earlier event of the same program
         header = {'event_code': code, 'event_name': e.get('event_name', ''), 'program': e.get('program_code', ''), 'date': e.get('date', ''),
                   'chair': f.get('chair', '').strip(), 'location': f.get('location', '').strip(), 'notes': f.get('notes', '').strip(),
-                  'updated_by': who}
+                  'updated_by': who, 'last_year_event': ly}
         B.save(header, lines, request.files.getlist('files'))
         log_audit_event('BUDGET_SAVED', who, {'event_code': code, 'lines': len(lines)})
         flash('Budget saved.', 'success')
@@ -448,7 +478,7 @@ def edit(code):
     others = sorted((x for k, x in B.budgets().items() if k != code), key=lambda x: x.get('date', ''), reverse=True)
     copied = bool(src and not b and B.get(src))
     return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=form, lines=lines, others=others, funds=_funds(code),
-                                              copied=copied, plan=_plan_line(code), src=B.get(src) if copied else None,
+                                              ly_choices=_last_year_choices(code, e), copied=copied, plan=_plan_line(code), src=B.get(src) if copied else None,
                                               src_q=_short_accounts(B.qbo_actuals().get(src)) if copied else None))
 
 

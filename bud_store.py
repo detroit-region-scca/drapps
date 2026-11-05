@@ -19,7 +19,7 @@ from storage import DATA_DIR, drive_folder, drive_upload, open_book, worksheet
 import sheet_cache as C
 
 BUD_COLS = ['event_code', 'event_name', 'program', 'date', 'chair', 'location', 'updated', 'updated_by', 'notes', 'files_url',
-            'approved', 'approved_by']
+            'approved', 'approved_by', 'last_year_event']
 LINE_COLS = ['event_code', 'section', 'description', 'last_year', 'budget', 'actual', 'sort']
 AMOUNTS = ('last_year', 'budget', 'actual')
 CACHE_SECONDS = 15
@@ -71,10 +71,10 @@ def _snapshot():
     if hit and hit[0] == C.version(os.environ['BUDGETS_SHEET_ID']):
         return hit[1]
     try:
-        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:L', 'Lines!A:G', 'QBO Actuals!A:F'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:M', 'Lines!A:G', 'QBO Actuals!A:F'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     except gspread.exceptions.APIError:
         # No QBO Actuals tab until the first sync has run.
-        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:L', 'Lines!A:G'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:M', 'Lines!A:G'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], [], []]
     buds = [dict(zip(BUD_COLS, [_read_cell(c, v) for c, v in zip(BUD_COLS, r)] + [''] * len(BUD_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
     lines = []
@@ -142,6 +142,27 @@ def _cell(v):
     return v if isinstance(v, (int, float)) else str(v)
 
 
+def _heading(ws):
+    """Columns added later get their heading the first time a budget is saved."""
+    if not _cache.get('heading_ok'):
+        top = ws.row_values(1)
+        if len(top) < len(BUD_COLS):
+            ws.update([BUD_COLS[len(top):]], f'{chr(ord("A") + len(top))}1', value_input_option='RAW')
+        _cache['heading_ok'] = True
+
+
+def history(code, years=6):
+    """This event and the earlier ones its budgets point back to ("Same event last year"), newest first:
+    [{'code', 'b'}]. Only links a person chose; stops at a gap or a loop."""
+    buds, out, seen = budgets(), [], set()
+    while code and code not in seen and len(out) < years:
+        seen.add(code)
+        b = buds.get(code)
+        out.append({'code': code, 'b': b})
+        code = (b or {}).get('last_year_event', '')
+    return out
+
+
 def save(header, lines, files=()):
     """Replace one event's budget: header row upserted, its lines rewritten. Other events are untouched."""
     with FileLock(SAVE_LOCK), _lock:
@@ -159,6 +180,7 @@ def save(header, lines, files=()):
             for f in files:
                 drive_upload(f, folder_id)
         ws = _ws('Budgets')
+        _heading(ws)
         row = [_cell(header.get(c, '')) for c in BUD_COLS]
         if old:
             n = ws.col_values(1).index(code) + 1
