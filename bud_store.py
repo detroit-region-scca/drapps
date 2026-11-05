@@ -1,7 +1,7 @@
 """Reads and writes the Event Budgets Google Sheet (BUDGETS_SHEET_ID) in the DRSCCA Apps Shared Drive.
 
 One row per event on Budgets (keyed by the #DR event code), one row per line on Lines with the three
-columns of the region's budget form: last year (its budget), this year budget, this year actual. Original files
+columns of the region's budget form: last year actual, this year budget, this year actual. Original files
 directors send go in a per-event folder under BUDGETS_FILES_FOLDER_ID.
 
 The 'QBO Actuals' tab holds each event project's profit and loss by account, copied from QuickBooks by
