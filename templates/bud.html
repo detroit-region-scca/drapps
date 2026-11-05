@@ -157,7 +157,7 @@
     <h2 class="h6 text-muted">Budget form</h2>
     <div class="card mb-3"><div class="card-body p-0 table-responsive">
         <table class="table mb-0">
-            <thead><tr><th class="ps-3"></th><th class="num">Last year</th><th class="num pe-3">This year budget</th></tr></thead>
+            <thead><tr><th class="ps-3"></th><th class="num">Last year's budget</th><th class="num pe-3">This year budget</th></tr></thead>
             <tbody>
             {% for section in ['Income', 'Expense'] %}
                 <tr><td class="ps-3 fw-semibold" colspan="3">{{ section }}</td></tr>
@@ -240,7 +240,7 @@
                     <button type="button" id="lyCopy" class="btn btn-sm btn-outline-light {{ '' if chosen and chosen.has_budget else 'd-none' }}" onclick="copyLastYearBudget()">Copy its budget</button>
                 </div>
                 <div class="form-text">Optional. Link it to see this event's results year over year on its page, or copy its budget to start from.</div></div>{% endif %}
-    {% if copied %}<div class="alert alert-info py-2">Copied from {{ src.event_name|trim }}: its budget amounts are in both Last year and Budget{% if src_q %}, and what QuickBooks shows it actually made is below{% endif %}. Change anything, then save.</div>
+    {% if copied %}<div class="alert alert-info py-2">Copied from {{ src.event_name|trim }}: its budget amounts are in both Last year's budget and Budget{% if src_q %}, and what QuickBooks shows it actually made is below{% endif %}. Change anything, then save.</div>
     {% if src_q %}<details class="mb-3" open><summary class="small text-muted">{{ src.event_name|trim }} in QuickBooks: income {{ money(src_q.totals.income) }}, costs {{ money(src_q.totals.expense) }}, surplus {{ money(src_q.totals.surplus) }}</summary>
     <div class="card mt-2"><div class="card-body p-0"><table class="table table-sm mb-0"><tbody>
         {% for ln in src_q.lines %}<tr><td class="ps-3 small text-muted">{{ ln.section }}</td><td>{{ ln.label }}</td><td class="num pe-3">{{ money(ln.amount) }}</td></tr>{% endfor %}
@@ -254,14 +254,14 @@
         {% for section, key in [('Income', 'inc'), ('Expense', 'exp')] %}
         <div class="card p-3 mb-3">
             <div class="section-label">{{ section }}</div>
-            <div class="row g-2 d-none d-md-flex text-muted small mb-1"><div class="col-md-6">Description</div><div class="col-md-2 text-end">Last year</div><div class="col-md-3 text-end">This year budget</div></div>
-            <div class="row g-2 d-md-none text-muted small mb-1"><div class="col-5 text-end">Last yr</div><div class="col-6 text-end">Budget</div></div>
+            <div class="row g-2 d-none d-md-flex text-muted small mb-1"><div class="col-md-6">Description</div><div class="col-md-2 text-end">Last year's budget</div><div class="col-md-3 text-end">This year budget</div></div>
+            <div class="row g-2 d-md-none text-muted small mb-1"><div class="col-5 text-end">Last yr budget</div><div class="col-6 text-end">Budget</div></div>
             <div class="lines" data-key="{{ key }}">
             {% set rows = lines|selectattr('section', 'equalto', section)|list or starter[section]|map('string')|list %}
             {% for ln in rows %}{% set is_obj = ln is mapping %}
                 <div class="row g-2 bline mb-2 pb-2">
                     <div class="col-12 col-md-6"><input name="{{ key }}_desc" class="form-control form-control-sm" placeholder="Description" value="{{ ln.description if is_obj else ln }}"></div>
-                    <div class="col-5 col-md-2"><input name="{{ key }}_ly" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="Last yr" value="{{ amt(ln.last_year) if is_obj else '' }}"></div>
+                    <div class="col-5 col-md-2"><input name="{{ key }}_ly" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="Last yr budget" value="{{ amt(ln.last_year) if is_obj else '' }}"></div>
                     <div class="col-6 col-md-3"><input name="{{ key }}_bud" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="Budget" value="{{ amt(ln.budget) if is_obj else '' }}"></div>
                     <input type="hidden" name="{{ key }}_act" value="{{ amt(ln.actual) if is_obj else '' }}">
                     <div class="col-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)">✕</button></div>
@@ -340,8 +340,8 @@
         if (!form) return;
         const inc = sums('inc'), exp = sums('exp');
         for (const [key, s] of [['inc', inc], ['exp', exp]])
-            form.querySelector(`[data-tot=${key}]`).textContent = `Last yr ${fmt(s.ly)} · Budget ${fmt(s.bud)}`;
-        document.getElementById('surplus').textContent = `Last yr ${fmt(inc.ly - exp.ly)} · Budget ${fmt(inc.bud - exp.bud)}`;
+            form.querySelector(`[data-tot=${key}]`).textContent = `Last year's budget ${fmt(s.ly)} · Budget ${fmt(s.bud)}`;
+        document.getElementById('surplus').textContent = `Last year's budget ${fmt(inc.ly - exp.ly)} · Budget ${fmt(inc.bud - exp.bud)}`;
     }
     function addLine(btn) {
         const box = btn.closest('.card').querySelector('.lines');
