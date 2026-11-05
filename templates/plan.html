@@ -159,7 +159,7 @@
             {% set by_acct = p.lines|selectattr('account')|list %}
             {% if accts %}<h2 class="h6 text-muted">{{ 'Plan and QuickBooks, by account' if by_acct else 'QuickBooks, by account' }}</h2>
             <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table table-sm mb-0">
-                <thead><tr><th class="ps-3">Account</th>{% if by_acct %}<th class="num">Plan</th>{% endif %}<th class="num pe-3">{{ (prev ~ (' so far' if prev|int == now_year else ' actual')) if future else 'Actual' }}</th></tr></thead>
+                <thead><tr><th class="ps-3">Account</th>{% if by_acct %}<th class="num">Plan</th>{% endif %}<th class="num pe-3">{{ (prev ~ ' QuickBooks' ~ (' so far' if prev|int == now_year else '')) if future else 'QuickBooks' }}</th></tr></thead>
                 <tbody>{% for r in accts if by_acct or r.account %}<tr><td class="ps-3">{{ r.account or 'No QuickBooks account' }}{% if not r.account %}<div class="small text-muted">{{ r['items']|join(', ') }}</div>{% endif %}</td>
                     {% if by_acct %}<td class="num">{{ cents(r.plan) }}</td>{% endif %}<td class="num pe-3">{{ cents(r.last if future else r.actual) }}</td></tr>{% endfor %}</tbody>
             </table></div></div>{% endif %}
