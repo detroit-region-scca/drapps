@@ -8,7 +8,7 @@ drapps.drscca.org. Keeping it running: [docs/RUNBOOK.md](docs/RUNBOOK.md).
 | Events | `/events` | Register an event (it gets the `#DR` code used in MotorsportReg and QuickBooks), build its budget, see budget vs actual |
 | Members | `/members` | Worker points: enter who worked an event, milestones, using points, the books entry for the treasurer |
 | Board | `/board` | Budgets and motions waiting for a vote, recorded decisions, minutes |
-| Funds Requests | `/funds` | Ask for a check, a region card payment or a reimbursement; approved by emailed link |
+| Money | `/funds`, `/funds/in` | Money out: ask for a check, a region card payment or a reimbursement, approved by emailed link. Money in: report cash and checks received; marked deposited when QuickBooks shows the deposit |
 | Annual Plan | `/plan` | Each program's yearly plan against QuickBooks |
 | Operations | `/operations` | Vehicles, trailers, storage, recurring bills, documents, to-dos, replacement plan |
 | Invoices | `/invoices` | Invoices the region sends, as PDFs, emailed to the customer |
@@ -82,7 +82,7 @@ dev server with the code mounted.
 - `app.py`: the home page, event registration, the Treasurer page, the audit page; registers the apps.
 - One app per pair of files, plus rules kept apart so they can be tested: `bud.py`/`bud_store.py` (events and
   budgets), `members.py`/`members_store.py`/`members_logic.py`, `board.py`/`motions_store.py`,
-  `minutes.py`/`minutes_store.py`/`minutes_logic.py`, `fr.py`/`fr_store.py`/`fr_logic.py`,
+  `minutes.py`/`minutes_store.py`/`minutes_logic.py`, `fr.py`/`fr_store.py`/`fr_logic.py` (money out) with `received_store.py` (money in),
   `plan.py`/`plan_store.py`, `equip.py`/`equip_store.py` (with `equip_docs.py`, `equip_pdf.py`),
   `inv.py`/`inv_store.py`, `admin.py`. The `*_store.py` files are the only code that touches the sheets.
 - `storage.py`: Google Sheets access shared by every app, and the event registry. `sheet_cache.py`: the cache.
