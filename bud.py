@@ -481,22 +481,23 @@ def edit(code):
     # actuals typed on its old form become "last year", and its QuickBooks results are shown above), or a blank form.
     src = request.args.get('copy')
     pick, link = '', False
-    if b:
-        lines, form = b['lines'], b
-        pick = b.get('last_year_event', '')
-        link = bool(pick)
-    elif src and (sb := B.get(src)):
+    if src and (sb := B.get(src)):
+        # Copy (also over a saved budget, after the form asked): nothing is saved until Save.
         lines = [{'section': ln['section'], 'description': ln['description'], 'last_year': ln['actual'],
                   'budget': ln['budget'], 'actual': None} for ln in sb['lines']]
-        form = {'chair': sb.get('chair', ''), 'location': sb.get('location', '')}
+        form = dict(b) if b else {'chair': sb.get('chair', ''), 'location': sb.get('location', '')}
         # The event copied from stays chosen; linked unless the box was unticked (and only if it can be linked).
         pick = src
         link = request.args.get('link') != '0' and src in {c['code'] for c in _last_year_events(code, e)}
+    elif b:
+        lines, form = b['lines'], b
+        pick = b.get('last_year_event', '')
+        link = bool(pick)
     elif (pg := program_of(code)):
         lines, form = [], {'chair': O.director(pg[0])[0]}
     else:
         lines, form = [], {}
-    copied = bool(src and not b and B.get(src))
+    copied = bool(src and B.get(src))
     return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=form, lines=lines, funds=_funds(code),
                                               ly_events=_last_year_events(code, e, pick), pick=pick, link=link, copied=copied, plan=_plan_line(code), src=B.get(src) if copied else None,
                                               src_q=_short_accounts(B.qbo_actuals().get(src)) if copied else None))

@@ -225,17 +225,9 @@
     {% elif view == 'edit' %}
     <div class="crumbs">{% if e.program_budget %}<a href="{{ url_for('plan.detail', year=e.date[:4], program=e.program_code) }}">Annual Plan</a>{% else %}<a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Budgets</a>{% endif %} / <a href="{{ url_for('bud.detail', code=code) }}">{{ code }}</a> / Edit</div>
     <div class="page-title">{{ e.event_name }} <span class="text-muted fs-6">{{ e.date[:4] if e.program_budget else e.date }} · {{ e.program_code }} · {{ code }}</span></div>
-    {% if copied %}<div class="alert alert-info py-2">Copied from {{ src.event_name }}: its budget is your starting budget{% if src_q %}, and what QuickBooks shows it actually made is below{% endif %}. Change anything, then save.</div>
-    {% if src_q %}<details class="mb-3" open><summary class="small text-muted">{{ src.event_name }} in QuickBooks: income {{ money(src_q.totals.income) }}, costs {{ money(src_q.totals.expense) }}, surplus {{ money(src_q.totals.surplus) }}</summary>
-    <div class="card mt-2"><div class="card-body p-0"><table class="table table-sm mb-0"><tbody>
-        {% for ln in src_q.lines %}<tr><td class="ps-3 small text-muted">{{ ln.section }}</td><td>{{ ln.label }}</td><td class="num pe-3">{{ money(ln.amount) }}</td></tr>{% endfor %}
-    </tbody></table></div></div></details>{% endif %}{% endif %}
     <form method="post" enctype="multipart/form-data" id="budForm" class="mt-3">
-        <div class="card p-3 mb-3"><div class="row g-2">
-            <div class="col-md-4"><label class="form-label">Event chair</label><input name="chair" class="form-control" value="{{ form.get('chair', '') }}"></div>
-            <div class="col-md-4"><label class="form-label">Location</label><input name="location" class="form-control" value="{{ form.get('location', '') }}"></div>
-            {% if ly_events %}{% set chosen = ly_events|selectattr('code', 'equalto', pick)|first %}<div class="col-12" id="lyBox"
-                 data-copy-url="{{ url_for('bud.edit', code=code) }}" data-can-copy="{{ '' if lines else '1' }}">
+        {% if ly_events %}{% set chosen = ly_events|selectattr('code', 'equalto', pick)|first %}<div class="card p-3 mb-3" id="lyBox"
+                 data-copy-url="{{ url_for('bud.edit', code=code) }}" data-has-lines="{{ '1' if lines else '' }}">
                 <label class="form-label" for="lyCode">Last year's event</label>
                 <div class="d-flex flex-wrap align-items-center gap-3">
                     <select name="last_year_event" id="lyCode" class="form-select" style="max-width:28rem" onchange="lastYearChanged()">
@@ -245,9 +237,17 @@
                     <div class="form-check m-0 {{ '' if pick else 'd-none' }}" id="lyLinkBox">
                         <input class="form-check-input" type="checkbox" name="link_last_year" value="yes" id="lyLink" {{ 'checked' if link }}>
                         <label class="form-check-label" for="lyLink">Link for year over year</label></div>
-                    <button type="button" id="lyCopy" class="btn btn-sm btn-outline-light {{ '' if chosen and chosen.has_budget and not lines else 'd-none' }}" onclick="copyLastYearBudget()">Copy its budget</button>
+                    <button type="button" id="lyCopy" class="btn btn-sm btn-outline-light {{ '' if chosen and chosen.has_budget else 'd-none' }}" onclick="copyLastYearBudget()">Copy its budget</button>
                 </div>
                 <div class="form-text">Optional. Link it to see this event's results year over year on its page, or copy its budget to start from.</div></div>{% endif %}
+    {% if copied %}<div class="alert alert-info py-2">Copied from {{ src.event_name|trim }}: its budget is your starting budget{% if src_q %}, and what QuickBooks shows it actually made is below{% endif %}. Change anything, then save.</div>
+    {% if src_q %}<details class="mb-3" open><summary class="small text-muted">{{ src.event_name|trim }} in QuickBooks: income {{ money(src_q.totals.income) }}, costs {{ money(src_q.totals.expense) }}, surplus {{ money(src_q.totals.surplus) }}</summary>
+    <div class="card mt-2"><div class="card-body p-0"><table class="table table-sm mb-0"><tbody>
+        {% for ln in src_q.lines %}<tr><td class="ps-3 small text-muted">{{ ln.section }}</td><td>{{ ln.label }}</td><td class="num pe-3">{{ money(ln.amount) }}</td></tr>{% endfor %}
+    </tbody></table></div></div></details>{% endif %}{% endif %}
+        <div class="card p-3 mb-3"><div class="row g-2">
+            <div class="col-md-4"><label class="form-label">Event chair</label><input name="chair" class="form-control" value="{{ form.get('chair', '') }}"></div>
+            <div class="col-md-4"><label class="form-label">Location</label><input name="location" class="form-control" value="{{ form.get('location', '') }}"></div>
             <input type="hidden" name="entered_by" value="{{ session.get('who', '') }}">
         </div></div>
         {% set starter = {'Income': ['Entry fees', 'Weekend memberships'], 'Expense': ['Site rental', 'SCCA insurance and sanction fees', 'Worker points', 'Trophies', 'Supplies']} %}
@@ -297,11 +297,13 @@
         const opt = sel.selectedOptions[0], box = document.getElementById('lyBox');
         document.getElementById('lyLinkBox').classList.toggle('d-none', !sel.value);
         if (!fromLoad) document.getElementById('lyLink').checked = !!sel.value;
-        document.getElementById('lyCopy').classList.toggle('d-none', !(sel.value && opt.dataset.budget && box.dataset.canCopy));
+        document.getElementById('lyCopy').classList.toggle('d-none', !(sel.value && opt.dataset.budget));
     }
     window.addEventListener('pageshow', () => lastYearChanged(true));
     function copyLastYearBudget() {
-        const box = document.getElementById('lyBox'), code = document.getElementById('lyCode').value;
+        const box = document.getElementById('lyBox'), sel = document.getElementById('lyCode'), code = sel.value;
+        const filled = box.dataset.hasLines || [...document.querySelectorAll('#budForm [name$=_bud], #budForm [name$=_ly]')].some(i => i.value.trim());
+        if (filled && !confirm(`Replace the lines below with the budget from ${sel.selectedOptions[0].textContent.trim()}? Nothing is saved until you press Save.`)) return;
         location.href = box.dataset.copyUrl + '?copy=' + encodeURIComponent(code) + '&link=' + (document.getElementById('lyLink').checked ? '1' : '0');
     }
 </script>
