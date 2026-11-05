@@ -342,7 +342,8 @@ def add_worker_points(entries: list[dict], event_code: str = '', what: str = '',
 
 @server.tool()
 def board_waiting() -> Any:
-    """Everything waiting for the board: budgets not yet approved (year, code, name, status) and open motions."""
+    """Everything waiting for the board: budgets not yet approved (year, code, name, status) and open motions. Each has
+    email_vote when the board is voting by email: state, yes/no/abstain counts, and roll_call (who voted what, who has not)."""
     return _call('GET', '/board')
 
 
@@ -360,8 +361,9 @@ def propose_motion(title: str, details: str = '', link: str = '') -> Any:
 
 @server.tool()
 def request_board_vote(budgets: list[dict] | None = None, motions: list[str] | None = None, urgent: bool = False) -> Any:
-    """Email the board (bod@) asking for a vote. budgets: [{"year", "code"}] from board_waiting; motions: ids.
-    Urgent applies to the whole email, so send an urgent item alone."""
+    """Email the board (bod@) asking for a vote, and each director their own Yes / No / Abstain voting link. 7 votes
+    decide it; an officer then records it on the Board page. budgets: [{"year", "code"}] from board_waiting; motions:
+    ids. Urgent applies to the whole email, so send an urgent item alone."""
     return _call('POST', '/board/ask', {'budgets': budgets or [], 'motions': motions or [], 'urgent': urgent})
 
 

@@ -7,7 +7,7 @@ drapps.drscca.org. Keeping it running: [docs/RUNBOOK.md](docs/RUNBOOK.md).
 |---|---|---|
 | Events | `/events` | Register an event (it gets the `#DR` code used in MotorsportReg and QuickBooks), build its budget, see budget vs QuickBooks, enter reported results |
 | Members | `/members` | Worker points: enter who worked an event, milestones, using points, the books entry for the treasurer |
-| Board | `/board` | Budgets and motions waiting for a vote, recorded decisions, minutes |
+| Board | `/board` | Budgets and motions waiting for a vote, email votes (each director gets their own Yes / No / Abstain link; the roll call shows who has voted), recorded decisions, minutes |
 | Money | `/funds`, `/funds/in` | Money out: ask for a check, a region card payment or a reimbursement, approved by emailed link. Money in: report cash and checks received; marked deposited when QuickBooks shows the deposit |
 | Annual Plan | `/plan` | Each program's yearly plan against QuickBooks |
 | Operations | `/operations` | Vehicles, trailers, storage, recurring bills, documents, to-dos, replacement plan |

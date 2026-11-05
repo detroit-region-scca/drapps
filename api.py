@@ -518,13 +518,25 @@ def members_add_points():
 
 @bp.get('/board')
 def board_waiting():
-    """Everything waiting for the board: budgets not yet approved and open motions."""
+    """Everything waiting for the board: budgets not yet approved and open motions, each with its email vote (if one is
+    open) and the roll call."""
     import bud
     import motions_store as M
     rows = [dict(year=y, code=r['b'].get('event_code'), name=r['b'].get('event_name'), program=r['b'].get('program'),
                  date=str(r['b'].get('date', '')), status=r['status'], surplus=r['surplus'], plan=r['plan'])
             for y in bud.pending_years() for r in bud._pending_rows(y)] if B.enabled() else []
-    return jsonify(budgets=rows, motions=[m for m in M.motions() if m['status'] == 'open'] if M.enabled() else [])
+    import board
+    views = board._ballot_views()
+
+    def vote_of(key):      # the item's email vote: status, count and the roll call (who voted what, who has not)
+        b = views.get(key)
+        return b and {'id': b['id'], 'state': b['state'], 'summary': b['summary'], 'opened': b['opened'], 'closes': b['closes'],
+                      'yes': b['t']['yes'], 'no': b['t']['no'], 'abstain': b['t']['abstain'], 'voted': b['t']['voted'], 'of': b['t']['of'],
+                      'roll_call': [{'name': r['name'], 'vote': r['choice'] or 'not yet', 'at': r['at']} for r in b['t']['rows']]}
+    for r in rows:
+        r['email_vote'] = vote_of(f"budget:{r['year']}:{r['code']}")
+    ms = [dict(m, email_vote=vote_of(f"motion:{m['id']}")) for m in M.motions() if m['status'] == 'open'] if M.enabled() else []
+    return jsonify(budgets=rows, motions=ms)
 
 
 @bp.get('/board/decisions/<year>')
