@@ -238,14 +238,14 @@
                  data-copy-url="{{ url_for('bud.edit', code=code) }}" data-can-copy="{{ '' if lines else '1' }}">
                 <label class="form-label" for="lyCode">Last year's event</label>
                 <div class="d-flex flex-wrap align-items-center gap-3">
-                    <select name="last_year_event" id="lyCode" class="form-select" style="max-width:28rem" onchange="lyChanged()">
+                    <select name="last_year_event" id="lyCode" class="form-select" style="max-width:28rem" onchange="lastYearChanged()">
                         <option value="" data-budget="">None</option>
                         {% for x in ly_events %}<option value="{{ x.code }}" data-budget="{{ '1' if x.has_budget else '' }}" {% if x.code == pick %}selected{% endif %}>{{ x.label }}</option>{% endfor %}
                     </select>
                     <div class="form-check m-0 {{ '' if pick else 'd-none' }}" id="lyLinkBox">
                         <input class="form-check-input" type="checkbox" name="link_last_year" value="yes" id="lyLink" {{ 'checked' if link }}>
                         <label class="form-check-label" for="lyLink">Link for year over year</label></div>
-                    <button type="button" id="lyCopy" class="btn btn-sm btn-outline-light {{ '' if chosen and chosen.has_budget and not lines else 'd-none' }}" onclick="lyCopy()">Copy its budget</button>
+                    <button type="button" id="lyCopy" class="btn btn-sm btn-outline-light {{ '' if chosen and chosen.has_budget and not lines else 'd-none' }}" onclick="copyLastYearBudget()">Copy its budget</button>
                 </div>
                 <div class="form-text">Optional. Link it to see this event's results year over year on its page, or copy its budget to start from.</div></div>{% endif %}
             <input type="hidden" name="entered_by" value="{{ session.get('who', '') }}">
@@ -289,13 +289,13 @@
 {% endblock %}
 {% block scripts %}
 <script>
-    function lyChanged() {
+    function lastYearChanged() {
         const sel = document.getElementById('lyCode'), opt = sel.selectedOptions[0], box = document.getElementById('lyBox');
         document.getElementById('lyLinkBox').classList.toggle('d-none', !sel.value);
         document.getElementById('lyLink').checked = !!sel.value;
         document.getElementById('lyCopy').classList.toggle('d-none', !(sel.value && opt.dataset.budget && box.dataset.canCopy));
     }
-    function lyCopy() {
+    function copyLastYearBudget() {
         const box = document.getElementById('lyBox'), code = document.getElementById('lyCode').value;
         location.href = box.dataset.copyUrl + '?copy=' + encodeURIComponent(code) + '&link=' + (document.getElementById('lyLink').checked ? '1' : '0');
     }
