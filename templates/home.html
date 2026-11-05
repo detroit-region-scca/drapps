@@ -62,6 +62,8 @@
             <span>Funds requests ready to pay<div class="small text-muted">All approvals in; card purchases only need recording</div></span><span class="fw-semibold">{{ jobs.pay[0] }}{% if jobs.pay[0] %} · ${{ '{:,.2f}'.format(jobs.pay[1]) }}{% endif %}</span></a>
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('fr.home') }}">
             <span>Funds requests waiting on approvals<div class="small text-muted">Director, board or second signer</div></span><span class="fw-semibold">{{ jobs.approvals }}</span></a>{% endif %}
+        {% if jobs.deposit is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('fr.in_list') }}">
+            <span>Money received, not deposited<div class="small text-muted">Cash and checks reported; the nightly sync marks them deposited{% if jobs.deposit[2] %}. {{ jobs.deposit[2] }} counted by one person{% endif %}</div></span><span class="fw-semibold">{{ jobs.deposit[0] }}{% if jobs.deposit[0] %} · ${{ '{:,.2f}'.format(jobs.deposit[1]) }}{% endif %}</span></a>{% endif %}
         {% if jobs.budgets is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('board.home') }}">
             <span>Budgets waiting for the board<div class="small text-muted">Send them to the board for a vote and record the decision; pick the year on the page</div></span><span class="fw-semibold">{{ jobs.budgets }}</span></a>{% endif %}
         {% set q = qbo_state() %}<div class="list-group-item d-flex justify-content-between align-items-center gap-2">
@@ -83,7 +85,7 @@
             <div class="card-body p-4">
                 <div class="text-center mb-2"><img src="{{ url_for('static', filename='drscca-logo.png') }}" alt="Detroit Region SCCA" style="height: 64px; width: auto;"></div>
                 <h1 class="h4 text-center mb-1">{{ title }}</h1>
-                <p class="text-center text-muted small mb-4">Events, Members and worker points, Funds Requests, Invoices, Annual Plan, Operations</p>
+                <p class="text-center text-muted small mb-4">Events, Members and worker points, Money in and out, Invoices, Annual Plan, Operations</p>
                 <form action="{{ url_for('auth.send_code') }}" method="POST">
                     <input type="hidden" name="next" value="{{ next_url }}">
                     <label for="email" class="form-label">Your email address</label>
@@ -153,8 +155,8 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="#3ecf8e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M6 2.5h9l4 4v15H6z"/><path d="M15 2.5v4h4"/><path d="M12.5 10v8M14.5 11.5h-3a1.25 1.25 0 0 0 0 2.5h2a1.25 1.25 0 0 1 0 2.5h-3"/>
                 </svg>
-                <div class="name">Funds Requests</div>
-                <div class="what">Ask for a check, card payment or reimbursement</div>
+                <div class="name">Money</div>
+                <div class="what">Ask for a payment or reimbursement; report cash and checks received</div>
             </{{ 'a' if on else 'div' }}>
         </div>
         {% endif %}

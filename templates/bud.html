@@ -96,6 +96,7 @@
                 {% if e.id %}<button class="btn btn-sm btn-outline-light" data-copy="{{ qbo_name }}" onclick="copyText(this)" title="{{ qbo_name }}">Copy QuickBooks name</button>
                 <button class="btn btn-sm btn-outline-light" data-bs-toggle="collapse" data-bs-target="#editEvent">Edit event</button>{% endif %}
                 {% if e.id %}<a class="btn btn-sm btn-outline-light" href="{{ url_for('fr.new', event=code) }}">Request funds</a>
+                <a class="btn btn-sm btn-outline-light" href="{{ url_for('fr.in_new', event=code) }}">Report money received</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ url_for('inv.new', event=code) }}">Create invoice</a>{% endif %}
                 {% if e.program_budget %}<a class="btn btn-sm btn-outline-light" href="{{ url_for('fr.new', program=e.program_code) }}">Request funds</a>{% endif %}
                 {% if b and b.files_url %}<a class="btn btn-sm btn-outline-light" href="{{ b.files_url }}" target="_blank" rel="noopener">Files</a>{% endif %}
@@ -177,6 +178,14 @@
         <tr><td class="ps-3 text-muted" colspan="3">Total requested</td><td class="num pe-3">${{ '{:,.2f}'.format(funds|sum(attribute='net')) }}</td></tr></tbody>
     </table></div></div>
     <p class="form-text">Card charges and MSR fees are not funds requests, so actual expenses can be higher than this.</p>
+    {% endif %}
+    {% if received %}
+    <h2 class="h6 text-muted mt-3">Money received at this event</h2>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <tbody>{% for r in received %}<tr><td class="ps-3"><a href="{{ url_for('fr.in_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ r.received }}</td><td>{{ 'Deposited' if r.status == 'Deposited' else 'Not deposited' }}</td><td class="num pe-3">${{ '{:,.2f}'.format(r.total) }}</td></tr>{% endfor %}
+        <tr><td class="ps-3 text-muted" colspan="3">Total received</td><td class="num pe-3">${{ '{:,.2f}'.format(received|sum(attribute='total')) }}</td></tr></tbody>
+    </table></div></div>
+    <p class="form-text">Cash and checks reported here. Registration paid through MotorsportReg is not included.</p>
     {% endif %}
     {% if b %}
     <div class="card p-3 mt-3 no-print">

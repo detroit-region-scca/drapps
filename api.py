@@ -597,3 +597,56 @@ def volunteers_remove(email):
     st, loc, fl = _forward('/access', {'action': 'remove', 'email': email})
     ok, errors = _result(st, loc, fl)
     return (jsonify(flashes=fl), 200) if ok and not errors else _err('Not removed.', errors=errors, flashes=fl)
+
+
+# ---------- Money received (cash and checks) ----------
+
+@bp.get('/received')
+def received_list():
+    """?status=Received|Deposited, ?year=YYYY"""
+    import received_store as R
+    st, year = request.args.get('status', ''), request.args.get('year', '')
+    return jsonify([r for r in R.reports() if (not st or r['status'] == st) and r['received'].startswith(year)])
+
+
+@bp.get('/received/<rid>')
+def received_detail(rid):
+    import received_store as R
+    r = R.get(rid)
+    return jsonify(r) if r else _err('Not found.', 404)
+
+
+@bp.post('/received')
+def received_create():
+    """{"program", "event_code", "received": "YYYY-MM-DD", "counted_by", "second_counter", "held_by", "notes",
+    "lines": [{"description", "category", "form": "Cash"|"Check", "check_number", "amount"}],
+    "files": [{"filename", "content_base64", "content_type"}]}"""
+    import received_store as R
+    d = _body()
+    ls = d.get('lines', [])
+    form = {'program': d.get('program', ''), 'event_code': d.get('event_code', ''), 'received': d.get('received', ''),
+            'counted_by': d.get('counted_by') or g.api_user['name'], 'second_counter': d.get('second_counter', ''),
+            'held_by': d.get('held_by') or g.api_user['name'], 'notes': d.get('notes', ''),
+            'line_desc': [ln.get('description', '') for ln in ls], 'line_cat': [ln.get('category', 'Other') for ln in ls],
+            'line_form': [ln.get('form', 'Cash') for ln in ls], 'line_check': [ln.get('check_number', '') for ln in ls],
+            'line_amount': [ln.get('amount') for ln in ls]}
+    try:
+        files = _files(d.get('files'), 'files')
+    except ValueError as e:
+        return _err(str(e))
+    st, loc, fl = _forward('/funds/in/new', form, files)
+    m = re.search(r'/funds/in/(CR-[\w-]+)$', loc)
+    if not m:
+        return _err('Not reported.', errors=[f['message'] for f in fl], flashes=fl)
+    return jsonify(id=m.group(1), report=R.get(m.group(1)), flashes=fl), 201
+
+
+@bp.post('/received/<rid>/deposit')
+def received_deposit(rid):
+    """{"deposit_date", "deposit_ref", "deposit_amount"}, or {"reopen": true} to mark it not deposited."""
+    import received_store as R
+    d = _body()
+    form = {'action': 'reopen'} if d.get('reopen') else {k: d.get(k, '') for k in ('deposit_date', 'deposit_ref', 'deposit_amount')}
+    st, loc, fl = _forward(f'/funds/in/{rid}/deposit', form)
+    ok, errors = _result(st, loc, fl)
+    return (jsonify(report=R.get(rid), flashes=fl), 200) if ok and not errors else _err('Not recorded.', errors=errors, flashes=fl)

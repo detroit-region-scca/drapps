@@ -9,7 +9,7 @@ from flask import url_for
 from markupsafe import Markup, escape
 
 # action prefix -> (app label, badge colour)
-APPS = {'EVENT': ('Events', 'primary'), 'WP': ('Worker Points', 'warning'), 'FUNDS': ('Funds Requests', 'success'),
+APPS = {'EVENT': ('Events', 'primary'), 'WP': ('Worker Points', 'warning'), 'FUNDS': ('Money', 'success'), 'MONEY': ('Money', 'success'),
         'BUDGET': ('Events', 'primary'), 'PLAN': ('Annual Plan', 'light'), 'EQUIP': ('Operations', 'warning'), 'INVOICE': ('Invoices', 'info'), 'LOGIN': ('Login', 'secondary'),
         'SHEET': ('Sheets', 'danger'), 'BOARD': ('Board', 'primary'), 'MOTION': ('Board', 'primary')}
 

@@ -44,6 +44,7 @@ VOLUNTEER_ENDPOINTS = {
     'home', 'logout', 'static', 'members.home', 'members.enter',
     'bud.home', 'bud.detail',
     'fr.home', 'fr.new', 'fr.detail', 'fr.ask', 'fr.receipts',
+    'fr.in_list', 'fr.in_new', 'fr.in_detail', 'fr.in_files',
     'inv.home', 'inv.new', 'inv.detail', 'inv.pdf',
 }
 # Reachable without signing in: the sign-in itself, and the emailed approval and confirmation links.
@@ -117,7 +118,7 @@ def limited(what='funds'):
 ENDPOINT_PERMS = {
     'index': 'events', 'bud.edit': 'events', 'bud.delete': 'events', 'bud.tie': 'events',
     'edit_event': 'events', 'delete_event': 'events',
-    'fr.new': 'funds', 'fr.receipts': 'funds', 'fr.ask': 'funds',
+    'fr.new': 'funds', 'fr.receipts': 'funds', 'fr.ask': 'funds', 'fr.in_new': 'funds', 'fr.in_files': 'funds',
     'inv.new': 'invoices',
     'members.enter': 'points_enter',
     'board.motions': 'board_ask',
@@ -171,7 +172,7 @@ def gate():
         flash('That part of the apps is for region officials.', 'warning')
         return redirect(url_for('home'))
     need = ENDPOINT_PERMS.get(ep)
-    if need and (request.method == 'POST' or ep in ('index', 'fr.new', 'inv.new', 'members.enter', 'bud.edit')) \
+    if need and (request.method == 'POST' or ep in ('index', 'fr.new', 'fr.in_new', 'inv.new', 'members.enter', 'bud.edit')) \
             and need not in (u.get('perms') or ()):
         flash("Your role doesn't include that. Ask the admin if you need it.", 'warning')
         return redirect(request.referrer if (request.referrer or '').startswith(request.host_url) else url_for('home'))

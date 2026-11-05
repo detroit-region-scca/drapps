@@ -400,5 +400,38 @@ def remove_volunteer(email: str) -> Any:
     return _call('DELETE', f'/volunteers/{email}')
 
 
+# ---------- Money received ----------
+
+@server.tool()
+def list_money_received(status: str = '', year: str = '') -> Any:
+    """Cash and checks reported received (CR-YYYY-NNN). status: Received (not deposited yet) or Deposited."""
+    return _call('GET', '/received', params={'status': status, 'year': year})
+
+
+@server.tool()
+def get_money_received(report_id: str) -> Any:
+    """One money received report with its lines, counters, who holds it, and deposit details."""
+    return _call('GET', f'/received/{report_id}')
+
+
+@server.tool()
+def report_money_received(program: str, received: str, lines: list[dict], event_code: str = '', counted_by: str = '',
+                          second_counter: str = '', held_by: str = '', notes: str = '', file_paths: list[str] | None = None) -> Any:
+    """Report cash or checks taken in. received: YYYY-MM-DD. lines: [{"description", "category": Entry fees|Merchandise|
+    Food and drink|Sponsorship|Donation|Other, "form": "Cash"|"Check", "check_number", "amount"}]. counted_by and held_by
+    default to the key's official. file_paths: photos of the count sheet or checks. Emails the treasurer."""
+    return _call('POST', '/received', {'program': program, 'event_code': event_code, 'received': received, 'lines': lines,
+                                       'counted_by': counted_by, 'second_counter': second_counter, 'held_by': held_by,
+                                       'notes': notes, 'files': _receipts(file_paths)})
+
+
+@server.tool()
+def mark_money_deposited(report_id: str, deposit_date: str = '', deposit_ref: str = '', deposit_amount: float | None = None,
+                         reopen: bool = False) -> Any:
+    """Mark a money received report deposited (the nightly QuickBooks sync usually does this), or reopen=True to undo."""
+    return _call('POST', f'/received/{report_id}/deposit', {'deposit_date': deposit_date, 'deposit_ref': deposit_ref,
+                                                            'deposit_amount': deposit_amount, 'reopen': reopen})
+
+
 if __name__ == '__main__':
     server.run()

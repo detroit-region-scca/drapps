@@ -26,7 +26,7 @@ ADDR = ('address', 'city')
 
 
 def _ctx(**kw):
-    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Funds Requests", who=session.get('who', ''),
+    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Money", who=session.get('who', ''),
                 categories=F.CATEGORIES, methods=F.METHODS, officer=officer_current('pay'), **kw)
 
 
@@ -491,3 +491,170 @@ def close(req_id):
         log_audit_event('FUNDS_REOPENED', who, {'id': req_id})
         flash(f'{req_id} is open again.', 'info')
     return redirect(url_for('fr.detail', req_id=req_id))
+
+
+# ---------- Money received (cash and checks taken in) ----------
+
+import received_store as R  # noqa: E402
+
+
+def _owns_report(r):
+    me, name = (session.get('email') or '').lower(), (session.get('who') or '').lower()
+    return bool(r and ((r.get('reported_email') or '').lower() == me or (r.get('reported_by') or '').lower() == name))
+
+
+@bp.route('/in')
+@login_required
+def in_list():
+    if (g := _guard()):
+        return g
+    status = request.args.get('status', 'Received')
+    every = R.reports()
+    if auth.limited('funds'):
+        every = [r for r in every if _owns_report(r)]
+    this_year = str(date.today().year)
+    years = sorted({r['received'][:4] for r in every if r['received'][:4].isdigit()} | {this_year}, reverse=True)
+    year = request.args.get('year') if request.args.get('year') in years else this_year
+    reps = sorted((r for r in every if r['received'].startswith(year) or r['status'] == 'Received'), key=lambda r: r['id'], reverse=True)
+    counts = {s: sum(1 for r in reps if r['status'] == s) for s in ('Received', 'Deposited')}
+    shown = reps if status == 'All' else [r for r in reps if r['status'] == status]
+    for r in reps:
+        r['single'] = R.single_count(r)
+    return render_template('fr.html', **_ctx(view='in_list', reps=shown, status=status, counts=counts, year=year, years=years,
+                                             open_total=sum(r['total'] for r in reps if r['status'] == 'Received'),
+                                             open_cash=sum(r['cash'] for r in reps if r['status'] == 'Received')))
+
+
+@bp.route('/in/new', methods=['GET', 'POST'])
+@login_required
+def in_new():
+    if (g := _guard()):
+        return g
+    events = _events()
+    progs = dict(load_programs(), OPS='Operations')
+    def page(form, rows, status=200):
+        return render_template('fr.html', **_ctx(view='in_new', events=events, programs=progs, form=form,
+                                                 events_js=_events_js(events, form.get('event_code', '')), rows=rows,
+                                                 rcats=R.CATEGORIES, forms=R.FORMS, today=date.today().isoformat())), status
+    if request.method == 'GET':
+        return page({'program': request.args.get('program', ''), 'event_code': request.args.get('event', ''),
+                     'counted_by': session.get('who', ''), 'held_by': session.get('who', '')}, [{'form': 'Cash'}, {'form': 'Check'}])
+    f = request.form
+    errors, lines = [], []
+    rows = [{'description': d, 'category': c, 'form': m, 'check_number': n, 'amount': a}
+            for d, c, m, n, a in zip(f.getlist('line_desc'), f.getlist('line_cat'), f.getlist('line_form'), f.getlist('line_check'), f.getlist('line_amount'))]
+    for ln in rows:
+        if not (ln['description'].strip() or ln['amount'].strip()):
+            continue
+        a = _money(ln['amount'])
+        if a is None or a <= 0:
+            errors.append(f'"{ln["description"] or "line"}": the amount must be a number above zero.')
+            continue
+        lines.append({'description': ln['description'].strip() or ln['category'], 'category': ln['category'] if ln['category'] in R.CATEGORIES else 'Other',
+                      'form': ln['form'] if ln['form'] in R.FORMS else 'Cash', 'check_number': ln['check_number'].strip(), 'amount': a})
+    if not lines:
+        errors.append('Add at least one line with an amount.')
+    ev = next((e for e in events if (e.get('custom_tag') or e.get('unique_code')) == f.get('event_code')), None)
+    program = ev['program_code'] if ev else f.get('program', '')
+    if not ev and not program:
+        errors.append('Pick the event, or the program if this is not from one event.')
+    received = f.get('received', '').strip()
+    try:
+        if date.fromisoformat(received) > date.today():
+            errors.append('The date received cannot be in the future.')
+    except ValueError:
+        errors.append('Enter the date the money was received.')
+    counted, second, held = (f.get(k, '').strip() for k in ('counted_by', 'second_counter', 'held_by'))
+    if not counted:
+        errors.append('Who counted it?')
+    if second and second.lower() == counted.lower():
+        errors.append('The second counter has to be a different person.')
+    if not held:
+        errors.append('Who has the money now?')
+    if errors:
+        for e in errors:
+            flash(e, 'danger')
+        return page(f, rows or [{}], 400)
+    rep = {'received': received, 'event_code': f.get('event_code', '') if ev else '', 'event_name': ev['event_name'] if ev else '',
+           'program': program, 'reported_by': session.get('who', ''), 'reported_email': session.get('email', ''),
+           'counted_by': counted, 'second_counter': second, 'held_by': held, 'notes': f.get('notes', '').strip()}
+    rid = R.create(rep, lines, request.files.getlist('files'))
+    r = R.get(rid)
+    log_audit_event('MONEY_RECEIVED', rep['reported_by'] or 'Unknown', {'id': rid, 'total': r['total'], 'cash': r['cash'], 'event_code': rep['event_code']})
+    notify_received(rid)
+    flash(f'Reported {rid}. The treasurer has been emailed.', 'success')
+    return redirect(url_for('fr.in_detail', rid=rid))
+
+
+def notify_received(rid):
+    """Email the treasurer (and the program's group) about money taken in."""
+    r = R.get(rid)
+    body = '\n'.join([
+        f"{r['reported_by']} reported money received: {rid}.", '',
+        f"Event: {r['event_name'] or '(not one event)'} {r['event_code']}  Program: {r['program']}",
+        f"Received {r['received']}. Counted by {r['counted_by']}" + (f" and {r['second_counter']}." if r['second_counter'] else ' only.'),
+        f"Held by {r['held_by']} until it is deposited.", '',
+        *[f"  {ln['form']}{(' #' + ln['check_number']) if ln['check_number'] else ''}  {ln['category']}: {ln['description']}  ${ln['amount']:,.2f}"
+          for ln in r['lines']], '',
+        f"Cash ${r['cash']:,.2f}  Checks ${r['checks']:,.2f}  Total ${r['total']:,.2f}",
+        'Counted by one person only.' if R.single_count(r) else '',
+        f"Notes: {r['notes']}" if r['notes'] else '', '',
+        f"{request.url_root.rstrip('/')}{url_for('fr.in_detail', rid=rid)}"])
+    group = O.director(r['program'])[1]
+    send_mail(f"Money received {rid}: ${r['total']:,.2f} {r['event_name'] or r['program']}", body, cc=group or None)
+
+
+@bp.route('/in/<rid>')
+@login_required
+def in_detail(rid):
+    if (g := _guard()):
+        return g
+    r = R.get(rid)
+    if not r or (auth.limited('funds') and not _owns_report(r)):
+        flash('Not found.', 'warning')
+        return redirect(url_for('fr.in_list'))
+    return render_template('fr.html', **_ctx(view='in_detail', r=r, single=R.single_count(r), today=date.today().isoformat()))
+
+
+@bp.route('/in/<rid>/files', methods=['POST'])
+@login_required
+def in_files(rid):
+    if (g := _guard()):
+        return g
+    R.refresh()
+    if not R.get(rid):
+        abort(404)
+    n = R.add_files(rid, request.files.getlist('files'))
+    if n:
+        log_audit_event('MONEY_RECEIVED_FILES', session.get('who') or 'Unknown', {'id': rid, 'files': n})
+    flash(f'Added {n} file(s).' if n else 'Choose a file first.', 'success' if n else 'warning')
+    return redirect(url_for('fr.in_detail', rid=rid))
+
+
+@bp.route('/in/<rid>/deposit', methods=['POST'])
+@login_required
+@officer_required(perm='pay')
+def in_deposit(rid):
+    if (g := _guard()):
+        return g
+    R.refresh()
+    r = R.get(rid)
+    if not r:
+        abort(404)
+    who = officer_current('pay')['name']
+    if request.form.get('action') == 'reopen':
+        R.update(rid, status='Received', deposit_date='', deposit_ref='', deposit_amount='', closed_by=who)
+        log_audit_event('MONEY_RECEIVED_REOPENED', who, {'id': rid})
+        flash(f'{rid} is waiting for its deposit again.', 'info')
+        return redirect(url_for('fr.in_detail', rid=rid))
+    amount = _money(request.form.get('deposit_amount') or r['total'])
+    if amount is None:
+        flash('The deposit amount must be a number.', 'danger')
+        return redirect(url_for('fr.in_detail', rid=rid))
+    ref = request.form.get('deposit_ref', '').strip() or 'Bank deposit'
+    R.update(rid, status='Deposited', deposit_date=request.form.get('deposit_date') or date.today().isoformat(), deposit_ref=ref,
+             deposit_amount=amount, closed_by=who)
+    log_audit_event('MONEY_DEPOSITED', who, {'id': rid, 'amount': amount, 'ref': ref})
+    flash(f'{rid} marked deposited.' + (f' Note: ${amount:,.2f} deposited against ${r["total"]:,.2f} reported.' if abs(amount - r['total']) >= 0.005 else ''),
+          'success' if abs(amount - r['total']) < 0.005 else 'warning')
+    return redirect(url_for('fr.in_detail', rid=rid))

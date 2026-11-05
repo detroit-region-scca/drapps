@@ -175,6 +175,9 @@ def treasurer():
         waiting = [r for r in a.reqs if r['status'] == 'Submitted']
         ready = [r for r in waiting if fr_logic.ready(a.items(r))]
         jobs['pay'], jobs['approvals'] = (len(ready), sum(r['net'] for r in ready)), len(waiting) - len(ready)
+        import received_store
+        held = [r for r in received_store.reports() if r['status'] == 'Received']
+        jobs['deposit'] = (len(held), sum(r['total'] for r in held), sum(1 for r in held if received_store.single_count(r)))
     if bud_store.enabled():
         # Everything waiting for the board, any year: event and program budgets, and Operations (its plan).
         import bud

@@ -41,7 +41,7 @@ EXTRA = {
 APPS = {
     'show_members': 'Members',
     'show_board': 'Board',
-    'show_funds': 'Funds Requests',
+    'show_funds': 'Money',
     'show_invoices': 'Invoices',
     'show_plan': 'Annual Plan',
     'show_operations': 'Operations',

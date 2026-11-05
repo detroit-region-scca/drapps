@@ -110,6 +110,14 @@ def _status(b):
     return 'budget'
 
 
+def _received(code):
+    """Money reported received at this event (cash and checks), newest first."""
+    import received_store as R
+    if not R.enabled() or program_of(code):
+        return []
+    return sorted((r for r in R.reports() if r['event_code'] == code), key=lambda r: r['id'], reverse=True)
+
+
 def _funds(code):
     if not F.enabled():
         return []
@@ -198,7 +206,7 @@ def detail(code):
     pg = program_of(code)
     q = program_actuals(*pg) if pg else (B.qbo_actuals().get(code) if B.enabled() else None)
     plan = None if pg else _plan_line(code)
-    return render_template('bud.html', **_ctx(view='detail', code=code, e=e or {}, b=b, funds=_funds(code),
+    return render_template('bud.html', **_ctx(view='detail', code=code, e=e or {}, b=b, funds=_funds(code), received=_received(code),
                                               q=q, plan=plan,
                                               status=_status(b), today=date.today().isoformat(), programs=load_programs(),
                                               open_lines=_open_lines(e)))

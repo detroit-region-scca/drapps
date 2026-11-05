@@ -115,6 +115,7 @@ def main():
         P.write_tab('QBO Monthly', ['year', 'program', 'month', 'net', 'as_of'], monthly_rows)
         P.write_tab('QBO Status', ['item', 'amount', 'as_of'], status_rows)
         P.write_tab('QBO Exceptions', P.EXC_COLS, [[e[c] if c != 'as_of' else as_of for c in P.EXC_COLS] for e in exc])
+        used_deposits = set()
         try:
             import inv_store
             if inv_store.enabled():
@@ -122,8 +123,19 @@ def main():
                     inv_store.update(inv['id'], status='Paid', closed_by=WHO, **paid)
                     log_audit_event('INVOICE_PAID', WHO, {'id': inv['id'], 'amount': paid['paid_amount'], 'ref': paid['paid_ref']})
                     say.append(f"invoice {inv['id']} paid by {paid['paid_ref']}")
+                    used_deposits |= {d['id'] for d in data.get('deposits', []) if d['date'] == paid['paid_date']
+                                      and abs(d['amount'] - paid['paid_amount']) < 0.005}
         except Exception as e:
             say.append(f"invoice matching failed: {e}")
+        try:   # cash and checks reported received: deposited once QuickBooks shows a deposit of the same amount
+            import received_store as RS
+            if RS.enabled():
+                for rep, dep in RS.match_deposits(RS.reports(), data.get('deposits', []), used=used_deposits):
+                    RS.update(rep['id'], status='Deposited', closed_by=WHO, **dep)
+                    log_audit_event('MONEY_DEPOSITED', WHO, {'id': rep['id'], 'amount': dep['deposit_amount'], 'ref': dep['deposit_ref']})
+                    say.append(f"money received {rep['id']} deposited ({dep['deposit_ref']})")
+        except Exception as e:
+            say.append(f"money received matching failed: {e}")
         try:
             import officials
             say.append(f"officials copied to Drive: {officials.mirror_to_sheet()}")
