@@ -82,3 +82,15 @@ def test_event_warnings(monkeypatch):
     assert bud._warnings(ev('2026-05-01'), {'lines': [{'actual': 950.0}]}, today) == []
     assert bud._warnings(ev('2027-01-09'), {'lines': lines}, today) == []
     assert bud._warnings(dict(ev('2026-05-01'), program_budget=True), None, today) == []
+
+
+def test_heading_widens_a_narrow_tab(monkeypatch):
+    class WS:
+        col_count, added, written = 12, [], []
+        def add_cols(self, n): self.added.append(n); WS.col_count += n
+        def row_values(self, i): return B.BUD_COLS[:12]
+        def update(self, values, rng, **kw): self.written.append((values, rng))
+    monkeypatch.setattr(B, '_cache', {})
+    ws = WS()
+    B._heading(ws)
+    assert ws.added == [len(B.BUD_COLS) - 12] and ws.written == [([B.BUD_COLS[12:]], 'M1')]

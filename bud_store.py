@@ -144,6 +144,8 @@ def _cell(v):
 def _heading(ws):
     """Columns added later get their heading the first time a budget is saved."""
     if not _cache.get('heading_ok'):
+        if ws.col_count < len(BUD_COLS):          # the tab must be wide enough first, or the write is refused
+            ws.add_cols(len(BUD_COLS) - ws.col_count)
         top = ws.row_values(1)
         if len(top) < len(BUD_COLS):
             ws.update([BUD_COLS[len(top):]], f'{chr(ord("A") + len(top))}1', value_input_option='RAW')
