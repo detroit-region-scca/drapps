@@ -1,8 +1,10 @@
 [Unit]
-Description=DRSCCA apps: back up the Google Sheets every night at 03:15
+Description=DRSCCA apps: back up the Google Sheets every night at 02:45
 
+# 02:45: after the 02:30 QuickBooks sync (which takes under a minute) and before 03:00, when
+# the server's updates and container image updates start (moved from 03:15 on 2026-11-05).
 [Timer]
-OnCalendar=*-*-* 03:15:00
+OnCalendar=*-*-* 02:45:00
 Persistent=true
 
 [Install]

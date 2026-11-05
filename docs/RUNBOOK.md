@@ -39,7 +39,7 @@ in the region's DRSCCA Apps Shared Drive, never here: this repo is public.
 |---|---|---|---|
 | QuickBooks sync | 02:30 nightly | `drscca-qbo.timer` | Actuals, funds requests paid, bank balances, books check exceptions. On the 1st it also emails the treasurer the worker points journal entry and adds the month's automatic points. |
 | Sync now | When the treasurer presses it | `drscca-qbo-refresh.path` | The same sync, on request |
-| Sheet backup | 03:15 nightly | `drscca-backup.timer` | `.xlsx` copies into `data/backups/`; alerts on failure through `drscca-backup-failed.service` |
+| Sheet backup | 02:45 nightly | `drscca-backup.timer` | `.xlsx` copies into `data/backups/`; alerts on failure through `drscca-backup-failed.service` |
 | Officials changes | When the admin saves a person in Admin > Users | `drscca-officials.path` | Updates `officials.json` and the drscca.org Google Groups with GAM |
 
 Check them: `systemctl --user list-timers | grep drscca` and `systemctl --user status drscca-officials.path
