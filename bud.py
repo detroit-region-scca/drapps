@@ -110,6 +110,41 @@ def _status(b):
     return 'budget'
 
 
+def _month_label(d):
+    """'2026-01-09' -> 'Jan 2026'."""
+    try:
+        return date.fromisoformat(str(d)[:10]).strftime('%b %Y')
+    except ValueError:
+        return str(d)[:4]
+
+
+def _ranked(e, pool):
+    """pool [{'code', 'date', 'name', 'program'}] best first for this event: same program, a shared word in the name,
+    about a year earlier. Each gets 'label' and 'score'."""
+    import plan_store as P
+    words, prog = P._words(e.get('event_name')), e.get('program_code', '')
+    try:
+        target = date.fromisoformat(str(e.get('date', ''))[:10]).toordinal() - 365
+    except ValueError:
+        target = None
+    out = []
+    for x in pool:
+        sc = (4 if x['program'] == prog else 0) + 3 * len(words & P._words(x['name']))
+        try:
+            gap = abs(date.fromisoformat(x['date'][:10]).toordinal() - target) if target else 999
+            sc += 3 if gap <= 45 else 1 if gap <= 120 else 0
+        except ValueError:
+            pass
+        out.append(dict(x, score=sc, label=f"{x['name']} · {_month_label(x['date'])}"))
+    out.sort(key=lambda x: x['date'], reverse=True)          # newest first among equals
+    return sorted(out, key=lambda x: -x['score'])
+
+
+def _suggest(ranked, n=3):
+    """The few worth a button: same program and a shared word, or the same program about a year earlier."""
+    return [x for x in ranked if x['score'] >= 7][:n]
+
+
 def _last_year_choices(code, e):
     """Earlier events of the same program, newest first, for "Same event last year" (chosen by a person, never guessed)."""
     if program_of(code):
@@ -117,8 +152,13 @@ def _last_year_choices(code, e):
     prog, day = e.get('program_code', ''), str(e.get('date', ''))
     evs = [x for x in load_events() if x.get('program_code') == prog and str(x.get('date', '')) < day
            and (x.get('custom_tag') or x.get('unique_code')) != code]
-    return [{'code': x.get('custom_tag') or x.get('unique_code'), 'date': str(x.get('date', '')), 'name': x.get('event_name', '')}
-            for x in sorted(evs, key=lambda x: str(x.get('date', '')), reverse=True)[:60]]
+    return _ranked(e, [{'code': x.get('custom_tag') or x.get('unique_code'), 'date': str(x.get('date', '')), 'name': x.get('event_name', ''),
+                        'program': prog} for x in evs])
+
+
+def _ly_names():
+    """{code: 'Name · Mon YYYY'} for showing the chosen last year's event."""
+    return {(x.get('custom_tag') or x.get('unique_code')): f"{x.get('event_name', '')} · {_month_label(x.get('date', ''))}" for x in load_events()}
 
 
 def _year_over_year(code):
@@ -450,7 +490,7 @@ def edit(code):
             for msg in errors:
                 flash(msg, 'danger')
             return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=f, lines=_form_lines(f), funds=_funds(code),
-                                                      ly_choices=_last_year_choices(code, e),
+                                                      ly_choices=_last_year_choices(code, e), ly_names=_ly_names(),
                                                       plan=_plan_line(code))), 400
         ly = f.get('last_year_event', '').strip()
         if ly and ly not in {c['code'] for c in _last_year_choices(code, e)}:
@@ -477,10 +517,11 @@ def edit(code):
         lines, form = [], {'chair': O.director(pg[0])[0]}
     else:
         lines, form = [], {}
-    others = sorted((x for k, x in B.budgets().items() if k != code), key=lambda x: x.get('date', ''), reverse=True)
+    others = _ranked(e, [{'code': k, 'date': str(x.get('date', '')), 'name': x.get('event_name', ''), 'program': x.get('program', '')}
+                         for k, x in B.budgets().items() if k != code])
     copied = bool(src and not b and B.get(src))
     return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=form, lines=lines, others=others, funds=_funds(code),
-                                              ly_choices=_last_year_choices(code, e), copied=copied, plan=_plan_line(code), src=B.get(src) if copied else None,
+                                              ly_choices=_last_year_choices(code, e), ly_names=_ly_names(), copied=copied, plan=_plan_line(code), src=B.get(src) if copied else None,
                                               src_q=_short_accounts(B.qbo_actuals().get(src)) if copied else None))
 
 

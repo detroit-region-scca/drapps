@@ -4,6 +4,9 @@
 {% block nav %}{% include '_events_nav.html' %}{% endblock %}
 {% macro amt(v) %}{{ '' if v is none or v == '' else (v if v is string else '%.2f'|format(v)) }}{% endmacro %}
 {% block style %}
+        .pick { position: relative; }
+        .pick-list { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; max-height: 18rem; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+        .pick-list .list-group-item { cursor: pointer; font-size: .9rem; }
         .sched .month-row td { background: var(--surface-2); font-weight: 600; border-top: 2px solid var(--border); text-transform: uppercase; letter-spacing: .05em; font-size: .85rem; }
         .sched .day { width: 4.5rem; }
         .sched .day .fw-semibold { font-size: 1.35rem; line-height: 1; }
@@ -225,9 +228,16 @@
     <div class="crumbs">{% if e.program_budget %}<a href="{{ url_for('plan.detail', year=e.date[:4], program=e.program_code) }}">Annual Plan</a>{% else %}<a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Budgets</a>{% endif %} / <a href="{{ url_for('bud.detail', code=code) }}">{{ code }}</a> / Edit</div>
     <div class="page-title">{{ e.event_name }} <span class="text-muted fs-6">{{ e.date[:4] if e.program_budget else e.date }} · {{ e.program_code }} · {{ code }}</span></div>
     {% if others and not lines %}
-    <form method="get" class="d-flex flex-wrap gap-2 align-items-center my-3"><label class="text-muted" for="copy">Start from another budget</label>
-        <select id="copy" name="copy" class="form-select" style="max-width:420px"><option value="">Blank</option>{% for o in others %}<option value="{{ o.event_code }}">{{ o.date }} · {{ o.event_name }} {{ o.event_code }}</option>{% endfor %}</select>
-        <button class="btn btn-outline-light">Load</button></form>
+    <div class="card p-3 my-3">
+        <div class="section-label">Start from another budget</div>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            {% for o in others[:3] if o.score >= 7 %}<a class="btn btn-sm btn-outline-light" href="{{ url_for('bud.edit', code=code, copy=o.code) }}">{{ o.label }}</a>{% endfor %}
+            <div class="pick flex-grow-1" style="max-width:24rem" data-items='{{ others|tojson }}' data-go="{{ url_for('bud.edit', code=code) }}?copy=">
+                <input class="form-control form-control-sm" placeholder="Search all budgets…" aria-label="Search all budgets" autocomplete="off">
+                <div class="pick-list list-group d-none"></div></div>
+        </div>
+        <div class="form-text">Or just fill in the form below to start blank.</div>
+    </div>
     {% endif %}
     {% if copied %}<div class="alert alert-info py-2">Copied from {{ src.event_name }}: its budget is your starting budget{% if src_q %}, and what QuickBooks shows it actually made is below{% endif %}. Change anything, then save.</div>
     {% if src_q %}<details class="mb-3" open><summary class="small text-muted">{{ src.event_name }} in QuickBooks: income {{ money(src_q.totals.income) }}, costs {{ money(src_q.totals.expense) }}, surplus {{ money(src_q.totals.surplus) }}</summary>
@@ -238,12 +248,20 @@
         <div class="card p-3 mb-3"><div class="row g-2">
             <div class="col-md-4"><label class="form-label">Event chair</label><input name="chair" class="form-control" value="{{ form.get('chair', '') }}"></div>
             <div class="col-md-4"><label class="form-label">Location</label><input name="location" class="form-control" value="{{ form.get('location', '') }}"></div>
-            {% if ly_choices %}<div class="col-md-4"><label class="form-label" for="lastYear">Same event last year</label>
-                <select name="last_year_event" id="lastYear" class="form-select">
-                    <option value="">None</option>
-                    {% for c in ly_choices %}<option value="{{ c.code }}" {% if form.get('last_year_event') == c.code %}selected{% endif %}>{{ c.date }} · {{ c.name }} {{ c.code }}</option>{% endfor %}
-                </select>
-                <div class="form-text">Optional. Shows this event's year over year results on its page.</div></div>{% endif %}
+            {% if ly_choices %}{% set ly = form.get('last_year_event', '') %}<div class="col-12" id="lyBox">
+                <label class="form-label mb-1">Last year's event</label>
+                <input type="hidden" name="last_year_event" id="lyCode" value="{{ ly }}">
+                <div id="lySet" class="{{ '' if ly else 'd-none' }}"><span id="lyName">{{ ly_names.get(ly, ly) }}</span>
+                    · <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="lyChange()">Change</button>
+                    · <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="lySet('', '')">Clear</button></div>
+                <div id="lyPick" class="{{ 'd-none' if ly else '' }}">
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        {% for c in ly_choices[:3] if c.score >= 7 %}<button type="button" class="btn btn-sm btn-outline-light" onclick="lySet('{{ c.code }}', {{ c.label|tojson|forceescape }})">{{ c.label }}</button>{% endfor %}
+                        <div class="pick flex-grow-1" style="max-width:24rem" data-items='{{ ly_choices|tojson }}' data-set="ly">
+                            <input class="form-control form-control-sm" placeholder="Search this program's events…" aria-label="Search last year's event" autocomplete="off">
+                            <div class="pick-list list-group d-none"></div></div>
+                    </div></div>
+                <div class="form-text">Optional. The event page then shows this event's results year over year.</div></div>{% endif %}
             <input type="hidden" name="entered_by" value="{{ session.get('who', '') }}">
         </div></div>
         {% set starter = {'Income': ['Entry fees', 'Weekend memberships'], 'Expense': ['Site rental', 'SCCA insurance and sanction fees', 'Worker points', 'Trophies', 'Supplies']} %}
@@ -284,6 +302,41 @@
     {% endif %}
 {% endblock %}
 {% block scripts %}
+<script>
+    // Type-to-search picker: shows at most 8 matches; each word typed must appear in the name or code.
+    document.querySelectorAll('.pick').forEach(box => {
+        const items = JSON.parse(box.dataset.items || '[]'), input = box.querySelector('input'), list = box.querySelector('.pick-list');
+        const esc = t => String(t).replace(/[&<>"]/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[ch]);
+        function show() {
+            const words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
+            const hits = items.filter(x => words.every(w => (x.label + ' ' + x.code).toLowerCase().includes(w))).slice(0, 8);
+            list.innerHTML = hits.map((x, i) => `<a class="list-group-item list-group-item-action" data-i="${items.indexOf(x)}">${esc(x.label)} <span class="text-muted small">${esc(x.code)}</span></a>`).join('')
+                || '<div class="list-group-item text-muted">No match</div>';
+            list.classList.remove('d-none');
+        }
+        input.addEventListener('focus', show);
+        input.addEventListener('input', show);
+        document.addEventListener('click', ev => { if (!box.contains(ev.target)) list.classList.add('d-none'); });
+        list.addEventListener('click', ev => {
+            const a = ev.target.closest('[data-i]');
+            if (!a) return;
+            const x = items[+a.dataset.i];
+            if (box.dataset.go) location.href = box.dataset.go + encodeURIComponent(x.code);
+            else if (box.dataset.set === 'ly') { lySet(x.code, x.label); input.value = ''; list.classList.add('d-none'); }
+        });
+    });
+    function lySet(code, label) {
+        document.getElementById('lyCode').value = code;
+        document.getElementById('lyName').textContent = label;
+        document.getElementById('lySet').classList.toggle('d-none', !code);
+        document.getElementById('lyPick').classList.toggle('d-none', !!code);
+    }
+    function lyChange() {
+        document.getElementById('lySet').classList.add('d-none');
+        document.getElementById('lyPick').classList.remove('d-none');
+        document.querySelector('#lyPick .pick input').focus();
+    }
+</script>
 {% include '_rollup.html' %}
 <script>
     // "Copy QuickBooks name". navigator.clipboard only exists in a secure context (not plain http on the LAN),
