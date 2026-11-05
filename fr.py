@@ -56,7 +56,7 @@ def _events_js(events, keep=''):
             for e in events if e.get('date', '') >= since or keep in (e.get('custom_tag'), e.get('unique_code'))]
 
 
-LINK_DAYS = 90
+LINK_DAYS = shortlinks.DAYS
 # Funds requests not tied to an event are paid against their program's budget from this year on.
 PROGRAM_BUDGETS_FROM = '2027'
 

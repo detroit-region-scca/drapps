@@ -90,7 +90,7 @@ def _ser():
 
 def _vote_link(bid, p):
     url = url_for('board.vote_link', token=_ser().dumps({'b': bid, 'e': p['email'], 'n': p['name']}), _external=True)
-    return shortlinks.make(url, BL.OPEN_DAYS + 5)
+    return shortlinks.make(url, shortlinks.DAYS)
 
 
 def _ballot_views(people=None, me=''):
@@ -224,10 +224,11 @@ def home():
                            "Everything waiting for the board:\n" + board_url),
                           board_email(), reply_to=board_email())
             for p in people:
-                mine = '\n\n'.join(f"{line}\n\n  Your vote: {_vote_link(bid, p)}" for (_, _, line), bid in zip(items, bids))
+                mine = '\n\n'.join(f"{line}\n\n- Your vote: {_vote_link(bid, p)}" for (_, _, line), bid in zip(items, bids))
                 send_mail(f"{u}Vote: {first}",
                           f"Hi {p['name'].split(' (')[0].split()[0]},\n\n{mine}\n\n"
-                          f"This link is just for you. To discuss, reply all to \"{subject}\". Closes {BL.closes(today)}.",
+                          f"This link is just for you and works for {shortlinks.DAYS} days; after that, vote on the Board page. "
+                          f"To discuss, reply all to \"{subject}\". The vote closes {BL.closes(today)}.",
                           p['email'])
             for m in ms:
                 M.update(m['id'], asked=today)
@@ -334,7 +335,7 @@ def vote_link(token):
     if not BS.enabled():
         return redirect(url_for('home'))
     try:
-        t = _ser().loads(token, max_age=(BL.OPEN_DAYS + 5) * 86400)
+        t = _ser().loads(token, max_age=shortlinks.DAYS * 86400)
     except BadSignature:
         return render_template('board.html', **_ctx(view='vote', b=None, msg='This voting link has expired or is not valid.'))
     b = BS.get(t['b'])

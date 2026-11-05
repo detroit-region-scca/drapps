@@ -182,7 +182,7 @@ def close(inv_id):
     return redirect(url_for('inv.detail', inv_id=inv_id))
 
 
-DELETE_DAYS = 7
+DELETE_DAYS = shortlinks.DAYS
 
 
 def _delete_serializer():

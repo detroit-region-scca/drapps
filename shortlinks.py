@@ -10,12 +10,14 @@ import secrets
 import time
 
 from filelock import FileLock
-from flask import Blueprint, abort, redirect, request, url_for
+from flask import Blueprint, redirect, request, url_for
 
 from storage import DATA_DIR
 
 PATH = os.path.join(DATA_DIR, 'short_links.json')
 LOCK = PATH + '.lock'
+# How long an emailed vote or approval link works. After that, vote or approve on the site, signed in.
+DAYS = int(os.environ.get('LINK_DAYS', '7'))
 bp = Blueprint('short', __name__)
 
 
@@ -47,5 +49,9 @@ def make(url, days):
 def go(sid):
     link = _load().get(sid)
     if not link or link.get('expires', 0) < time.time():
-        abort(404)
+        home = url_for('home', _external=True)
+        return (f'<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1">'
+                f'<title>Link expired</title><div style="font-family:sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem">'
+                f'<h1 style="font-size:1.4rem">This link has expired</h1><p>Emailed links work for {DAYS} days. '
+                f'Sign in to vote or approve on the site:</p><p><a href="{home}">{home}</a></p></div>'), 404
     return redirect(link['url'])
