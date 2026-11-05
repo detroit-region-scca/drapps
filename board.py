@@ -79,6 +79,14 @@ def _motion_lines(ms):
     return out
 
 
+def _plain(item):
+    """One item without the list bullet, for an email about a single item: its title, then each detail on its own line."""
+    _, title, line = item
+    first, *rest = line.removeprefix('- ').split('\n')
+    head = [title, first[len(title):].lstrip(', ')] if first.startswith(title + ', ') else [first]
+    return '\n'.join([h for h in head if h] + [r.strip() for r in rest])
+
+
 def _people():
     """The directors who vote (one entry per person), from the read-only officials list."""
     return BL.roster(O.all())
@@ -213,9 +221,9 @@ def home():
                 subject = f"{u}Discussion: {first}"
                 send_mail(subject,
                           f"This email is for discussion. Reply all to discuss.\n\n"
-                          f"{who} asks the board to vote on:\n\n{listed}\n\n"
-                          f"Your vote link comes in a separate email. Closes {BL.closes(today)}.\n\n"
-                          f"Who has voted: {board_url}",
+                          f"{who} asks the board to vote on:\n\n{_plain(items[0]) if n == 1 else listed}\n\n"
+                          f"Your vote link comes in a separate email.\nCloses {BL.closes(today)}.\n\n"
+                          f"Who has voted:\n{board_url}",
                           board_email(), reply_to=board_email())
             else:
                 send_mail(f"{u}Board vote: {first}",
