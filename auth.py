@@ -116,7 +116,7 @@ def limited(what='funds'):
 
 # Pages that need an everyday permission (Admin > Roles), for officials and volunteers alike. Looking is never gated.
 ENDPOINT_PERMS = {
-    'index': 'events', 'bud.edit': 'events', 'bud.delete': 'events', 'bud.tie': 'events',
+    'index': 'events', 'bud.edit': 'events', 'bud.actuals': 'events', 'bud.delete': 'events', 'bud.tie': 'events',
     'edit_event': 'events', 'delete_event': 'events',
     'fr.new': 'funds', 'fr.receipts': 'funds', 'fr.ask': 'funds', 'fr.in_new': 'funds', 'fr.in_files': 'funds',
     'inv.new': 'invoices',

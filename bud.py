@@ -436,6 +436,50 @@ def delete(code):
     return redirect(url_for('bud.detail', code=code))
 
 
+@bp.route('/event/<path:code>/actuals', methods=['GET', 'POST'])
+@login_required
+def actuals(code):
+    """What the event really took in and spent, line by line, any time. Not a change to the budget: an approved
+    budget stays approved. Next year, copying this budget puts these into "Last year actual"."""
+    if (g := _guard()):
+        return g
+    e, b = _event(code), B.get(code)
+    if not e or not b:
+        flash('There is no budget for this event yet.', 'warning')
+        return redirect(url_for('bud.detail', code=code))
+    if request.method == 'POST':
+        f = request.form
+        lines, errors = [], []
+        for ln, act in zip(b['lines'], f.getlist('act')):
+            v = _money(act)
+            if v == 'bad':
+                errors.append(f'"{ln["description"]}": the actual must be a number.')
+                continue
+            lines.append(dict(ln, actual=v))
+        for section, key in SECTIONS:      # lines that were not budgeted
+            for desc, act in zip(f.getlist(f'new_{key}_desc'), f.getlist(f'new_{key}_act')):
+                v = _money(act)
+                if not desc.strip() and v is None:
+                    continue
+                if v == 'bad':
+                    errors.append(f'"{desc or section}": the actual must be a number.')
+                    continue
+                lines.append({'section': section, 'description': desc.strip() or section, 'last_year': None, 'budget': None, 'actual': v})
+        if errors:
+            for m in errors:
+                flash(m, 'danger')
+            return redirect(url_for('bud.actuals', code=code))
+        who = session.get('who') or 'Unknown'
+        header = {k: b.get(k, '') for k in B.BUD_COLS if k not in ('updated', 'files_url', 'approved', 'approved_by')}
+        header['updated_by'] = b.get('updated_by', '')
+        lines.sort(key=lambda ln: ln['section'] != 'Income')
+        B.save(header, lines, actuals_only=True)
+        log_audit_event('BUDGET_ACTUALS_SAVED', who, {'event_code': code, 'lines': sum(1 for ln in lines if ln['actual'] is not None)})
+        flash('Actuals saved.', 'success')
+        return redirect(url_for('bud.detail', code=code))
+    return render_template('bud.html', **_ctx(view='actuals', code=code, e=e, b=b, q=B.qbo_actuals().get(code)))
+
+
 @bp.route('/event/<path:code>/edit', methods=['GET', 'POST'])
 @login_required
 def edit(code):

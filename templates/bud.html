@@ -103,6 +103,7 @@
                 {% if b and b.files_url %}<a class="btn btn-sm btn-outline-light" href="{{ b.files_url }}" target="_blank" rel="noopener">Files</a>{% endif %}
                 {% if b %}<button class="btn btn-sm btn-outline-secondary" onclick="window.print()">Print</button>{% endif %}
                 {% if budgets_on %}<a class="btn btn-sm btn-accent" href="{{ url_for('bud.edit', code=code) }}">{{ 'Edit budget' if b else 'Create budget' }}</a>{% endif %}
+                {% if budgets_on and b and not e.program_budget %}<a class="btn btn-sm btn-outline-light" href="{{ url_for('bud.actuals', code=code) }}">Enter actuals</a>{% endif %}
                 {% if b %}<button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="collapse" data-bs-target="#deleteBudget">Delete budget</button>{% endif %}
             </div>
         </div>
@@ -155,16 +156,17 @@
     {% endif %}
     {% if b %}
     <h2 class="h6 text-muted">Budget form</h2>
+    {% set cols = ['last_year', 'budget'] + (['actual'] if b.totals.actual else []) %}
     <div class="card mb-3"><div class="card-body p-0 table-responsive">
         <table class="table mb-0">
-            <thead><tr><th class="ps-3"></th><th class="num">Last year actual</th><th class="num pe-3">This year budget</th></tr></thead>
+            <thead><tr><th class="ps-3"></th><th class="num">Last year actual</th><th class="num{{ ' pe-3' if cols|length == 2 }}">This year budget</th>{% if cols|length == 3 %}<th class="num pe-3">This year actual</th>{% endif %}</tr></thead>
             <tbody>
             {% for section in ['Income', 'Expense'] %}
-                <tr><td class="ps-3 fw-semibold" colspan="3">{{ section }}</td></tr>
-                {% for ln in b.lines if ln.section == section %}<tr><td class="ps-4">{{ ln.description }}</td><td class="num">{{ money(ln.last_year) }}</td><td class="num pe-3">{{ money(ln.budget) }}</td></tr>{% endfor %}
-                <tr><td class="ps-3 text-muted">Total {{ section|lower }}</td>{% for k in ['last_year', 'budget'] %}<td class="num{{ ' pe-3' if loop.last }}">{{ money(b.totals[k][section|lower] if b.totals[k] else none) }}</td>{% endfor %}</tr>
+                <tr><td class="ps-3 fw-semibold" colspan="{{ cols|length + 1 }}">{{ section }}</td></tr>
+                {% for ln in b.lines if ln.section == section %}<tr><td class="ps-4">{{ ln.description }}</td>{% for k in cols %}<td class="num{{ ' pe-3' if loop.last }}">{{ money(ln[k]) }}</td>{% endfor %}</tr>{% endfor %}
+                <tr><td class="ps-3 text-muted">Total {{ section|lower }}</td>{% for k in cols %}<td class="num{{ ' pe-3' if loop.last }}">{{ money(b.totals[k][section|lower] if b.totals[k] else none) }}</td>{% endfor %}</tr>
             {% endfor %}
-            <tr><td class="ps-3 fw-semibold">Surplus (loss)</td>{% for k in ['last_year', 'budget'] %}<td class="num fw-semibold{{ ' pe-3' if loop.last }}">{{ money(b.totals[k].surplus if b.totals[k] else none) }}</td>{% endfor %}</tr>
+            <tr><td class="ps-3 fw-semibold">Surplus (loss)</td>{% for k in cols %}<td class="num fw-semibold{{ ' pe-3' if loop.last }}">{{ money(b.totals[k].surplus if b.totals[k] else none) }}</td>{% endfor %}</tr>
             </tbody>
         </table>
     </div></div>
@@ -182,7 +184,7 @@
             <td class="num">{{ money(r.qbo.income if r.qbo else none) }}</td><td class="num">{{ money(r.qbo.expense if r.qbo else none) }}</td>
             <td class="num pe-3">{{ money(r.qbo.surplus if r.qbo else none) }}</td></tr>{% endfor %}</tbody>
     </table></div></div>
-    <p class="form-text">Income, expenses and net are from QuickBooks. Each year comes from the budget's "Same event last year"; change it with Edit budget.</p>
+    <p class="form-text">Income, expenses and net are from QuickBooks. Each year comes from the budget's "Last year's event"; change it with Edit budget.</p>
     {% endif %}
     {% if funds %}
     <h2 class="h6 text-muted">Funds requests {{ 'not tied to an event' if e.program_budget else 'for this event' }}</h2>
@@ -221,6 +223,32 @@
         {% endif %}
     </div>
     {% endif %}
+
+    {% elif view == 'actuals' %}
+    <div class="crumbs"><a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Budgets</a> / <a href="{{ url_for('bud.detail', code=code) }}">{{ code }}</a> / Actuals</div>
+    <div class="page-title">{{ e.event_name }} <span class="text-muted fs-6">{{ e.date }} · {{ e.program_code }} · {{ code }}</span></div>
+    <p class="text-muted">What the event really took in and spent. Enter them whenever you have them, and come back to add more. This does not change the budget the board approved.</p>
+    <form method="post" id="actForm">
+        {% for section, key in [('Income', 'inc'), ('Expense', 'exp')] %}
+        {% set qt = (q.totals.income if section == 'Income' else q.totals.expense) if q else none %}
+        <div class="card p-3 mb-3">
+            <div class="section-label">{{ section }}</div>
+            <div class="row g-2 text-muted small mb-1"><div class="col-6 col-md-7">Line</div><div class="col-3 col-md-2 text-end">Budget</div><div class="col-3 col-md-3 text-end">Actual</div></div>
+            {% for ln in b.lines %}{% if ln.section == section %}
+            <div class="row g-2 align-items-center mb-2"><div class="col-6 col-md-7">{{ ln.description }}</div>
+                <div class="col-3 col-md-2 text-end text-muted">{{ money(ln.budget) }}</div>
+                <div class="col-3 col-md-3"><input name="act" data-sec="{{ key }}" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0.00" value="{{ '%.2f'|format(ln.actual) if ln.actual is not none else '' }}" aria-label="Actual for {{ ln.description }}"></div></div>
+            {% endif %}{% endfor %}
+            <div class="new-lines" data-key="{{ key }}"></div>
+            <div class="d-flex flex-wrap align-items-center gap-3 mt-1">
+                <button type="button" class="btn btn-outline-light btn-sm" onclick="addActual('{{ key }}')">Add a line not budgeted</button>
+                <div class="ms-auto small">Actual {{ section|lower }} <b data-tot="{{ key }}">$0.00</b>{% if qt is not none %} <span class="text-muted">· QuickBooks {{ money(qt) }}</span>{% endif %}</div>
+            </div>
+        </div>
+        {% endfor %}
+        {% if not q %}<p class="form-text">No QuickBooks numbers for {{ code }} yet to check against.</p>{% endif %}
+        <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('bud.detail', code=code) }}">Cancel</a><button class="btn btn-accent px-4">Save actuals</button></div>
+    </form>
 
     {% elif view == 'edit' %}
     <div class="crumbs">{% if e.program_budget %}<a href="{{ url_for('plan.detail', year=e.date[:4], program=e.program_code) }}">Annual Plan</a>{% else %}<a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Budgets</a>{% endif %} / <a href="{{ url_for('bud.detail', code=code) }}">{{ code }}</a> / Edit</div>
@@ -289,6 +317,25 @@
 {% endblock %}
 {% block scripts %}
 <script>
+    const actForm = document.getElementById('actForm');
+    function actTotals() {
+        if (!actForm) return;
+        const num = v => parseFloat(String(v).replace(/[$,]/g, '')) || 0, fmt = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        ['inc', 'exp'].forEach(k => {
+            let t = 0;
+            actForm.querySelectorAll(`[name=act][data-sec=${k}], [name=new_${k}_act]`).forEach(i => t += num(i.value));
+            actForm.querySelector(`[data-tot=${k}]`).textContent = fmt(t);
+        });
+    }
+    function addActual(key) {
+        const row = document.createElement('div');
+        row.className = 'row g-2 align-items-center mb-2';
+        row.innerHTML = `<div class="col-9 col-md-9"><input name="new_${key}_desc" class="form-control form-control-sm" placeholder="What it was"></div>
+            <div class="col-3 col-md-3"><input name="new_${key}_act" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0.00"></div>`;
+        actForm.querySelector(`.new-lines[data-key=${key}]`).appendChild(row);
+        row.querySelector('input').focus();
+    }
+    if (actForm) { actForm.addEventListener('input', actTotals); actTotals(); }
     // Show the link box and copy button for whatever the dropdown holds. On a change, tick the box; on page load (a
     // refresh can bring back the browser's earlier choice), leave the box as it is.
     function lastYearChanged(fromLoad) {

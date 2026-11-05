@@ -32,3 +32,39 @@ def test_link_only_change_keeps_the_budget_unchanged():
     assert B._same_budget(old, dict(old, last_year_event='#A'), lines, new_lines)
     assert not B._same_budget(old, dict(old, chair='Sam'), lines, new_lines)
     assert not B._same_budget(old, old, lines, [dict(new_lines[0], budget=1100.0)])
+
+
+def test_actuals_page_saves_actuals_only(monkeypatch):
+    import auth
+    from app import app
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Pat', 'level': 'official', 'roles': ['Director'],
+                                                   'perms': {'events'}} if e else None)
+    monkeypatch.setattr(bud, '_guard', lambda: None)
+    monkeypatch.setattr(bud, '_event', lambda code: {'event_name': 'Sno', 'date': '2027-01-09', 'program_code': 'RY'})
+    budget = {'event_code': '#C', 'event_name': 'Sno', 'program': 'RY', 'date': '2027-01-09', 'chair': 'Pat', 'location': '',
+              'notes': '', 'last_year_event': '#B', 'updated_by': 'Pat',
+              'lines': [{'section': 'Income', 'description': 'Entries', 'last_year': None, 'budget': 1000.0, 'actual': None, 'sort': 0},
+                        {'section': 'Expense', 'description': 'Site', 'last_year': None, 'budget': 400.0, 'actual': None, 'sort': 1}]}
+    monkeypatch.setattr(B, 'get', lambda code: budget)
+    saved = []
+    monkeypatch.setattr(B, 'save', lambda header, lines, files=(), actuals_only=False: saved.append((header, lines, actuals_only)))
+    monkeypatch.setattr(bud, 'log_audit_event', lambda *a, **k: None)
+    app.config['TESTING'] = True
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s.update(authenticated=True, email='pat@example.org', who='Pat')
+    from werkzeug.datastructures import MultiDict
+    r = c.post('/events/event/%23C/actuals', data=MultiDict([('act', '950'), ('act', '410.50'), ('new_exp_desc', 'Extra cones'), ('new_exp_act', '35')]))
+    assert r.status_code == 302 and saved
+    header, lines, only = saved[0]
+    assert only and header['last_year_event'] == '#B'
+    assert [(ln['description'], ln['budget'], ln['actual']) for ln in lines] == [('Entries', 1000.0, 950.0), ('Site', 400.0, 410.5), ('Extra cones', None, 35.0)]
+
+
+def test_entering_actuals_never_marks_the_budget_changed():
+    old = {'chair': 'Pat', 'location': 'Here', 'notes': '', 'event_name': 'Sno', 'program': 'RY', 'date': '2027-01-09'}
+    lines = [{'section': 'Income', 'description': 'Entries', 'last_year': 900.0, 'budget': 1000.0, 'actual': None, 'sort': 0}]
+    changed = [{'section': 'Income', 'description': 'Entries', 'last_year': 900.0, 'budget': 1000.0, 'actual': 950.0}]
+    assert not B._same_budget(old, old, lines, changed)          # through the budget form it would count as a change...
+    import inspect
+    assert 'actuals_only' in inspect.signature(B.save).parameters  # ...so actuals save with actuals_only=True
