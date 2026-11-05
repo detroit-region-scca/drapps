@@ -220,7 +220,8 @@ def home():
                 send_mail(f"{'URGENT ' if urgent else ''}Your board vote: {first}",
                           f"Hi {p['name'].split(' (')[0].split()[0]},\n\n" + head + mine +
                           f"\n\nThese links are yours alone, so please don't forward them. You can change your vote until it is "
-                          f"decided. Discussion is on the board email thread. The vote closes {BL.closes(today)}.\n\nThe roll call: {board_url}",
+                          f"decided. To discuss it, reply all to the \"{'URGENT ' if urgent else ''}Board vote: {first}\" email sent to {board_email()} "
+                          f"at the same time. The vote closes {BL.closes(today)}.\n\nThe roll call: {board_url}",
                           p['email'])
             for m in ms:
                 M.update(m['id'], asked=today)
