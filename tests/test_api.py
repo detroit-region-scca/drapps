@@ -107,3 +107,48 @@ def test_plan_permission_lets_an_api_key_through(monkeypatch):
     with app.test_request_context('/'):
         monkeypatch.setattr(auth, 'user', lambda: {'email': 'r@x.com', 'perms': ['plan_own']})
         assert plan.may_write('RY') and not plan.may_write('AX')
+
+
+@pytest.fixture()
+def ops(client, monkeypatch):
+    import equip_store as E
+    monkeypatch.setattr(E, 'enabled', lambda: True)
+    monkeypatch.setattr(E, 'tasks', lambda: [{'id': 'TK-1', 'task': 'Renew', 'due': '2027-01-31'}])
+    return client
+
+
+def test_task_update_sends_only_given_fields(ops):
+    r = ops.put('/api/v1/operations/tasks/TK-1', json={'due': '2027-02-01', 'cost': 410, 'bogus': 'x'}, headers=auth())
+    s = ops.sent[-1]
+    assert r.status_code == 200 and s['path'] == '/operations/tasks/TK-1' and s['form'] == {'due': '2027-02-01', 'cost': 410}
+
+
+def test_task_done_and_unknown_task(ops):
+    ops.post('/api/v1/operations/tasks/TK-1/done', headers=auth())
+    assert ops.sent[-1] == {'path': '/operations/tasks/TK-1', 'form': {'action': 'done'}, 'files': ()}
+    assert ops.post('/api/v1/operations/tasks/TK-9/done', headers=auth()).status_code == 404
+
+
+def test_worker_points_become_the_enter_form(client):
+    client.post('/api/v1/members/points', json={'event_code': '', 'what': 'Timing trailer work', 'date': '2026-11-01',
+                                               'entries': [{'member': '123', 'points': 2}, {'member': 'Pat Example'}]}, headers=auth())
+    s = client.sent[-1]
+    assert s['path'] == '/members/enter' and s['form']['event'] == 'none' and s['form']['member'] == ['123', 'Pat Example']
+    assert s['form']['points'] == [2, 1] and s['form']['first'] == '2026-11-01'
+
+
+def test_board_ask_and_record_tick_the_items(client):
+    items = {'budgets': [{'year': '2027', 'code': '#DRABC'}], 'motions': ['MO-2026-01']}
+    client.post('/api/v1/board/ask', json=dict(items, urgent=True), headers=auth())
+    s = client.sent[-1]
+    assert s['path'] == '/board/' and s['form']['item'] == ['budget:2027:#DRABC', 'motion:MO-2026-01'] and s['form']['urgent'] == 'yes'
+    client.post('/api/v1/board/record', json=dict(items, result='passed', date='2026-11-12', how='meeting', vote='7-0'), headers=auth())
+    f = client.sent[-1]['form']
+    assert f['result'] == 'passed' and f['decided'] == '2026-11-12' and f['how'] == 'meeting' and f['vote'] == '7-0'
+
+
+def test_volunteers_add_and_remove(client):
+    client.post('/api/v1/volunteers', json={'name': 'Val', 'email': 'val@example.org'}, headers=auth())
+    assert client.sent[-1]['path'] == '/access' and client.sent[-1]['form']['email'] == 'val@example.org'
+    client.delete('/api/v1/volunteers/val@example.org', headers=auth())
+    assert client.sent[-1]['form'] == {'action': 'remove', 'email': 'val@example.org'}

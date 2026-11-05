@@ -57,8 +57,12 @@ def signin_from_key():
     if u:
         g.api_user = u
         session['authenticated'] = True
+        session['email'] = u['email']        # so role checks (Board, Members) see the key's official, as on the website
         session['who'] = u['name']
         session['officer'] = {'email': u['email'], 'name': u['name']}
+        import equip
+        if u['email'] in equip.editors():    # Operations edits, as for the same person signed in
+            session['equip_editor'] = {'email': u['email'], 'name': u['name']}
 
 
 @bp.before_request
@@ -383,3 +387,213 @@ def create_invoice():
     if not m or m.group(1) == 'new':
         return _err('Invoice not created.', errors=[f['message'] for f in fl], flashes=fl)
     return jsonify(id=m.group(1), invoice=I.get(m.group(1)), flashes=fl), 201
+
+
+# ---------- Operations ----------
+
+def _ops():
+    import equip_store as E
+    return E if E.enabled() else None
+
+
+@bp.get('/operations/tasks')
+def ops_tasks():
+    """To-dos and recurring costs. ?category=, ?due_before=YYYY-MM-DD, ?open=1 (only ones with a due date)."""
+    E = _ops()
+    if not E:
+        return _err('Operations is not set up.', 404)
+    cat, before, only_open = request.args.get('category', ''), request.args.get('due_before', ''), request.args.get('open') == '1'
+    rows = [t for t in E.tasks() if (not cat or t.get('category') == cat) and (not before or (t['due'] and t['due'] <= before))
+            and (not only_open or t['due'])]
+    return jsonify(sorted(rows, key=lambda t: (not t['due'], t['due'] or '', t['id'])))
+
+
+@bp.get('/operations/items')
+def ops_items():
+    """Vehicles, trailers and gear. ?category=Vehicle|Trailer|..."""
+    E = _ops()
+    if not E:
+        return _err('Operations is not set up.', 404)
+    cat = request.args.get('category', '')
+    return jsonify([i for i in E.items() if not cat or i.get('category') == cat])
+
+
+@bp.get('/operations/places')
+def ops_places():
+    E = _ops()
+    return jsonify(E.places()) if E else _err('Operations is not set up.', 404)
+
+
+@bp.get('/operations/documents')
+def ops_documents():
+    E = _ops()
+    return jsonify(E.documents()) if E else _err('Operations is not set up.', 404)
+
+
+TASK_FIELDS = ('task', 'about', 'due', 'repeat_months', 'cost', 'owner', 'notes', 'category', 'paid_how', 'account', 'ends')
+
+
+@bp.post('/operations/tasks')
+def ops_add_task():
+    """{"task", "about", "due", "repeat_months", "cost", "owner", "notes", "category", "paid_how", "account", "ends"}"""
+    E = _ops()
+    if not E:
+        return _err('Operations is not set up.', 404)
+    d = _body()
+    before = {t['id'] for t in E.tasks()}
+    st, loc, fl = _forward('/operations/tasks/new', {k: d[k] for k in TASK_FIELDS if k in d})
+    ok, errors = _result(st, loc, fl)
+    new = [t for t in E.tasks() if t['id'] not in before]
+    return (jsonify(task=new[0] if new else None, flashes=fl), 201) if ok and new else _err('Not saved.', errors=errors, flashes=fl)
+
+
+@bp.put('/operations/tasks/<task_id>')
+def ops_update_task(task_id):
+    """Change only the fields given (same names as adding)."""
+    E = _ops()
+    if not E or not any(t['id'] == task_id for t in E.tasks()):
+        return _err('To-do not found.', 404)
+    d = _body()
+    st, loc, fl = _forward(f'/operations/tasks/{task_id}', {k: d[k] for k in TASK_FIELDS if k in d})
+    ok, errors = _result(st, loc, fl)
+    t = next((t for t in E.tasks() if t['id'] == task_id), None)
+    return (jsonify(task=t, flashes=fl), 200) if ok else _err('Not saved.', errors=errors, flashes=fl)
+
+
+@bp.post('/operations/tasks/<task_id>/done')
+def ops_task_done(task_id):
+    """Mark done: notes who and when; a repeating to-do moves to its next date."""
+    E = _ops()
+    if not E or not any(t['id'] == task_id for t in E.tasks()):
+        return _err('To-do not found.', 404)
+    st, loc, fl = _forward(f'/operations/tasks/{task_id}', {'action': 'done'})
+    ok, errors = _result(st, loc, fl)
+    t = next((t for t in E.tasks() if t['id'] == task_id), None)
+    return (jsonify(task=t, flashes=fl), 200) if ok else _err('Not done.', errors=errors, flashes=fl)
+
+
+# ---------- Members and worker points ----------
+
+def _mem():
+    import members_store as S
+    return S if S.enabled() else None
+
+
+@bp.get('/members')
+def members_list():
+    """?q= part of a name or member number. Number, name and points only."""
+    S = _mem()
+    if not S:
+        return _err('Members is not set up.', 404)
+    q = request.args.get('q', '').strip().lower()
+    rows = [{'member': m['member'], 'first': m['first'], 'last': m['last'], 'points': m['points'], 'life': m['life']}
+            for m in S.members() if not q or q in m['member'].lower() or q in f"{m['first']} {m['last']}".lower()]
+    return jsonify(sorted(rows, key=lambda m: (m['last'].lower(), m['first'].lower())))
+
+
+@bp.get('/members/<mid>')
+def member_detail(mid):
+    S = _mem()
+    m = next((m for m in S.members() if m['member'] == mid), None) if S else None
+    if not m:
+        return _err('Member not found.', 404)
+    hist = sorted([e for e in S.entries() if e['member'] == mid], key=lambda e: str(e.get('date') or ''), reverse=True)
+    return jsonify(member=m, history=hist)
+
+
+@bp.post('/members/points')
+def members_add_points():
+    """Worker points for an event or a volunteer job, as on Members > Enter.
+    {"event_code": "#DR..." or "", "what": "job (when no event)", "date": "YYYY-MM-DD",
+     "entries": [{"member": "number or full name", "points": 1}]}"""
+    d = _body()
+    es = d.get('entries') or []
+    st, loc, fl = _forward('/members/enter', {'event': d.get('event_code') or 'none', 'what': d.get('what', ''), 'first': d.get('date', ''),
+                                              'member': [str(e.get('member', '')) for e in es], 'points': [e.get('points', 1) for e in es]})
+    ok, errors = _result(st, loc, fl)
+    return (jsonify(flashes=fl), 201) if ok else _err('Not saved.', errors=errors, flashes=fl)
+
+
+# ---------- Board ----------
+
+@bp.get('/board')
+def board_waiting():
+    """Everything waiting for the board: budgets not yet approved and open motions."""
+    import bud
+    import motions_store as M
+    rows = [dict(year=y, code=r['b'].get('event_code'), name=r['b'].get('event_name'), program=r['b'].get('program'),
+                 date=str(r['b'].get('date', '')), status=r['status'], surplus=r['surplus'], plan=r['plan'])
+            for y in bud.pending_years() for r in bud._pending_rows(y)] if B.enabled() else []
+    return jsonify(budgets=rows, motions=[m for m in M.motions() if m['status'] == 'open'] if M.enabled() else [])
+
+
+@bp.get('/board/decisions/<year>')
+def board_decisions(year):
+    import board
+    return jsonify(board.decisions(year))
+
+
+@bp.post('/board/motions')
+def board_propose():
+    """{"title": "the motion in one line", "details", "link"}"""
+    import motions_store as M
+    d = _body()
+    before = {m['id'] for m in M.motions()}
+    st, loc, fl = _forward('/board/motions', {'title': d.get('title', ''), 'details': d.get('details', ''), 'link': d.get('link', '')})
+    new = [m for m in M.motions() if m['id'] not in before]
+    return (jsonify(motion=new[0], flashes=fl), 201) if new else _err('Not added.', errors=[f['message'] for f in fl], flashes=fl)
+
+
+def _board_items(d):
+    return ([f"budget:{b['year']}:{b['code']}" for b in d.get('budgets') or []] + [f'motion:{m}' for m in d.get('motions') or []])
+
+
+@bp.post('/board/ask')
+def board_ask():
+    """Email the board for a vote. {"budgets": [{"year", "code"}], "motions": ["MO-..."], "urgent": false}"""
+    d = _body()
+    st, loc, fl = _forward('/board/', {'item': _board_items(d), 'action': 'ask', 'urgent': 'yes' if d.get('urgent') else ''})
+    ok, errors = _result(st, loc, fl)
+    return (jsonify(flashes=fl), 200) if ok and not errors else _err('Not sent.', errors=errors, flashes=fl)
+
+
+@bp.post('/board/record')
+def board_record():
+    """Record the board's decision. {"budgets": [...], "motions": [...], "result": "passed"|"failed", "date": "YYYY-MM-DD",
+    "how": "meeting"|"email", "vote": "e.g. 7-0"}"""
+    d = _body()
+    st, loc, fl = _forward('/board/', {'item': _board_items(d), 'action': 'record', 'result': d.get('result', ''),
+                                       'decided': d.get('date', ''), 'how': d.get('how', ''), 'vote': d.get('vote', '')})
+    ok, errors = _result(st, loc, fl)
+    return (jsonify(flashes=fl), 200) if ok and not errors else _err('Not recorded.', errors=errors, flashes=fl)
+
+
+@bp.post('/board/motions/<mid>/withdraw')
+def board_withdraw(mid):
+    st, loc, fl = _forward(f'/board/motion/{mid}/withdraw', {})
+    ok, errors = _result(st, loc, fl)
+    return (jsonify(flashes=fl), 200) if ok and not errors else _err('Not withdrawn.', errors=errors, flashes=fl)
+
+
+# ---------- Volunteers ----------
+
+@bp.get('/volunteers')
+def volunteers_list():
+    import auth
+    return jsonify(sorted(auth.volunteers().values(), key=lambda v: v.get('name', '').lower()))
+
+
+@bp.post('/volunteers')
+def volunteers_add():
+    """{"name", "email", "note"}"""
+    d = _body()
+    st, loc, fl = _forward('/access', {'name': d.get('name', ''), 'email': d.get('email', ''), 'note': d.get('note', '')})
+    ok, errors = _result(st, loc, fl)
+    return (jsonify(flashes=fl), 201) if ok and not errors else _err('Not added.', errors=errors, flashes=fl)
+
+
+@bp.delete('/volunteers/<email>')
+def volunteers_remove(email):
+    st, loc, fl = _forward('/access', {'action': 'remove', 'email': email})
+    ok, errors = _result(st, loc, fl)
+    return (jsonify(flashes=fl), 200) if ok and not errors else _err('Not removed.', errors=errors, flashes=fl)

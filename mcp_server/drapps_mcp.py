@@ -1,8 +1,9 @@
-"""MCP server for the DRSCCA drevent app: a thin wrapper around its JSON API (/api/v1, see api.py).
+"""MCP server for DRSCCA Apps (drapps.drscca.org): a thin wrapper around its JSON API (/api/v1, see api.py).
 
-Config from the environment, or from the file named by DREVENT_ENV (default ~/.secrets/drevent-api.env):
-  DREVENT_URL      https://drapps.drscca.org
-  DREVENT_API_KEY  a key from the app's API_KEYS (acts as that official; full read and write for now)
+Config from the environment, or from the file named by DRAPPS_ENV (default ~/.secrets/drevent-api.env):
+  DRAPPS_URL      https://drapps.drscca.org
+  DRAPPS_API_KEY  a key from the app's API_KEYS (acts as that official; full read and write for now)
+The older DREVENT_* names still work.
 
 Receipts are local file paths on the machine running this server; they are uploaded with the request.
 """
@@ -20,27 +21,30 @@ def _config():
     """(api url, key), read fresh on every call from the environment or the DREVENT_ENV file, so a changed address
     or key takes effect without restarting every Claude session that runs this server."""
     env = {}
-    f = Path(os.path.expanduser(os.environ.get('DREVENT_ENV', '~/.secrets/drevent-api.env')))
+    f = Path(os.path.expanduser(os.environ.get('DRAPPS_ENV') or os.environ.get('DREVENT_ENV') or '~/.secrets/drevent-api.env'))
     if f.exists():
         for line in f.read_text().splitlines():
             k, _, v = line.partition('=')
             if k.strip() and not k.startswith('#'):
                 env[k.strip()] = v.strip()
-    url = os.environ.get('DREVENT_URL') or env.get('DREVENT_URL') or 'https://drapps.drscca.org'
-    return url.rstrip('/') + '/api/v1', os.environ.get('DREVENT_API_KEY') or env.get('DREVENT_API_KEY', '')
+    pick = lambda k: os.environ.get(f'DRAPPS_{k}') or os.environ.get(f'DREVENT_{k}') or env.get(f'DRAPPS_{k}') or env.get(f'DREVENT_{k}')  # noqa: E731
+    url = pick('URL') or 'https://drapps.drscca.org'
+    return url.rstrip('/') + '/api/v1', pick('API_KEY') or ''
 
 
-server = MCPServer('drevent', instructions=(
-    'DRSCCA (Detroit Region SCCA) event and money app: events, event and program budgets, annual plans, funds requests, '
-    'invoices, QuickBooks actuals. The board approves budgets, not plans. Program budgets have codes like RY-2027; '
-    'event codes start with #. Funds request methods: check, card (region credit card, already paid), reimburse. '
-    'Writes go through the app\'s own forms, so they send the same emails as the website.'))
+server = MCPServer('drapps', instructions=(
+    'DRSCCA Apps (Detroit Region SCCA back office, drapps.drscca.org): events, event and program budgets, annual plans, '
+    'funds requests, invoices, QuickBooks actuals, Operations (to-dos, recurring costs, vehicles, storage, documents), '
+    'members and worker points, the Board (budgets and motions waiting for a vote, decisions) and volunteers. '
+    'The board approves budgets, not plans. Program budgets have codes like RY-2027; event codes start with #. '
+    'Funds request methods: check, card (region credit card, already paid), reimburse. Writes go through the app\'s own '
+    'forms, so they send the same emails and audit entries as the website, signed as the key\'s official.'))
 
 
 def _call(method: str, path: str, body: dict | None = None, params: dict | None = None) -> Any:
     url, key = _config()
     if not key:
-        return {'error': 'DREVENT_API_KEY is not set (see ~/.secrets/drevent-api.env).'}
+        return {'error': 'DRAPPS_API_KEY is not set (see ~/.secrets/drevent-api.env).'}
     r = httpx.request(method, url + path, json=body, params={k: v for k, v in (params or {}).items() if v not in (None, '')},
                       headers={'Authorization': f'Bearer {key}'}, timeout=120)
     try:
@@ -257,6 +261,143 @@ def create_invoice(program: str, bill_name: str, lines: list[dict], event_code: 
     """Create an invoice (PDF saved to Drive and emailed to the treasurer). lines: [{"description", "quantity", "unit_price"}]."""
     return _call('POST', '/invoices', {'program': program, 'event_code': event_code, 'bill_name': bill_name, 'bill_contact': bill_contact,
                                        'bill_email': bill_email, 'bill_address': bill_address, 'due': due, 'notes': notes, 'lines': lines})
+
+
+# ---------- Operations ----------
+
+@server.tool()
+def list_operations_tasks(category: str = '', due_before: str = '', only_dated: bool = False) -> Any:
+    """Operations to-dos and recurring costs (insurance, registrations, filings, subscriptions), soonest first.
+    due_before: YYYY-MM-DD. Each has id (TK-NNN), task, about, due, repeat_months, cost, owner, notes, auto (charged automatically)."""
+    return _call('GET', '/operations/tasks', params={'category': category, 'due_before': due_before, 'open': '1' if only_dated else ''})
+
+
+@server.tool()
+def list_operations_items(category: str = '') -> Any:
+    """Region property: vehicles, trailers and gear. category: Vehicle, Trailer, ... or empty for all."""
+    return _call('GET', '/operations/items', params={'category': category})
+
+
+@server.tool()
+def list_storage_places() -> Any:
+    """Storage places the region uses, with costs and access."""
+    return _call('GET', '/operations/places')
+
+
+@server.tool()
+def list_operations_documents() -> Any:
+    """Documents rows (titles, registrations, insurance cards, agreements) and their Drive folders."""
+    return _call('GET', '/operations/documents')
+
+
+@server.tool()
+def add_operations_task(task: str, due: str = '', about: str = '', repeat_months: int | None = None, cost: float | None = None,
+                        owner: str = '', notes: str = '', category: str = '', paid_how: str = '', account: str = '') -> Any:
+    """Add an Operations to-do or recurring cost. due: YYYY-MM-DD. repeat_months: 12 for yearly, empty for one time.
+    category: Administration, Insurance, Vehicles, Storage, Safety, Software and web, Travel, Other."""
+    body = {'task': task, 'due': due, 'about': about, 'owner': owner, 'notes': notes, 'category': category, 'paid_how': paid_how,
+            'account': account}
+    if repeat_months is not None:
+        body['repeat_months'] = repeat_months
+    if cost is not None:
+        body['cost'] = cost
+    return _call('POST', '/operations/tasks', body)
+
+
+@server.tool()
+def update_operations_task(task_id: str, fields: dict) -> Any:
+    """Change an Operations to-do (TK-NNN). fields: any of task, about, due, repeat_months, cost, owner, notes, category,
+    paid_how, account, ends. Only the fields given change."""
+    return _call('PUT', f'/operations/tasks/{task_id}', fields)
+
+
+@server.tool()
+def complete_operations_task(task_id: str) -> Any:
+    """Mark an Operations to-do done: records who and when; a repeating one moves to its next due date."""
+    return _call('POST', f'/operations/tasks/{task_id}/done', {})
+
+
+# ---------- Members and worker points ----------
+
+@server.tool()
+def find_members(query: str = '') -> Any:
+    """Members by part of a name or member number: number, name, worker points, life member."""
+    return _call('GET', '/members', params={'q': query})
+
+
+@server.tool()
+def get_member(member: str) -> Any:
+    """One member by number, with their worker points history."""
+    return _call('GET', f'/members/{member}')
+
+
+@server.tool()
+def add_worker_points(entries: list[dict], event_code: str = '', what: str = '', date: str = '') -> Any:
+    """Worker points, as on Members > Enter. entries: [{"member": number or full name, "points": 1}].
+    event_code (#DR...) for an event; otherwise what (the volunteer job) and date (YYYY-MM-DD). Emails the points keeper."""
+    return _call('POST', '/members/points', {'entries': entries, 'event_code': event_code, 'what': what, 'date': date})
+
+
+# ---------- Board ----------
+
+@server.tool()
+def board_waiting() -> Any:
+    """Everything waiting for the board: budgets not yet approved (year, code, name, status) and open motions."""
+    return _call('GET', '/board')
+
+
+@server.tool()
+def board_decisions(year: str) -> Any:
+    """Every recorded board decision in a year (budgets and motions), by date, with minutes when published."""
+    return _call('GET', f'/board/decisions/{year}')
+
+
+@server.tool()
+def propose_motion(title: str, details: str = '', link: str = '') -> Any:
+    """Add a motion to Waiting for the board (not sent yet). title: the motion in one line."""
+    return _call('POST', '/board/motions', {'title': title, 'details': details, 'link': link})
+
+
+@server.tool()
+def request_board_vote(budgets: list[dict] | None = None, motions: list[str] | None = None, urgent: bool = False) -> Any:
+    """Email the board (bod@) asking for a vote. budgets: [{"year", "code"}] from board_waiting; motions: ids.
+    Urgent applies to the whole email, so send an urgent item alone."""
+    return _call('POST', '/board/ask', {'budgets': budgets or [], 'motions': motions or [], 'urgent': urgent})
+
+
+@server.tool()
+def record_board_decision(result: str, date: str, budgets: list[dict] | None = None, motions: list[str] | None = None,
+                          how: str = 'meeting', vote: str = '') -> Any:
+    """Record the board's decision on budgets and motions. result: passed or failed. date: YYYY-MM-DD.
+    how: meeting or email. vote: like 7-0. A failed budget stays waiting."""
+    return _call('POST', '/board/record', {'budgets': budgets or [], 'motions': motions or [], 'result': result, 'date': date,
+                                           'how': how, 'vote': vote})
+
+
+@server.tool()
+def withdraw_motion(motion_id: str) -> Any:
+    """Withdraw an open motion (whoever proposed it, or an officer)."""
+    return _call('POST', f'/board/motions/{motion_id}/withdraw', {})
+
+
+# ---------- Volunteers ----------
+
+@server.tool()
+def list_volunteers() -> Any:
+    """Volunteers who can sign in (not officials)."""
+    return _call('GET', '/volunteers')
+
+
+@server.tool()
+def add_volunteer(name: str, email: str, note: str = '') -> Any:
+    """Let a volunteer sign in with this email address. note: e.g. RX event chair."""
+    return _call('POST', '/volunteers', {'name': name, 'email': email, 'note': note})
+
+
+@server.tool()
+def remove_volunteer(email: str) -> Any:
+    """Remove a volunteer's sign-in."""
+    return _call('DELETE', f'/volunteers/{email}')
 
 
 if __name__ == '__main__':

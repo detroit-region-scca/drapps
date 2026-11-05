@@ -98,15 +98,17 @@ dev server with the code mounted.
 access). Writes go through the app's own form pages in the same process, so every rule, email and audit entry
 matches the website.
 
-`mcp_server/drevent_mcp.py` wraps the API for Claude and other MCP clients (events, budgets, plans, actuals,
-funds requests with receipt files, invoices, audit). Install and register:
+`mcp_server/drapps_mcp.py` wraps the API for Claude and other MCP clients: events, budgets, plans, actuals, funds
+requests with receipt files, invoices, Operations to-dos and property, members and worker points, the Board
+(waiting items, vote requests, decisions, motions), volunteers, and the audit log. Install and register:
 
     python3 -m venv ~/.mcp-servers/drevent-mcp/venv
     ~/.mcp-servers/drevent-mcp/venv/bin/pip install -r mcp_server/requirements.txt
-    claude mcp add drevent -s user -- ~/.mcp-servers/drevent-mcp/venv/bin/python -I \
-        ~/projects/event_drscca_app/mcp_server/drevent_mcp.py
+    claude mcp add drapps -s user -- ~/.mcp-servers/drevent-mcp/venv/bin/python -I \
+        ~/projects/event_drscca_app/mcp_server/drapps_mcp.py
 
-It reads `DREVENT_URL` and `DREVENT_API_KEY` from `~/.secrets/drevent-api.env` (or the file in `DREVENT_ENV`).
+It reads `DRAPPS_URL` and `DRAPPS_API_KEY` from `~/.secrets/drevent-api.env` (or the file in `DRAPPS_ENV`); the
+older `DREVENT_*` names still work.
 
 ## Officials and the drscca.org groups
 
