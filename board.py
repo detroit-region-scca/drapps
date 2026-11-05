@@ -216,7 +216,7 @@ def home():
             send_mail(f"{'URGENT ' if urgent else ''}Board vote: {first}", head + '\n\n'.join(i[2] for i in items) + how,
                       board_email(), reply_to=board_email())
             for p in people:
-                mine = '\n\n'.join(f"{line}\n  Your vote: {_vote_link(bid, p)}" for (_, _, line), bid in zip(items, bids))
+                mine = '\n\n'.join(f"{line}\n\n  Your vote: {_vote_link(bid, p)}" for (_, _, line), bid in zip(items, bids))
                 send_mail(f"{'URGENT ' if urgent else ''}Your board vote: {first}",
                           f"Hi {p['name'].split(' (')[0].split()[0]},\n\n" + head + mine +
                           f"\n\nThese links are yours alone, so please don't forward them. You can change your vote until it is "
