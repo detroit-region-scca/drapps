@@ -118,6 +118,22 @@ def _month_label(d):
         return str(d)[:4]
 
 
+def _warnings(e, b, today=None):
+    """What still needs doing for a registered event, as [(reason, action)]: action 'budget' or 'results'.
+    Shown as a warning sign on the events list and spelled out on the event page."""
+    if not B.enabled() or not e or e.get('program_budget'):
+        return []
+    try:
+        past = date.fromisoformat(str(e.get('date', ''))[:10]) < (today or date.today())
+    except ValueError:
+        return []
+    if not b:
+        return [('No budget' if past else 'No budget yet', 'budget')]
+    if past and not any(ln.get('actual') is not None for ln in b.get('lines', [])):
+        return [('The event is over: enter its reported results', 'results')]
+    return []
+
+
 def _last_year_events(code, e, keep=''):
     """This program's events from the year before this one, by date, plus `keep` (an earlier link) if it is older.
     Each: code, label, has_budget."""
@@ -205,7 +221,7 @@ def home():
             days = None
         rows.append({'e': e, 'code': _code(e), 'program': e.get('program_code', ''), 'date': d, 'name': e.get('event_name', ''),
                      'days': days, 'past': days is not None and days < 0,
-                     'needs_budget': B.enabled() and _code(e) not in buds and days is not None and days >= 0,
+                     'warnings': _warnings(e, buds.get(_code(e)), today),
                      # The QuickBooks project's own name once it exists; else the name to give it (as on the event page).
                      'qbo_name': (qbo.get(_code(e)) or {}).get('project') or f"{d[:4]} {e.get('program_code', '')} {e.get('event_name', '')} {_code(e)}"})
     # Plan lines with a month and no registered event yet: events the director expects but has not registered.
@@ -218,7 +234,7 @@ def home():
         for ln in p['lines']:
             if ln['month'] and ln['month'] >= first and ln['event_code'] not in codes and not P.placeholder(ln['item']):
                 rows.append({'e': None, 'code': '', 'program': pc, 'date': f"{year}-{ln['month']:02d}", 'name': plan_name(ln['item']),
-                             'days': None, 'past': False, 'needs_budget': False, 'register': register_url(year, pc, ln)})
+                             'days': None, 'past': False, 'warnings': [], 'register': register_url(year, pc, ln)})
     rows.sort(key=lambda r: (r['date'], r['name']))
     months = []
     for r in rows:
@@ -247,6 +263,7 @@ def detail(code):
     q = program_actuals(*pg) if pg else (B.qbo_actuals().get(code) if B.enabled() else None)
     plan = None if pg else _plan_line(code)
     return render_template('bud.html', **_ctx(view='detail', code=code, e=e or {}, b=b, funds=_funds(code), received=_received(code), yoy=_year_over_year(code),
+                                              warnings=_warnings(e, b),
                                               q=q, plan=plan,
                                               status=_status(b), today=date.today().isoformat(), programs=load_programs(),
                                               open_lines=_open_lines(e)))

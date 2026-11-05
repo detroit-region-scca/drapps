@@ -68,3 +68,17 @@ def test_entering_actuals_never_marks_the_budget_changed():
     assert not B._same_budget(old, old, lines, changed)          # through the budget form it would count as a change...
     import inspect
     assert 'actuals_only' in inspect.signature(B.save).parameters  # ...so actuals save with actuals_only=True
+
+
+def test_event_warnings(monkeypatch):
+    from datetime import date as D
+    monkeypatch.setattr(B, 'enabled', lambda: True)
+    today = D(2026, 11, 5)
+    ev = lambda d: {'date': d, 'event_name': 'X'}  # noqa: E731
+    lines = [{'section': 'Income', 'actual': None}]
+    assert bud._warnings(ev('2027-01-09'), None, today) == [('No budget yet', 'budget')]
+    assert bud._warnings(ev('2026-05-01'), None, today) == [('No budget', 'budget')]
+    assert bud._warnings(ev('2026-05-01'), {'lines': lines}, today)[0][1] == 'results'
+    assert bud._warnings(ev('2026-05-01'), {'lines': [{'actual': 950.0}]}, today) == []
+    assert bud._warnings(ev('2027-01-09'), {'lines': lines}, today) == []
+    assert bud._warnings(dict(ev('2026-05-01'), program_budget=True), None, today) == []
