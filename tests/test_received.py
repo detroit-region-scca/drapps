@@ -74,7 +74,7 @@ def client(monkeypatch):
 
 def body(**kw):
     return dict({'program': 'RX', 'event_code': '#DRTEST', 'received': '2026-10-17', 'counted_by': 'Pat', 'second_counter': 'Sam',
-                 'held_by': 'Pat', 'lines': [{'description': 'Gate', 'category': 'Entry fees', 'form': 'Cash', 'amount': 1040},
+                 'held_by': 'Pat', 'lines': [{'description': 'Gate', 'category': 'Entry fees', 'form': 'Cash', 'check_number': '77', 'amount': 1040},
                                              {'description': 'Sponsor', 'category': 'Sponsorship', 'form': 'Check', 'check_number': '1001', 'amount': 200}]}, **kw)
 
 

@@ -551,7 +551,8 @@ def in_new():
             errors.append(f'"{ln["description"] or "line"}": the amount must be a number above zero.')
             continue
         lines.append({'description': ln['description'].strip() or ln['category'], 'category': ln['category'] if ln['category'] in R.CATEGORIES else 'Other',
-                      'form': ln['form'] if ln['form'] in R.FORMS else 'Cash', 'check_number': ln['check_number'].strip(), 'amount': a})
+                      'form': ln['form'] if ln['form'] in R.FORMS else 'Cash',
+                      'check_number': ln['check_number'].strip() if ln['form'] == 'Check' else '', 'amount': a})
     if not lines:
         errors.append('Add at least one line with an amount.')
     ev = next((e for e in events if (e.get('custom_tag') or e.get('unique_code')) == f.get('event_code')), None)

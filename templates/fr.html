@@ -271,7 +271,7 @@
                     <div class="col-12 col-md-4"><input name="line_desc" class="form-control form-control-sm" placeholder="Gate, t-shirts, sponsor name…" value="{{ ln.description or '' }}" aria-label="What for"></div>
                     <div class="col-6 col-md-2"><select name="line_cat" class="form-select form-select-sm" aria-label="Kind">{% for c in rcats %}<option {% if ln.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
                     <div class="col-6 col-md-2"><select name="line_form" class="form-select form-select-sm" aria-label="Cash or check">{% for m in forms %}<option {% if ln.form == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
-                    <div class="col-5 col-md-2"><input name="line_check" class="form-control form-control-sm" placeholder="Check #" value="{{ ln.check_number or '' }}" aria-label="Check number"></div>
+                    <div class="col-5 col-md-2"><input name="line_check" class="form-control form-control-sm{% if ln.form != 'Check' %} invisible{% endif %}" placeholder="Check #" value="{{ ln.check_number or '' }}" aria-label="Check number"></div>
                     <div class="col-5 col-md-1"><input name="line_amount" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0.00" value="{{ ln.amount or '' }}" aria-label="Amount"></div>
                     <div class="col-2 col-md-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)">✕</button></div>
                 </div>{% endfor %}
@@ -435,9 +435,18 @@
         document.getElementById('payeeSelf').classList.toggle('d-none', !self);
     }
     const inForm = document.getElementById('inForm');
+    // The check number box only for checks (kept in place, so the row does not jump).
+    function checkBoxes() {
+        inForm.querySelectorAll('.line').forEach(l => {
+            const box = l.querySelector('[name=line_check]'), isCheck = l.querySelector('[name=line_form]').value === 'Check';
+            box.classList.toggle('invisible', !isCheck);
+            if (!isCheck) box.value = '';
+        });
+    }
     if (inForm) {
         inForm.addEventListener('input', total);
-        inForm.addEventListener('change', total);
+        inForm.addEventListener('change', () => { checkBoxes(); total(); });
+        checkBoxes();
         inForm.addEventListener('submit', () => { const b = document.getElementById('submitBtn'); b.disabled = true; b.textContent = 'Saving…'; });
         total();
     }
