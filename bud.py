@@ -477,13 +477,14 @@ def edit(code):
         log_audit_event('BUDGET_SAVED', who, {'event_code': code, 'lines': len(lines)})
         flash('Budget saved.', 'success')
         return redirect(url_for('bud.detail', code=code))
-    # GET: the saved budget, or a copy of another event's to start from (its budget becomes this budget, any
-    # actuals typed on its old form become "last year", and its QuickBooks results are shown above), or a blank form.
+    # GET: the saved budget, or a copy of another event's to start from (its budget amounts fill both "Last year" and
+    # "Budget", and its QuickBooks results are shown above), or a blank form.
     src = request.args.get('copy')
     pick, link = '', False
     if src and (sb := B.get(src)):
         # Copy (also over a saved budget, after the form asked): nothing is saved until Save.
-        lines = [{'section': ln['section'], 'description': ln['description'], 'last_year': ln['actual'],
+        # Last year's budget fills both columns: "Last year" to compare against, "Budget" as the starting point.
+        lines = [{'section': ln['section'], 'description': ln['description'], 'last_year': ln['budget'],
                   'budget': ln['budget'], 'actual': None} for ln in sb['lines']]
         form = dict(b) if b else {'chair': sb.get('chair', ''), 'location': sb.get('location', '')}
         # The event copied from stays chosen; linked unless the box was unticked (and only if it can be linked).
