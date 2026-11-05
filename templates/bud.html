@@ -267,7 +267,7 @@
                         <label class="form-check-label" for="lyLink">Link for year over year</label></div>
                     <button type="button" id="lyCopy" class="btn btn-sm btn-outline-light {{ '' if chosen and chosen.has_budget else 'd-none' }}" onclick="copyLastYearBudget()">Copy its budget</button>
                 </div>
-                <div class="form-text">Optional. Link it to see this event's results year over year on its page, or copy its budget to start from.</div></div>{% endif %}
+                <div class="form-text">Starting this year's budget? Pick last year's event here and press Copy its budget. Leave Link ticked: it builds this event's year over year history on its page.</div></div>{% endif %}
     {% if copied %}<div class="alert alert-info py-2">Copied from {{ src.event_name|trim }}: its budget is your starting budget{% if src_q %}, and what QuickBooks shows it actually made is below{% endif %}. Change anything, then save.</div>
     {% if src_q %}<details class="mb-3" open><summary class="small text-muted">{{ src.event_name|trim }} in QuickBooks: income {{ money(src_q.totals.income) }}, costs {{ money(src_q.totals.expense) }}, surplus {{ money(src_q.totals.surplus) }}</summary>
     <div class="card mt-2"><div class="card-body p-0"><table class="table table-sm mb-0"><tbody>
@@ -304,7 +304,7 @@
         {% endfor %}
         <div class="card p-3 mb-3">
             <div class="d-flex flex-wrap justify-content-between gap-2 mb-3"><div class="fw-semibold">Surplus (loss)</div><div class="tot" id="surplus"></div></div>
-            {% if plan %}<div class="small text-muted mb-3 text-end">The annual plan expects {{ money(plan.net) }} from this event ({{ plan.item }}).</div>{% endif %}
+            {% if plan and plan.net is not none %}<div class="small mb-3 text-end text-muted" id="vsPlan" data-plan="{{ plan.net }}" data-item="{{ plan.item }}"></div>{% endif %}
             <label class="form-label">Notes <span class="text-muted">(optional)</span></label>
             <textarea name="notes" class="form-control mb-3" rows="2">{{ form.get('notes', '') }}</textarea>
             <label class="form-label">Attach files <span class="text-muted">(the original budget spreadsheet or PDF, optional)</span></label>
@@ -389,6 +389,15 @@
         for (const [key, s] of [['inc', inc], ['exp', exp]])
             form.querySelector(`[data-tot=${key}]`).textContent = `Last yr ${fmt(s.ly)} · Budget ${fmt(s.bud)}`;
         document.getElementById('surplus').textContent = `Last yr ${fmt(inc.ly - exp.ly)} · Budget ${fmt(inc.bud - exp.bud)}`;
+        // Against the annual plan line, as the director types: amber when it is off by as much as the budget page warns about.
+        const vp = document.getElementById('vsPlan');
+        if (vp) {
+            const plan = parseFloat(vp.dataset.plan), net = inc.bud - exp.bud, diff = net - plan;
+            vp.textContent = `Annual plan expects ${fmt(plan)} (${vp.dataset.item}) · this budget ${fmt(net)}` + (Math.abs(diff) >= 0.005 ? ` (${diff > 0 ? '+' : '−'}${fmt(Math.abs(diff))})` : '');
+            const off = Math.abs(diff) >= Math.max(250, Math.abs(plan) * 0.25);
+            vp.classList.toggle('text-warning-emphasis', off);
+            vp.classList.toggle('text-muted', !off);
+        }
     }
     function addLine(btn) {
         const box = btn.closest('.card').querySelector('.lines');
