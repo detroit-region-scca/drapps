@@ -73,12 +73,13 @@ def _num(v):
 
 
 def requests():
-    return _snapshot()[0]
+    """Every request except deleted ones."""
+    return [r for r in _snapshot()[0] if r['status'] != 'Deleted']
 
 
 def get(req_id):
     reqs, lines = _snapshot()
-    r = next((r for r in reqs if r['id'] == req_id), None)
+    r = next((r for r in reqs if r['id'] == req_id and r['status'] != 'Deleted'), None)
     if r:
         r = dict(r, lines=[ln for ln in lines if ln['request_id'] == req_id])
     return r
@@ -131,6 +132,12 @@ def update(req_id, **fields):
 def close(req_id, status, **fields):
     """Mark a request Paid or Rejected (fields: paid_date, paid_ref, paid_amount, closed_by, closed_note)."""
     return update(req_id, status=status, **fields)
+
+
+def delete(req_id, who):
+    """Mark a request Deleted: it drops out of every list and its approval links stop working. The row stays, so its
+    number is never given to another request (an old approval link must never approve a different one)."""
+    return update(req_id, status='Deleted', closed_by=who)
 
 
 def add_receipts(req_id, files):

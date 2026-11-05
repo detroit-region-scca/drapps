@@ -363,6 +363,7 @@ def detail(req_id):
         return redirect(url_for('fr.home'))
     items = Approvals().items(r) if r['status'] == 'Submitted' else []
     return render_template('fr.html', **_ctx(view='detail', r=r, today=date.today().isoformat(), items=items, ready=FL.ready(items),
+                                             can_delete=can_delete_request(r),
                                              approvals=FL.parse(r.get('approvals')), roles=FL.ROLES, approvers=approvers(r)))
 
 
@@ -416,7 +417,7 @@ def approve_link(token):
     F.refresh()
     r = F.get(t['id'])
     if not r:
-        abort(404)
+        return render_template('fr.html', **_ctx(view='link', r=None, msg=f"{t['id']} no longer exists: it was deleted, so there is nothing to approve."))
     done = next((a for a in FL.parse(r.get('approvals')) if a['role'] == t['role']), None)
     msg = (f"{r['id']} is already {r['status'].lower()}." if r['status'] != 'Submitted' else
            "Board approval is no longer confirmed from an email. The board votes on it (Board page, Request email vote), "
@@ -682,11 +683,45 @@ def in_delete(rid):
     if not can_delete_report(r):
         flash('Only whoever reported it, or the treasurer, RE or ARE, can delete it.', 'warning')
         return redirect(url_for('fr.in_detail', rid=rid))
-    gone = R.delete(rid)
     who = session.get('who') or 'Unknown'
+    gone = R.delete(rid, who)
     log_audit_event('MONEY_RECEIVED_DELETED', who, {'id': rid, 'total': gone['total'], 'cash': gone['cash'], 'event_code': gone['event_code'],
                                                      'received': gone['received'], 'reported_by': gone['reported_by'],
                                                      'lines': [{k: ln[k] for k in ('description', 'category', 'form', 'check_number', 'amount')} for ln in gone['lines']],
                                                      'files_url': gone['files_url']})
     flash(f'{rid} deleted.' + (' Its photos are still in Drive.' if gone['files_url'] else ''), 'info')
     return redirect(url_for('fr.in_list'))
+
+
+def can_delete_request(r):
+    """Before it is paid or rejected: whoever filed it, or the treasurer, RE or ARE."""
+    return bool(r and r['status'] == 'Submitted' and (auth.owns_request(r) or officer_current('pay')))
+
+
+@bp.route('/<req_id>/delete', methods=['POST'])
+@login_required
+def delete(req_id):
+    if (g := _guard()):
+        return g
+    F.refresh()
+    r = F.get(req_id)
+    if not r:
+        abort(404)
+    if r['status'] != 'Submitted':
+        flash('A paid or rejected request is part of the record. Reopen it first if it really has to go.', 'warning')
+        return redirect(url_for('fr.detail', req_id=req_id))
+    if not can_delete_request(r):
+        flash('Only whoever filed it, or the treasurer, RE or ARE, can delete it.', 'warning')
+        return redirect(url_for('fr.detail', req_id=req_id))
+    import motions_store as M
+    if M.enabled() and any(m['status'] == 'open' and (m.get('link') or '').rstrip('/').endswith('/' + req_id) for m in M.motions()):
+        flash('An open board motion is about this request. Withdraw the motion first.', 'warning')
+        return redirect(url_for('fr.detail', req_id=req_id))
+    who = session.get('who') or 'Unknown'
+    F.delete(req_id, who)
+    log_audit_event('FUNDS_DELETED', who, {'id': req_id, 'payee': r['payee_name'], 'net': r['net'], 'event_code': r['event_code'],
+                                           'submitter': r['submitter_name'], 'method': r['method'],
+                                           'lines': [{k: ln[k] for k in ('date', 'description', 'category', 'amount')} for ln in r['lines']],
+                                           'receipts_url': r['receipts_url'], 'approvals': r.get('approvals', '')})
+    flash(f'{req_id} deleted. Its approval links no longer work.' + (' Its receipts are still in Drive.' if r['receipts_url'] else ''), 'info')
+    return redirect(url_for('fr.home'))

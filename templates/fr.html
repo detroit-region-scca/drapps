@@ -162,7 +162,8 @@
         <form method="post" action="{{ url_for('fr.receipts', req_id=r.id) }}" enctype="multipart/form-data" class="d-flex gap-2 no-print">
             <input type="file" name="receipts" multiple class="form-control form-control-sm" accept="image/*,.pdf,.xls,.xlsx,.xlsm,.doc,.docx" aria-label="Add receipts">
             <button class="btn btn-sm btn-outline-light text-nowrap">Add</button></form>
-        <button class="btn btn-sm btn-outline-secondary no-print" onclick="window.print()">Print</button></div>
+        <button class="btn btn-sm btn-outline-secondary no-print" onclick="window.print()">Print</button>
+        {% if can_delete %}<form method="post" action="{{ url_for('fr.delete', req_id=r.id) }}" class="ms-auto no-print"><button class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete {{ r.id }}? Use this for a mistake or a duplicate. Its approval links stop working; it is kept in the audit log.')">Delete</button></form>{% endif %}</div>
     {% if r.notes %}<p><span class="text-muted">Notes:</span> {{ r.notes }}</p>{% endif %}
 
     {% if r.status == 'Submitted' %}

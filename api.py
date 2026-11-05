@@ -659,3 +659,10 @@ def received_delete(rid):
     st, loc, fl = _forward(f'/funds/in/{rid}/delete', {})
     gone = R.get(rid) is None
     return (jsonify(deleted=rid, flashes=fl), 200) if gone else _err('Not deleted.', errors=[f['message'] for f in fl], flashes=fl)
+
+
+@bp.delete('/funds/<req_id>')
+def funds_delete(req_id):
+    """Delete a funds request not yet paid or rejected (a mistake or a duplicate). Kept in the audit log."""
+    st, loc, fl = _forward(f'/funds/{req_id}/delete', {})
+    return (jsonify(deleted=req_id, flashes=fl), 200) if F.get(req_id) is None else _err('Not deleted.', errors=[f['message'] for f in fl], flashes=fl)

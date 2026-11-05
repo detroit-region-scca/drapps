@@ -43,7 +43,7 @@ VOL_COLS = ['email', 'name', 'note', 'added', 'added_by']
 VOLUNTEER_ENDPOINTS = {
     'home', 'logout', 'static', 'members.home', 'members.enter',
     'bud.home', 'bud.detail',
-    'fr.home', 'fr.new', 'fr.detail', 'fr.ask', 'fr.receipts',
+    'fr.home', 'fr.new', 'fr.detail', 'fr.ask', 'fr.receipts', 'fr.delete',
     'fr.in_list', 'fr.in_new', 'fr.in_detail', 'fr.in_files', 'fr.in_delete',
     'inv.home', 'inv.new', 'inv.detail', 'inv.pdf',
 }

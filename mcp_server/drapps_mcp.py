@@ -440,5 +440,13 @@ def delete_money_received(report_id: str) -> Any:
     return _call('DELETE', f'/received/{report_id}')
 
 
+
+@server.tool()
+def delete_funds_request(req_id: str) -> Any:
+    """Delete a funds request that is not paid or rejected (a mistake or a duplicate). Its approval links stop working;
+    kept in the audit log. Refused while an open board motion is about it."""
+    return _call('DELETE', f'/funds/{req_id}')
+
+
 if __name__ == '__main__':
     server.run()

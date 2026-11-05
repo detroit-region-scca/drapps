@@ -108,3 +108,29 @@ def test_delete_only_before_deposit_and_by_owner_or_officer(monkeypatch):
         assert not fr.can_delete_report(rep(reported_email='someone@example.org', reported_by='Someone'))
         monkeypatch.setattr(fr, 'officer_current', lambda perm='board': {'name': 'Pat'})
         assert fr.can_delete_report(rep(reported_email='someone@example.org', reported_by='Someone'))
+
+
+def test_deleted_rows_drop_out_but_keep_their_number(monkeypatch):
+    import fr_store as F
+    rows = [{'id': 'FR-2026-001', 'status': 'Submitted'}, {'id': 'FR-2026-002', 'status': 'Deleted'}]
+    monkeypatch.setattr(F, '_snapshot', lambda: (rows, []))
+    assert [r['id'] for r in F.requests()] == ['FR-2026-001'] and F.get('FR-2026-002') is None
+    monkeypatch.setattr(R, '_snapshot', lambda: ([rep(), rep(id='CR-2026-002', status='Deleted')], []))
+    assert [r['id'] for r in R.reports()] == ['CR-2026-001'] and R.get('CR-2026-002') is None
+
+
+def test_funds_request_delete_rules(monkeypatch):
+    import auth
+    import fr
+    from flask import Flask
+    app = Flask(__name__)
+    app.secret_key = 'test'
+    monkeypatch.setattr(fr, 'officer_current', lambda perm='board': None)
+    monkeypatch.setattr(auth, 'owns_request', lambda r: r.get('submitter_email') == 'val@example.org')
+    with app.test_request_context():
+        mine = {'status': 'Submitted', 'submitter_email': 'val@example.org'}
+        assert fr.can_delete_request(mine)
+        assert not fr.can_delete_request(dict(mine, status='Paid'))
+        assert not fr.can_delete_request({'status': 'Submitted', 'submitter_email': 'x@example.org'})
+        monkeypatch.setattr(fr, 'officer_current', lambda perm='board': {'name': 'Pat'})
+        assert fr.can_delete_request({'status': 'Submitted', 'submitter_email': 'x@example.org'})

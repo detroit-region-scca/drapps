@@ -86,12 +86,13 @@ def _snapshot():
 
 
 def reports():
-    return _snapshot()[0]
+    """Every report except deleted ones."""
+    return [r for r in _snapshot()[0] if r['status'] != 'Deleted']
 
 
 def get(rid):
     reps, lines = _snapshot()
-    r = next((r for r in reps if r['id'] == rid), None)
+    r = next((r for r in reps if r['id'] == rid and r['status'] != 'Deleted'), None)
     return dict(r, lines=[ln for ln in lines if ln['report_id'] == rid]) if r else None
 
 
@@ -150,17 +151,11 @@ def update(rid, **fields):
         return cur
 
 
-def delete(rid):
-    """Remove a report and its lines from the sheet (its photos stay in Drive). Returns what was removed."""
-    with FileLock(ID_LOCK), _lock:
-        r = get(rid)
-        for title in (LINES_TAB, TAB):
-            ws = _ws(title)
-            ids = ws.col_values(1)
-            for i in sorted((i for i, v in enumerate(ids) if v == rid), reverse=True):
-                ws.delete_rows(i + 1)
-        refresh()
-        return r
+def delete(rid, who):
+    """Mark a report Deleted: it drops out of every list. The row stays (and its number is never reused)."""
+    r = get(rid)
+    update(rid, status='Deleted', closed_by=who)
+    return r
 
 
 def add_files(rid, files):
