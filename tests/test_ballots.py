@@ -149,9 +149,9 @@ def test_request_email_vote_sends_board_thread_and_a_personal_link_each(env):
     c, sent, store = env['c'], env['sent'], env['store']
     c.post('/board/', data={'action': 'ask', 'item': 'motion:M-2026-009'})
     assert len(store.rows) == 1 and store.rows[0]['item'] == 'motion:M-2026-009'
-    thread = [s for s in sent if s[0] == 'Board vote discussion: Buy a trailer']
-    personal = [s for s in sent if s[0].startswith('Your board vote')]
-    assert len(thread) == 1 and 'reply all with your vote' not in thread[0][1] and 'Discuss here by replying all' in thread[0][1]
+    thread = [s for s in sent if s[0] == 'Discussion: Buy a trailer']
+    personal = [s for s in sent if s[0].startswith('Vote: ')]
+    assert len(thread) == 1 and 'reply all with your vote' not in thread[0][1] and 'Discuss here (reply all)' in thread[0][1]
     assert sorted(s[2] for s in personal) == sorted(p['email'] for p in BL.roster(OFFICIALS))
     assert all(len(_links(s[1])) == 1 for s in personal)
 
@@ -159,7 +159,7 @@ def test_request_email_vote_sends_board_thread_and_a_personal_link_each(env):
 def test_vote_by_link_roll_call_decision_and_recording(env):
     c, sent, store, board = env['c'], env['sent'], env['store'], env['board']
     c.post('/board/', data={'action': 'ask', 'item': 'motion:M-2026-009'})
-    links = {s[2]: _links(s[1])[0] for s in sent if s[0].startswith('Your board vote')}
+    links = {s[2]: _links(s[1])[0] for s in sent if s[0].startswith('Vote: ')}
     page = c.get('/board/').get_data(as_text=True)
     assert 'Roll call' in page and page.count('Not yet') == 11 and '0 of 11 voted' in page
     path = lambda u: '/' + u.split('://', 1)[1].split('/', 1)[1]

@@ -205,24 +205,27 @@ def home():
             people = _people() if BS.enabled() else []
             bids = [BS.open_ballot(key, title, who, today) for key, title, _ in items] if people else []
             board_url = url_for('board.home', _external=True)
-            head = (("URGENT: please vote as soon as you can.\n\n" if urgent else '') +
-                    f"{who} asks the board to vote on {'this' if n == 1 else f'these {n} items'}:\n\n")
+            u = 'URGENT ' if urgent else ''
+            listed = '\n\n'.join(i[2] for i in items)
             if bids:
-                how = (f"\n\nEach board member gets their own email with a link to vote Yes, No or Abstain (or votes on the "
-                       f"Board page). Discuss here by replying all; vote with your link. {BL.needed()} votes decide it, and the "
-                       f"vote closes {BL.closes(today)}. Who has voted so far:\n{board_url}")
+                subject = f"{u}Discussion: {first}"
+                send_mail(subject,
+                          f"{who} asks the board to vote on:\n\n{listed}\n\nDiscuss here (reply all). Each director gets "
+                          f"a personal vote link by email. {BL.needed()} votes decide it. Closes {BL.closes(today)}.\n\n"
+                          f"Who has voted: {board_url}",
+                          board_email(), reply_to=board_email())
             else:
-                how = "\n\nPlease reply all with your vote (yes or no on each) so it stays in one thread. Everything waiting for the board:\n" + board_url
-            subject = f"{'URGENT ' if urgent else ''}{'Board vote discussion' if bids else 'Board vote'}: {first}"
-            send_mail(subject, head + '\n\n'.join(i[2] for i in items) + how,
-                      board_email(), reply_to=board_email())
+                send_mail(f"{u}Board vote: {first}",
+                          (("URGENT: please vote as soon as you can.\n\n" if urgent else '') +
+                           f"{who} asks the board to vote on {'this' if n == 1 else f'these {n} items'}:\n\n{listed}"
+                           "\n\nPlease reply all with your vote (yes or no on each) so it stays in one thread. "
+                           "Everything waiting for the board:\n" + board_url),
+                          board_email(), reply_to=board_email())
             for p in people:
                 mine = '\n\n'.join(f"{line}\n\n  Your vote: {_vote_link(bid, p)}" for (_, _, line), bid in zip(items, bids))
-                send_mail(f"{'URGENT ' if urgent else ''}Your board vote: {first}",
-                          f"Hi {p['name'].split(' (')[0].split()[0]},\n\n" + head + mine +
-                          f"\n\nThese links are yours alone, so please don't forward them. You can change your vote until it is "
-                          f"decided. To discuss it, reply all to the \"{subject}\" email sent to {board_email()} "
-                          f"at the same time. The vote closes {BL.closes(today)}.\n\nThe roll call: {board_url}",
+                send_mail(f"{u}Vote: {first}",
+                          f"Hi {p['name'].split(' (')[0].split()[0]},\n\n{mine}\n\n"
+                          f"This link is just for you. To discuss, reply all to \"{subject}\". Closes {BL.closes(today)}.",
                           p['email'])
             for m in ms:
                 M.update(m['id'], asked=today)
