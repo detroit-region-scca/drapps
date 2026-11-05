@@ -45,7 +45,7 @@
                 <option value="">All programs</option>{% for c, n in chart.programs %}<option value="{{ c }}">{{ n }}</option>{% endfor %}
             </select>
         </div>
-        <div class="viz-legend" aria-hidden="true"><span><i class="sw sw-actual"></i>Actual (QuickBooks)</span><span><i class="sw sw-plan"></i>Plan</span></div>
+        <div class="viz-legend" aria-hidden="true"><span><i class="sw sw-actual"></i>QuickBooks</span><span><i class="sw sw-plan"></i>Plan</span></div>
         <div id="vizBox" class="viz-box"><svg id="viz" role="img" aria-labelledby="vizHead"></svg><div id="vizTip" class="viz-tip" hidden></div></div>
         <details class="mt-2 no-print"><summary class="small text-muted">Show as a table</summary><div class="table-responsive mt-2"><table class="table table-sm mb-0" id="vizTable"></table></div></details>
     </div>
@@ -54,7 +54,7 @@
     <div class="card"><div class="card-body p-0 table-responsive">
         <table class="table mb-0 rollup" id="planTable">
             <thead><tr><th class="ps-3" data-sort="name">Program</th><th>Director</th><th class="num" data-sort="plan">Plan</th><th class="num" data-sort="budget">Budget</th>
-                {% if not future %}<th class="num" data-sort="actual">Actual so far</th><th class="num pe-3" data-sort="diff">Ahead (behind)</th>{% endif %}</tr></thead>
+                {% if not future %}<th class="num" data-sort="actual">QuickBooks so far</th><th class="num pe-3" data-sort="diff">Ahead (behind)</th>{% endif %}</tr></thead>
             {% for r in rows %}
             <tbody class="grp" data-grp="{{ r.code }}">
                 <tr class="grp-row" data-name="{{ r.name }}" data-plan="{{ r.plan if r.plan is not none else '' }}" data-budget="{{ r.budget if r.budget is not none else '' }}" data-actual="{{ r.actual if r.actual is not none else '' }}" data-diff="{{ r.diff if r.diff is not none else '' }}">
@@ -75,11 +75,11 @@
         </table>
     </div></div>
     <div class="small text-muted mt-3">
-        <div class="mb-1">{% if not future %}Actuals are from QuickBooks{% if as_of %}, as of {{ as_of }}{% endif %}.{% endif %}</div>
+        <div class="mb-1">{% if not future %}QuickBooks numbers{% if as_of %} as of {{ as_of }}{% endif %}.{% endif %}</div>
         <ul class="mb-0 ps-3">
             <li>Amounts are profit: income is positive, costs are negative.</li>
             <li>"Other, not in an event project" is program money not tagged to an event, such as season trophies.</li>
-            <li>SIM Racing is booked under General Events, so it has no actuals of its own.</li>
+            <li>SIM Racing is booked under General Events, so it has no QuickBooks numbers of its own.</li>
         </ul>
     </div>
 
@@ -116,9 +116,9 @@
     <div class="row g-3">
         <div class="{{ 'col-12 col-xl-9' if groups else 'col-lg-7' }}">
             {% if groups %}
-            {% set actual_label = (prev ~ (' so far' if prev|int == now_year else ' actual')) if future else ('Actual so far' if year|int == now_year else 'Actual') %}
+            {% set actual_label = (prev ~ ' QuickBooks' ~ (' so far' if prev|int == now_year else '')) if future else ('QuickBooks so far' if year|int == now_year else 'QuickBooks') %}
             {% set heads = {'income': 'Income', 'cost': 'Running costs', 'capital': 'Equipment to buy (Capital Equipment: bought property, not an expense)', 'none': 'Set aside (not in QuickBooks)'} %}
-            <h2 class="h6 text-muted">{{ 'Budget' if program == 'OPS' else 'Plan' }} and actual by QuickBooks account</h2>
+            <h2 class="h6 text-muted">{{ 'Budget' if program == 'OPS' else 'Plan' }} and QuickBooks, by account</h2>
             <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0">
                 {% set ncol = 3 %}
                 <thead><tr><th class="ps-3">{{ 'Account' if ops_budget else 'Account and plan lines' }}</th><th class="num">{{ 'Budget' if ops_budget else 'Plan' }}</th><th class="num pe-3">{{ actual_label }}</th></tr></thead>
@@ -134,11 +134,11 @@
                 </tbody></table></div></div>
             {% if ops_budget %}<p class="small text-muted mb-1">Money set aside for later replacements is not in this budget: it stays in savings and the board decides it as its own motion (see the <a href="{{ url_for('equip.plan') }}">replacement plan</a>).</p>
             <p class="small text-muted mb-1">Operations has one budget. Under each account are the <a href="{{ url_for('equip.costs') }}">bills</a> and <a href="{{ url_for('equip.plan') }}">equipment</a> from the Operations records that make it up; a line turns amber when the records no longer match.</p>{% endif %}
-            {% if as_of %}<p class="small text-muted">Actuals from QuickBooks as of {{ as_of }}. Equipment bought shows in QuickBooks as property, not as an expense, so it has no actual here.</p>{% endif %}
+            {% if as_of %}<p class="small text-muted">QuickBooks as of {{ as_of }}. Equipment bought shows in QuickBooks as property, not as an expense, so it has no actual here.</p>{% endif %}
             {% else %}
-            <h2 class="h6 text-muted">Plan, events and actuals</h2>
+            <h2 class="h6 text-muted">Plan, events and QuickBooks</h2>
             <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-                <thead><tr><th class="ps-3">When</th><th>Event or item</th><th class="num">Plan</th><th class="num">Budget</th><th class="num pe-3">Actual</th></tr></thead>
+                <thead><tr><th class="ps-3">When</th><th>Event or item</th><th class="num">Plan</th><th class="num">Budget</th><th class="num pe-3">QuickBooks</th></tr></thead>
                 <tbody>{% for k in rows %}{% set ln = k.line or {} %}<tr class="{{ 'text-muted' if k.other }}">
                     <td class="ps-3 text-muted text-nowrap">{% if k.date %}{{ months[k.date[5:7]|int - 1] }}{% if k.date|length > 7 %} {{ k.date[8:10]|int }}{% endif %}{% endif %}</td>
                     <td>{% if k.code %}<a href="{{ url_for('bud.detail', code=k.code) }}">{{ k.name }}</a> <span class="small text-muted">{{ k.code }}</span>{% else %}{{ k.name }}{% endif %}
@@ -151,13 +151,13 @@
                 {% if rows %}<tr class="total-row"><td class="ps-3" colspan="2">Program total</td><td class="num">{{ money(p.net if p.lines else none) }}</td>
                     <td class="num">{{ money(rows|selectattr('budget')|sum(attribute='budget') or none) }}</td><td class="num pe-3">{{ money(a.net if a else none) }}</td></tr>{% endif %}
                 </tbody></table></div></div>
-            {% if as_of %}<p class="small text-muted">Actuals from QuickBooks as of {{ as_of }}. "Other" is money on the program's accounts not tagged to an event.</p>{% endif %}
+            {% if as_of %}<p class="small text-muted">QuickBooks as of {{ as_of }}. "Other" is money on the program's accounts not tagged to an event.</p>{% endif %}
             {% endif %}
         </div>
         <div class="col-lg-5">
             {% if not groups %}
             {% set by_acct = p.lines|selectattr('account')|list %}
-            {% if accts %}<h2 class="h6 text-muted">{{ 'Plan and actual by QuickBooks account' if by_acct else 'QuickBooks, by account' }}</h2>
+            {% if accts %}<h2 class="h6 text-muted">{{ 'Plan and QuickBooks, by account' if by_acct else 'QuickBooks, by account' }}</h2>
             <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table table-sm mb-0">
                 <thead><tr><th class="ps-3">Account</th>{% if by_acct %}<th class="num">Plan</th>{% endif %}<th class="num pe-3">{{ (prev ~ (' so far' if prev|int == now_year else ' actual')) if future else 'Actual' }}</th></tr></thead>
                 <tbody>{% for r in accts if by_acct or r.account %}<tr><td class="ps-3">{{ r.account or 'No QuickBooks account' }}{% if not r.account %}<div class="small text-muted">{{ r['items']|join(', ') }}</div>{% endif %}</td>
@@ -339,7 +339,7 @@
             dotA.setAttribute('visibility', hasA ? 'visible' : 'hidden');
             if (hasA) { dotA.setAttribute('cx', x(i)); dotA.setAttribute('cy', y(act[i])); }
             tip.innerHTML = `<div class="fw-semibold mb-1">End of ${M[i]}</div>` +
-                (hasA ? `<div><i class="sw" style="background:var(--series-actual)"></i>Actual ${money(act[i])}</div>` : '') +
+                (hasA ? `<div><i class="sw" style="background:var(--series-actual)"></i>QuickBooks ${money(act[i])}</div>` : '') +
                 `<div><i class="sw" style="background:var(--series-plan)"></i>Plan ${money(plan[i])}</div>` +
                 (hasA ? `<div class="text-muted">${act[i] - plan[i] >= 0 ? 'Ahead' : 'Behind'} ${money(Math.abs(act[i] - plan[i]))}</div>` : '');
             tip.hidden = false;
@@ -350,7 +350,7 @@
         const hide = () => { tip.hidden = true; [cross, dotP, dotA].forEach(e => e.setAttribute('visibility', 'hidden')); };
         hit.addEventListener('mousemove', show); hit.addEventListener('touchstart', show, {passive: true}); hit.addEventListener('touchmove', show, {passive: true});
         hit.addEventListener('mouseleave', hide);
-        table.innerHTML = '<thead><tr><th>End of</th><th class="num">Plan</th><th class="num">Actual</th><th class="num">Ahead (behind)</th></tr></thead><tbody>' +
+        table.innerHTML = '<thead><tr><th>End of</th><th class="num">Plan</th><th class="num">QuickBooks</th><th class="num">Ahead (behind)</th></tr></thead><tbody>' +
             M.map((mo, i) => `<tr><td>${mo}</td><td class="num">${money(plan[i])}</td><td class="num">${i < n ? money(act[i]) : ''}</td><td class="num">${i < n ? money(act[i] - plan[i]) : ''}</td></tr>`).join('') + '</tbody>';
     }
     sel.addEventListener('change', () => { try { localStorage.setItem('planChartProgram', sel.value); } catch (e) {} draw(); });

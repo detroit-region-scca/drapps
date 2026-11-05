@@ -475,7 +475,7 @@ def actuals(code):
         lines.sort(key=lambda ln: ln['section'] != 'Income')
         B.save(header, lines, actuals_only=True)
         log_audit_event('BUDGET_ACTUALS_SAVED', who, {'event_code': code, 'lines': sum(1 for ln in lines if ln['actual'] is not None)})
-        flash('Actuals saved.', 'success')
+        flash('Reported results saved.', 'success')
         return redirect(url_for('bud.detail', code=code))
     return render_template('bud.html', **_ctx(view='actuals', code=code, e=e, b=b, q=B.qbo_actuals().get(code)))
 
