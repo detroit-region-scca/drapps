@@ -1,0 +1,8 @@
+{
+	email admin@drscca.org
+}
+
+livetiming.drscca.org {
+	encode gzip
+	reverse_proxy livetiming-web:80
+}

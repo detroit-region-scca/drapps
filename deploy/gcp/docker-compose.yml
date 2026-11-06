@@ -1,0 +1,37 @@
+# DRSCCA apps on Google Cloud (project drscca-automation, VM "drapps", e2-micro us-central1-a, IP 34.63.237.120).
+# Lives at /opt/drscca on the VM. Secrets, logins, keys and uploaded pages stay in /opt/drscca/data (never in git).
+#   cd /opt/drscca && sudo docker compose up -d
+services:
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/caddy:/data
+      - ./data/caddy-config:/config
+
+  livetiming-sftp:
+    image: atmoz/sftp:alpine
+    container_name: livetiming-sftp
+    restart: unless-stopped
+    ports:
+      - "2222:22"
+    volumes:
+      - ./data/livetiming/users.conf:/etc/sftp/users.conf:ro
+      - ./data/livetiming/keys/ssh_host_ed25519_key:/etc/ssh/ssh_host_ed25519_key:ro
+      - ./data/livetiming/keys/ssh_host_rsa_key:/etc/ssh/ssh_host_rsa_key:ro
+      - ./data/livetiming/www/autocross:/home/autocross/livetiming
+      - ./data/livetiming/www/rallycross:/home/rallycross/livetiming
+
+  livetiming-web:
+    image: nginx:alpine
+    container_name: livetiming-web
+    restart: unless-stopped
+    volumes:
+      - ./data/livetiming/www:/usr/share/nginx/html:ro
+      - ./livetiming-nginx.conf:/etc/nginx/conf.d/default.conf:ro
