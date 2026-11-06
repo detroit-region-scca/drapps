@@ -53,6 +53,16 @@ NUMERIC = {'year', 'quantity', 'cost', 'life_years', 'cost_month', 'cost_year', 
 CATEGORIES = ['Vehicle', 'Trailer', 'Timing', 'Safety', 'Course', 'Hospitality', 'Promotion', 'Tools', 'Other']
 STATUSES = ['In use', 'Needs repair', 'Planned', 'Retire', 'Gone']
 CAPITAL = 2500.0        # the tax preparer's suggested threshold for a long-lived asset (May 2026)
+# The replacement plan's rules, kept on their own 'Plan settings' tab so Operations can change them in the app (or the sheet).
+PLAN_TAB = 'Plan settings'
+PLAN_LABELS = ['Setting', 'Value', 'What it means', 'Last updated', 'Updated by']
+PLAN_DEFAULTS = {'big_cost': 20000.0, 'big_within_years': 5, 'budget_within_years': 2, 'big_from_savings': True}
+PLAN_HELP = {
+    'big_cost': 'A replacement costing at least this much is a big item.',
+    'big_within_years': 'Big items due within this many years can be paid from savings instead of saved for monthly.',
+    'budget_within_years': 'Items due within this many years (1 = this year only, 2 = this year or next) are bought outright in that year\'s budget.',
+    'big_from_savings': 'yes: offer paying the big items from savings. no: save monthly for everything.',
+}
 CACHE_SECONDS = 15
 LOCK = os.path.join(DATA_DIR, 'equipment.lock')
 
@@ -112,6 +122,53 @@ def tasks():
 
 def documents():
     return _snapshot()['Documents']
+
+
+def _plan_cfg(rows):
+    """The plan settings from the tab's rows ([key, value, ...]), anything missing or unreadable left at its default."""
+    cfg = dict(PLAN_DEFAULTS)
+    for r in rows:
+        if not r or len(r) < 2:
+            continue
+        k, v = str(r[0]).strip(), str(r[1]).strip()
+        if k not in PLAN_DEFAULTS or v == '':
+            continue
+        if k == 'big_from_savings':
+            cfg[k] = v.lower() not in ('no', 'n', 'false', '0', 'off')
+            continue
+        n = _num(v.replace('$', '').replace(',', ''))
+        if n is not None and n >= 0:
+            cfg[k] = int(n) if k.endswith('_years') else float(n)
+    cfg['budget_within_years'] = max(1, cfg['budget_within_years'])
+    return cfg
+
+
+def plan_settings():
+    """The replacement plan's rules (PLAN_DEFAULTS until someone saves them)."""
+    sid = os.environ['OPERATIONS_SHEET_ID']
+    hit = _cache.get('plan')
+    if hit and hit[0] == C.version(sid):
+        return hit[1]
+    try:
+        res = C.batch_get(sid, [f"'{PLAN_TAB}'!A:B"], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        rows = (res.get('valueRanges') or [{}])[0].get('values', [])[1:]
+    except Exception:            # no tab yet: the defaults
+        rows = []
+    cfg = _plan_cfg(rows)
+    _cache['plan'] = (C.version(sid), cfg)
+    return cfg
+
+
+def save_plan_settings(cfg, who, when):
+    """Write the four settings to the 'Plan settings' tab (made the first time), one row each, with who and when."""
+    with FileLock(LOCK), _lock:
+        book = open_book(os.environ['OPERATIONS_SHEET_ID'])
+        have = {w.title: w for w in book.worksheets()}
+        ws = have.get(PLAN_TAB) or book.add_worksheet(PLAN_TAB, rows=20, cols=len(PLAN_LABELS))
+        rows = [PLAN_LABELS] + [[k, ('yes' if cfg[k] else 'no') if k == 'big_from_savings' else cfg[k], PLAN_HELP[k], when, who]
+                                for k in PLAN_DEFAULTS]
+        ws.update(rows, 'A1', value_input_option='RAW')
+        refresh()
 
 
 def _cell(v):
@@ -195,7 +252,7 @@ def replace_cost(it):
     return it.get('replace_cost') or it['cost'] or 0
 
 
-def reserve_plan(rows, today=None, near_years=2, big=20000.0, big_within=5):
+def reserve_plan(rows, today=None, cfg=None):
     """How to pay for replacements and planned purchases.
 
     near:  due this year or next: too close to save for, so budget them outright in that year's plan.
@@ -203,7 +260,11 @@ def reserve_plan(rows, today=None, near_years=2, big=20000.0, big_within=5):
            (cost / months left). The monthly total is front-loaded when big items come due soon, as it should be.
     big:   later items due within big_within years that cost at least `big`: the board could fund these from
            savings instead; monthly_without_big is what is left to set aside then.
+    cfg:   the rules (plan_settings(); PLAN_DEFAULTS when not given): budget_within_years, big_cost, big_within_years,
+           big_from_savings (False: no big items, save monthly for everything).
     """
+    cfg = dict(PLAN_DEFAULTS, **(cfg or {}))
+    near_years, big, big_within = cfg['budget_within_years'], cfg['big_cost'], cfg['big_within_years']
     today = today or date.today()
     # From October on, plans are for next year: start saving next January.
     start = date(today.year + 1, 1, 1) if today.month >= 10 else date(today.year, today.month, 1)
@@ -218,19 +279,20 @@ def reserve_plan(rows, today=None, near_years=2, big=20000.0, big_within=5):
         else:
             months = (lc['replace'] - start.year) * 12 + 6 - (start.month - 1)
             row['monthly'] = round(row['cost'] / max(months, 1), 2)
-            row['big'] = row['cost'] >= big and lc['replace'] < start.year + big_within
+            row['big'] = cfg['big_from_savings'] and row['cost'] >= big and lc['replace'] < start.year + big_within
             later.append(row)
     near.sort(key=lambda r: (r['year'], -r['cost']))
     later.sort(key=lambda r: (r['year'], -r['cost']))
     monthly = round(sum(r['monthly'] for r in later), 2)
     return {'start': start.isoformat()[:7], 'start_label': start.strftime('%B %Y'), 'near': near, 'later': later, 'monthly': monthly,
+            'cfg': cfg, 'near_until': start.year + near_years - 1,
             'big_total': round(sum(r['cost'] for r in later if r['big']), 2),
             'monthly_without_big': round(sum(r['monthly'] for r in later if not r['big']), 2)}
 
 
-def replacement_plan(rows, today=None, horizon=20):
+def replacement_plan(rows, today=None, horizon=20, cfg=None):
     """{year: [items due]} for the overview, and the monthly set-aside from reserve_plan as a yearly figure."""
-    rp = reserve_plan(rows, today)
+    rp = reserve_plan(rows, today, cfg)
     plan = {}
     for r in rp['near'] + rp['later']:
         plan.setdefault(r['year'], []).append(r['it'])
@@ -343,7 +405,7 @@ def year_cost(c, year):
     return c['per_year']
 
 
-def budget(year, items_rows, places_rows, tasks_rows, today=None):
+def budget(year, items_rows, places_rows, tasks_rows, today=None, cfg=None):
     """What the Operations records say a year costs, by QuickBooks account, for the Budget column of the Operations
     annual plan (the way an event budget fills it for a program): every bill on an Operations account for a full year,
     and equipment the replacement list buys that year on its Capital Equipment account. {account: {'amount': cost as a negative number, 'items': [(what, amount)]}}."""
@@ -357,7 +419,7 @@ def budget(year, items_rows, places_rows, tasks_rows, today=None):
         if c['account'] in ACCOUNTS and (amount := year_cost(c, year)):
             add(c['account'], c['what'], amount)
     live = [i for i in items_rows if i['status'] != 'Gone']
-    rp = reserve_plan(live, today)
+    rp = reserve_plan(live, today, cfg)
     for r in rp['near']:
         if str(r['year']) == str(year):
             add(r['it'].get('account') or 'Capital Equipment (no account set)', r['it']['name'], r['cost'])

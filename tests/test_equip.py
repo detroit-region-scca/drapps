@@ -84,3 +84,22 @@ def test_budget_leaves_out_ended_and_not_yet_due_bills():
     assert dict(b['items']) == {'New plan': 336, 'Mail': 100.8, 'Winding down': 30}
     assert b['amount'] == -466.8
     assert 'New domains' in dict(E.budget('2028', [], [], tasks)['Operations Professional Services']['items'])
+
+
+def test_plan_settings_change_the_plan():
+    rows = [dict(item(cost=23475.0, life=None, year=2012.0), replace_year=2029.0, replace_cost=40000.0),
+            dict(item(cost=None, life=None, year=None, status='Planned'), replace_year=2028.0, replace_cost=15000.0)]
+    day = date(2026, 11, 15)
+    rp = E.reserve_plan(rows, day)                                        # defaults: big = $20,000 within 5 years
+    assert rp['big_total'] == 40000.0 and rp['near_until'] == 2028 and [r['year'] for r in rp['near']] == [2028]
+    rp = E.reserve_plan(rows, day, {'big_cost': 10000.0, 'budget_within_years': 1})
+    assert [r['year'] for r in rp['later']] == [2028, 2029] and rp['big_total'] == 55000.0
+    rp = E.reserve_plan(rows, day, {'big_from_savings': False})
+    assert rp['big_total'] == 0 and rp['monthly_without_big'] == rp['monthly'] and not any(r['big'] for r in rp['later'])
+
+
+def test_plan_settings_read_from_the_tab():
+    cfg = E._plan_cfg([['big_cost', '$25,000'], ['big_within_years', 3], ['budget_within_years', 0],
+                       ['big_from_savings', 'No'], ['unknown', 5], ['big_cost']])
+    assert cfg == {'big_cost': 25000.0, 'big_within_years': 3, 'budget_within_years': 1, 'big_from_savings': False}
+    assert E._plan_cfg([]) == E.PLAN_DEFAULTS

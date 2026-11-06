@@ -205,7 +205,7 @@ def detail(year, program):
     if by_account and program == OPS and int(year) >= 2027:      # 2027 was the first budget built from the records
         import equip_store as E
         if E.enabled():
-            ops_budget = E.budget(year, E.items(), E.places(), E.tasks())
+            ops_budget = E.budget(year, E.items(), E.places(), E.tasks(), cfg=E.plan_settings())
             have = {r['account'] for r in accts}
             accts += [{'account': acc, 'plan': None, 'actual': None, 'items': [], 'last': None} for acc in ops_budget if acc not in have]
     groups = _account_groups(p['lines'], accts) if by_account else []

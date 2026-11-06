@@ -214,7 +214,7 @@ def build(items, places, tasks, docs=None, today=None, region='Detroit Region SC
     undated = [t for t in todo if not t['due'] and not t['last_done']]
     bills = E.recurring_costs(places, tasks)
     auto = {t['id'] for t in tasks if E.is_auto(t)}
-    rp = E.reserve_plan(live, today)
+    rp = E.reserve_plan(live, today, E.plan_settings() if E.enabled() else None)
     replace_soon = [i for i in big if lcs[i['id']] and lcs[i['id']].get('replace') and lcs[i['id']]['replace'] <= today.year + 1]
     docs_missing = sum(len(r['missing']) for r in docs or [])
     docs_total = sum(len(r['have']) + len(r['missing']) for r in docs or [])
@@ -308,7 +308,7 @@ def build(items, places, tasks, docs=None, today=None, region='Detroit Region SC
            (15, 20, 9, 14, 6, 36), ['LEFT', 'LEFT', 'RIGHT', 'LEFT', 'RIGHT', 'LEFT'], size=8.5)
 
     # 7. Replacement plan ------------------------------------------------------------------------------------------
-    p.h1(next(n), 'Replacement plan', 'Due this year or next: budgeted outright in that year. Later: money set aside each month, '
+    p.h1(next(n), 'Replacement plan', f"Due by {rp['near_until']}: budgeted outright in that year. Later: money set aside each month, "
                                       'item by item, so each is paid for by July of its year.')
     near = {}
     for r in rp['near']:
@@ -318,7 +318,8 @@ def build(items, places, tasks, docs=None, today=None, region='Detroit Region SC
         p.grid(['Item', 'Program', 'Cost'], [[r['it']['name'], r['it']['program'], money(r['cost'])] for r in rs], (65, 20, 15), ['LEFT', 'LEFT', 'RIGHT'])
     p.h2(f"Save for later: {money(rp['monthly'])} a month from {rp['start_label']}")
     if rp['big_total']:
-        p.note(f"Or pay {money(rp['big_total'])} from savings for the big items (marked *) and set aside {money(rp['monthly_without_big'])} a month for the rest.")
+        p.note(f"Or pay {money(rp['big_total'])} from savings for the big items (marked *: {money(rp['cfg']['big_cost'])} or more, due within "
+               f"{rp['cfg']['big_within_years']} years) and set aside {money(rp['monthly_without_big'])} a month for the rest.")
     p.grid(['Year', 'Item', 'Cost', 'A month'],
            [[str(r['year']), r['it']['name'] + (' *' if r['big'] else ''), money(r['cost']), money(r['monthly'])] for r in rp['later']],
            (10, 60, 15, 15), ['LEFT', 'LEFT', 'RIGHT', 'RIGHT'])

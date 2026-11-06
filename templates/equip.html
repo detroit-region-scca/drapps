@@ -408,9 +408,20 @@
             {% if motion.status == 'passed' %}approved {{ motion.decided }}{% elif motion.status == 'failed' %}not approved {{ motion.decided }}{% else %}waiting for the board{% endif %}.
             {% else %}The board decides this as a motion: <a href="{{ url_for('board.home') }}#propose">propose it</a>.{% endif %}</p>{% endif %}
     </div>
+    {% set c = rp.cfg %}
+    <details class="card p-3 mb-4 no-print" id="settings"><summary class="fw-semibold">Plan settings</summary>
+        <p class="small text-muted mt-2 mb-2">Bought outright: due by {{ rp.near_until }}. Big items: {{ money(c.big_cost, 0) }} or more, due within {{ c.big_within_years }} years{% if not c.big_from_savings %} (off: everything is saved for monthly){% endif %}.</p>
+        {% if editor %}<form method="post" action="{{ url_for('equip.plan_settings') }}" class="row g-3 align-items-end">
+            <div class="col-6 col-md-3"><label class="form-label small">Big item: costs at least</label><input name="big_cost" class="form-control" inputmode="decimal" value="{{ '%.0f'|format(c.big_cost) }}"></div>
+            <div class="col-6 col-md-3"><label class="form-label small">and is due within (years)</label><input name="big_within_years" type="number" min="1" max="30" class="form-control" value="{{ c.big_within_years }}"></div>
+            <div class="col-6 col-md-3"><label class="form-label small">Buy outright if due within (years)</label><input name="budget_within_years" type="number" min="1" max="5" class="form-control" value="{{ c.budget_within_years }}"><div class="form-text">1 = this year, 2 = this year or next</div></div>
+            <div class="col-6 col-md-3"><label class="form-label small">Big items from savings</label><select name="big_from_savings" class="form-select"><option value="yes" {{ 'selected' if c.big_from_savings }}>Yes</option><option value="no" {{ 'selected' if not c.big_from_savings }}>No, save monthly</option></select></div>
+            <div class="col-12 d-flex justify-content-end"><button class="btn btn-sm btn-accent">Save settings</button></div>
+        </form>{% endif %}
+    </details>
     {% if editor %}<div class="d-flex flex-wrap gap-2 mb-3 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item', status='Planned') }}">+ Add a planned purchase</a>
         <span class="small text-muted align-self-center">Change a year or cost right in the lists below; open an item for anything else.</span></div>{% endif %}
-    <h2 class="h6 text-muted">Buy soon</h2>
+    <h2 class="h6 text-muted">Buy soon <span class="fw-normal">(due by {{ rp.near_until }})</span></h2>
     <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0 align-middle repl">
         {{ repl_head(false) }}
         <tbody>{% for r in rp.near %}{{ repl_row(r, false) }}{% else %}<tr><td class="ps-3 text-muted" colspan="4">Nothing.</td></tr>{% endfor %}</tbody>

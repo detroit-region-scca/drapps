@@ -123,7 +123,7 @@ def home():
                     + [{'date': _roll(b, t_iso), 'what': b['what'], 'about': b['paid_how'], 'kind': 'bill', 'amount': b['each'], 'b': b}
                        for b in bills if b['id'] in auto and (b['every'] or 0) > 1 and t_iso <= _roll(b, t_iso) <= month and not (b.get('ends') and _roll(b, t_iso) > b['ends'])],
                     key=lambda r: r['date'])
-    rp = E.reserve_plan(items, today)
+    rp = E.reserve_plan(items, today, E.plan_settings())
     big = [i for i in items if i['category'] in ('Vehicle', 'Trailer') and i['status'] != 'Planned']
     for i in big:
         i['lc'] = E.lifecycle(i, today)
@@ -525,7 +525,7 @@ def plan():
     if (g := _guard()):
         return g
     rows = [i for i in E.items() if i['status'] != 'Gone']
-    rp = E.reserve_plan(rows)
+    rp = E.reserve_plan(rows, cfg=E.plan_settings())
     missing = [i for i in rows if E.is_capital(i) and not E.lifecycle(i) and i['status'] != 'Retire']
     by_year = {}
     for r in rp['near']:
@@ -538,6 +538,35 @@ def plan():
     except Exception:
         motion = None
     return render_template('equip.html', **_ctx(view='plan', rp=rp, by_year=by_year, missing=missing, motion=motion))
+
+
+@bp.route('/plan/settings', methods=['POST'])
+@login_required
+@editor_required
+def plan_settings():
+    """Save the replacement plan's rules: what counts as a big item, how soon, what is budgeted outright, and whether big
+    items may be paid from savings."""
+    if (g := _guard()):
+        return g
+    f, old, new = request.form, E.plan_settings(), {}
+    try:
+        new['big_cost'] = float(E.norm(f.get('big_cost', '')))
+        new['big_within_years'] = int(float(E.norm(f.get('big_within_years', ''))))
+        new['budget_within_years'] = int(float(E.norm(f.get('budget_within_years', ''))))
+    except ValueError:
+        flash('Enter numbers for the amount and the years.', 'danger')
+        return redirect(url_for('equip.plan') + '#settings')
+    new['big_from_savings'] = f.get('big_from_savings') == 'yes'
+    if new['big_cost'] < 0 or not 1 <= new['big_within_years'] <= 30 or not 1 <= new['budget_within_years'] <= 5:
+        flash('The amount can\'t be negative, big items must be due within 1 to 30 years, and buy-outright within 1 to 5 years.', 'danger')
+        return redirect(url_for('equip.plan') + '#settings')
+    if new == {k: old[k] for k in new}:
+        flash('Nothing changed.', 'info')
+        return redirect(url_for('equip.plan'))
+    E.save_plan_settings(new, _who(), date.today().isoformat())
+    log_audit_event('EQUIP_PLAN_SETTINGS', _who(), {'before': {k: old[k] for k in new}, 'after': new})
+    flash('Plan settings saved. The plan below uses them.', 'success')
+    return redirect(url_for('equip.plan'))
 
 
 def overdue_count():
