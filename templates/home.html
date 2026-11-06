@@ -25,8 +25,8 @@
         </div></div>
     </div>
     {% elif view == 'access' %}
-        <div class="page-title">Volunteers</div>
-        <p class="text-muted">Volunteers sign in with a code emailed to them. They can see events, enter worker points, and file funds requests and invoices, seeing only their own.</p>
+        <div class="page-title">App access</div>
+        <p class="text-muted">People added here are volunteers, not officials. They sign in with a code emailed to them. They can see events, enter worker points, and file funds requests and invoices, seeing only their own.</p>
         <div class="card mb-3"><div class="card-body">
             <form method="post" class="row g-2 align-items-end">
                 <div class="col-md-4"><label class="form-label small">Name</label><input class="form-control" name="name" required></div>
@@ -198,7 +198,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="#17a2b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.6 3-5.6 6-5.6s5.4 2 6 5.6"/><path d="M17 8v6M14 11h6"/>
                 </svg>
-                <div class="name">Volunteers</div>
+                <div class="name">App access</div>
                 <div class="what">Let a volunteer sign in</div>
             </{{ 'a' if on else 'div' }}>
         </div>

@@ -3,7 +3,7 @@
 - People and roles: who holds each role; change, add or remove a holder. Changes are queued in data/ and applied on the
   server (tools/officials_queue.py, drscca-officials.path): officials.json and the drscca.org Google Groups follow.
 - Programs: rename one, or add one (the Registry sheet's Programs tab).
-- Volunteers are added and removed only on the Volunteers page (auth.access); the audit log is linked from here.
+- Volunteers are added and removed only on the App access page (auth.access); the audit log is linked from here.
 """
 import os
 import re as _re
@@ -210,9 +210,9 @@ def _save_user():
         return back
     was = everyone.get(old_email) or {'titles': [], 'volunteer': False, 'name': ''}
     was = dict(was, titles=[x for x in was['titles'] if not officials.follows(x, alltitles)])   # those follow their job
-    volunteer = bool(was['volunteer']) and not titles      # added and removed only on the Volunteers page
+    volunteer = bool(was['volunteer']) and not titles      # added and removed only on the App access page
     if not titles and not old_email:
-        flash('Tick a role. Volunteers are added on the Volunteers page.', 'warning')
+        flash('Tick a role. Volunteers are added on the App access page.', 'warning')
         return back
     pending = utils.official_changes()['pending']
     busy = {(c.get('from') or '').lower() for c in pending} | {(c.get('email') or '').lower() for c in pending}

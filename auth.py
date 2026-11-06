@@ -411,5 +411,5 @@ def access():
                 log_audit_event('ACCESS_ADDED', u['name'], {'email': email, 'name': name})
                 flash(f'{name} can now sign in with {email}.', 'success')
         return redirect(url_for('auth.access'))
-    return render_template('home.html', title='Volunteers', app_name='Volunteers', view='access',
+    return render_template('home.html', title='App access', app_name='App access', view='access',
                            vols=sorted(volunteers().values(), key=lambda v: v.get('name', '').lower()))

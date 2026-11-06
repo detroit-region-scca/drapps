@@ -98,7 +98,7 @@ Workspace admin console. Also check the role group still exists and accepts mail
 the group for their job (`tools/handover.py show`), and their spam folder.
 
 **Someone cannot sign in.** They must use the address on their user in Admin > Users (officials) or on the
-Volunteers page. A code works once, for 15 minutes; ask them to request a new one.
+App access page. A code works once, for 15 minutes; ask them to request a new one.
 
 **Every page fails with a Google permission error.** The service account lost access to the Shared Drive, or
 its key was deleted. Re-add it as Content manager, or make a new key in Google Cloud, replace the key file on

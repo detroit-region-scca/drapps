@@ -12,7 +12,7 @@ drapps.drscca.org. Keeping it running: [docs/RUNBOOK.md](docs/RUNBOOK.md).
 | Annual Plan | `/plan` | Each program's yearly plan against QuickBooks |
 | Operations | `/operations` | Vehicles, trailers, storage, recurring bills, documents, to-dos, replacement plan |
 | Invoices | `/invoices` | Invoices the region sends, as PDFs, emailed to the customer |
-| Volunteers | `/access` | Add and remove volunteers who can sign in |
+| App access | `/access` | Add and remove volunteers who can sign in |
 | Treasurer | `/treasurer` | Payments, approvals, the books check, month end, QuickBooks sync |
 | Admin | `/admin` | Users and roles, role permissions, programs |
 

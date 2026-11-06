@@ -32,7 +32,7 @@ EXTRA = {
     'minutes': 'Upload and publish board minutes',
     'points': 'Manage worker points (milestones, auto add, books)',
     'ops': 'Edit Operations (equipment, storage, bills)',
-    'access': 'Add and remove volunteers',
+    'access': 'Manage app access (add and remove volunteers)',
     'audit': 'See the audit log',
     'admin': 'Run the Admin app (users, roles, programs)',
 }
@@ -46,7 +46,7 @@ APPS = {
     'show_plan': 'Annual Plan',
     'show_operations': 'Operations',
     'show_treasurer': 'Treasurer',
-    'show_volunteers': 'Volunteers',
+    'show_volunteers': 'App access',
 }
 PERMS = {**EVERYDAY, **EXTRA}            # what Admin > Roles sets
 
