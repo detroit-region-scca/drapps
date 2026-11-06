@@ -89,7 +89,8 @@
                 <div class="text-muted">{{ e.date[:4] if e.program_budget else e.date }} · {{ programs.get(e.program_code, e.program_code) }} · {{ code }}{% if e.creator_name %} · registered by {{ e.creator_name }}{% endif %}</div>
                 {% if b %}<div class="small mt-1">{% if b.chair %}Chair: {{ b.chair }}{% endif %}{% if b.location %} · {{ b.location }}{% endif %}</div>
                 <div class="small text-muted">Budget updated {{ b.updated }} by {{ b.updated_by }}</div>{% endif %}
-                <div class="small mt-2">{% if status == 'approved' %}<span class="badge rounded-pill text-bg-success">Budget board approved {{ b.approved }}</span>
+                <div class="small mt-2">{% if status == 'draft' %}<span class="badge rounded-pill text-bg-secondary">Budget in draft</span> not on the board's list yet
+                    {% elif status == 'approved' %}<span class="badge rounded-pill text-bg-success">Budget board approved {{ b.approved }}</span>
                     {% elif status == 'changed' %}<span class="badge rounded-pill text-bg-info">Budget changed since the board approved it on {{ b.approved }}</span>
                     {% elif b %}<a href="{{ url_for('bud.approve_many', year=(b.date or '')[:4]) }}" class="badge rounded-pill text-bg-primary text-decoration-none">Budget not board approved yet</a>
                     {% elif budgets_on %}<span class="badge rounded-pill text-bg-warning">No budget yet</span>{% endif %}</div>
@@ -225,7 +226,12 @@
     {% if b %}
     <div class="card p-3 mt-3 no-print">
         <div class="section-label">Board approval</div>
-        {% if b.approved %}
+        {% if status == 'draft' %}
+        <form method="post" action="{{ url_for('bud.to_ready', code=code) }}" class="d-flex flex-wrap gap-2 align-items-center">
+            <span><b>Draft</b> (put back {{ b.draft }}). It is not on the board's list until it is ready.</span>
+            <button class="btn btn-sm btn-accent ms-auto">Ready for the board</button>
+        </form>
+        {% elif b.approved %}
         <form method="post" action="{{ url_for('bud.approve', code=code) }}" class="d-flex flex-wrap gap-2 align-items-center">
             <span>Approved {{ b.approved }}{% if b.approved_by %}, recorded by {{ b.approved_by }}{% endif %}.</span>
             <input type="hidden" name="approved" value=""><input type="hidden" name="who" value="{{ who }}">
@@ -244,6 +250,10 @@
         </form>
         {% else %}<div class="small text-muted">After the board approves this budget, the RE, ARE or treasurer records it here.</div>{% endif %}
         {% endif %}
+        {% if status != 'draft' and (officer or not b.approved) %}
+        <form method="post" action="{{ url_for('bud.to_draft', code=code) }}" class="mt-2" onsubmit="return confirm('Put this budget back into draft?{% if b.approved %} This clears the board approval of {{ b.approved }}.{% endif %} Any open board vote on it is cancelled.')">
+            <button class="btn btn-sm btn-link p-0">Back to draft</button> <span class="small text-muted">to rework it before the board looks at it</span>
+        </form>{% endif %}
     </div>
     {% endif %}
 

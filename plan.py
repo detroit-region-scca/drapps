@@ -216,7 +216,9 @@ def detail(year, program):
         g['drift'] = g['records'] is not None and abs((g['records'] or 0) - (g['plan'] or 0)) >= 1
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
                                                ops_budget=ops_budget is not None, pb_code=pb_code, pb=pb,
-                                               pb_status=(('changed' if pb.get('updated', '') > pb['approved'] else 'approved') if pb.get('approved') else 'budget') if pb else None,
+                                               pb_status=('draft' if pb.get('draft') else ('changed' if pb.get('updated', '') > pb['approved'] else 'approved') if pb.get('approved') else 'budget') if pb else None,
+                                               can_draft=bool(p['info'].get('submitted') or p['info'].get('approved'))
+                                               and (bool(officer_current()) or (not p['info'].get('approved') and may_write(program))),
                                                a=act.get(program), as_of=as_of, events=_event_actuals(program, year),
                                                prev=prev, prev_lines=bool(P.saved_lines(P.plan(prev).get(program, {}).get('lines', []))),
                                                accts=accts, future=int(year) > date.today().year, now_year=date.today().year, rows=rows,
@@ -266,6 +268,32 @@ def approve(year, program):
         return redirect(url_for('plan.detail', year=year, program=program))
     log_audit_event('PLAN_APPROVED' if approved else 'PLAN_UNAPPROVED', who, {'year': year, 'program': program, 'approved': approved})
     flash(f'Board approval recorded: {approved}.' if approved else 'Board approval cleared.', 'success')
+    return redirect(url_for('plan.detail', year=year, program=program))
+
+
+@bp.route('/<year>/<program>/draft', methods=['POST'])
+@login_required
+def to_draft(year, program):
+    """Put a plan (for Operations, its budget) back into draft: not turned in, any board approval cleared and any open
+    board vote cancelled. Whoever may write the plan can do this before approval; after it, only an officer."""
+    if (g := _guard()):
+        return g
+    year = _year(year)
+    info = (P.plan(year).get(program) or {}).get('info', {})
+    from auth import user as _signed_in
+    who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
+    if not info.get('updated'):
+        flash('That plan has not been saved yet.', 'warning')
+    elif info.get('approved') and not officer_current():
+        flash('The board approved this budget, so only the RE, ARE or treasurer can put it back into draft.', 'warning')
+    elif not info.get('approved') and not (officer_current() or may_write(program)):
+        flash("You can't change this plan.", 'warning')
+    else:
+        P.set_draft(year, program)
+        from bud import _cancel_ballots
+        _cancel_ballots(f'budget:{year}:{program}', who)
+        log_audit_event('PLAN_DRAFT', who, {'year': year, 'program': program, 'was_approved': info.get('approved', '')})
+        flash('Back in draft. Turn it in again when it is ready.', 'info')
     return redirect(url_for('plan.detail', year=year, program=program))
 
 

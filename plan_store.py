@@ -184,6 +184,20 @@ def set_approved(year, program, approved, who):
         refresh()
 
 
+def set_draft(year, program):
+    """Put one program's plan (for Operations, its budget) back into draft: not turned in, and any board approval
+    cleared."""
+    year = str(year)
+    with FileLock(SAVE_LOCK), _lock:
+        refresh()
+        progs = _snapshot()[1]
+        at = next((i for i, p in enumerate(progs) if p['year'] == year and p['program'] == program), None)
+        if at is None:
+            raise ValueError('That plan has not been saved yet.')
+        _ws('Programs').update([['', '', '', '']], f'H{at + 2}:K{at + 2}', value_input_option='RAW')
+        refresh()
+
+
 def plan_status(info):
     """'approved', 'changed' (edited after the board approved it), 'in', 'draft' or '' (nothing saved).
     The board approves budgets, not plans: only Operations, whose plan is its budget, can be board approved."""

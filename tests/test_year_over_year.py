@@ -109,6 +109,9 @@ def _detail_page(monkeypatch, perms, ballot=None):
     monkeypatch.setattr(bud, '_ballot', lambda code: ballot)
     monkeypatch.setattr(B, 'enabled', lambda: True)
     monkeypatch.setattr(B, 'qbo_actuals', lambda: {})
+    monkeypatch.setattr(bud, '_open_lines', lambda e: [])
+    monkeypatch.setattr(bud, '_plan_line', lambda code: None)
+    monkeypatch.setattr(bud, '_year_over_year', lambda code: [])
     app.config['TESTING'] = True
     c = app.test_client()
     with c.session_transaction() as s:
@@ -125,3 +128,37 @@ def test_unapproved_budget_never_looks_approved(monkeypatch):
 def test_officer_gets_a_blank_record_form(monkeypatch):
     html = _detail_page(monkeypatch, {'events', 'board'})
     assert 'Record board approval' in html and 'name="approved" class="form-control form-control-sm" required' in html
+
+
+def test_draft_budget_is_off_the_boards_list(monkeypatch):
+    monkeypatch.setattr(bud.P, 'enabled', lambda: False)
+    buds = {'#A': {'event_code': '#A', 'date': '2027-05-01', 'program': 'AX', 'approved': '', 'draft': '2026-11-06 by Pat',
+                   'totals': {'budget': {'surplus': 10}}},
+            '#B': {'event_code': '#B', 'date': '2027-05-02', 'program': 'AX', 'approved': '', 'draft': '',
+                   'totals': {'budget': {'surplus': 20}}}}
+    monkeypatch.setattr(B, 'budgets', lambda: buds)
+    assert bud._status(buds['#A']) == 'draft'
+    assert [r['b']['event_code'] for r in bud._pending_rows('2027')] == ['#B']
+
+
+def test_back_to_draft_after_approval_needs_an_officer(monkeypatch):
+    import auth
+    from app import app
+    calls = []
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Pat', 'level': 'official', 'roles': ['Director'],
+                                                   'perms': {'events'}} if e else None)
+    monkeypatch.setattr(bud, '_guard', lambda: None)
+    monkeypatch.setattr(B, 'enabled', lambda: True)
+    monkeypatch.setattr(B, 'get', lambda code: {'event_code': '#C', 'date': '2027-01-09', 'approved': '2026-11-01'})
+    monkeypatch.setattr(B, 'set_draft', lambda code, d: calls.append((code, d)))
+    monkeypatch.setattr(bud, '_cancel_ballots', lambda item, who: calls.append(item))
+    monkeypatch.setattr(bud, 'log_audit_event', lambda *a, **k: None)
+    app.config['TESTING'] = True
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s.update(authenticated=True, email='pat@example.org', who='Pat')
+    c.post('/events/event/%23C/draft')
+    assert calls == []
+    monkeypatch.setattr(B, 'get', lambda code: {'event_code': '#C', 'date': '2027-01-09', 'approved': ''})
+    c.post('/events/event/%23C/draft')
+    assert calls[0][0] == '#C' and calls[0][1].endswith('by Pat') and calls[1] == 'budget:2027:#C'

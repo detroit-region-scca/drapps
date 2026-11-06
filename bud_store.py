@@ -18,7 +18,7 @@ from storage import DATA_DIR, drive_folder, drive_upload, worksheet
 import sheet_cache as C
 
 BUD_COLS = ['event_code', 'event_name', 'program', 'date', 'chair', 'location', 'updated', 'updated_by', 'notes', 'files_url',
-            'approved', 'approved_by', 'last_year_event']
+            'approved', 'approved_by', 'last_year_event', 'draft']
 LINE_COLS = ['event_code', 'section', 'description', 'last_year', 'budget', 'actual', 'sort']
 AMOUNTS = ('last_year', 'budget', 'actual')
 CACHE_SECONDS = 15
@@ -70,10 +70,10 @@ def _snapshot():
     if hit and hit[0] == C.version(os.environ['BUDGETS_SHEET_ID']):
         return hit[1]
     try:
-        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:M', 'Lines!A:G', 'QBO Actuals!A:F'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:N', 'Lines!A:G', 'QBO Actuals!A:F'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     except gspread.exceptions.APIError:
         # No QBO Actuals tab until the first sync has run.
-        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:M', 'Lines!A:G'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:N', 'Lines!A:G'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], [], []]
     buds = [dict(zip(BUD_COLS, [_read_cell(c, v) for c, v in zip(BUD_COLS, r)] + [''] * len(BUD_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
     lines = []
@@ -185,7 +185,8 @@ def save(header, lines, files=(), actuals_only=False):
         # Changing only "Last year's event" is not a change to the budget: an approved one stays approved.
         same = old and not files and (actuals_only or _same_budget(old, header, [ln for ln in all_lines if ln['event_code'] == code], lines))
         header = dict(header, updated=old['updated'] if same else date.today().isoformat(), files_url=(old or {}).get('files_url', ''),
-                      approved=(old or {}).get('approved', ''), approved_by=(old or {}).get('approved_by', ''))
+                      approved=(old or {}).get('approved', ''), approved_by=(old or {}).get('approved_by', ''),
+                      draft=header['draft'] if 'draft' in header else (old or {}).get('draft', ''))
         if files:
             if not header['files_url']:
                 header['files_url'] = drive_folder(f"{code} {header['event_name']}"[:120], os.environ['BUDGETS_FILES_FOLDER_ID'])['webViewLink']
@@ -244,3 +245,19 @@ def set_approved(codes, approved, who):
                         value_input_option='RAW')
         refresh()
 
+
+def set_draft(code, draft):
+    """Put one budget back into draft (draft = 'YYYY-MM-DD by Name'), which also clears any board approval, or with
+    draft='' mark it ready for the board again."""
+    with FileLock(SAVE_LOCK), _lock:
+        ws = _ws('Budgets')
+        _heading(ws)
+        col = ws.col_values(1)
+        if code not in col:
+            raise ValueError('That budget has not been saved yet.')
+        n = col.index(code) + 1
+        upd = [{'range': f'N{n}', 'values': [[draft]]}]
+        if draft:
+            upd.append({'range': f'K{n}:L{n}', 'values': [['', '']]})
+        ws.batch_update(upd, value_input_option='RAW')
+        refresh()

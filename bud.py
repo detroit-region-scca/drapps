@@ -102,9 +102,11 @@ def _plan_line(code):
 
 
 def _status(b):
-    """'approved', 'changed' (edited after approval), 'budget' or None."""
+    """'draft' (pulled back, not on the board's list), 'approved', 'changed' (edited after approval), 'budget' or None."""
     if not b:
         return None
+    if b.get('draft'):
+        return 'draft'
     if b.get('approved'):
         return 'changed' if b.get('updated', '') > b['approved'] else 'approved'
     return 'budget'
@@ -269,6 +271,56 @@ def detail(code):
                                               open_lines=_open_lines(e), ballot=_ballot(code)))
 
 
+def _cancel_ballots(item, who):
+    """Cancel the board's email vote on this item, if there is one, so it can be asked again later."""
+    try:
+        import ballots_store as BS
+        if not BS.enabled():
+            return
+        b = BS.current(item)
+        if b and b['status'] != 'cancelled':
+            BS.update(b['id'], status='cancelled', recorded_by=who)
+    except Exception:
+        pass
+
+
+@bp.route('/event/<path:code>/draft', methods=['POST'])
+@login_required
+def to_draft(code):
+    """Put a budget back into draft: off the board's list, any approval cleared and any open vote cancelled. Before the
+    board approves it, whoever can edit it may do this; once approved, only the RE, ARE or treasurer."""
+    if (g := _guard()):
+        return g
+    b = B.get(code) if B.enabled() else None
+    from auth import user as _signed_in
+    who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
+    if not b:
+        flash('That budget has not been saved yet.', 'warning')
+    elif b.get('approved') and not officer_current():
+        flash('The board approved this budget, so only the RE, ARE or treasurer can put it back into draft.', 'warning')
+    else:
+        B.set_draft(code, f"{date.today().isoformat()} by {who}")
+        _cancel_ballots(f"budget:{str(b.get('date', ''))[:4]}:{code}", who)
+        log_audit_event('BUDGET_DRAFT', who, {'event_code': code, 'was_approved': b.get('approved', '')})
+        flash('Back in draft. It is off the board\'s list until you mark it ready.', 'info')
+    return redirect(url_for('bud.detail', code=code))
+
+
+@bp.route('/event/<path:code>/ready', methods=['POST'])
+@login_required
+def to_ready(code):
+    """Take a budget out of draft so it is back on the board's list."""
+    if (g := _guard()):
+        return g
+    from auth import user as _signed_in
+    who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
+    if B.enabled() and B.get(code):
+        B.set_draft(code, '')
+        log_audit_event('BUDGET_READY', who, {'event_code': code})
+        flash('Ready for the board. It is on the board\'s list again.', 'success')
+    return redirect(url_for('bud.detail', code=code))
+
+
 def _ballot(code):
     """The latest board email vote on this budget (not cancelled), or None."""
     try:
@@ -314,7 +366,7 @@ def ops_budget_row(year):
     if not p or not p['lines'] or not p['info'].get('updated'):
         return None
     st = P.plan_status(p['info'])
-    if st == 'approved':
+    if st in ('approved', 'draft'):
         return None
     b = {'event_code': 'OPS', 'event_name': f'Operations budget {year}', 'date': str(year), 'program': 'OPS',
          'approved': p['info'].get('approved', '')}
@@ -340,7 +392,7 @@ def _pending_rows(year, only=''):
         plan = {k: v for k, v in plan.items() if k == only}
     plan_by_code = {ln['event_code']: ln['net'] for x in plan.values() for ln in x['lines'] if ln['event_code']}
     rows = [{'b': b, 'status': _status(b), 'surplus': ((b['totals'].get('budget') or {}).get('surplus')), 'plan': plan_by_code.get(code)}
-            for code, b in B.budgets().items() if str(b.get('date', '')).startswith(year) and _status(b) != 'approved'
+            for code, b in B.budgets().items() if str(b.get('date', '')).startswith(year) and _status(b) not in ('approved', 'draft')
             and (not only or b.get('program') == only)]
     rows.sort(key=lambda r: (r['b'].get('program', ''), r['b'].get('date', '')))
     if not only or only == 'OPS':

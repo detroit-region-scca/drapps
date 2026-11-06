@@ -224,7 +224,7 @@ def treasurer_report():
         for e in sorted(events, key=lambda e: e['date']):
             code = e.get('custom_tag') or e.get('unique_code')
             b = buds.get(code)
-            if b and (not b.get('approved') or b.get('updated', '') > b['approved']):
+            if b and not b.get('draft') and (not b.get('approved') or b.get('updated', '') > b['approved']):
                 board.append({'e': e, 'code': code, 'changed': bool(b.get('approved')), 'budget': (b['totals'].get('budget') or {}).get('surplus'),
                               'actual': ((qbo.get(code) or {}).get('totals') or {}).get('surplus')})
             elif not b and today.isoformat() <= e['date'] <= soon:
@@ -233,7 +233,7 @@ def treasurer_report():
         for pc in load_programs():
             code = bud.program_code(pc, year)
             b = buds.get(code)
-            if b and (not b.get('approved') or b.get('updated', '') > b['approved']):
+            if b and not b.get('draft') and (not b.get('approved') or b.get('updated', '') > b['approved']):
                 board.append({'e': bud._event(code), 'code': code, 'changed': bool(b.get('approved')),
                               'budget': (b['totals'].get('budget') or {}).get('surplus'),
                               'actual': ((bud.program_actuals(pc, year) or {}).get('totals') or {}).get('surplus')})
