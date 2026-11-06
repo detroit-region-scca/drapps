@@ -39,3 +39,10 @@ def _short_links_in_tmp(tmp_path, monkeypatch):
     import shortlinks
     monkeypatch.setattr(shortlinks, 'PATH', str(tmp_path / 'short_links.json'))
     monkeypatch.setattr(shortlinks, 'LOCK', str(tmp_path / 'short_links.json.lock'))
+
+
+@pytest.fixture(autouse=True)
+def _audit_log_in_tmp(tmp_path, monkeypatch):
+    """Tests never append to the server's data/audit.ndjson (they used to: 900+ fake entries by 'Someone')."""
+    import storage
+    monkeypatch.setattr(storage, 'AUDIT_FILE', str(tmp_path / 'audit.ndjson'))
