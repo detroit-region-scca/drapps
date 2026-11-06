@@ -107,6 +107,8 @@ def _detail_page(monkeypatch, perms, ballot=None):
                                                 'chair': 'Pat', 'location': '', 'notes': '', 'last_year_event': '', 'lines': [],
                                                 'totals': B.totals([])})
     monkeypatch.setattr(bud, '_ballot', lambda code: ballot)
+    monkeypatch.setattr(B, 'enabled', lambda: True)
+    monkeypatch.setattr(B, 'qbo_actuals', lambda: {})
     app.config['TESTING'] = True
     c = app.test_client()
     with c.session_transaction() as s:
