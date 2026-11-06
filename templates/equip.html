@@ -129,8 +129,10 @@
             <div class="value">{{ n_vehicles }} <span class="h6 text-muted">and {{ n_trailers }} trailers</span></div>
             <div class="small {{ 'text-warning' if replace_soon else 'text-muted' }}">{% if replace_soon %}{{ replace_soon|length }} due for replacement by {{ today[:4]|int + 1 }}{% else %}none due for replacement soon{% endif %}</div></a></div>
         <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.plan') }}"><div class="label">Save for replacements</div>
-            <div class="value">{{ money(rp.monthly, 0) }} <span class="h6 text-muted">a month</span></div>
-            <div class="small text-muted">from {{ rp.start_label }}, so vehicles and gear can be replaced when they wear out</div></a></div>
+            {% if rp.big_total %}<div class="value">{{ money(rp.monthly_without_big, 0) }} <span class="h6 text-muted">a month</span></div>
+            <div class="small text-muted">from {{ rp.start_label }}, plus {{ money(rp.big_total, 0) }} from savings for the big items</div>
+            {% else %}<div class="value">{{ money(rp.monthly, 0) }} <span class="h6 text-muted">a month</span></div>
+            <div class="small text-muted">from {{ rp.start_label }}, so vehicles and gear can be replaced when they wear out</div>{% endif %}</a></div>
     </div>
 
     {% if overdue or docs_missing or replace_soon %}
