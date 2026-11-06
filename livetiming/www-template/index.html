@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Timing - Detroit Region SCCA</title>
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#111;background:#fff}
+header{border-bottom:3px solid #d2232a;padding:14px 16px;display:flex;align-items:center;gap:12px}
+header a{color:#111;text-decoration:none;font-weight:700;font-size:1.1rem}
+main{max-width:640px;margin:0 auto;padding:24px 16px}
+h1{font-size:1.8rem;margin:0 0 .5rem}
+.card{display:block;border:1px solid #ddd;border-top:4px solid #d2232a;padding:16px;margin:14px 0;text-decoration:none;color:#111}
+.card b{font-size:1.25rem;color:#1d3fb8}.card span{display:block;color:#555;font-size:.95rem;margin-top:4px}
+p{color:#555}
+</style></head><body>
+<header><a href="https://drscca.org/">Detroit Region SCCA</a></header>
+<main><h1>Live Timing</h1>
+<p>Results update about every minute during an event.</p>
+<div id="list">
+<a class="card" href="autocross/"><b>Autocross</b><span id="t-autocross"></span></a>
+<a class="card" href="rallycross/"><b>RallyCross</b><span id="t-rallycross"></span></a>
+</div>
+<p><a href="https://drscca.org/calendar/">Event calendar</a></p>
+</main>
+<script>
+// Show when each program last uploaded, newest first.
+(async () => {
+  const progs = ['autocross', 'rallycross'], got = [];
+  for (const p of progs) {
+    try {
+      const r = await fetch(p + '/index.htm', {method: 'HEAD', cache: 'no-store'});
+      const m = r.ok && r.headers.get('Last-Modified');
+      const d = m ? new Date(m) : null;
+      document.getElementById('t-' + p).textContent = d ? 'Last updated ' + d.toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'}) : 'No results yet';
+      got.push([p, d ? d.getTime() : 0]);
+    } catch (e) { got.push([p, 0]); }
+  }
+  const list = document.getElementById('list');
+  got.sort((a, b) => b[1] - a[1]).forEach(([p]) => list.appendChild(document.getElementById('t-' + p).parentNode));
+})();
+</script>
+</body></html>
