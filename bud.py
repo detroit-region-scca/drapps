@@ -288,7 +288,7 @@ def _cancel_ballots(item, who):
 @login_required
 def to_draft(code):
     """Put a budget back into draft: off the board's list, any approval cleared and any open vote cancelled. Before the
-    board approves it, whoever can edit it may do this; once approved, only the RE, ARE or treasurer."""
+    board approves it, whoever can edit it may do this; once approved, only the RE, ARE, secretary or treasurer."""
     if (g := _guard()):
         return g
     b = B.get(code) if B.enabled() else None
@@ -297,7 +297,7 @@ def to_draft(code):
     if not b:
         flash('That budget has not been saved yet.', 'warning')
     elif b.get('approved') and not officer_current():
-        flash('The board approved this budget, so only the RE, ARE or treasurer can put it back into draft.', 'warning')
+        flash('The board approved this budget, so only the RE, ARE, secretary or treasurer can put it back into draft.', 'warning')
     else:
         B.set_draft(code, f"{date.today().isoformat()} by {who}")
         _cancel_ballots(f"budget:{str(b.get('date', ''))[:4]}:{code}", who)
@@ -454,7 +454,7 @@ def approve_many():
     if request.method == 'GET':
         return redirect(url_for('board.home'))
     if not officer_current():
-        flash('Recording a board decision is for the RE, ARE or treasurer.', 'warning')
+        flash('Recording a board decision is for the RE, ARE, secretary or treasurer.', 'warning')
         return redirect(url_for('board.home'))
     try:
         approved = date.fromisoformat(request.form.get('approved', '')).isoformat()
@@ -506,7 +506,7 @@ def delete(code):
         flash('There is no budget to delete.', 'warning')
         return redirect(url_for('bud.detail', code=code))
     if b.get('approved') and not officer_current():
-        flash('The board approved this budget, so only the RE, ARE or treasurer can delete it.', 'warning')
+        flash('The board approved this budget, so only the RE, ARE, secretary or treasurer can delete it.', 'warning')
         return redirect(url_for('bud.detail', code=code))
     who = (officer_current() or {}).get('name') or session.get('who', '') or 'Unknown'
     B.delete(code)

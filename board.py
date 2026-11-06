@@ -1,7 +1,7 @@
 """Board: everything the board decides, in one place.
 
 - Waiting for the board: budgets not approved yet (or changed since) and open motions. Anyone signed in (not
-  volunteers) can see them and send them to the board for a vote; the RE, ARE or treasurer records the result.
+  volunteers) can see them and send them to the board for a vote; the RE, ARE, secretary or treasurer records the result.
 - Motions: decisions that are not a budget (money set aside, a big purchase, a policy). Proposed here, voted at a
   meeting or by email, the result recorded with the count.
 - Decisions: every recorded vote by date, budgets and motions together, with that meeting's minutes when they are
@@ -131,7 +131,7 @@ def _decide_if_done(bid):
         BS.update(bid, status=res, result=res, count=BL.count_text(t), decided=today)
         log_audit_event('BALLOT_DECIDED', 'email vote', {'ballot': bid, 'item': b['item'], 'result': res, 'count': BL.count_text(t)})
         send_mail(f"Board vote {res}: {b['title']}",
-                  f"{b['title']}: {res} {BL.count_text(t)} by email vote.\n\nThe RE, ARE or treasurer records it on the Board page:\n"
+                  f"{b['title']}: {res} {BL.count_text(t)} by email vote.\n\nThe RE, ARE, secretary or treasurer records it on the Board page:\n"
                   + url_for('board.home', _external=True), board_email(), reply_to=board_email())
     return res
 
@@ -246,7 +246,7 @@ def home():
             return redirect(url_for('board.home'))
         off = officer_current()
         if not off:
-            flash('Recording a board decision is for the RE, ARE or treasurer.', 'warning')
+            flash('Recording a board decision is for the RE, ARE, secretary or treasurer.', 'warning')
             return redirect(url_for('board.home'))
         try:
             decided = date.fromisoformat(f.get('decided', '')).isoformat()
@@ -402,7 +402,7 @@ def record_ballot(bid):
     off = officer_current()
     b = BS.get(bid)
     if not off or not b:
-        flash('Recording a board decision is for the RE, ARE or treasurer.', 'warning')
+        flash('Recording a board decision is for the RE, ARE, secretary or treasurer.', 'warning')
         return redirect(url_for('board.home'))
     t = BL.tally(BS.votes(bid), _people())
     st = BL.state(b, t)

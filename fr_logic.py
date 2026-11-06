@@ -18,7 +18,7 @@ import re
 
 SECOND_SIGNER_LIMIT = 2500.00
 OVERRUN = 1.10
-ROLES = {'chair': 'Program director', 'second': 'Second signer (RE or ARE)', 'board': 'Board (confirmed by the RE or ARE)'}
+ROLES = {'chair': 'Program director', 'second': 'Second signer (RE or ARE)', 'board': 'Board (recorded by the RE, ARE, secretary or treasurer)'}
 
 
 def parse(text):

@@ -2,7 +2,7 @@
 an out-of-region event). Kept in the 'Motions' tab of the DRSCCA Annual Plan sheet (PLAN_SHEET_ID).
 
 A motion is proposed by anyone signed in, sent to the board for a vote, and its result (date, board meeting or email
-vote, the count, passed or failed) recorded by the RE, ARE or treasurer. Nothing is deleted: a motion no longer wanted
+vote, the count, passed or failed) recorded by the RE, ARE, secretary or treasurer. Nothing is deleted: a motion no longer wanted
 is withdrawn."""
 import os
 import threading

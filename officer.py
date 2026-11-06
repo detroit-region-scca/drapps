@@ -1,5 +1,5 @@
 """Officer sign-in: the few things that stand for a board decision (recording that the board approved an event budget)
-need more than the shared app password and a typed name. The RE, ARE and treasurer sign in through a link emailed to
+need more than the shared app password and a typed name. The RE, ARE, secretary and treasurer sign in through a link emailed to
 their address in the read-only officials list; the link sets an officer session on that device for 30 days.
 """
 from functools import wraps

@@ -185,7 +185,7 @@
             <div class="col-6 col-md-2"><label class="form-label small">Vote</label><input name="vote" class="form-control form-control-sm" placeholder="7-0" inputmode="numeric"></div>
             <div class="col-6 col-md-4"><button class="btn btn-sm btn-accent w-100">Record board approval</button></div>
         </form>
-        {% else %}<div class="small text-muted">After the board approves this {{ 'budget' if program == 'OPS' else 'plan' }}, the RE, ARE or treasurer records it here.</div>{% endif %}
+        {% else %}<div class="small text-muted">After the board approves this {{ 'budget' if program == 'OPS' else 'plan' }}, the RE, ARE, secretary or treasurer records it here.</div>{% endif %}
         {% endif %}
     </div>
     {% endif %}

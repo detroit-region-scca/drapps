@@ -422,7 +422,7 @@ def approve_link(token):
     done = next((a for a in FL.parse(r.get('approvals')) if a['role'] == t['role']), None)
     msg = (f"{r['id']} is already {r['status'].lower()}." if r['status'] != 'Submitted' else
            "Board approval is no longer confirmed from an email. The board votes on it (Board page, Request email vote), "
-           "and the RE, ARE or treasurer records the result there." if t['role'] == 'board' else
+           "and the RE, ARE, secretary or treasurer records the result there." if t['role'] == 'board' else
            f"Already approved by {done['name']} on {done['date']}." if done else '')
     if request.method == 'POST' and not msg:
         who = t['name'] or t['email']
@@ -665,7 +665,7 @@ def in_deposit(rid):
 
 
 def can_delete_report(r):
-    """Before it is deposited: whoever reported it, or the treasurer, RE or ARE."""
+    """Before it is deposited: whoever reported it, or the treasurer, secretary, RE or ARE."""
     return bool(r and r['status'] == 'Received' and (_owns_report(r) or officer_current('pay')))
 
 
@@ -682,7 +682,7 @@ def in_delete(rid):
         flash('A deposited report is part of the books. Mark it not deposited first if it really has to go.', 'warning')
         return redirect(url_for('fr.in_detail', rid=rid))
     if not can_delete_report(r):
-        flash('Only whoever reported it, or the treasurer, RE or ARE, can delete it.', 'warning')
+        flash('Only whoever reported it, or the treasurer, secretary, RE or ARE, can delete it.', 'warning')
         return redirect(url_for('fr.in_detail', rid=rid))
     who = session.get('who') or 'Unknown'
     gone = R.delete(rid, who)
@@ -695,7 +695,7 @@ def in_delete(rid):
 
 
 def can_delete_request(r):
-    """Before it is paid or rejected: whoever filed it, or the treasurer, RE or ARE."""
+    """Before it is paid or rejected: whoever filed it, or the treasurer, secretary, RE or ARE."""
     return bool(r and r['status'] == 'Submitted' and (auth.owns_request(r) or officer_current('pay')))
 
 
@@ -712,7 +712,7 @@ def delete(req_id):
         flash('A paid or rejected request is part of the record. Reopen it first if it really has to go.', 'warning')
         return redirect(url_for('fr.detail', req_id=req_id))
     if not can_delete_request(r):
-        flash('Only whoever filed it, or the treasurer, RE or ARE, can delete it.', 'warning')
+        flash('Only whoever filed it, or the treasurer, secretary, RE or ARE, can delete it.', 'warning')
         return redirect(url_for('fr.detail', req_id=req_id))
     import motions_store as M
     if M.enabled() and any(m['status'] == 'open' and (m.get('link') or '').rstrip('/').endswith('/' + req_id) for m in M.motions()):

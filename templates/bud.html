@@ -248,7 +248,7 @@
             <input type="hidden" name="who" value="{{ session.get('who', '') }}">
             <div class="col-12 col-md-4"><button class="btn btn-sm btn-accent w-100">Record board approval</button></div>
         </form>
-        {% else %}<div class="small text-muted">After the board approves this budget, the RE, ARE or treasurer records it here.</div>{% endif %}
+        {% else %}<div class="small text-muted">After the board approves this budget, the RE, ARE, secretary or treasurer records it here.</div>{% endif %}
         {% endif %}
         {% if status != 'draft' and (officer or not b.approved) %}
         <form method="post" action="{{ url_for('bud.to_draft', code=code) }}" class="mt-2" onsubmit="return confirm('Put this budget back into draft?{% if b.approved %} This clears the board approval of {{ b.approved }}.{% endif %} Any open board vote on it is cancelled.')">

@@ -285,7 +285,7 @@ def to_draft(year, program):
     if not info.get('updated'):
         flash('That plan has not been saved yet.', 'warning')
     elif info.get('approved') and not officer_current():
-        flash('The board approved this budget, so only the RE, ARE or treasurer can put it back into draft.', 'warning')
+        flash('The board approved this budget, so only the RE, ARE, secretary or treasurer can put it back into draft.', 'warning')
     elif not info.get('approved') and not (officer_current() or may_write(program)):
         flash("You can't change this plan.", 'warning')
     else:

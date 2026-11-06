@@ -4,7 +4,7 @@ A person types their email address, gets a 6-digit code (and a one-tap link) by 
 device for 30 days. There is no shared password. What they can do follows from who they are, looked up again on
 every request, so removing someone from a list takes effect at once:
 
-  officer    RE, ARE or Treasurer in the read-only officials list: everything, including board decisions.
+  officer    RE, ARE, Secretary or Treasurer in the read-only officials list: everything, including board decisions.
   official   anyone else in the officials list with an email (directors, directors at large, committee chairs):
              the whole app, as with the old shared password; Operations changes only for the Equipment role.
   volunteer  an address on the Volunteers tab of the Registry sheet (kept by officers on the Access page):
