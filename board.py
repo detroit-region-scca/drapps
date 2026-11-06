@@ -251,7 +251,7 @@ def home():
         try:
             decided = date.fromisoformat(f.get('decided', '')).isoformat()
         except ValueError:
-            flash('The date must be a date.', 'danger')
+            flash('Enter the date the board decided it.', 'danger')
             return redirect(url_for('board.home'))
         result = f.get('result')
         if result not in ('passed', 'failed'):

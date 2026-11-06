@@ -11,7 +11,7 @@
         .rollcall td, .rollcall th { padding: .25rem .4rem; }
 {% endblock %}
 {% macro record_fields(date_name) %}
-    <div class="col-6 col-md-3"><label class="form-label small">Date</label><input type="date" name="{{ date_name }}" class="form-control form-control-sm" value="{{ today }}"></div>
+    <div class="col-6 col-md-3"><label class="form-label small">Date</label><input type="date" name="{{ date_name }}" class="form-control form-control-sm"></div>
     <div class="col-6 col-md-3"><label class="form-label small">How</label><select name="how" class="form-select form-select-sm"><option value="meeting">Board meeting</option><option value="email">Email vote</option></select></div>
     <div class="col-6 col-md-2"><label class="form-label small">Vote</label><input name="vote" class="form-control form-control-sm" placeholder="7-0" inputmode="numeric"></div>
 {% endmacro %}
@@ -78,7 +78,8 @@
                 <label class="form-check-label small" for="urgent">Urgent</label></div>
         </div>
         {% if officer %}
-        <div class="card p-3"><div class="section-label">Record the board's vote on the ticked items</div><div class="row g-2 align-items-end">
+        <div class="card p-3"><div class="section-label">Record a decision the board has already made</div>
+            <div class="small text-muted mb-2">Only after the board has voted at a meeting or by email. Tick the items above, then enter when and how it was decided.</div><div class="row g-2 align-items-end">
             {{ record_fields('decided') }}
             <div class="col-6 col-md-2"><label class="form-label small">Result</label><select name="result" class="form-select form-select-sm"><option value="passed">Passed</option><option value="failed">Failed</option></select></div>
             <div class="col-6 col-md-2"><button name="action" value="record" class="btn btn-sm btn-accent w-100">Record</button></div>
