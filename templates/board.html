@@ -38,7 +38,7 @@
             {% if st in ('passed', 'failed') and officer %}<button form="record-{{ bal.id }}" class="btn btn-sm btn-accent">Record result: {{ st }}</button>{% endif %}
             {% if st == 'open' and bal.t.voted < bal.t.of %}<button form="remind-{{ bal.id }}" class="btn btn-sm btn-link p-0" onclick="return confirm('Email a reminder to the {{ bal.t.of - bal.t.voted }} who have not voted?')">Remind the {{ bal.t.of - bal.t.voted }} who have not voted</button>{% endif %}
         </div>
-        <details class="mt-1"{% if st == 'open' %} open{% endif %}><summary class="small text-muted">Roll call</summary>{{ rollcall(bal.t.rows) }}</details>
+        <details class="mt-1"><summary class="small text-muted">Roll call</summary>{{ rollcall(bal.t.rows) }}</details>
     </div>
 {% endif %}{% endmacro %}
 {% macro ballot_forms(bal) %}{% if bal %}
@@ -134,7 +134,7 @@
         <p class="small text-muted mt-2 mb-0">{{ BL.needed() }} votes decide it. Discussion is on the board email thread. This link is yours alone.</p>
         {% endif %}
     </div>
-    <div class="card p-3"><div class="section-label">Roll call</div>{{ rollcall(t.rows) }}</div>
+    <details class="card p-3"><summary class="section-label" style="cursor:pointer">Roll call ({{ t.voted }} of {{ t.of }} voted)</summary>{{ rollcall(t.rows) }}</details>
     {% endif %}
 {% endif %}
 {% endblock %}

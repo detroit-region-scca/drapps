@@ -266,7 +266,20 @@ def detail(code):
                                               warnings=_warnings(e, b),
                                               q=q, plan=plan,
                                               status=_status(b), today=date.today().isoformat(), programs=load_programs(),
-                                              open_lines=_open_lines(e)))
+                                              open_lines=_open_lines(e), ballot=_ballot(code)))
+
+
+def _ballot(code):
+    """The latest board email vote on this budget (not cancelled), or None."""
+    try:
+        import ballots_store as BS
+        if not BS.enabled():
+            return None
+        bs = [x for x in BS.ballots() if x['item'].startswith('budget:') and x['item'].endswith(':' + code)
+              and x['status'] != 'cancelled']
+        return max(bs, key=lambda x: x['id']) if bs else None
+    except Exception:
+        return None
 
 
 def _open_lines(e):

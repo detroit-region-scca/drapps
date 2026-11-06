@@ -94,3 +94,32 @@ def test_heading_widens_a_narrow_tab(monkeypatch):
     ws = WS()
     B._heading(ws)
     assert ws.added == [len(B.BUD_COLS) - 12] and ws.written == [([B.BUD_COLS[12:]], 'M1')]
+
+
+def _detail_page(monkeypatch, perms, ballot=None):
+    import auth
+    from app import app
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Pat', 'level': 'official', 'roles': ['Director'],
+                                                   'perms': perms} if e else None)
+    monkeypatch.setattr(bud, '_guard', lambda: None)
+    monkeypatch.setattr(bud, '_event', lambda code: {'event_name': 'Sno', 'date': '2027-01-09', 'program_code': 'RY'})
+    monkeypatch.setattr(B, 'get', lambda code: {'event_code': '#C', 'event_name': 'Sno', 'program': 'RY', 'date': '2027-01-09',
+                                                'chair': 'Pat', 'location': '', 'notes': '', 'last_year_event': '', 'lines': [],
+                                                'totals': B.totals([])})
+    monkeypatch.setattr(bud, '_ballot', lambda code: ballot)
+    app.config['TESTING'] = True
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s.update(authenticated=True, email='pat@example.org', who='Pat')
+    return c.get('/events/event/%23C').get_data(as_text=True)
+
+
+def test_unapproved_budget_never_looks_approved(monkeypatch):
+    html = _detail_page(monkeypatch, {'events'}, ballot={'status': 'open', 'closes': '2026-12-05'})
+    assert 'Not approved yet.' in html and 'voting on it by email until 2026-12-05' in html
+    assert 'Record board approval' not in html and 'Approved on' not in html
+
+
+def test_officer_gets_a_blank_record_form(monkeypatch):
+    html = _detail_page(monkeypatch, {'events', 'board'})
+    assert 'Record board approval' in html and 'name="approved" class="form-control form-control-sm" required' in html
