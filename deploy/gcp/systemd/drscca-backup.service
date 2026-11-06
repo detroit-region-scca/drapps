@@ -1,0 +1,5 @@
+[Unit]
+Description=DRSCCA apps: nightly .xlsx copy of the Google Sheets
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec drapps python backup_sheets.py

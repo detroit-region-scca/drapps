@@ -1,0 +1,10 @@
+[Unit]
+Description=DRSCCA apps: apply officials-list changes (officials.json and the drscca.org Google Groups)
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/drscca/app
+EnvironmentFile=/opt/drscca/data/secrets/drapps.env
+Environment=OFFICIALS_HOST=/opt/drscca/data/secrets/officials.json
+Environment=GAM=/opt/drscca/venv/bin/gam
+Environment=GAMCFGDIR=/opt/drscca/data/secrets/gam
+ExecStart=/opt/drscca/venv/bin/python tools/officials_queue.py

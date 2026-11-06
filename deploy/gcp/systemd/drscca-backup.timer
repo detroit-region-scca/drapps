@@ -1,0 +1,7 @@
+[Unit]
+Description=DRSCCA apps: nightly sheet backup
+[Timer]
+OnCalendar=*-*-* 02:45 America/Detroit
+Persistent=true
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,6 @@
+[Unit]
+Description=DRSCCA apps: officials-list changes made in the app
+[Path]
+PathChanged=/opt/drscca/app/data/officials-queue.json
+[Install]
+WantedBy=paths.target
