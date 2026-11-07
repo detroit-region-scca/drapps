@@ -147,3 +147,21 @@ def test_person_shows_one_line_per_event_with_pax_place(tmp_path, monkeypatch):
     assert '<td class="num">1</td><td class="num">12</td>' in html      # own class place 1 (not the Pro list's 3), PAX place 12
     ev = cl.get('/records/event/1').data.decode()
     assert 'PAX' in ev and 'Class results' in ev
+
+
+def test_unlinked_names_show_as_text(tmp_path, monkeypatch):
+    import sqlite3 as S
+    import auth
+    from app import app
+    path = str(tmp_path / 'records.db'); _db(path)
+    c = S.connect(path)
+    c.execute("INSERT INTO result_rows VALUES (9, 1, 1, NULL, 'Autocross', 2025, '2025-05-25', 'ss', '2', 'ss', '8', 'Jordan', NULL, '46.0', NULL, NULL, 46.0, NULL, NULL, 11)")
+    c.commit(); c.close()
+    monkeypatch.setattr(records, 'PATH', path)
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Pat', 'level': 'official', 'roles': [], 'perms': set()} if e else None)
+    app.config['TESTING'] = True
+    cl = app.test_client()
+    with cl.session_transaction() as s:
+        s.update(authenticated=True, email='pat@example.org', who='Pat')
+    r = cl.get('/records/event/1')
+    assert r.status_code == 200 and b'Jordan' in r.data and b'/records/person/None' not in r.data

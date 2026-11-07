@@ -193,7 +193,7 @@ def event(eid):
             cols = [({'driver': 'Crew', 'total': 'Score'}.get(k, lab), k) for lab, k in cols if k != 'vehicle']
         same = [x for x in sheets if x['label'] == f['label']]
         sheets.append(dict(id=f['id'], label=f['label'] + (f' {len(same) + 1}' if same else ''), cols=cols, groups=groups,
-                           drivers=len({r['person_id'] for r in rs})))
+                           drivers=len({r['person_id'] or r['driver'] for r in rs})))
     return render_template('records.html', **_ctx(view='event', e=e, files=files, sheets=sheets))
 
 
