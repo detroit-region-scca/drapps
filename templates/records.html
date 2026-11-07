@@ -1,10 +1,9 @@
 {% extends 'base.html' %}
 {% block app_name %}Records{% endblock %}
 {% block nav %}
-    <li class="nav-item"><a class="nav-link {% if view == 'home' %}active{% endif %}" href="{{ url_for('records.home') }}">Search</a></li>
+    <li class="nav-item"><a class="nav-link {% if view in ('home', 'program', 'season', 'event', 'person') %}active{% endif %}" href="{{ url_for('records.home') }}">Records</a></li>
     <li class="nav-item"><a class="nav-link {% if view == 'hall' %}active{% endif %}" href="{{ url_for('records.hall') }}">Hall of Fame</a></li>
     <li class="nav-item"><a class="nav-link {% if view == 'add' %}active{% endif %}" href="{{ url_for('records.add') }}">Add results</a></li>
-    {% for pg in programs %}<li class="nav-item"><a class="nav-link {% if p == pg %}active{% endif %}" href="{{ url_for('records.program', prog=slug(pg)) }}">{{ pg }}</a></li>{% endfor %}
 {% endblock %}
 {% block style %}
 .rec-bar { border-bottom: 3px solid var(--red); padding: .6rem 0; margin-bottom: 1.5rem; }
@@ -20,6 +19,9 @@
 .badge-soft { display: inline-block; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 0 .5rem; font-size: .8rem; margin: 0 .25rem .25rem 0; color: var(--text); text-decoration: none; }
 details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 .table td, .table th { padding: .3rem .5rem; }
+.class-jump { position: sticky; top: 0; background: var(--bg); padding: .4rem 0; z-index: 2; }
+.nav-tabs .nav-link { color: var(--text); font-weight: 600; }
+.nav-tabs .nav-link.active { color: var(--red); }
 {% endblock %}
 {% block content %}
 
@@ -30,7 +32,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 <form method="get" class="mb-3" style="max-width: 32rem;"><input class="form-control form-control-lg" name="q" value="{{ q }}" placeholder="Search a driver or event" autofocus></form>
 {% if q %}
   {% if people %}<div class="section-label">People</div><div class="list-group mb-3">{% for r in people %}
-    <a class="list-group-item list-group-item-action" href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }} <span class="text-muted small">{{ r.n }} events{% if r.t %}, {{ r.t }} class title{{ 's' if r.t != 1 }}{% endif %}</span></a>{% endfor %}</div>{% endif %}
+    <a class="list-group-item list-group-item-action" href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }} <span class="text-muted small">{{ r.n }} event{{ 's' if r.n != 1 }}{% if r.t %}, {{ r.t }} class title{{ 's' if r.t != 1 }}{% endif %}</span></a>{% endfor %}</div>{% endif %}
   {% if events %}<div class="section-label">Events</div><div class="list-group mb-3">{% for r in events %}
     <a class="list-group-item list-group-item-action" href="{{ url_for('records.event', eid=r.id) }}">{{ r.name }} <span class="text-muted small">{{ r.program }}, {{ nice_date(r.date) or r.year }}</span></a>{% endfor %}</div>{% endif %}
   {% if not people and not events %}<p class="text-muted">No matches.</p>{% endif %}
@@ -61,21 +63,21 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 <div class="page-title">Hall of Fame</div>
 <p class="text-muted">All-time leaders from the results and standings the region posted. Seasons with no files on record are missing, so long careers count short.</p>
 <div class="section-label mt-4">Most class championships</div>
-<div class="table-responsive"><table class="table"><thead><tr><th>Name</th><th class="num">Titles</th><th>Programs</th><th>Seasons</th></tr></thead><tbody>
-{% for r in h.titles %}<tr><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td>{{ r.programs|join(', ') }}</td><td>{{ r.years|join(', ') }}</td></tr>{% endfor %}
+<div class="table-responsive"><table class="table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Titles</th><th>Programs</th><th>Seasons</th></tr></thead><tbody>
+{% for r in h.titles %}<tr><td class="num text-muted">{{ loop.index }}</td><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td>{{ r.programs|join(', ') }}</td><td>{{ r.years|join(', ') }}</td></tr>{% endfor %}
 </tbody></table></div>
 <div class="section-label mt-4">Most events</div>
-<div class="table-responsive"><table class="table"><thead><tr><th>Name</th><th class="num">Events</th><th>Years</th><th>Programs</th></tr></thead><tbody>
-{% for r in h.events %}<tr><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td>{{ r.a }}&ndash;{{ r.b }}</td><td>{{ (r.programs or '').replace(',', ', ') }}</td></tr>{% endfor %}
+<div class="table-responsive"><table class="table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Events</th><th>Years</th><th>Programs</th></tr></thead><tbody>
+{% for r in h.events %}<tr><td class="num text-muted">{{ loop.index }}</td><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td>{{ r.a }}&ndash;{{ r.b }}</td><td>{{ (r.programs or '').replace(',', ', ') }}</td></tr>{% endfor %}
 </tbody></table></div>
 <div class="section-label mt-4">Most seasons</div>
-<div class="table-responsive"><table class="table"><thead><tr><th>Name</th><th class="num">Seasons</th><th class="num">First</th><th class="num">Latest</th></tr></thead><tbody>
-{% for r in h.seasons %}<tr><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td class="num">{{ r.a }}</td><td class="num">{{ r.b }}</td></tr>{% endfor %}
+<div class="table-responsive"><table class="table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Seasons</th><th class="num">First</th><th class="num">Latest</th></tr></thead><tbody>
+{% for r in h.seasons %}<tr><td class="num text-muted">{{ loop.index }}</td><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td class="num">{{ r.a }}</td><td class="num">{{ r.b }}</td></tr>{% endfor %}
 </tbody></table></div>
 {% for pg in programs %}{% if h.by_prog[pg] %}
 <div class="section-label mt-4">{{ pg }}: most class titles</div>
-<div class="table-responsive"><table class="table"><thead><tr><th>Name</th><th class="num">Titles</th><th>Classes</th></tr></thead><tbody>
-{% for r in h.by_prog[pg] %}<tr><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td>{{ r.classes|join(', ') }}</td></tr>{% endfor %}
+<div class="table-responsive"><table class="table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Titles</th><th>Classes</th></tr></thead><tbody>
+{% for r in h.by_prog[pg] %}<tr><td class="num text-muted">{{ loop.index }}</td><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td>{{ r.classes|join(', ') }}</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}{% endfor %}
 
 {% elif view == 'program' %}
@@ -90,7 +92,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.program', prog=slug(p)) }}">{{ p }}</a></div>
 <div class="page-title">{{ year }} {{ p }}</div>
 {% if events %}<div class="section-label mt-3">Events</div>
-<div class="table-responsive"><table class="table"><thead><tr><th>Date</th><th>Event</th><th class="num">Results</th></tr></thead><tbody>
+<div class="table-responsive"><table class="table"><thead><tr><th>Date</th><th>Event</th><th class="num">Drivers</th></tr></thead><tbody>
 {% for e in events %}<tr><td class="text-nowrap">{{ nice_date(e.date) }}</td><td><a href="{{ url_for('records.event', eid=e.id) }}">{{ e.name }}</a></td><td class="num">{{ e.n or '' }}</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}
 {% if champs %}<div class="section-label mt-4">Class champions</div>
@@ -107,27 +109,34 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% elif view == 'event' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.program', prog=slug(e.program)) }}">{{ e.program }}</a>{% if e.year %} / <a href="{{ url_for('records.season', prog=slug(e.program), year=e.year) }}">{{ e.year }}</a>{% endif %}</div>
 <div class="page-title">{{ e.name }}</div>
-<p class="text-muted">{{ nice_date(e.date) or e.year }}</p>
-{% if files %}<div class="mb-3">{% for f in files %}<a class="badge-soft" href="{{ f.drive_url }}">{{ f.name }}</a>{% endfor %}</div>{% endif %}
-{% for f in files %}{% if rows[f.id] %}
-<div class="section-label mt-4">{{ f.name }}</div>
-<div class="table-responsive"><table class="table table-sm"><thead><tr>{% for lab, k in cols[f.id] %}<th>{{ lab }}</th>{% endfor %}</tr></thead><tbody>
-{% for r in rows[f.id] %}<tr>{% for lab, k in cols[f.id] %}<td>{% if k == 'driver' %}<a href="{{ url_for('records.person', pid=r.person_id) }}">{{ r.driver }}</a>{% else %}{{ r[k] or '' }}{% endif %}</td>{% endfor %}</tr>{% endfor %}
-</tbody></table></div>{% endif %}{% endfor %}
-{% if not rows %}<p class="text-muted">The results file for this event could not be read automatically.</p>{% endif %}
+<p class="text-muted mb-2">{{ nice_date(e.date) or e.year }}{% if sheets %} &middot; {{ sheets[0].drivers }} drivers{% endif %}</p>
+{% if files %}<div class="mb-3 small"><span class="text-muted">Original files:</span> {% for f in files %}<a class="badge-soft" href="{{ f.drive_url }}" target="_blank" rel="noopener">{{ f.label }}</a>{% endfor %}</div>{% endif %}
+{% if sheets %}
+{% if sheets|length > 1 %}<ul class="nav nav-tabs mb-3" role="tablist">{% for s in sheets %}
+  <li class="nav-item" role="presentation"><button class="nav-link {{ 'active' if loop.first }}" data-bs-toggle="tab" data-bs-target="#sheet{{ s.id }}" type="button" role="tab">{{ s.label }}</button></li>{% endfor %}</ul>{% endif %}
+<div class="tab-content">{% for s in sheets %}
+<div class="tab-pane {{ 'show active' if loop.first }}" id="sheet{{ s.id }}" role="tabpanel">
+  {% if s.groups|length > 1 %}<div class="mb-2 class-jump">{% for key, rs in s.groups %}<a class="badge-soft" href="#c{{ s.id }}-{{ loop.index }}">{{ key or 'Other' }}</a>{% endfor %}</div>{% endif %}
+  {% for key, rs in s.groups %}
+  {% if key %}<div class="section-label mt-3" id="c{{ s.id }}-{{ loop.index }}">{{ key }} <span class="text-lowercase">({{ rs|length }})</span></div>{% endif %}
+  <div class="table-responsive"><table class="table table-sm rec-table"><thead><tr>{% for lab, k in s.cols %}<th class="{{ 'num' if k in ('total', 'raw_time', 'pax_time') }} {{ 'd-none d-md-table-cell' if k == 'vehicle' }}">{{ lab }}</th>{% endfor %}</tr></thead><tbody>
+  {% for r in rs %}<tr>{% for lab, k in s.cols %}<td class="{{ 'num' if k in ('total', 'raw_time', 'pax_time') }} {{ 'd-none d-md-table-cell' if k == 'vehicle' }}">{% if k == 'driver' %}<a href="{{ url_for('records.person', pid=r.person_id) }}">{{ r.driver }}</a>{% if r.vehicle %}<div class="small text-muted d-md-none">{{ r.vehicle }}</div>{% endif %}{% else %}{{ r[k] or '' }}{% endif %}</td>{% endfor %}</tr>{% endfor %}
+  </tbody></table></div>{% endfor %}
+</div>{% endfor %}</div>
+{% else %}<p class="text-muted">The results file for this event could not be read automatically{% if files %}; open the original file above{% endif %}.</p>{% endif %}
 
 {% elif view == 'person' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a></div>
 <div class="page-title">{{ person.name }}</div>
-<div class="rec-stats">{% if n_events %}<div><b>{{ n_events }}</b>events</div>{% endif %}{% if years %}<div><b>{{ years[0] }}&ndash;{{ years[-1] }}</b>years</div>{% endif %}{% if n_titles %}<div><b>{{ n_titles }}</b>class championship{{ 's' if n_titles != 1 }}</div>{% endif %}</div>
+<div class="rec-stats">{% if n_events %}<div><b>{{ n_events }}</b>event{{ 's' if n_events != 1 }}</div>{% endif %}{% if years %}<div><b>{{ years[0] }}&ndash;{{ years[-1] }}</b>years</div>{% endif %}{% if n_titles %}<div><b>{{ n_titles }}</b>class championship{{ 's' if n_titles != 1 }}</div>{% endif %}</div>
 <div>{% for pg in progs %}<span class="badge-soft">{{ pg }}</span>{% endfor %}</div>
 {% if standings %}<div class="section-label mt-4">Season standings</div>
 <div class="table-responsive"><table class="table"><thead><tr><th>Season</th><th>Class</th><th class="num">Place</th><th class="num">Score</th></tr></thead><tbody>
-{% for s in standings %}<tr><td><a href="{{ url_for('records.season', prog=slug(s.program), year=s.year) }}">{{ s.year }} {{ s.program }}</a></td><td>{{ s.class or '' }}</td><td class="num">{% if s.place == 1 %}<strong>1st</strong>{% else %}{{ s.place }}{% endif %}</td><td class="num">{{ '%g'|format(s.score) }}</td></tr>{% endfor %}
+{% for s in standings|reverse %}<tr><td><a href="{{ url_for('records.season', prog=slug(s.program), year=s.year) }}">{{ s.year }} {{ s.program }}</a></td><td>{{ s.class or '' }}</td><td class="num">{% if s.place == 1 %}<strong>1st</strong>{% else %}{{ s.place }}{% endif %}</td><td class="num">{{ '%g'|format(s.score) }}</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}
-{% if results %}<div class="section-label mt-4">Results ({{ results|length }})</div>
-<div class="table-responsive"><table class="table table-sm"><thead><tr><th>Date</th><th>Event</th><th>Class</th><th>Pos</th><th>Car</th><th>Time</th></tr></thead><tbody>
-{% for r in results %}<tr><td class="text-nowrap">{{ nice_date(r.date) or r.year }}</td><td><a href="{{ url_for('records.event', eid=r.eid) }}">{{ r.event }}</a></td><td>{{ r.class or '' }}</td><td>{{ r.position or '' }}</td><td>{{ r.vehicle or '' }}</td><td>{{ r.time or '' }}</td></tr>{% endfor %}
+{% if results %}<div class="section-label mt-4">Events ({{ results|length }})</div>
+<div class="table-responsive"><table class="table table-sm"><thead><tr><th>Date</th><th>Event</th><th>Class</th><th class="num">Class place</th><th class="num">PAX place</th><th class="d-none d-md-table-cell">Car</th><th class="num">Time</th></tr></thead><tbody>
+{% for r in results|reverse %}<tr><td class="text-nowrap">{{ nice_date(r.date) or r.year }}</td><td><a href="{{ url_for('records.event', eid=r.eid) }}">{{ r.event }}</a><div class="small text-muted">{{ r.program }}</div></td><td>{{ r['class'] or '' }}</td><td class="num">{{ r.position or '' }}</td><td class="num">{{ r.pax or '' }}</td><td class="d-none d-md-table-cell">{{ r.vehicle or '' }}</td><td class="num">{{ r.time or '' }}</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}
 {% endif %}
 <p class="text-muted small mt-5">Read automatically from the files the region posted, so names and numbers can be misread.</p>

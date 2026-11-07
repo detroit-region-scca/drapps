@@ -8,7 +8,7 @@ def _db(path):
     c = sqlite3.connect(path)
     c.executescript('''
     CREATE TABLE events (id INTEGER PRIMARY KEY, program TEXT, year INTEGER, date TEXT, name TEXT);
-    CREATE TABLE files (id INTEGER PRIMARY KEY, event_id INTEGER, program TEXT, year INTEGER, date TEXT, kind TEXT, name TEXT, drive_url TEXT);
+    CREATE TABLE files (id INTEGER PRIMARY KEY, event_id INTEGER, program TEXT, year INTEGER, date TEXT, kind TEXT, name TEXT, drive_url TEXT, label TEXT, sort INTEGER);
     CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT);
     CREATE TABLE result_rows (id INTEGER PRIMARY KEY, file_id INTEGER, event_id INTEGER, person_id INTEGER, program TEXT, year INTEGER,
       date TEXT, section TEXT, position TEXT, class TEXT, car_number TEXT, driver TEXT, vehicle TEXT, total TEXT, raw_time TEXT,
@@ -16,8 +16,8 @@ def _db(path):
     CREATE TABLE season_standings (id INTEGER PRIMARY KEY, program TEXT, year INTEGER, class TEXT, place INTEGER, person_id INTEGER,
       name TEXT, score REAL, file_id INTEGER);
     INSERT INTO events VALUES (1, 'Autocross', 2025, '2025-05-25', 'Test Opener');
-    INSERT INTO files VALUES (1, 1, 'Autocross', 2025, '2025-05-25', 'event', '2025-05-25 results.pdf', 'https://drive.example/secret');
-    INSERT INTO files VALUES (2, NULL, 'Autocross', 2025, NULL, 'points', 'points.pdf', 'https://drive.example/points');
+    INSERT INTO files VALUES (1, 1, 'Autocross', 2025, '2025-05-25', 'event', '2025-05-25 results.pdf', 'https://drive.example/secret', 'Class results', 1);
+    INSERT INTO files VALUES (2, NULL, 'Autocross', 2025, NULL, 'points', 'points.pdf', 'https://drive.example/points', 'Results', 4);
     INSERT INTO people VALUES (1, 'Alex Example'), (2, 'Season Opener Points');
     INSERT INTO result_rows VALUES (1, 1, 1, 1, 'Autocross', 2025, '2025-05-25', 'ss', '1', 'ss', '7', 'Alex Example', '2020 Test Car',
       '45.123', NULL, NULL, 45.123, NULL, NULL, 10);
@@ -120,3 +120,30 @@ def test_add_results_saves_files_to_the_inbox(tmp_path, monkeypatch):
     c.post('/records/add', data={'_csrf': 't', 'program': 'Autocross', 'event': 'X', 'files': (io.BytesIO(b'MZ'), 'tool.exe')},
            content_type='multipart/form-data')
     assert sent == []
+
+
+def test_person_shows_one_line_per_event_with_pax_place(tmp_path, monkeypatch):
+    import sqlite3 as S
+    import auth
+    from app import app
+    path = str(tmp_path / 'records.db'); _db(path)
+    c = S.connect(path)
+    c.executescript('''
+    INSERT INTO files VALUES (3, 1, 'Autocross', 2025, '2025-05-25', 'event', 'pax.pdf', 'https://drive.example/pax', 'PAX', 2);
+    INSERT INTO result_rows VALUES (2, 1, 1, 1, 'Autocross', 2025, '2025-05-25', 'pro', '3', 'ss', '7', 'Alex Example', '2020 Test Car',
+      '45.123', NULL, NULL, 45.123, NULL, NULL, 5);
+    INSERT INTO result_rows VALUES (3, 3, 1, 1, 'Autocross', 2025, '2025-05-25', '', '12', 'ss', '7', 'Alex Example', '2020 Test Car',
+      '45.123', NULL, '38.100', 45.123, NULL, 38.1, 3);
+    ''')
+    c.commit(); c.close()
+    monkeypatch.setattr(records, 'PATH', path)
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Pat', 'level': 'official', 'roles': [], 'perms': set()} if e else None)
+    app.config['TESTING'] = True
+    cl = app.test_client()
+    with cl.session_transaction() as s:
+        s.update(authenticated=True, email='pat@example.org', who='Pat')
+    html = cl.get('/records/person/1').data.decode()
+    assert html.count('/records/event/1"') == 1 and 'Events (1)' in html
+    assert '<td class="num">1</td><td class="num">12</td>' in html      # own class place 1 (not the Pro list's 3), PAX place 12
+    ev = cl.get('/records/event/1').data.decode()
+    assert 'PAX' in ev and 'Class results' in ev

@@ -143,7 +143,7 @@ def program(prog):
 def season(prog, year):
     _need()
     p = SLUGS.get(prog) or abort(404)
-    events = _q('''select e.id, e.date, e.name, (select count(*) from result_rows r where r.event_id = e.id) n from events e
+    events = _q('''select e.id, e.date, e.name, (select count(distinct r.person_id) from result_rows r where r.event_id = e.id) n from events e
         where e.program = ? and e.year = ? order by e.date, e.name''', p, year)
     st = _q('select * from season_standings where program = ? and year = ? order by class, place', p, year)
     by_class = defaultdict(list)
@@ -160,27 +160,58 @@ def season(prog, year):
 def event(eid):
     _need()
     e = (_q('select * from events where id = ?', eid) or [None])[0] or abort(404)
-    files = _q('select id, name, drive_url from files where event_id = ? order by name', eid)
+    files = _q('select id, name, drive_url, coalesce(label, \'Results\') label from files where event_id = ? order by coalesce(sort, 9), name', eid)
     rows = defaultdict(list)
     for r in _q('select * from result_rows where event_id = ? order by file_id, line_no', eid):
         rows[r['file_id']].append(r)
-    cols = {}
-    for fid, rs in rows.items():
-        cols[fid] = [(lab, k) for lab, k in (('Pos', 'position'), ('Class', 'class'), ('#', 'car_number'), ('Driver', 'driver'),
-                     ('Car', 'vehicle'), ('Total', 'total'), ('Raw', 'raw_time'), ('Pax', 'pax_time')) if any(r[k] for r in rs)]
-    return render_template('records.html', **_ctx(view='event', e=e, files=files, rows=rows, cols=cols))
+    sheets = []
+    for f in files:
+        rs = rows.get(f['id'])
+        if not rs:
+            continue
+        cols = [(lab, k) for lab, k in (('Pos', 'position'), ('#', 'car_number'), ('Driver', 'driver'), ('Car', 'vehicle'),
+                ('Total', 'total'), ('Raw', 'raw_time'), ('PAX', 'pax_time')) if any(r[k] for r in rs)]
+        groups = []          # class sheets: one table per class, in the sheet's order; other sheets: one table
+        if f['label'] == 'Class results':
+            for r in rs:
+                key = r['class'] or r['section'] or ''
+                if not groups or groups[-1][0] != key:
+                    groups.append((key, []))
+                groups[-1][1].append(r)
+        else:
+            cols.insert(1, ('Class', 'class'))
+            groups = [('', rs)]
+        same = [x for x in sheets if x['label'] == f['label']]
+        sheets.append(dict(id=f['id'], label=f['label'] + (f' {len(same) + 1}' if same else ''), cols=cols, groups=groups,
+                           drivers=len({r['person_id'] for r in rs})))
+    return render_template('records.html', **_ctx(view='event', e=e, files=files, sheets=sheets))
 
 
 @bp.route('/person/<int:pid>')
 def person(pid):
     _need()
     p = (_q('select * from people where id = ?', pid) or [None])[0] or abort(404)
-    results = _q('''select r.date, r.year, r.program, r.class, r.position, r.vehicle, coalesce(r.total, r.raw_time, r.pax_time) time,
-        e.id eid, e.name event from result_rows r join events e on e.id = r.event_id where r.person_id = ? order by r.date, e.name''', pid)
+    found = _q('''select r.date, r.year, r.program, r.class, r.section, r.position, r.vehicle, coalesce(r.total, r.raw_time, r.pax_time) time,
+        r.pax_time, e.id eid, e.name event, coalesce(f.label, 'Results') label from result_rows r join events e on e.id = r.event_id
+        join files f on f.id = r.file_id where r.person_id = ? order by r.date, e.name, f.sort, r.line_no''', pid)
+    results, seen = [], {}
+    for r in found:            # one line per event: the class result, with the PAX place beside it
+        x = seen.get(r['eid'])
+        if x is None:
+            x = seen[r['eid']] = dict(date=r['date'], year=r['year'], program=r['program'], eid=r['eid'], event=r['event'],
+                                      **{'class': None}, position=None, pax=None, vehicle=r['vehicle'], time=None, section=None)
+            results.append(x)
+        if r['label'] == 'PAX':
+            x['pax'] = x['pax'] or r['position']
+        elif x['position'] is None or (x['section'] or '').lower() == 'pro':   # a Pro-section line gives way to the driver's own class
+            x.update(position=r['position'], time=r['time'], vehicle=r['vehicle'] or x['vehicle'], section=r['section'])
+            x['class'] = r['class']
+        if not x['time']:
+            x['time'] = r['time']
     standings = _q('select * from season_standings where person_id = ? order by year, program', pid)
     years = sorted({r['year'] for r in results if r['year']} | {s['year'] for s in standings})
     return render_template('records.html', **_ctx(view='person', person=p, results=results, standings=standings, years=years,
-                                                  n_events=len({r['eid'] for r in results}), n_titles=sum(1 for s in standings if s['place'] == 1),
+                                                  n_events=len(results), n_titles=sum(1 for s in standings if s['place'] == 1),
                                                   progs=sorted({r['program'] for r in results} | {s['program'] for s in standings})))
 
 
