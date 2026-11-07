@@ -29,6 +29,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% endblock %}
 {% block content %}
 
+<div class="alert alert-warning small mb-3" role="status"><strong>Being rebuilt.</strong> These records were read automatically from the region's old files and many times, places and champions are wrong. Each program is being re-read and checked against the original sheets; until that is done, check the original file before relying on a result.</div>
 {% if view == 'home' %}
 <div class="page-title">Detroit Region SCCA records</div>
 <p class="text-muted">Results and season standings the region has posted since 1982, in one place.</p>
@@ -114,10 +115,16 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% elif view == 'event' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.program', prog=slug(e.program)) }}">{{ e.program }}</a>{% if e.year %} / <a href="{{ url_for('records.season', prog=slug(e.program), year=e.year) }}">{{ e.year }}</a>{% endif %}</div>
 <div class="page-title">{{ e.name }}</div>
-<p class="text-muted mb-2">{{ nice_date(e.date) or e.year }}{% if sheets %} &middot; {{ sheets[0].drivers }} {{ 'crews' if e.program == 'Rally' else 'drivers' }}{% endif %}{% if can_edit %} &middot; <a href="{{ url_for('records.event_edit', eid=e.id) }}">Correct this event</a>{% endif %}</p>
-{% if files %}<div class="mb-3 small"><span class="text-muted">Original files:</span> {% for f in files %}<a class="badge-soft" href="{{ f.drive_url }}" target="_blank" rel="noopener">{{ f.label }}</a>{% endfor %}</div>{% endif %}
+<p class="text-muted mb-2">{{ nice_date(e.date) or e.year }}{% if n_people %} &middot; {{ n_people }} {{ 'crews' if e.program == 'Rally' else 'drivers' }}{% endif %}{% if can_edit %} &middot; <a href="{{ url_for('records.event_edit', eid=e.id) }}">Correct this event</a>{% endif %}</p>
+{% if files %}<details class="mb-3 small"><summary class="text-muted">Original file{{ 's' if files|length > 1 }} ({{ files|length }})</summary>
+<div class="mt-1">{% for f in files %}<a class="badge-soft" href="{{ f.drive_url }}" target="_blank" rel="noopener">{{ f.label }}</a>{% endfor %}</div></details>{% endif %}
 {% if sheets %}
-{% if sheets|length > 1 %}<ul class="nav nav-tabs mb-3" role="tablist">{% for s in sheets %}
+{% if chooser %}
+<div class="mb-3" style="max-width:24rem"><label class="form-label small text-muted" for="sheetPick">Session</label>
+<select class="form-select" id="sheetPick">{% for g, ss in chooser %}{% if g %}<optgroup label="{{ g }}">{% endif %}{% for s in ss %}<option value="sheet{{ s.id }}">{{ s.part if g else s.label }}</option>{% endfor %}{% if g %}</optgroup>{% endif %}{% endfor %}</select></div>
+<script>document.getElementById('sheetPick').addEventListener('change', function () {
+  document.querySelectorAll('.tab-pane').forEach(function (p) { p.classList.toggle('show', p.id === this.value); p.classList.toggle('active', p.id === this.value); }, this); });</script>
+{% elif sheets|length > 1 %}<ul class="nav nav-tabs mb-3" role="tablist">{% for s in sheets %}
   <li class="nav-item" role="presentation"><button class="nav-link {{ 'active' if loop.first }}" data-bs-toggle="tab" data-bs-target="#sheet{{ s.id }}" type="button" role="tab">{{ s.label }}</button></li>{% endfor %}</ul>{% endif %}
 <div class="tab-content">{% for s in sheets %}
 <div class="tab-pane {{ 'show active' if loop.first }}" id="sheet{{ s.id }}" role="tabpanel">
@@ -128,7 +135,8 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
   {% for r in rs %}<tr>{% for lab, k in s.cols %}<td class="{{ 'num' if k in ('total', 'raw_time', 'pax_time') }} {{ 'd-none d-md-table-cell' if k == 'vehicle' }}">{% if k == 'driver' and r.crew %}{% for pid, nm in r.crew %}{% if pid %}<a href="{{ url_for('records.person', pid=pid) }}">{{ nm }}</a>{% else %}{{ nm }}{% endif %}{{ ' & ' if not loop.last }}{% endfor %}{% elif k == 'driver' %}{% if r.person_id %}<a href="{{ url_for('records.person', pid=r.person_id) }}">{{ r.driver }}</a>{% else %}{{ r.driver }}{% endif %}{% if r.vehicle %}<div class="small text-muted d-md-none">{{ r.vehicle }}</div>{% endif %}{% else %}{{ r[k] or '' }}{% endif %}</td>{% endfor %}</tr>{% endfor %}
   </tbody></table></div>{% endfor %}
 </div>{% endfor %}</div>
-{% else %}<p class="text-muted">The results file for this event could not be read automatically{% if files %}; open the original file above{% endif %}.</p>{% endif %}
+{% else %}<p class="text-muted">The results for this event are only in the original {{ 'scan' if files and files[0].ocr else 'file' }}, which could not be read reliably{% if files %}: <a href="{{ files[0].drive_url }}" target="_blank" rel="noopener">open it</a>{% endif %}.</p>{% endif %}
+{% if sheets and scanned %}<p class="small text-muted">Read from a scanned sheet by OCR: check the original before relying on a time or a place.</p>{% endif %}
 
 {% elif view == 'event_edit' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.event', eid=e.id) }}">{{ e.name }}</a> / Correct</div>

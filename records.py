@@ -260,7 +260,9 @@ def season_edit(prog, year):
 def event(eid):
     _need()
     e = (_q('select * from events where id = ?', eid) or [None])[0] or abort(404)
-    files = _q('select id, name, drive_url, coalesce(label, \'Results\') label from files where event_id = ? order by coalesce(sort, 9), name', eid)
+    has_ocr = any(r['name'] == 'ocr' for r in _q('pragma table_info(files)'))       # databases built before 2026-11-08 lack it
+    files = _q(f"select id, name, drive_url, coalesce(label, 'Results') label, {'ocr' if has_ocr else 'null ocr'} from files "
+               'where event_id = ? order by coalesce(sort, 9), name', eid)
     rows = defaultdict(list)
     for r in _q('select * from result_rows where event_id = ? order by file_id, line_no', eid):
         rows[r['file_id']].append(r)
@@ -278,7 +280,8 @@ def event(eid):
         cols = [(lab, k) for lab, k in (('Pos', 'position'), ('#', 'car_number'), ('Driver', 'driver'), ('Car', 'vehicle'),
                 ('Total', 'total'), ('Raw', 'raw_time'), ('PAX', 'pax_time')) if any(r[k] for r in rs)]
         groups = []          # class sheets: one table per class, in the sheet's order; other sheets: one table
-        if f['label'] == 'Class results':
+        is_class = f['label'].startswith('Class results')
+        if is_class:
             mixed = any(r['section'] and r['class'] and r['section'].lower() != r['class'].lower() for r in rs)
             for r in rs:
                 key = r['section'] or r['class'] or ''      # the sheet's own headings (a Pro list mixes classes)
@@ -287,14 +290,30 @@ def event(eid):
                 groups[-1][1].append(r)
         else:
             groups = [('', rs)]
-        if f['label'] != 'Class results' or mixed:
+        if not is_class or mixed:
             cols.insert(1, ('Class', 'class'))
         if e['program'] == 'Rally':      # a rally crew is a driver and a navigator, scored in points
             cols = [({'driver': 'Crew', 'total': 'Score'}.get(k, lab), k) for lab, k in cols if k != 'vehicle']
         same = [x for x in sheets if x['label'] == f['label']]
-        sheets.append(dict(id=f['id'], label=f['label'] + (f' {len(same) + 1}' if same else ''), cols=cols, groups=groups,
-                           drivers=len({r['person_id'] or r['driver'] for r in rs})))
-    return render_template('records.html', **_ctx(view='event', e=e, files=files, sheets=sheets, can_edit=can_edit(e['program'])))
+        lab = f['label'] + (f' {len(same) + 1}' if same else '')
+        group, _, part = lab.partition(' \u00b7 ')          # "Group 2 · Saturday race": chooser grouped by run group
+        sheets.append(dict(id=f['id'], label=lab, group=group if part else '', part=part or lab, cols=cols, groups=groups))
+    everyone = {r['person_id'] or r['driver'] for rs in rows.values() for r in rs}
+    if e['program'] == 'Rally':        # crews, counted on the main sheet (a crew is two rows)
+        everyone = {r['line_no'] for r in rows.get(sheets[0]['id'], [])} if sheets else set()
+    return render_template('records.html', **_ctx(view='event', e=e, files=files, sheets=sheets, can_edit=can_edit(e['program']),
+                                                  scanned=any(f['ocr'] and rows.get(f['id']) for f in files),
+                                                  n_people=len(everyone), chooser=_chooser(sheets) if len(sheets) > 6 else None))
+
+
+def _chooser(sheets):
+    """[(group, [sheet, ...])] in the sheets' own order: one select list, with an optgroup per run group."""
+    out = []
+    for sh in sheets:
+        if not out or out[-1][0] != sh['group']:
+            out.append((sh['group'], []))
+        out[-1][1].append(sh)
+    return out
 
 
 @bp.route('/event/<int:eid>/edit', methods=['GET', 'POST'])

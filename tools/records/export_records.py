@@ -9,7 +9,7 @@ if os.path.exists(tmp): os.remove(tmp)
 d = sqlite3.connect(tmp)
 d.execute(f"ATTACH '{src}' AS s")
 d.executescript('''
-CREATE TABLE files AS SELECT id, event_id, program, year, date, kind, sorted_name AS name, drive_url FROM s.files
+CREATE TABLE files AS SELECT id, event_id, program, year, date, kind, sorted_name AS name, drive_url, ocr FROM s.files
   WHERE program IN ('Autocross', 'RallyCross', 'Rally', 'Road Racing', 'Sim Racing');
 CREATE TABLE events AS SELECT * FROM s.events WHERE id IN (SELECT event_id FROM files WHERE event_id IS NOT NULL);
 CREATE TABLE result_rows AS SELECT id, file_id, event_id, person_id, program, year, date, section, position, class, car_number,
@@ -262,24 +262,71 @@ d.execute("delete from season_standings where name glob '[FST][a-z]* [A-Z][A-Z]'
 d.execute("update result_rows set vehicle = null where vehicle glob 'with [A-Z][A-Z]'")
 # an event none of whose files could be read (a scanned narrative, a photo of a sheet) lists nothing but looks like a
 # rally or race that has no results: leave it out; the file is still in Drive under Results by program
-for (eid,) in d.execute('select id from events where id not in (select distinct event_id from result_rows where event_id is not null)').fetchall():
+for (eid,) in d.execute('''select id from events where id not in (select distinct event_id from result_rows where event_id is not null)
+                            and id not in (select event_id from files where ocr like 'scan not read%' and event_id is not null)''').fetchall():
+    # (an event whose results are only in a scan we could not read cleanly stays, with a link to the scan)
     d.execute('delete from files where event_id = ?', (eid,)); d.execute('delete from events where id = ?', (eid,))
     stats['events with no readable results left out'] += 1
+# Tabs: what each sheet is (Class results, PAX, Raw, Overall, Leg scores) and which part of the day it covers, from
+# its file name ("..._am_course_results", "grfn_sat_pm_pax"), so two sheets never share a name unless they are the same
+d.execute('alter table files add column label text')
+d.execute('alter table files add column sort integer')
+def sheet_label(nm):
+    low = (nm or '').lower().replace('_', ' ').replace('-', ' ')
+    if re.search(r'leg\s*by\s*leg', low):
+        base, srt = 'Leg scores', 5
+    elif re.search(r'\bpax\b|\bindex\b', low):
+        base, srt = 'PAX', 2
+    elif re.search(r'\braw\b', low):
+        base, srt = 'Raw', 3
+    elif re.search(r'\boverall\b', low) and not re.search(r'\bclass', low):
+        base, srt = 'Overall', 2
+    elif re.search(r'class|final|results?|scores?', low):
+        base, srt = 'Class results', 1
+    else:
+        base, srt = 'Results', 4
+    q = []
+    for rx, word in ((r'\bsat(urday)?\b', 'Saturday'), (r'\bsun(day)?\b', 'Sunday'), (r'\b(am|morning)\b', 'AM'),
+                     (r'\b(pm|afternoon)\b', 'PM'), (r'\bday\s*([12])\b', 'Day {}'), (r'\bheat\s*(\d)\b', 'Heat {}'),
+                     (r'\bcourse\s*([ab12])\b', 'Course {}')):
+        m = re.search(rx, low)
+        if m:
+            q.append(word.format(m[1].upper()) if '{}' in word else word)
+    if base != 'Overall' and re.search(r'\boverall\b', low) and q == []:
+        q.append('Overall')
+    order = {'Saturday': 1, 'Day 1': 1, 'Sunday': 3, 'Day 2': 3, 'AM': 1, 'PM': 2, 'Overall': 0}
+    return base + (' \u00b7 ' + ', '.join(q) if q else ''), sum(order.get(x, 3) for x in q) * 10 + srt
+for i, nm in d.execute('select id, name from files').fetchall():
+    lab, srt = sheet_label(nm)
+    if (nm or '').lower().endswith('.csv') and ' - ' in nm:          # Speedhive race sessions: the label made at import
+        lab = nm.rsplit(' - ', 1)[1][:-4]
+        g = re.search(r'group\s*(\d+)', lab, re.I)
+        srt = (int(g[1]) if g else 50) * 10 + next((k for k, w in enumerate(('saturday', 'race 1', 'qualifying', 'sunday', 'race 2', 'feature'), 1) if w in lab.lower()), 7)
+    d.execute('update files set label = ?, sort = ? where id = ?', (lab, srt, i))
+# the same results posted twice (a PDF and a web page, or a revision): keep one sheet, the latest revision or the
+# fuller one; the other file stays linked under Original files
+def rev(nm):
+    m = re.search(r'rev\s*(\d+)|v(\d+)\b', (nm or '').lower())
+    return int(m[1] or m[2]) if m else (1 if 'final' in (nm or '').lower() else 0)
+for (eid,) in d.execute('select distinct event_id from files where event_id is not null').fetchall():
+    fs = d.execute('select f.id, f.name, f.label from files f where f.event_id = ? and exists (select 1 from result_rows r where r.file_id = f.id)', (eid,)).fetchall()
+    sig = {fid: {(dr.lower(), t) for dr, t in d.execute('select driver, coalesce(total, raw_time, pax_time) from result_rows where file_id = ?', (fid,)) if dr}
+           for fid, _, _ in fs}
+    gone = set()
+    for x in fs:
+        for y in fs:
+            if x[0] >= y[0] or x[0] in gone or y[0] in gone or x[2] != y[2] or not sig[x[0]] or not sig[y[0]]:
+                continue
+            if len(sig[x[0]] & sig[y[0]]) / min(len(sig[x[0]]), len(sig[y[0]])) >= 0.9:
+                keep = max((x, y), key=lambda f: (rev(f[1]), len(sig[f[0]]), f[0]))
+                drop = y if keep is x else x
+                d.execute('delete from result_rows where file_id = ?', (drop[0],)); gone.add(drop[0])
+                stats['duplicate sheets hidden (same results posted twice)'] += 1
 # people left with no results or standings (their rows were dropped as junk, e.g. a town read as a name)
 d.execute('delete from people where id not in (select person_id from result_rows where person_id is not null union select person_id from season_standings where person_id is not null)')
 print(dict(stats))
 open(os.path.join(os.path.dirname(out), 'records-review.txt'), 'w').write(
     'Possible same person, not merged (name, rows, name, rows):\n' + '\n'.join(f'{a} ({x})  |  {b} ({y})' for a, x, b, y in sorted(set(review))) + '\n')
-d.execute('alter table files add column label text')
-d.execute('alter table files add column sort integer')
-for i, nm in d.execute('select id, name from files').fetchall():
-    low = (nm or '').lower()
-    lab, srt = ('Leg scores', 5) if re.search(r'leg\W*by\W*leg', low) else ('Overall', 2) if re.search(r'\boverall\b|-overall', low) and 'class' not in low else ('PAX', 2) if 'pax' in low or 'index' in low else ('Raw', 3) if 'raw' in low else ('Class results', 1) if re.search(r'class|final|results?', low) else ('Results', 4)
-    if low.endswith('.csv') and ' - ' in nm:          # Speedhive race sessions: one tab per session, by group then day
-        lab = nm.rsplit(' - ', 1)[1][:-4]
-        g = re.search(r'gr(?:ou)?p\s*#?\s*(\d+)', lab, re.I)
-        srt = (int(g[1]) if g else 50) * 10 + next((i for i, k in enumerate(('saturday', 'race 1', 'qual race', 'sunday', 'race 2', 'feature'), 1) if k in lab.lower()), 7)
-    d.execute('update files set label = ?, sort = ? where id = ?', (lab, srt, i))
 if len(sys.argv) > 3:         # corrections made in drapps by program directors and officers
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
     import records_edits

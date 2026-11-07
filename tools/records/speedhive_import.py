@@ -15,9 +15,13 @@ Each file is uploaded to Drive, *Timing and Results / Results by program / Road 
 and added to the build's work folder (index.json, plan.json, sorted.csv, files/) so build.py reads it.
 Run it after fetch.py and classify.py/plan.py, before build.py. Safe to run again: existing files are replaced.
 
+Sessions are named "Group 2 · Saturday race" whatever each upload called them. Unchanged files are not uploaded again,
+and this step's own older copies in those folders (renamed or dropped sessions) go to the Drive trash.
+
 Usage: speedhive_import.py <work>      (needs WORKSPACE_SA and TIMING_RESULTS_FOLDER_ID, like the other steps)
 """
 import csv
+import hashlib
 import io
 import json
 import os
@@ -48,7 +52,7 @@ SOURCES = [
          title=gingerman_title),
 ]
 SKIP = re.compile(r'school', re.I)
-NOT_RACE = re.compile(r'grid|practice|warm', re.I)
+NOT_RACE = re.compile(r'grid|practice|warm|time trial|bracket|parade|all cars on track|test', re.I)
 
 
 def get(path):
@@ -58,19 +62,48 @@ def get(path):
 
 
 def races(event):
+    """Race sessions, each tagged with its run group number ('_group', from the group's name: "Group 1", "G1-SM, SM5",
+    "Grp1"), so sessions get one naming scheme whatever each upload called them."""
     out = []
-    for g in event.get('sessions', {}).get('groups', []):
+    for gi, g in enumerate(event.get('sessions', {}).get('groups', []), 1):
+        gm = re.search(r'\b(?:group|grp|gp|g)\s*_?#?\s*(\d+)', g.get('name', ''), re.I)
         for s in g.get('sessions', []) + [x for sg in g.get('subGroups', []) for x in sg.get('sessions', [])]:
-            if s.get('type') == 'race' and not NOT_RACE.search(s.get('name', '')):
-                out.append(s)
+            if s.get('type') == 'race' and not NOT_RACE.search(s.get('name', '') + ' ' + g.get('name', '')):
+                sm = re.search(r'\b(?:group|grp|gp|g)\s*_?#?\s*(\d+)', s.get('name', ''), re.I)
+                out.append(dict(s, _group=int((gm or sm)[1]) if (gm or sm) else None))
     return out
 
 
-def key(session_name):
+def kind(name):
+    """What a session was, in one vocabulary: Saturday race, Sunday race, Qualifying race, Points race 1, Feature..."""
+    n = name.lower().replace('_', ' ')
+    num = re.search(r'race\s*#?\s*(\d)', n)
+    if 'qual' in n and 'class race' in n:
+        return 'Sunday race (SCCA qualifying)'
+    if 'qual' in n:
+        return 'Qualifying race' + (' (Sunday)' if 'sun' in n else '')
+    if 'feature' in n:
+        return 'Feature'
+    if 'invitational' in n or 'inviatational' in n:
+        return 'Invitational race'
+    if 'points' in n and num:
+        return f'Points race {num[1]}'
+    if re.search(r'\bsat', n):
+        return 'Saturday race'
+    if re.search(r'\bsun', n):
+        return 'Sunday race'
+    if num:
+        return f'Race {num[1]}'
+    return 'Race'
+
+
+def session_label(s):
+    return f"Group {s['_group']} \u00b7 {kind(s['name'])}" if s.get('_group') else kind(s['name'])
+
+
+def key(s):
     """Group number and race kind, to match a revised session to the one it replaces."""
-    g = re.search(r'gr(?:ou)?p\s*_?#?\s*(\d+)', session_name, re.I)
-    k = re.search(r'saturday|sunday|feature|race\s*\d|qual\w*\s*race', session_name, re.I)
-    return (g[1] if g else '', (k[0] if k else '').lower())
+    return (s.get('_group'), kind(s['name']))
 
 
 def pick(src, have):
@@ -95,15 +128,9 @@ def pick(src, have):
         sessions = races(main)
         for e in revised:
             for s in races(e):
-                sessions = [x for x in sessions if key(x['name']) != key(s['name'])] + [s]
+                sessions = [x for x in sessions if key(x) != key(s)] + [s]
         chosen[date] = (main, sessions)
     return chosen
-
-
-def session_label(name):
-    n = re.sub(r'\s*-\s*[A-Z0-9;,/ ]{2,}$', '', name)            # drop the class list after the dash
-    n = re.sub(r'_', ' ', n)
-    return ' '.join(n.replace('/ SCCA Qualifying', '').split()).strip(' -/')
 
 
 def to_csv(src, event, date, session):
@@ -113,7 +140,7 @@ def to_csv(src, event, date, session):
     # first line: the event, the way the build reads event names ("- name - Sat MM-DD-YYYY")
     y, m, d = date.split('-')
     w.writerow([f"Speedhive - {src['title'](event['name'], date)} - Sat {m}-{d}-{y}"])
-    w.writerow([f"Session: {session_label(session['name'])}", f"Source: Speedhive event {event['id']}, session {session['id']}"])
+    w.writerow([f"Session: {session_label(session)}", f"Source: Speedhive event {event['id']}, session {session['id']}"])
     w.writerow(['Pos', 'Class', 'In class', '#', 'Driver', 'Laps', 'Best lap', 'Total time', 'Status'])   # Class before In class: the build takes the first column whose title says class
     for r in rows:
         w.writerow([r.get('position') or '', r.get('resultClass') or '', r.get('positionInClass') or '', r.get('startNumber') or '',
@@ -140,10 +167,21 @@ def main():
         f = s.get(files_api, params=dict(P, q=q, includeItemsFromAllDrives='true', fields='files(id)')).json()['files']
         return f[0]['id'] if f else s.post(files_api, params=P, json=dict(name=name, parents=[parent], mimeType='application/vnd.google-apps.folder')).json()['id']
 
-    def find(name, parent):
-        q = f"'{parent}' in parents and trashed=false and name='{name.replace(chr(39), chr(92) + chr(39))}'"
-        f = s.get(files_api, params=dict(P, q=q, includeItemsFromAllDrives='true', fields='files(id)')).json()['files']
-        return f[0]['id'] if f else None
+    listed, written = {}, {}
+
+    def listing(parent):
+        """{name: (id, md5)} of the CSVs in a folder, read once."""
+        if parent not in listed:
+            out, tok = {}, None
+            while True:
+                r = s.get(files_api, params=dict(P, q=f"'{parent}' in parents and trashed=false", includeItemsFromAllDrives='true',
+                                                 fields='nextPageToken,files(id,name,md5Checksum)', pageSize=1000, **({'pageToken': tok} if tok else {}))).json()
+                out.update({f['name']: (f['id'], f.get('md5Checksum')) for f in r.get('files', [])})
+                tok = r.get('nextPageToken')
+                if not tok:
+                    break
+            listed[parent] = out
+        return listed[parent]
 
     root = folder('Road Racing', folder('Results by program', os.environ['TIMING_RESULTS_FOLDER_ID']))
     idx = json.load(open(f'{WORK}/index.json'))
@@ -163,12 +201,15 @@ def main():
             body, count = to_csv(src, event, date, sess)
             if not count:
                 continue
-            name = f"{date} {src['title'](event['name'], date)} - {session_label(sess['name'])}.csv"
+            name = f"{date} {src['title'](event['name'], date)} - {session_label(sess)}.csv"
             fid = f"speedhive-{sess['id']}"
             open(f'{WORK}/files/{fid}', 'w').write(body)
             meta = {'name': name, 'description': f"Speedhive (MYLAPS) event {event['id']} '{event['name']}', session {sess['id']}"}
-            old = find(name, dest)
-            if old:
+            written.setdefault(dest, set()).add(name)
+            old, md5 = listing(dest).get(name, (None, None))
+            if old and md5 == hashlib.md5(body.encode()).hexdigest():
+                copies[fid] = old                  # unchanged: nothing to upload
+            elif old:
                 s.patch(f'{up}/{old}', params=dict(P, uploadType='media'), data=body.encode(), headers={'Content-Type': 'text/csv'}).raise_for_status()
                 copies[fid] = old
             else:
@@ -180,6 +221,12 @@ def main():
             sorted_rows.append({'id': fid, 'name': name, 'oldpath': 'Speedhive', 'program': 'Road Racing', 'year': date[:4], 'date': date,
                                 'kind': 'event', 'text': ''})
             n += 1
+    # this step's own older copies (a session renamed, or no longer imported): to the Drive trash
+    for dest, names in written.items():
+        for name, (fid, _) in listing(dest).items():
+            if name.endswith('.csv') and name not in names and name[:10] in {x[:10] for x in names}:   # only the weekends written now
+                s.patch(f'{files_api}/{fid}', params=P, json={'trashed': True}).raise_for_status()
+                print('trashed old copy', name)
     json.dump(copies, open(f'{WORK}/copied.json', 'w'))
     json.dump(idx, open(f'{WORK}/index.json', 'w'), indent=1)
     json.dump(plan, open(f'{WORK}/plan.json', 'w'), indent=1)

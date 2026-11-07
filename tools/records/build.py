@@ -445,7 +445,7 @@ db.executescript('''
 CREATE TABLE events (id INTEGER PRIMARY KEY, program TEXT, year INTEGER, date TEXT, name TEXT);
 CREATE TABLE files (id INTEGER PRIMARY KEY, event_id INTEGER REFERENCES events(id), program TEXT, year INTEGER, date TEXT,
   kind TEXT, name TEXT, sorted_name TEXT, sorted_folder TEXT, original_folder TEXT, drive_url TEXT, original_drive_url TEXT,
-  rows_found INTEGER, text TEXT);
+  rows_found INTEGER, text TEXT, ocr TEXT);
 CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
 CREATE TABLE worker_points (id INTEGER PRIMARY KEY, file_id INTEGER REFERENCES files(id), snapshot_date TEXT, person_id INTEGER REFERENCES people(id),
   member_no TEXT, anniversary TEXT, name TEXT, carried_in REAL, used REAL, available REAL, by_event TEXT, line_no INTEGER, raw_line TEXT);
@@ -465,6 +465,20 @@ def event_name(text, name):
     n = re.sub(r'[_\-]+', ' ', n)
     n = re.sub(r'\b(\d{1,4}[ /.]?){2,3}\b|\b(final|results?|class|pax|raw|index|overall|by|for|web|corrected|revised|r\d)\b', ' ', n, flags=re.I)
     return ' '.join(n.split()).title() or name
+OCR_NAME = re.compile(r"[A-Z][A-Za-z'.\-]+(?: (?:[A-Z][A-Za-z'.\-]*|(?:von|van|de|la|du)[A-Za-z'.\-]*|Jr\.?|Sr\.?|II|III)){1,3}")
+def ocr_gate(rows):
+    """Rows read from a scan are kept only when the scan read cleanly: a real name and a readable number on at least 80%
+    of them (wrong results are worse than a link to the scan). Returns (rows, note)."""
+    if not rows:
+        return rows, ''
+    def ok(r):
+        nums = [r.get(k) for k in ('total', 'raw_time', 'pax_time', 'position') if r.get(k)]
+        return bool(OCR_NAME.fullmatch(' '.join((r.get('driver') or '').split()))) and any(
+            re.fullmatch(r'\d{1,4}(?:[.:]\d{1,3})*[A-Za-z]?|DNF|DNS|DQ|DSQ', str(v).strip()) for v in nums)
+    good = sum(1 for r in rows if ok(r))
+    if good < 0.8 * len(rows):
+        return [], f'scan not read: only {good} of {len(rows)} lines read cleanly'
+    return [r for r in rows if ok(r)], f'read from a scan ({good} of {len(rows)} lines kept)'
 events, drivers = {}, {}
 def prog_is_wp(m): return m['program'] == 'Worker points'
 def num(v):
@@ -505,9 +519,12 @@ for i, (fid, p) in enumerate(plan.items(), 1):
     if not rows and text: rows = parse(text)
     if not rows and text: rows = parse_lines(text)
     if not rows and text and m['program'] == 'RallyCross': rows = parse_stacked(text)
-    db.execute('INSERT INTO files VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (i, ev, m['program'], year, m['date'] or None, m['kind'], m['name'],
+    ocr_note = None
+    if os.path.exists(os.path.join(TEXT, fid + '.ocr.json')) and not prog_is_wp(m):     # text from a scan: gate it
+        rows, ocr_note = ocr_gate(rows)
+    db.execute('INSERT INTO files VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (i, ev, m['program'], year, m['date'] or None, m['kind'], m['name'],
         p['name'], p['folder'], m['oldpath'], f"https://drive.google.com/file/d/{copies.get(fid, fid)}/view",
-        f'https://drive.google.com/file/d/{fid}/view', len(rows), text))
+        f'https://drive.google.com/file/d/{fid}/view', len(rows), text, ocr_note))
     for r in rows:
         d = flip(' '.join(r['driver'].split()).strip(' ,')) if ',' in r['driver'].strip(' ,') else ' '.join(r['driver'].split()).strip(' ,')
         if prog_is_wp(m):

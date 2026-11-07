@@ -8,7 +8,7 @@ def _db(path):
     c = sqlite3.connect(path)
     c.executescript('''
     CREATE TABLE events (id INTEGER PRIMARY KEY, program TEXT, year INTEGER, date TEXT, name TEXT);
-    CREATE TABLE files (id INTEGER PRIMARY KEY, event_id INTEGER, program TEXT, year INTEGER, date TEXT, kind TEXT, name TEXT, drive_url TEXT, label TEXT, sort INTEGER);
+    CREATE TABLE files (id INTEGER PRIMARY KEY, event_id INTEGER, program TEXT, year INTEGER, date TEXT, kind TEXT, name TEXT, drive_url TEXT, label TEXT, sort INTEGER, ocr TEXT);
     CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT);
     CREATE TABLE result_rows (id INTEGER PRIMARY KEY, file_id INTEGER, event_id INTEGER, person_id INTEGER, program TEXT, year INTEGER,
       date TEXT, section TEXT, position TEXT, class TEXT, car_number TEXT, driver TEXT, vehicle TEXT, total TEXT, raw_time TEXT,
@@ -16,8 +16,8 @@ def _db(path):
     CREATE TABLE season_standings (id INTEGER PRIMARY KEY, program TEXT, year INTEGER, class TEXT, place INTEGER, person_id INTEGER,
       name TEXT, score REAL, file_id INTEGER);
     INSERT INTO events VALUES (1, 'Autocross', 2025, '2025-05-25', 'Test Opener');
-    INSERT INTO files VALUES (1, 1, 'Autocross', 2025, '2025-05-25', 'event', '2025-05-25 results.pdf', 'https://drive.example/secret', 'Class results', 1);
-    INSERT INTO files VALUES (2, NULL, 'Autocross', 2025, NULL, 'points', 'points.pdf', 'https://drive.example/points', 'Results', 4);
+    INSERT INTO files VALUES (1, 1, 'Autocross', 2025, '2025-05-25', 'event', '2025-05-25 results.pdf', 'https://drive.example/secret', 'Class results', 1, NULL);
+    INSERT INTO files VALUES (2, NULL, 'Autocross', 2025, NULL, 'points', 'points.pdf', 'https://drive.example/points', 'Results', 4, NULL);
     INSERT INTO people VALUES (1, 'Alex Example'), (2, 'Season Opener Points');
     INSERT INTO result_rows VALUES (1, 1, 1, 1, 'Autocross', 2025, '2025-05-25', 'ss', '1', 'ss', '7', 'Alex Example', '2020 Test Car',
       '45.123', NULL, NULL, 45.123, NULL, NULL, 10);
@@ -129,7 +129,7 @@ def test_person_shows_one_line_per_event_with_pax_place(tmp_path, monkeypatch):
     path = str(tmp_path / 'records.db'); _db(path)
     c = S.connect(path)
     c.executescript('''
-    INSERT INTO files VALUES (3, 1, 'Autocross', 2025, '2025-05-25', 'event', 'pax.pdf', 'https://drive.example/pax', 'PAX', 2);
+    INSERT INTO files VALUES (3, 1, 'Autocross', 2025, '2025-05-25', 'event', 'pax.pdf', 'https://drive.example/pax', 'PAX', 2, NULL);
     INSERT INTO result_rows VALUES (2, 1, 1, 1, 'Autocross', 2025, '2025-05-25', 'pro', '3', 'ss', '7', 'Alex Example', '2020 Test Car',
       '45.123', NULL, NULL, 45.123, NULL, NULL, 5);
     INSERT INTO result_rows VALUES (3, 3, 1, 1, 'Autocross', 2025, '2025-05-25', '', '12', 'ss', '7', 'Alex Example', '2020 Test Car',
