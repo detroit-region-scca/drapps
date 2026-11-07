@@ -244,6 +244,22 @@ for (eid,) in d.execute("""select event_id from files where program = 'Road Raci
     gone = d.execute("""delete from result_rows where event_id = ? and file_id in
                          (select id from files where event_id = ? and not (name like '%.csv' and name like '% - %'))""", (eid, eid)).rowcount
     stats['old-site rows dropped (same race on Speedhive)'] += gone
+# a rally's overall sheet posted a few days later ("POR-2026-Scoring_20260914-overall.pdf", a Monday): part of the
+# rally it scores, the latest same-name event up to 3 days before, as its Overall tab
+import datetime as _dt
+for i, nm, dt, yr in d.execute("select id, name, date, year from events where program = 'Rally' and date is not null").fetchall():
+    day = _dt.date.fromisoformat(dt)
+    if day.weekday() not in (0, 1, 2, 3):
+        continue
+    prev = d.execute("select id from events where program = 'Rally' and name = ? and year = ? and date < ? and date >= ? order by date desc limit 1",
+                     (nm, yr, dt, (day - _dt.timedelta(days=3)).isoformat())).fetchone()
+    if prev:
+        d.execute('update files set event_id = ? where event_id = ?', (prev[0], i))
+        d.execute('update result_rows set event_id = ?, date = (select date from events where id = ?) where event_id = ?', (prev[0], prev[0], i))
+        d.execute('delete from events where id = ?', (i,)); stats['rally sheets posted later joined to their rally'] += 1
+# place labels some standings sheets print as rows ("First PA", "Second MA")
+d.execute("delete from season_standings where name glob '[FST][a-z]* [A-Z][A-Z]' and lower(substr(name, 1, instr(name, ' ') - 1)) in ('first','second','third','fourth','fifth')")
+d.execute("update result_rows set vehicle = null where vehicle glob 'with [A-Z][A-Z]'")
 # an event none of whose files could be read (a scanned narrative, a photo of a sheet) lists nothing but looks like a
 # rally or race that has no results: leave it out; the file is still in Drive under Results by program
 for (eid,) in d.execute('select id from events where id not in (select distinct event_id from result_rows where event_id is not null)').fetchall():
@@ -258,7 +274,7 @@ d.execute('alter table files add column label text')
 d.execute('alter table files add column sort integer')
 for i, nm in d.execute('select id, name from files').fetchall():
     low = (nm or '').lower()
-    lab, srt = ('Leg scores', 5) if re.search(r'leg\W*by\W*leg', low) else ('PAX', 2) if 'pax' in low or 'index' in low else ('Raw', 3) if 'raw' in low else ('Class results', 1) if re.search(r'class|final|results?', low) else ('Results', 4)
+    lab, srt = ('Leg scores', 5) if re.search(r'leg\W*by\W*leg', low) else ('Overall', 2) if re.search(r'\boverall\b|-overall', low) and 'class' not in low else ('PAX', 2) if 'pax' in low or 'index' in low else ('Raw', 3) if 'raw' in low else ('Class results', 1) if re.search(r'class|final|results?', low) else ('Results', 4)
     if low.endswith('.csv') and ' - ' in nm:          # Speedhive race sessions: one tab per session, by group then day
         lab = nm.rsplit(' - ', 1)[1][:-4]
         g = re.search(r'gr(?:ou)?p\s*#?\s*(\d+)', lab, re.I)
