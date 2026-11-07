@@ -135,7 +135,7 @@ def parse_rally(text):
             if m: break
         if not m:
             m = RSHORT.search(line)
-        if not m or re.search(r'\b(results|rally|class|section|leg|total|page|region|scca)\b', m.group(0), re.I):
+        if not m or re.search(r'\b(results|rally|class|sect|section|leg|total|page|region|scca|control|checkpoint)\b', m.group(0), re.I):
             continue
         if re.search(r'(?<!\d)\d{5}(?!\d)|\b(st|ave|rd|ct|dr|ln|lane|blvd|hwy|court|street|road|drive)\b\.?\s', line, re.I) and not re.search(r'\d+\.\d', line):
             continue                   # an address line, not a crew
@@ -167,6 +167,54 @@ def pick_sheets(sheets, title):
     sheets = [w for w in sheets if not PRIVATE_SHEET.search(title(w))]
     res = [w for w in sheets if re.search(r'result|score|standing|points|class|overall|pax|raw', title(w), re.I)]
     return res or sheets
+def parse_scca_template(path, name=''):
+    """SCCA's road rally "Official Results" workbook: one row per driver (overall place, class place under the class
+    letter, first, last, car #, vehicle, score) with the navigator on the next row. Only names, class, place, car and
+    score are kept; hometowns and member numbers in the sheet are never read into the rows."""
+    import shutil, tempfile
+    tmp = tempfile.NamedTemporaryFile(suffix=os.path.splitext(name or path)[1].lower() or '.xlsx', delete=False); tmp.close()
+    shutil.copy(path, tmp.name)
+    rows = []
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(tmp.name, read_only=True, data_only=True)
+        for ws in wb.worksheets:
+            if PRIVATE_SHEET.search(ws.title) or not re.search(r'(?i)official|result', ws.title):
+                continue
+            grid = [list(r) for r in ws.iter_rows(values_only=True)]
+            for hi, head in enumerate(grid):
+                labels = [str(c).strip() if c is not None else '' for c in head]
+                if 'O/A' not in labels or 'First' not in labels or 'Last' not in labels:
+                    continue
+                oa, first, last = labels.index('O/A'), labels.index('First'), labels.index('Last')
+                classes = {i: labels[i] for i in range(oa + 1, first) if labels[i]}
+                after = lambda lab: next((i for i in range(last, len(labels)) if labels[i] == lab), None)
+                car, score = after('Car #'), after('Score')
+                txt = lambda r, i: '' if i is None or i >= len(r) or r[i] is None else str(r[i]).strip()
+                for n in range(hi + 1, len(grid) - 1):
+                    r, nav = grid[n], grid[n + 1]
+                    if not re.fullmatch(r'\d+', txt(r, oa)) or not re.search(r'[A-Za-z]{2}', txt(r, last)):
+                        continue              # empty template rows hold numbers where the names go
+                    cls, place = next(((lab, txt(r, i)) for i, lab in classes.items() if re.fullmatch(r'\d+', txt(r, i))), ('', txt(r, oa)))
+                    driver = f"{txt(r, first)} {txt(r, last)}".strip()
+                    mate = f"{txt(nav, first)} {txt(nav, last)}".strip() if not txt(nav, oa) and re.search(r'[A-Za-z]{2}', txt(nav, last)) else ''
+                    sc = re.sub(r'\.0$', '', txt(r, score))
+                    for who, other in ((driver, mate), (mate, driver)):
+                        if who:
+                            rows.append({'position': place, 'class': cls, 'car_number': txt(r, car) or None, 'driver': who,
+                                         'vehicle': ('with ' + other) if other else None, 'total': sc or None,
+                                         'cells': [['score', sc]], 'line_no': n + 1, 'section': cls, 'raw': f'overall {txt(r, oa)}'})
+                break
+    except Exception:
+        pass
+    finally:
+        os.unlink(tmp.name)
+    return rows
+def cell(v):
+    """A spreadsheet value as the sheet shows it: whole numbers without ".0"."""
+    if v is None: return ''
+    if isinstance(v, float) and v.is_integer(): return str(int(v))
+    return str(v).strip()
 def sheet_text(path, name=''):
     """A spreadsheet as text lines, cells three spaces apart, so the line readers can work on it."""
     import shutil, tempfile
@@ -182,20 +230,85 @@ def sheet_text(path, name=''):
     try:
         if path.lower().endswith('.xls'):
             import xlrd
-            for sh in xlrd.open_workbook(path).sheets():
-                out += ['   '.join(str(v).strip() for v in sh.row_values(r)) for r in range(sh.nrows)]
+            for sh in pick_sheets(xlrd.open_workbook(path).sheets(), lambda w: w.name):
+                out += ['   '.join(cell(v) for v in sh.row_values(r)) for r in range(sh.nrows)]
         else:
             import openpyxl
             for ws in pick_sheets(openpyxl.load_workbook(path, read_only=True, data_only=True).worksheets, lambda w: w.title):
-                out += ['   '.join('' if v is None else str(v).strip() for v in row) for row in ws.iter_rows(values_only=True)]
+                out += ['   '.join(cell(v) for v in row) for row in ws.iter_rows(values_only=True)]
     except Exception:
         try:                                    # an old .xls saved under a .xlsx name
             import xlrd
             for sh in pick_sheets(xlrd.open_workbook(path).sheets(), lambda w: w.name):
-                out += ['   '.join(str(v).strip() for v in sh.row_values(r)) for r in range(sh.nrows)]
-        except Exception:
-            pass
+                out += ['   '.join(cell(v) for v in sh.row_values(r)) for r in range(sh.nrows)]
+        except Exception as e:
+            if os.environ.get('BUILD_DEBUG'): print('sheet_text failed:', path, repr(e))
     return '\n'.join(out)
+def parse_grid(text):
+    """Spreadsheet text (cells joined by three spaces, one row per line): match cells to the header row by column
+    number. An unlabeled number column before the names is the place."""
+    rows, header, section = [], None, ''
+    for n, line in enumerate(text.splitlines(), 1):
+        cs = [c.strip() for c in line.split('   ')]
+        if not any(cs):
+            continue
+        labels = [field(c) if c else None for c in cs]
+        if ('driver' in labels or ('first' in labels and 'last' in labels)) and not any(TIME.match(c) for c in cs if c):
+            header = labels; continue
+        if header is None:
+            continue
+        rec = {'cells': []}
+        for i, v in enumerate(cs):
+            if not v: continue
+            f = header[i] if i < len(header) else None
+            if f is None and i == 0 and re.fullmatch(r'\d{1,3}T?', v): f = 'position'
+            if f and f not in rec: rec[f] = v
+            rec['cells'].append([f or '', v])
+        if 'first' in rec or 'last' in rec:
+            rec['driver'] = ' '.join(x for x in (rec.get('first'), rec.get('last')) if x)
+        if not re.search(r'[A-Za-z]{2}', rec.get('driver') or ''):
+            continue
+        if 'total' not in rec:          # no Total column: the first time after the car
+            t = next((v for v in cs if re.fullmatch(r'\d{1,4}\.\d{1,3}', v)), None)
+            if t: rec['total'] = t
+        rec.update(line_no=n, section=rec.get('class') or section, raw=' | '.join(c for c in cs if c))
+        rows.append(rec)
+    return rows
+def parse_stacked(text):
+    """Early RallyCross sheets that stack each entry on three lines (name; car # and times; car), or put
+    "Name/ car" on one line with the car # on the next. Total = the last time (or DNF/NS)."""
+    lines = [l for l in text.splitlines() if l.strip()]
+    rows, cls = [], ''
+    NAME_ONLY = re.compile(r"^\s*([A-Z][A-Za-z'.\-]+(?: [A-Z][A-Za-z'.\-]+){1,2})\s*$")
+    NUMS = re.compile(r"^\s*(\d{1,4})\s+((?:\d{1,3}\.\d{1,3}|DNF|NS|DQ)(?:\s+(?:\d{1,3}\.\d{1,3}|DNF|NS|DQ|\d))*)\s*$")
+    SLASH = re.compile(r"^\s*([A-Z][A-Za-z'.\-]+(?: [A-Z][A-Za-z'.\-]+){1,2})\s*/\s*(.*?)\s{2,}((?:\d{1,3}\.\d{1,3}|DNF).*)$")
+    i = 0
+    while i < len(lines):
+        l = lines[i]
+        if re.fullmatch(r'\s*[A-Z]{1,3}\d?\s*', l):
+            cls = l.strip(); i += 1; continue
+        m = NAME_ONLY.match(l)
+        if m:
+            j = i + 1
+            while j < len(lines) and re.fullmatch(r'\s*[A-Z]{1,3}\d?\s*', lines[j]):
+                cls = lines[j].strip(); j += 1
+            n = NUMS.match(lines[j]) if j < len(lines) else None
+            if n:
+                vals = n[2].split()
+                car_line = lines[j + 1].strip() if j + 1 < len(lines) and not re.search(r'\d{2}\.\d', lines[j + 1]) and not NAME_ONLY.match(lines[j + 1]) else ''
+                tot = next((v for v in reversed(vals) if re.fullmatch(r'\d+\.\d+|DNF|NS|DQ', v)), None)
+                rows.append(dict(position=None, **{'class': cls}, car_number=n[1], driver=m[1], vehicle=car_line or None, total=tot,
+                                 cells=[['times', n[2]]], line_no=i + 1, section=cls, raw=f'{m[1]} {n[1]} {n[2]}'))
+                i = j + (2 if car_line else 1); continue
+        m = SLASH.match(l)
+        if m:
+            car_no = lines[i + 1].strip() if i + 1 < len(lines) and re.fullmatch(r'\s*\d{1,4}\s*', lines[i + 1]) else None
+            ts = re.findall(r'\d{1,3}\.\d{1,3}|DNF', m[3])
+            rows.append(dict(position=None, **{'class': cls}, car_number=car_no, driver=m[1], vehicle=m[2].strip() or None,
+                             total=min((t for t in ts if t != 'DNF'), key=float, default=None), cells=[['times', ' '.join(ts)]],
+                             line_no=i + 1, section=cls, raw=l.strip()))
+        i += 1
+    return rows
 def parse_html(path):
     """Results from an AXWare web page: read its table rows (a header row maps columns; class pages without one use
     AXWare's order: position, class, number, driver, car, color, runs, total)."""
@@ -314,10 +427,14 @@ for i, (fid, p) in enumerate(plan.items(), 1):
         ev = events[key]
     rows = parse_html(raw) if low.endswith(('.htm', '.html')) else zip_rows(raw) if low.endswith('.zip') else []
     if m['program'] == 'Rally' and low.endswith(('.xls', '.xlsx')):
-        rows, text = [], ''          # rally workbooks mix entry lists and sheets this reader gets wrong: link the file only
+        rows, text = parse_scca_template(raw, m['name']), ''   # rally workbooks: only SCCA's official results template
     if m['program'] == 'Rally' and text and not rows: rows = parse_rally(text)   # crews: driver and navigator
+    if not rows and text and (low.endswith(('.xls', '.xlsx')) or low.endswith('.zip')):
+        g = parse_grid(text)          # keep it only when it found real results (a place or a time on most rows)
+        if g and sum(1 for r in g if r.get('position') or r.get('total')) >= 0.5 * len(g): rows = g
     if not rows and text: rows = parse(text)
     if not rows and text: rows = parse_lines(text)
+    if not rows and text and m['program'] == 'RallyCross': rows = parse_stacked(text)
     db.execute('INSERT INTO files VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (i, ev, m['program'], year, m['date'] or None, m['kind'], m['name'],
         p['name'], p['folder'], m['oldpath'], f"https://drive.google.com/file/d/{copies.get(fid, fid)}/view",
         f'https://drive.google.com/file/d/{fid}/view', len(rows), text))

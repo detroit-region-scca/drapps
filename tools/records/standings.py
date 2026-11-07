@@ -28,6 +28,7 @@ for f in db.execute("select id, name, date, length(text), program, year, text fr
 total = 0
 for (prog, year), files in sorted(groups.items()):
     f = pick(files); fid, text = f[0], f[6]
+    text = text.replace('\u2010', '-').replace('\u2011', '-').replace('\u2013', '-').replace('\u2014', '-')
     lines = text.splitlines()
     best = tot = cls_col = None; start = 0
     for k, l in enumerate(lines[:40]):
@@ -36,13 +37,32 @@ for (prog, year), files in sorted(groups.items()):
             m = re.search(r'\bbest[^ ]*(?: (?:of )?\d+(?: of \d+)?| (?:three|four|five|six))?', l, re.I); best = (m.start() + m.end()) / 2
         if tot is None and re.search(r'\btotal\b', l, re.I):
             m = re.search(r'\btotal\b', l, re.I); tot = (m.start() + m.end()) / 2
-        if cls_col is None and re.search(r'\bclass\b', l, re.I) and re.search(r'name|driver', l, re.I):
+        if cls_col is None and re.search(r'\bclass\b', l, re.I) and re.search(r'name|driver|number|region|position|car', l, re.I):
             cls_col = re.search(r'\bclass\b', l, re.I).start()
     target = best if best is not None else tot
     cls, out = '', []
+    for l in lines[:start]:                       # a class named in the page title, above the column header
+        t = re.search(r'(?i)points\s*-\s*([A-Z]{1,5}L?)\s*$', l.strip())
+        if t: cls = t[1].upper()
+    sheet = f[1].lower().endswith(('.xls', '.xlsx'))
+    sheet_col = None
+    if sheet:
+        for l in lines[:60]:
+            cs = [c.strip().lower() for c in l.split('   ')]
+            if any(re.search(r'driver|name', c) for c in cs):
+                hit = next((i for i, c in enumerate(cs) if re.search(r'\bbest\b|^total|\bpoints\b', c)), None)
+                if hit is not None: sheet_col = hit; break
     for n, l in enumerate(lines, 1):
-        if n <= start: continue
+        if n <= start and not sheet: continue
+        m2 = re.search(r"(?<![A-Za-z])([A-Z][a-z][A-Za-z'.\-]*)\s{2,}([A-Z][A-Za-z'.\-]+(?:,? (?:Jr|Sr|II|III)\.?)?)(?=\s{2,}[\d-])", l)
         m = NAME.search(l)
+        if m2 and (not m or m2.start() <= m.start() or ' ' not in m[1].strip()):
+            class _M:                       # behave like a regex match over the two columns
+                def __init__(s, a): s.a = a
+                def __getitem__(s, i): return f"{s.a[1]} {s.a[2]}" if i == 1 else s.a[0]
+                def start(s): return s.a.start()
+                def end(s): return s.a.end()
+            m = _M(m2)
         nums = [(x.start(), x.end(), float(x.group())) for x in NUM.finditer(l)]
         after = [x for x in nums if m and x[0] > m.end()]
         if not m or len(after) < 1:
@@ -51,6 +71,10 @@ for (prog, year), files in sorted(groups.items()):
             h2 = re.match(r'^([A-Z]{1,6}L?)\s+Drivers:', st)
             h3 = re.match(r'^([A-Z]{1,6}L?)$', st)
             h4 = re.match(r'^(%s)\b' % RALLY, st)
+            h5 = re.match(r'^([A-Z][A-Za-z\- ]+?)\s*\(([A-Z0-9]{1,6}L?)\)\s*$', st)        # "A-Street Prepared (ASP)"
+            h6 = re.search(r'(?i)points\s*-\s*([A-Z]{1,5}L?)\s*$', st)                    # "2006 Rallycross Points - SSF"
+            if h5: cls = f"{h5[2]} - {h5[1].strip()}"; continue
+            if h6: cls = h6[1].upper(); continue
             if h1: cls = f"{h1[1]} - {h1[2].strip()}"
             elif h2 or h3: cls = (h2 or h3)[1]
             elif h4 and prog == 'Rally': cls = h4[1]
@@ -67,12 +91,17 @@ for (prog, year), files in sorted(groups.items()):
             cls = re.match(r'^(%s)\b' % RALLY, before)[1]
         after = [x for x in after if x[2] >= 0 and not (x[2] == int(x[2]) and 1900 <= x[2] <= 2100)]
         if not after: continue
-        if target is not None:
+        cells = l.split('   ')
+        if sheet and sheet_col is not None and sheet_col < len(cells) and re.fullmatch(r'-?\d+(?:\.\d+)?', cells[sheet_col].strip()):
+            sc = float(cells[sheet_col])          # spreadsheet: the value in the column titled Best / Total / Points
+        elif target is not None:
             sc = min(after, key=lambda x: abs((x[0] + x[1]) / 2 - target))[2]
         else:
             sc = max(x[2] for x in after[:3])
         out.append((cls, name, sc, n, l.strip()))
-    if len(out) < 10 or sum(1 for r in out if r[0]) < 0.7 * len(out) or len({r[0] for r in out}) < 2:
+    if len(out) >= 10 and not any(r[0] for r in out):
+        out = [('Overall',) + r[1:] for r in out]         # one table for the whole series, no classes
+    if len(out) < 10 or sum(1 for r in out if r[0]) < 0.7 * len(out) or (len({r[0] for r in out}) < 2 and out[0][0] != 'Overall'):
         print('skipped', prog, year, f[1]); continue
     named = any(re.match(r'^[A-Z0-9]{1,6}L? - ', r[0] or '') for r in out)
     if named:   # proper "XX - Name" classes: drop the overall / lowercase tables printed below them

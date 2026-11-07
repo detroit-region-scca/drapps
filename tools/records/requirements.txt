@@ -1,0 +1,6 @@
+# Python libraries the Records build uses (also needs the programs pdftotext and tesseract: poppler-utils, tesseract-ocr)
+google-auth
+requests
+openpyxl
+xlrd
+pypdf

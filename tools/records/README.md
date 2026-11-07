@@ -17,19 +17,30 @@ which reads and writes the region Drive as admin@).
   `text/` (one `.txt` per file: `pdftotext -layout`, or Tesseract OCR for scans). A copy is kept in the DRSCCA Apps
   shared drive, folder *Records build data (private)*; unpack it to rebuild without redoing the OCR.
 
+## Setup
+
+    python3 -m venv venv && venv/bin/pip install -r tools/records/requirements.txt
+
+Run every step with that venv's Python (`venv/bin/python -I tools/records/<step>.py ...`). The system Python may lack
+`xlrd`, and then old Excel files and the zips holding them quietly read as empty.
+
+`<data>` is the unpacked *Records build data (private)* archive: `scca.db`, `records.db`, `text/`, `work/` (plan.json,
+sorted.csv, copied.json; also the `<work>` folder the steps take), `old-website-api/`. Set `TEXT_DIR=<data>/text` so the
+sorting step and OCR use the saved text. After a rebuild, pack the folder again and replace the archive in Drive.
+
 ## Build order
 
 1. `tools/records/fetch.py <work>`: list and download the Drive files; `tools/records/text.py <work>`: quick text for sorting.
 2. `tools/records/ocr.sh <pdf> <id>` for scans (one thread per job: tesseract's own threads stall when several run at once).
-3. `tools/records/classify.py <work>`, `tools/records/plan.py <work>`; `tools/records/copy.py <work>` copies into Results by program the first time,
+3. `tools/records/classify.py <work>`, `tools/records/plan.py <work>`; `tools/records/drive_copy.py <work>` copies into Results by program the first time,
    `tools/records/move.py <work>` renames or moves copies after a re-sort.
-4. `tools/records/build.py <work> ~/scca-data/scca.db`: every table row (AXWare PDFs and web pages, old layouts, RallyCross
+4. `tools/records/build.py <work> <data>/scca.db`: every table row (AXWare PDFs and web pages, old layouts, RallyCross
    sheets, road rally score sheets, spreadsheets, zips).
 5. `tools/records/standings.py <db>`: season standings from the final points sheet of each season.
 6. `tools/records/dates.py <db>`: event dates printed in the files, when the file name had none; then
-   `tools/records/site_dates.py <db> ~/drscca-site-backup/2026-10-31-public/api --apply`: dates from the old website's posts
+   `tools/records/site_dates.py <db> <data>/old-website-api --apply`: dates from the old website's posts
    (a date near the event's name, in its year, clearly the most mentioned).
-7. `tools/records/export_records.py <db> ~/scca-data/records.db`: the drapps copy (no worker points, no full text, cleaned
+7. `tools/records/export_records.py <db> <data>/records.db`: the drapps copy (no worker points, no full text, cleaned
    event names, duplicates merged). Copy it to the VM:
    `gcloud compute scp ... drapps:/tmp/records.db` then `sudo install -o 1000 -g 1000 -m 644` into
    `/opt/drscca/app/data/records.db`. No restart needed.

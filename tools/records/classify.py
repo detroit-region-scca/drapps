@@ -38,13 +38,44 @@ def program(n, t):
     if re.search(r'axware|\bsolo|\bpax|autocross|raw time|test (and|&|n) tune|final results|total registered|active heat|season opener|season ender|memorial|summer heat|fall into|oscoda|glss|gass|cendiv|gldiv|divisional|cones|\bindex|ssp bsp|\bssp\b|saginaw valley|drscca points|season points|drive into spring|before nationals', s): return 'Autocross'
     if re.search(r'\brace|racing|qualif|\blap|sprints?\b|grand prix|enduro|shiloff|sprints|race\d\d|results grp|driver.?s school|gingerman|grattan|waterford|mid-ohio|nelson ledges|\bmis\b|majors|runoffs', s): return 'Road Racing'
     return None
+def quick_text(path, name):
+    """First rows of a spreadsheet, or of the spreadsheets inside a zip, so they can be sorted by what they say."""
+    import tempfile, shutil, zipfile
+    out = []
+    def sheet(p, ext):
+        try:
+            if ext == '.xls':
+                import xlrd
+                for sh in xlrd.open_workbook(p).sheets()[:3]:
+                    out.extend(' '.join(str(v) for v in sh.row_values(r)) for r in range(min(sh.nrows, 15)))
+            else:
+                import openpyxl
+                for ws in openpyxl.load_workbook(p, read_only=True, data_only=True).worksheets[:3]:
+                    out.extend(' '.join('' if v is None else str(v) for v in row) for row in list(ws.iter_rows(values_only=True))[:15])
+        except Exception:
+            pass
+    low = name.lower()
+    with tempfile.TemporaryDirectory() as d:
+        if low.endswith('.zip'):
+            try:
+                with zipfile.ZipFile(path) as z:
+                    for i in z.infolist():
+                        e = os.path.splitext(i.filename)[1].lower()
+                        if e in ('.xls', '.xlsx'): sheet(z.extract(i, d), e)
+            except Exception:
+                pass
+        elif low.endswith(('.xls', '.xlsx')):
+            e = os.path.splitext(low)[1]; q = os.path.join(d, 'f' + e); shutil.copy(path, q); sheet(q, e)
+    return ' '.join(' '.join(out).split())[:3000]
 rows = []
 for f in idx:
     if re.search(r'-\d{2,4}x\d{2,4}\.(jpg|jpeg|png)$', f['name'], re.I): continue   # WordPress resized copies
     n, t = f['name'], T.get(f['id'], '')
+    if not t.strip() and f['name'].lower().endswith(('.zip', '.xls', '.xlsx')):
+        t = quick_text(f"{S}/files/{f['id']}", f['name'])
     prog = program(n, t)
 
-    lay = os.path.expanduser(f"~/scca-data/text/{f['id']}.txt")
+    lay = os.path.join(os.environ.get("TEXT_DIR", os.path.expanduser("~/scca-data/text")), f"{f['id']}.txt")
     if os.path.exists(lay): tt = open(lay, errors='ignore').read()[:4000]
     elif f['name'].lower().endswith(('.htm', '.html')):    # web pages: drop the style block, keep the AXWare header
         h = open(f"{S}/files/{f['id']}", errors='ignore').read()
