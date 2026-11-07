@@ -39,7 +39,7 @@
                 <td class="ps-3 text-nowrap"><a href="{{ url_for('fr.detail', req_id=r.id) }}">{{ r.id }}</a></td>
                 <td class="text-nowrap">{{ r.submitted }}<div class="small text-muted">{{ r.submitter_name }}</div></td>
                 <td>{{ r.payee_name }}<div class="small text-muted">{{ r.method }}</div></td>
-                <td>{{ r.event_name or r.program }} <span class="small text-muted">{{ r.event_code }}</span></td>
+                <td>{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}{{ r.program }}{% endif %} <span class="small text-muted">{{ r.event_code }}</span></td>
                 <td>{% if r.status == 'Submitted' %}{% if r.waiting %}<span class="badge rounded-pill text-bg-warning">Needs approval</span><div class="small text-muted">{{ r.waiting|join(', ') }}</div>{% elif r.method == 'Region credit card' %}<span class="badge rounded-pill text-bg-info" title="Already paid on the region card">Card, ready to record</span>{% else %}<span class="badge rounded-pill text-bg-info">Ready to pay</span>{% endif %}{% else %}{{ status_badge(r.status) }}{% endif %}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
                 <td class="num pe-3">{{ money(r.net) }}</td></tr>
             {% else %}<tr><td colspan="6" class="text-muted ps-3">Nothing here.</td></tr>{% endfor %}
@@ -138,7 +138,7 @@
             <div>
                 <div class="page-title m-0">{{ r.id }} {{ status_badge(r.status) }}</div>
                 <div class="text-muted">Submitted {{ r.submitted }} by {{ r.submitter_name }}</div>
-                <div class="mt-1">{{ r.event_name or ('Program ' ~ r.program) }} <span class="text-muted">{{ r.event_code }}</span></div>
+                <div class="mt-1">{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}Program {{ r.program }}{% endif %} <span class="text-muted">{{ r.event_code }}</span></div>
             </div>
             <div class="text-end stat"><div class="value">{{ money(r.net) }}</div><div class="label">{{ r.method }}</div></div>
         </div>
@@ -232,7 +232,7 @@
             {% for r in reps %}<tr class="row-link" onclick="location.href='{{ url_for('fr.in_detail', rid=r.id) }}'">
                 <td class="ps-3 text-nowrap"><a href="{{ url_for('fr.in_detail', rid=r.id) }}">{{ r.id }}</a></td>
                 <td class="text-nowrap">{{ r.received }}<div class="small text-muted">{{ r.reported_by }}</div></td>
-                <td>{{ r.event_name or r.program }} <span class="small text-muted">{{ r.event_code }}</span></td>
+                <td>{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}{{ r.program }}{% endif %} <span class="small text-muted">{{ r.event_code }}</span></td>
                 <td>{{ r.held_by }}</td>
                 <td>{{ in_badge(r.status) }}{% if r.single and r.status == 'Received' %}<div class="small text-warning-emphasis">Counted by one person</div>{% endif %}{% if r.deposit_ref %}<div class="small text-muted">{{ r.deposit_ref }}</div>{% endif %}</td>
                 <td class="num pe-3">{{ money(r.total) }}{% if r.cash and r.checks %}<div class="small text-muted">cash {{ money(r.cash) }}</div>{% endif %}</td></tr>
@@ -311,7 +311,7 @@
             <div>
                 <div class="page-title m-0">{{ r.id }} {{ in_badge(r.status) }}</div>
                 <div class="text-muted">Received {{ r.received }}, reported {{ r.reported }} by {{ r.reported_by }}</div>
-                <div class="mt-1">{{ r.event_name or ('Program ' ~ r.program) }} <span class="text-muted">{{ r.event_code }}</span></div>
+                <div class="mt-1">{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}Program {{ r.program }}{% endif %} <span class="text-muted">{{ r.event_code }}</span></div>
             </div>
             <div class="text-end stat"><div class="value">{{ money(r.total) }}</div><div class="label">{% if r.cash %}cash {{ money(r.cash) }}{% endif %}{% if r.cash and r.checks %} · {% endif %}{% if r.checks %}checks {{ money(r.checks) }}{% endif %}</div></div>
         </div>
