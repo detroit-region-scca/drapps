@@ -1,4 +1,4 @@
-"""Records: public, read-only pages over data/records.db (made-up names only: this repo is public)."""
+"""Records: read-only pages over data/records.db, for anyone signed in (made-up names only: this repo is public)."""
 import sqlite3
 
 import records
@@ -27,21 +27,31 @@ def _db(path):
     c.commit(); c.close()
 
 
-def test_records_pages_are_public_and_hide_drive_links(tmp_path, monkeypatch):
+def test_records_need_sign_in(tmp_path, monkeypatch):
     from app import app
     path = str(tmp_path / 'records.db'); _db(path)
     monkeypatch.setattr(records, 'PATH', path)
     app.config['TESTING'] = True
+    r = app.test_client().get('/records/hall-of-fame')
+    assert r.status_code == 302 and b'Alex Example' not in r.data
+
+
+def test_records_pages_for_a_volunteer(tmp_path, monkeypatch):
+    import auth
+    from app import app
+    path = str(tmp_path / 'records.db'); _db(path)
+    monkeypatch.setattr(records, 'PATH', path)
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Vol', 'level': 'volunteer', 'roles': [], 'perms': set()} if e else None)
+    app.config['TESTING'] = True
     c = app.test_client()
+    with c.session_transaction() as s:
+        s.update(authenticated=True, email='vol@example.org', who='Vol')
     for url in ('/records/', '/records/?q=alex', '/records/hall-of-fame', '/records/autocross', '/records/autocross/2025',
                 '/records/event/1', '/records/person/1'):
-        r = c.get(url)
-        assert r.status_code == 200, url
-        assert b'drive.example' not in r.data          # the region Drive is private: no file links for visitors
+        assert c.get(url).status_code == 200, url
     assert b'Alex Example' in c.get('/records/hall-of-fame').data
     assert b'Season Opener Points' not in c.get('/records/hall-of-fame').data   # page text read as a name stays out
     assert c.get('/records/autocross/1990').status_code == 404
-    assert c.get('/records/nope').status_code == 404
 
 
 def test_records_show_drive_links_when_signed_in(tmp_path, monkeypatch):
@@ -58,7 +68,12 @@ def test_records_show_drive_links_when_signed_in(tmp_path, monkeypatch):
 
 
 def test_records_off_without_a_database(tmp_path, monkeypatch):
+    import auth
     from app import app
     monkeypatch.setattr(records, 'PATH', str(tmp_path / 'none.db'))
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Pat', 'level': 'official', 'roles': [], 'perms': set()} if e else None)
     app.config['TESTING'] = True
-    assert app.test_client().get('/records/').status_code == 404
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s.update(authenticated=True, email='pat@example.org', who='Pat')
+    assert c.get('/records/').status_code == 404

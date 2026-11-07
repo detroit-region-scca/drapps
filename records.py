@@ -1,9 +1,8 @@
-"""Records: the region's results history, public at /records (no sign-in).
+"""Records: the region's results history at /records, for everyone signed in to the apps (volunteers too).
 
 Read-only SQLite at data/records.db, built off the server from every results, standings and points file the region
 posted on its old website (1982 to 2026): events, result rows, season standings and the people in them. The heavy work
 (reading PDFs, OCR of old scans) happens where the database is built, never here; this module only reads it.
-Links to the original PDFs are in the region's private Drive, so they show only to signed-in people.
 """
 import functools
 import os

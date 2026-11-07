@@ -43,6 +43,7 @@ VOL_COLS = ['email', 'name', 'note', 'added', 'added_by']
 VOLUNTEER_ENDPOINTS = {
     'home', 'logout', 'static', 'members.home', 'members.enter',
     'bud.home', 'bud.detail',
+    'records.home', 'records.hall', 'records.program', 'records.season', 'records.event', 'records.person',
     'fr.home', 'fr.new', 'fr.detail', 'fr.ask', 'fr.receipts', 'fr.delete',
     'fr.in_list', 'fr.in_new', 'fr.in_detail', 'fr.in_files', 'fr.in_delete',
     'inv.home', 'inv.new', 'inv.detail', 'inv.pdf',
@@ -143,7 +144,7 @@ def gate():
     if getattr(g, 'api_user', None) or request.endpoint is None:
         return None
     ep = request.endpoint
-    if ep.startswith(('auth.', 'api.', 'records.')) or ep == 'static':   # the API checks its own key; Records are public
+    if ep.startswith(('auth.', 'api.')) or ep == 'static':   # the API checks its own key
         return None
     if session.get('authenticated') and not session.get('email'):
         # Signed in with the old shared password: that is gone, sign in again by email.

@@ -21,15 +21,6 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 .table td, .table th { padding: .3rem .5rem; }
 {% endblock %}
 {% block content %}
-{% if not signed_in %}
-<div class="rec-bar"><div class="d-flex flex-wrap align-items-center">
-    <a class="brand" href="{{ url_for('records.home') }}">Detroit Region SCCA Records</a>
-    <div class="links">
-        <a href="{{ url_for('records.hall') }}" class="{{ 'on' if view == 'hall' }}">Hall of Fame</a>
-        {% for pg in programs %}<a href="{{ url_for('records.program', prog=slug(pg)) }}" class="{{ 'on' if p == pg }}">{{ pg }}</a>{% endfor %}
-        <a href="https://drscca.org">drscca.org</a>
-    </div></div></div>
-{% endif %}
 
 {% if view == 'home' %}
 <div class="page-title">Detroit Region SCCA records</div>
@@ -93,13 +84,13 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 <div class="table-responsive"><table class="table table-sm"><thead><tr><th class="num">Place</th><th>Name</th><th class="num">Score</th></tr></thead><tbody>
 {% for s in ss %}<tr><td class="num">{{ s.place }}</td><td><a href="{{ url_for('records.person', pid=s.person_id) }}">{{ s.name }}</a></td><td class="num">{{ '%g'|format(s.score) }}</td></tr>{% endfor %}
 </tbody></table></div></details>{% endfor %}{% endif %}
-{% if signed_in and sheets %}<div class="section-label mt-4">Points sheets</div>{% for f in sheets %}<a class="badge-soft" href="{{ f.drive_url }}">{{ f.name }}</a>{% endfor %}{% endif %}
+{% if sheets %}<div class="section-label mt-4">Points sheets</div>{% for f in sheets %}<a class="badge-soft" href="{{ f.drive_url }}">{{ f.name }}</a>{% endfor %}{% endif %}
 
 {% elif view == 'event' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.program', prog=slug(e.program)) }}">{{ e.program }}</a>{% if e.year %} / <a href="{{ url_for('records.season', prog=slug(e.program), year=e.year) }}">{{ e.year }}</a>{% endif %}</div>
 <div class="page-title">{{ e.name }}</div>
 <p class="text-muted">{{ nice_date(e.date) or e.year }}</p>
-{% if signed_in %}<div class="mb-3">{% for f in files %}<a class="badge-soft" href="{{ f.drive_url }}">{{ f.name }}</a>{% endfor %}</div>{% endif %}
+{% if files %}<div class="mb-3">{% for f in files %}<a class="badge-soft" href="{{ f.drive_url }}">{{ f.name }}</a>{% endfor %}</div>{% endif %}
 {% for f in files %}{% if rows[f.id] %}
 <div class="section-label mt-4">{{ f.name }}</div>
 <div class="table-responsive"><table class="table table-sm"><thead><tr>{% for lab, k in cols[f.id] %}<th>{{ lab }}</th>{% endfor %}</tr></thead><tbody>
