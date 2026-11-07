@@ -90,6 +90,15 @@ All run on the server. Any failure emails admin@drscca.org (from apps@) with the
 | Officials changes | When the admin saves a person in Admin > Users | `drscca-officials.path` | Updates `officials.json` and the drscca.org Google Groups with GAM |
 | Software updates | Sundays 04:30 | `drscca-update.timer` | Newest Caddy, nginx and SFTP images, drapps rebuilt on the newest Python, newest GAM and libraries |
 | System updates | daily | `unattended-upgrades` | Debian, Docker, Node and Google packages; reboots at 04:00 only when an update needs it |
+| Secrets copy | Sundays 05:00 | `drscca-secrets-backup.timer` | Updates "drapps server secrets (weekly).tar.gz" in the admin-only Account Recovery folder (Drive keeps earlier versions) |
+
+**Outside the server:** Google Cloud uptime checks look at drapps.drscca.org and livetiming.drscca.org every 5
+minutes from three US locations, and email admin@ ("... is down") if two of them fail for 10 minutes (Cloud
+console > Monitoring > Uptime checks and Alerting). These keep working even if the server is completely off.
+
+**Protection:** fail2ban blocks an address for an hour after 5 wrong live timing passwords in 10 minutes
+(`sudo fail2ban-client status livetiming-sftp`; to lift a ban, `sudo fail2ban-client set livetiming-sftp unbanip
+<address>`). Container logs are capped at 3 x 10 MB each.
 
 Check them: `systemctl list-timers 'drscca-*'` and `systemctl status drscca-officials.path
 drscca-qbo-refresh.path`.
