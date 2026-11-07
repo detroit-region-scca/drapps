@@ -1,0 +1,97 @@
+"""Add season_standings to scca.db from the final season points sheet of each program and year."""
+import re, sqlite3, sys
+db = sqlite3.connect(sys.argv[1])
+NAME = re.compile(r"(?<![A-Za-z])([A-Z][A-Za-z'\-.]+(?: (?:[A-Z][A-Za-z'\-.]*|de|da|van|von|del|la|le)){1,4}(?:,? (?:Jr|Sr|II|III|IV)\.?)?)(?: \([a-z]\))?")
+NUM = re.compile(r'(?<![\w.])-?\d{1,4}(?:\.\d{1,2})?(?![\w.])')
+def pick(files):
+    def score(f):
+        n = f[1].lower()
+        s = 0
+        if re.search(r'final|year ?end|trophies|yearend|december', n): s += 100
+        if 'prelim' in n: s -= 50
+        if re.search(r'gld|great.lakes|championship.tour|thayer', n): s -= 500
+        if re.search(r'drscca|detroit|dr_scca|det_', n): s += 20
+        m = re.search(r'(\d+) ?of ?(\d+)|event ?(\d+)|after ?(\d+)', n)
+        if m: s += int(next(x for x in m.groups() if x))
+        m = re.match(r'^(\d{10})_', n)
+        if m: s += int(m[1]) / 1e9          # unix upload time prefix: later is newer
+        return (s, f[2] or '', f[3])
+    return max(files, key=score)
+RALLY = r'Equipped|Limited|Stock|Novice|Expert|Master|Unlimited|Historic|SOP|Open|Unequipped|Beginner|Intermediate'
+db.executescript('''DROP TABLE IF EXISTS season_standings;
+CREATE TABLE season_standings (id INTEGER PRIMARY KEY, program TEXT, year INTEGER, class TEXT, place INTEGER, person_id INTEGER REFERENCES people(id),
+  name TEXT, score REAL, file_id INTEGER REFERENCES files(id), line_no INTEGER, raw_line TEXT);''')
+people = {n.lower(): i for i, n in db.execute('select id, name from people')}
+groups = {}
+for f in db.execute("select id, name, date, length(text), program, year, text from files where kind='points' and program in ('Autocross','RallyCross','Rally','Road Racing') and year is not null and length(text) > 200"):
+    groups.setdefault((f[4], f[5]), []).append(f)
+total = 0
+for (prog, year), files in sorted(groups.items()):
+    f = pick(files); fid, text = f[0], f[6]
+    lines = text.splitlines()
+    best = tot = cls_col = None; start = 0
+    for k, l in enumerate(lines[:40]):
+        if re.search(r'\b(total|best)\b', l, re.I) and start == 0: start = k + 1
+        if best is None and re.search(r'\bbest\b', l, re.I):
+            m = re.search(r'\bbest[^ ]*(?: (?:of )?\d+(?: of \d+)?| (?:three|four|five|six))?', l, re.I); best = (m.start() + m.end()) / 2
+        if tot is None and re.search(r'\btotal\b', l, re.I):
+            m = re.search(r'\btotal\b', l, re.I); tot = (m.start() + m.end()) / 2
+        if cls_col is None and re.search(r'\bclass\b', l, re.I) and re.search(r'name|driver', l, re.I):
+            cls_col = re.search(r'\bclass\b', l, re.I).start()
+    target = best if best is not None else tot
+    cls, out = '', []
+    for n, l in enumerate(lines, 1):
+        if n <= start: continue
+        m = NAME.search(l)
+        nums = [(x.start(), x.end(), float(x.group())) for x in NUM.finditer(l)]
+        after = [x for x in nums if m and x[0] > m.end()]
+        if not m or len(after) < 1:
+            st = l.strip()
+            h1 = re.match(r"^([A-Z]{1,5}L?)\s+-\s+([A-Z][A-Za-z ]{2,30}?)(?:\s{2,}.*)?$", st)
+            h2 = re.match(r'^([A-Z]{1,6}L?)\s+Drivers:', st)
+            h3 = re.match(r'^([A-Z]{1,6}L?)$', st)
+            h4 = re.match(r'^(%s)\b' % RALLY, st)
+            if h1: cls = f"{h1[1]} - {h1[2].strip()}"
+            elif h2 or h3: cls = (h2 or h3)[1]
+            elif h4 and prog == 'Rally': cls = h4[1]
+            continue
+        name = m[1].strip()
+        if re.search(r'^(Event|Season|Total|Best|Denotes|Detroit|Drivers|Class|Road|Street|Page|Opener|Ender|Car|Region|Position|Trophy)\b', name) or re.search(r'\b(Number|Region|Drivers|Points|Rally|Championship|National|Division|Series|Standings|Tour)\b', name): continue
+        before = l[:m.start()].strip()
+        if cls_col is not None and prog != 'Rally':
+            cells = [(x.start(), x.group()) for x in re.finditer(r'\S+', l[:m.start()])]
+            c = [v for s0, v in cells if abs(s0 - cls_col) <= 6 and not v.isdigit()]
+            c = [v for v in c if v not in ('T', '?', 'Y', 'N') and not re.match(r'^\d', v)]
+            if c and c[0] != 'Class': cls = c[0]
+        elif prog == 'Rally' and re.match(r'^(%s)\b' % RALLY, before):
+            cls = re.match(r'^(%s)\b' % RALLY, before)[1]
+        after = [x for x in after if x[2] >= 0 and not (x[2] == int(x[2]) and 1900 <= x[2] <= 2100)]
+        if not after: continue
+        if target is not None:
+            sc = min(after, key=lambda x: abs((x[0] + x[1]) / 2 - target))[2]
+        else:
+            sc = max(x[2] for x in after[:3])
+        out.append((cls, name, sc, n, l.strip()))
+    if len(out) < 10 or sum(1 for r in out if r[0]) < 0.7 * len(out) or len({r[0] for r in out}) < 2:
+        print('skipped', prog, year, f[1]); continue
+    named = any(re.match(r'^[A-Z0-9]{1,6}L? - ', r[0] or '') for r in out)
+    if named:   # proper "XX - Name" classes: drop the overall / lowercase tables printed below them
+        out = [r for r in out if re.match(r'^[A-Z0-9]{1,6}L? - ', r[0] or '')]
+    out = [r for r in out if not re.match(r'^\(?T\)?$', r[0] or '')]
+    by, seen = {}, set()
+    for r in out:
+        if (r[0], r[1].lower()) in seen: continue
+        seen.add((r[0], r[1].lower())); by.setdefault(r[0], []).append(r)
+    for c, rs in by.items():
+        rs.sort(key=lambda r: -r[2]); place = 0; prev = None
+        for k, r in enumerate(rs, 1):
+            if r[2] != prev: place = k; prev = r[2]
+            pid = people.get(r[1].lower())
+            if pid is None:
+                pid = db.execute('insert into people (name) values (?)', (r[1],)).lastrowid; people[r[1].lower()] = pid
+            db.execute('insert into season_standings (program,year,class,place,person_id,name,score,file_id,line_no,raw_line) values (?,?,?,?,?,?,?,?,?,?)',
+                       (prog, year, c or None, place, pid, r[1], r[2], fid, r[3], r[4]))
+            total += 1
+db.execute('create index ss_person on season_standings(person_id)')
+db.commit()
+print(total, 'standings rows from', len(groups), 'seasons')
