@@ -173,14 +173,16 @@ def event(eid):
                 ('Total', 'total'), ('Raw', 'raw_time'), ('PAX', 'pax_time')) if any(r[k] for r in rs)]
         groups = []          # class sheets: one table per class, in the sheet's order; other sheets: one table
         if f['label'] == 'Class results':
+            mixed = any(r['section'] and r['class'] and r['section'].lower() != r['class'].lower() for r in rs)
             for r in rs:
-                key = r['class'] or r['section'] or ''
+                key = r['section'] or r['class'] or ''      # the sheet's own headings (a Pro list mixes classes)
                 if not groups or groups[-1][0] != key:
                     groups.append((key, []))
                 groups[-1][1].append(r)
         else:
-            cols.insert(1, ('Class', 'class'))
             groups = [('', rs)]
+        if f['label'] != 'Class results' or mixed:
+            cols.insert(1, ('Class', 'class'))
         same = [x for x in sheets if x['label'] == f['label']]
         sheets.append(dict(id=f['id'], label=f['label'] + (f' {len(same) + 1}' if same else ''), cols=cols, groups=groups,
                            drivers=len({r['person_id'] for r in rs})))
