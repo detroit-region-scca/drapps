@@ -34,6 +34,8 @@ sorting step and OCR use the saved text. After a rebuild, pack the folder again 
 2. `tools/records/ocr.sh <pdf> <id>` for scans (one thread per job: tesseract's own threads stall when several run at once).
 3. `tools/records/classify.py <work>`, `tools/records/plan.py <work>`; `tools/records/drive_copy.py <work>` copies into Results by program the first time,
    `tools/records/move.py <work>` renames or moves copies after a re-sort.
+   `tools/records/speedhive_import.py <work>`: the Detroit Region SCCA races at Waterford Hills from Speedhive (MYLAPS),
+   saved as one CSV per race session into Results by program / Road Racing / <year> / Waterford Hills (Speedhive).
 4. `tools/records/build.py <work> <data>/scca.db`: every table row (AXWare PDFs and web pages, old layouts, RallyCross
    sheets, road rally score sheets, spreadsheets, zips).
 5. `tools/records/standings.py <db>`: season standings from the final points sheet of each season.

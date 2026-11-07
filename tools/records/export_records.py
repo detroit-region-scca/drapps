@@ -24,7 +24,9 @@ CREATE INDEX p_name ON people(name COLLATE NOCASE);
 import re
 def clean(name):
     """"04142019 Season Opener" -> "Season Opener": drop date codes, event numbers and region prefixes the timing laptop adds."""
-    n = re.sub(r'\b\d{6,8}\b|\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b', ' ', name or '')
+    n = re.sub(r'(?<!\d)\d{6,8}(?!\d)|(?<!\d)\d{1,2}[-/]\d{1,2}[-/]\d{2,4}(?!\d)', ' ', (name or '').replace('_', ' '))
+    n = re.sub(r'(?i)^(detroit region scca )?regional at waterford hills( \d{4})?$', 'SCCA Regional at Waterford Hills', n.strip())
+    n = re.sub(r'(?i)^div champ$', 'Divisional Championship', n.strip())
     n = re.sub(r'^\s*(detroit (region )?scca|drscca)\s*-?\s*', '', n, flags=re.I)
     n = re.sub(r'#\s*\d+\s*-?', ' ', n)
     n = re.sub(r'\s*-\s*-\s*', ' - ', n)
@@ -49,7 +51,7 @@ def clean(name):
 for i, nm, prog in d.execute('select id, name, program from events').fetchall():
     d.execute('update events set name = ? where id = ?', ((lambda c: c if c and not c.endswith(' event') and not c.startswith('Run group') else f"{prog} {c or 'event'}".replace(' Saturday event', ', Saturday').replace(' Sunday event', ', Sunday'))(clean(nm)), i))
 RALLY_NAMES = [   # one name per recurring rally, whatever the file called it
-    (r'sno\W*d\w*ft|snodrift|son of sno', 'Son of Sno*Drift'), (r'press on regardless|\bpor\b', 'Press On Regardless'),
+    (r'sno\W*d\w*ft|snodrift|son of sno', 'Son of Sno*Drift'), (r'press on regardless|\b[fs]?por\b|^[fs]?por', 'Press On Regardless'),
     (r'moo\w*\s*monte', 'Moonlight Monte'), (r'th\w*bs up', 'Thumbs Up'), (r'twilight\s*tour', 'Twilight Tour'),
     (r'rali+gators', 'Ralligators Reunion'), (r'mid\s*summer', 'Midsummer'), (r'tri\s*-?county', 'Tri-County'),
     (r'clare color', 'Clare Color Tour'), (r'pavement ends', 'Pavement Ends'), (r'dawnbuster', 'Dawnbuster'),
@@ -172,6 +174,13 @@ for i, (n, k) in counts().items():
         d.execute('delete from people where id = ?', (i,)); stats['one-word names unlinked'] += 1
 d.execute('update result_rows set driver = (select name from people p where p.id = person_id) where person_id is not null')
 d.execute('update season_standings set name = (select name from people p where p.id = person_id)')
+# never a hometown or member number in the car column (some entry-list style sheets put them there)
+for i, v in d.execute('select id, vehicle from result_rows where vehicle is not null').fetchall():
+    if re.search(r'(?<![\w/])\d{5,7}(?![\w/])|[a-z],\s*[A-Z]{2}\b(?!\w)', v):
+        d.execute('update result_rows set vehicle = null where id = ?', (i,))
+# hometowns some 2007 race sheets print after the class: 'GT1 "FENTON, MI"' -> 'GT1'
+d.execute("""update result_rows set class = trim(substr(class, 1, instr(class, '"') - 1)) where class like '%"%, __"%'""")
+d.execute("""update result_rows set class = substr(class, 1, instr(class, ' ') - 1) where class glob '[A-Z0-9]* [A-Z]*, [A-Z][A-Z]'""")
 # class codes in one case
 d.execute("update result_rows set class = upper(class) where class not like '% %' and length(class) <= 8")
 d.execute("update result_rows set section = upper(section) where section not like '% %' and length(section) <= 8")
@@ -181,6 +190,8 @@ for prog, dt in d.execute("select program, date from events where date is not nu
     for i in ids[1:]:
         d.execute('update files set event_id = ? where event_id = ?', (ids[0], i)); d.execute('update result_rows set event_id = ? where event_id = ?', (ids[0], i))
         d.execute('delete from events where id = ?', (i,)); stats['events merged (same day)'] += 1
+# people left with no results or standings (their rows were dropped as junk, e.g. a town read as a name)
+d.execute('delete from people where id not in (select person_id from result_rows where person_id is not null union select person_id from season_standings where person_id is not null)')
 print(dict(stats))
 open(os.path.join(os.path.dirname(out), 'records-review.txt'), 'w').write(
     'Possible same person, not merged (name, rows, name, rows):\n' + '\n'.join(f'{a} ({x})  |  {b} ({y})' for a, x, b, y in sorted(set(review))) + '\n')
@@ -188,7 +199,11 @@ d.execute('alter table files add column label text')
 d.execute('alter table files add column sort integer')
 for i, nm in d.execute('select id, name from files').fetchall():
     low = (nm or '').lower()
-    lab, srt = ('PAX', 2) if 'pax' in low or 'index' in low else ('Raw', 3) if 'raw' in low else ('Class results', 1) if re.search(r'class|final|results?', low) else ('Results', 4)
+    lab, srt = ('Leg scores', 5) if re.search(r'leg\W*by\W*leg', low) else ('PAX', 2) if 'pax' in low or 'index' in low else ('Raw', 3) if 'raw' in low else ('Class results', 1) if re.search(r'class|final|results?', low) else ('Results', 4)
+    if low.endswith('.csv') and ' - ' in nm:          # Speedhive race sessions: one tab per session, by group then day
+        lab = nm.rsplit(' - ', 1)[1][:-4]
+        g = re.search(r'group\s*#?\s*(\d+)', lab, re.I)
+        srt = (int(g[1]) if g else 50) * 10 + next((i for i, k in enumerate(('saturday', 'sunday', 'feature'), 1) if k in lab.lower()), 5)
     d.execute('update files set label = ?, sort = ? where id = ?', (lab, srt, i))
 d.commit(); d.execute('DETACH s'); d.execute('VACUUM'); d.close()
 os.replace(tmp, out)

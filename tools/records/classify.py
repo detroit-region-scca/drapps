@@ -28,7 +28,8 @@ def year_of(s):
 def program(n, t):
     nn = re.sub(r'[_\-.]+', ' ', n.lower())
     s = nn + ' ' + t[:600].lower()
-    if 'workerpoints' in s.replace(' ', '') or 'worker points' in s or 'points used after' in s: return 'Worker points'
+    # worker points sheets by name or their WORKERPOINTS title; a results sheet's "Worker Points" section does not count
+    if re.search(r'worker.?points', nn) or 'workerpoints' in t[:300].lower().replace(' ', '') and 'official results' not in t[:600].lower() or 'points used after' in s: return 'Worker points'
     if 'sae international' in s or re.search(r'fsae (mi )?\d{4} result|\d{4} fsae result', nn): return 'Other'
     if re.search(r'hill ?climb|quick guide|guide v\d|kart ?2 ?kart|live timing test|test of live uploaded', s): return 'Other'
     if re.search(r'rally ?-?cross|rally ?-?x\b|rallyx', nn + ' ' + t[:300].lower()): return 'RallyCross'   # named as RallyCross, even if AXWare timed it

@@ -309,6 +309,26 @@ def parse_stacked(text):
                              line_no=i + 1, section=cls, raw=l.strip()))
         i += 1
     return rows
+RXLINE = re.compile(r"^\s*(?P<cls>[A-Z]{1,4}\d?)\s+(?P<car>\d{1,4})\s+(?:(?P<reg>[A-Z]{2,4})\s+)?(?:\(\d+\)\s+)?(?:[T*]\s+)?"
+                    r"(?P<first>[A-Z][A-Za-z'.\-]*(?: [A-Z][A-Za-z'.\-]*)?)\s{2,}(?P<last>[A-Z][A-Za-z'.\-]*(?:[ -][A-Za-z'.\-]+)?)"
+                    r"(?:\s{2,}|\s+(?=\d{2,4}\s))(?P<veh>.*?)\s*(?:\*\s*)?\(?\s*(?P<total>\d{2,4}\.\d{1,3}|DNF|DNS)\s*\)?\s+(?P<runs>.*)$")
+def parse_rx(text):
+    """RallyCross sheets (2009 on): Class, Car #, Reg, T, First Name, Last Name, car, Total, then each run and its
+    penalty. Places are by total within each class (lowest first), the way the sheets are sorted."""
+    rows = []
+    for n, line in enumerate(text.splitlines(), 1):
+        m = RXLINE.match(line)
+        if not m or not re.search(r'[a-z]', m['first'] + m['last']):
+            continue
+        runs = re.findall(r'\d{1,3}\.\d{1,3}', m['runs'])
+        join = lambda x: ' '.join(re.sub(r'\b([A-Z]) (?=[a-z]{2,})', r'\1', x).split())   # "M itsubishi" -> "Mitsubishi"
+        rows.append(dict(**{'class': m['cls']}, car_number=m['car'], driver=join(f"{m['first']} {m['last']}"), vehicle=join(m['veh'].strip(' *')) or None,
+                         total=m['total'], cells=[['runs', ' '.join(runs)]], line_no=n, section=m['cls'], raw=line.strip()))
+    for cls in {r['class'] for r in rows}:
+        ranked = sorted((r for r in rows if r['class'] == cls), key=lambda r: float(r['total']) if r['total'][0].isdigit() else 1e9)
+        for i, r in enumerate(ranked, 1):
+            r['position'] = str(i) if r['total'][0].isdigit() else r['total']
+    return rows
 def parse_html(path):
     """Results from an AXWare web page: read its table rows (a header row maps columns; class pages without one use
     AXWare's order: position, class, number, driver, car, color, runs, total)."""
@@ -394,6 +414,9 @@ CREATE TABLE result_rows (id INTEGER PRIMARY KEY, file_id INTEGER REFERENCES fil
   car_number TEXT, driver TEXT, vehicle TEXT, color TEXT, total TEXT, raw_time TEXT, pax_time TEXT, total_s REAL, raw_s REAL, pax_s REAL, cells TEXT, line_no INTEGER, raw_line TEXT);
 ''')
 def event_name(text, name):
+    rx = re.search(r'Round\s+\d+\s*-\s*[A-Za-z]+\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\s+(.+?)\s*$', text[:1500], re.M)
+    if rx:
+        return re.sub(r',\s*[A-Z][A-Za-z .]+,\s*(MI|OH|IN|ON)\b.*$', '', rx[1]).strip(' -,')
     for line in text.splitlines()[:25]:
         m = re.search(r'-\s*(?:#\d+\s*-\s*)?(.+?)\s*-\s*(?:mon|tue|wed|thu|fri|sat|sun)\w*\s+\d', line, re.I)
         if m: return m[1].strip(' -')
@@ -413,7 +436,10 @@ for i, (fid, p) in enumerate(plan.items(), 1):
     low = m['name'].lower(); raw = f'{WORK}/files/{fid}'
     if os.path.exists(t_path): text = open(t_path, errors='ignore').read()
     elif low.endswith(('.htm', '.html')): text = html_text(raw)
-    elif low.endswith(('.txt', '.csv')): text = open(raw, errors='ignore').read()
+    elif low.endswith('.csv'):
+        import csv as _csv
+        text = '\n'.join('   '.join(c.strip() for c in row) for row in _csv.reader(open(raw, errors='ignore')))
+    elif low.endswith('.txt'): text = open(raw, errors='ignore').read()
     elif low.endswith(('.xls', '.xlsx')): text = sheet_text(raw, m['name'])
     elif low.endswith('.zip'): text = zip_text(raw)
     else: text = fallback.get(fid, '')
@@ -429,9 +455,12 @@ for i, (fid, p) in enumerate(plan.items(), 1):
     if m['program'] == 'Rally' and low.endswith(('.xls', '.xlsx')):
         rows, text = parse_scca_template(raw, m['name']), ''   # rally workbooks: only SCCA's official results template
     if m['program'] == 'Rally' and text and not rows: rows = parse_rally(text)   # crews: driver and navigator
-    if not rows and text and (low.endswith(('.xls', '.xlsx')) or low.endswith('.zip')):
+    if not rows and text and (low.endswith(('.xls', '.xlsx', '.csv')) or low.endswith('.zip')):
         g = parse_grid(text)          # keep it only when it found real results (a place or a time on most rows)
         if g and sum(1 for r in g if r.get('position') or r.get('total')) >= 0.5 * len(g): rows = g
+    if not rows and text and m['program'] == 'RallyCross':
+        rx = parse_rx(text)          # the RallyCross layout, when it covers the sheet
+        if len(rx) >= 5: rows = rx
     if not rows and text: rows = parse(text)
     if not rows and text: rows = parse_lines(text)
     if not rows and text and m['program'] == 'RallyCross': rows = parse_stacked(text)
