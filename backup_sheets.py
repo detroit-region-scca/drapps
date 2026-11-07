@@ -1,7 +1,7 @@
 """Nightly safety copy of the Google Sheets the app uses: exported as .xlsx into data/backups/.
 
 The sheets in the treasurer's Drive are the record; this is a second copy on the server in case the
-Drive files are damaged or deleted. Keeps the last 60 days. Run inside the container (deploy/drscca-backup.* runs it nightly):
+Drive files are damaged or deleted. Keeps the last 60 days. Run inside the container (deploy/gcp/systemd/drscca-backup.* runs it nightly):
     docker exec <container> python backup_sheets.py
 """
 import glob

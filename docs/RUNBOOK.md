@@ -1,141 +1,192 @@
 # DRSCCA Apps runbook
 
-For whoever keeps drapps.drscca.org running. The README covers what the app is and how to set up a new host.
-This page covers the day to day: what runs where, what to check, and what to do when something breaks.
+For whoever keeps drapps.drscca.org and livetiming.drscca.org running. The README covers what the app is. This
+page covers where it runs, how to change it, what runs by itself, and what to do when something breaks.
 
-Host-specific details (the server's name, where the secret files are, who has access) belong in a private note
-in the region's DRSCCA Apps Shared Drive, never here: this repo is public.
+Everything runs on one small server the region owns, in the region's Google Cloud account. Nothing depends on
+anyone's home computer. This repo is public: secrets never go here, only where they live.
+
+## What you need to maintain it
+
+1. **The region's Google admin account** (admin@drscca.org), or your own drscca.org account with *Owner* (or
+   *Compute Instance Admin* + *IAP-secured Tunnel User*) on the Google Cloud project `drscca-automation`.
+2. **The Google Cloud CLI** (`gcloud`) on your computer, signed in with that account:
+   `gcloud auth login` then `gcloud config set project drscca-automation`.
+3. **Push access** to this GitHub repo.
+4. **Content manager** on the DRSCCA Apps Shared Drive (where the data lives).
+
+That is all. There is no server password: admin access goes through Google's sign-in.
 
 ## What runs where
 
 | Piece | Where | Notes |
 |---|---|---|
-| The web app | Docker container on the host (`docker-compose.prod.yml`), 4 gunicorn workers | Restarts itself (`restart: unless-stopped`) |
+| Server | Google Cloud project `drscca-automation`, VM `drapps`, zone `us-central1-a`, e2-micro (free tier), fixed IP `drapps-ip` | Billing account "Detroit Region SCCA", $25/month budget alert |
+| Everything on the server | `/opt/drscca` | `docker-compose.yml`, `Caddyfile`, copied from `deploy/gcp/` by the deploy script |
+| The web app | container `drapps`, built from `/opt/drscca/app` (a clone of this repo) | Restarts itself |
+| HTTPS | container `caddy` | Certificates renew themselves |
+| Live timing upload | container `livetiming-sftp`, port 2222 | One login per program |
+| Live timing pages | container `livetiming-web`, at livetiming.drscca.org | See "Live timing" |
 | The record | Google Sheets and Drive folders in the DRSCCA Apps Shared Drive | The app is a front end to these |
-| Host state | `data/` in the repo folder, mounted into the container | See below |
-| Officials list | `officials.json` on the host, mounted read-only | Changed through Admin > Users |
-| Host jobs | systemd user units from `deploy/` | See "Automatic jobs" |
-| QuickBooks connection | a qbo-mcp install and its token store on the host | Read only |
+| App state | `/opt/drscca/app/data/` | See below |
+| Secrets | `/opt/drscca/data/secrets/` (root only) | See "Secrets" |
+| Host jobs | systemd units from `deploy/gcp/systemd/` | See "Automatic jobs" |
+| QuickBooks | `/opt/drscca/qbo-mcp` and its one token file | Read only for the sync |
+| DNS | drscca.org zone at WordPress.com: `drapps`, `drevent`, `livetiming` A records | Point at the fixed IP |
 | Code | GitHub, public | Tests run on every push |
+
+The server only accepts web (80/443) and live timing uploads (2222) from the internet. Admin SSH (22) is
+allowed only from Google's IAP range, so you connect through Google:
+
+    gcloud compute ssh drapps --zone us-central1-a --tunnel-through-iap
+
+Or open the VM list in the Cloud console and press **SSH**.
 
 ### What is in `data/`
 
 | File | What it is | If lost |
 |---|---|---|
-| `audit.ndjson` | The app's audit log: who did what, when | History is gone; the app keeps working. Back it up. |
+| `audit.ndjson` | The app's audit log: who did what, when | History is gone; the app keeps working |
 | `role-access.json` | Admin > Roles settings | Roles fall back to defaults; redo them in Admin > Roles |
 | `programs.json` | Program codes and names | Re-enter in Admin > Programs |
+| `short_links.json` | Short links in emails (votes, approvals) | Old emailed links stop working |
 | `officials-queue.json`, `officials-done.json` | Officials changes waiting, and their results | Redo any change that was waiting |
 | `qbo-last-run.json`, `qbo-refresh.json` | When QuickBooks last synced; a Sync now request | Rebuilt by the next sync |
 | `auth_codes.json` | Sign-in codes not yet used | People request a new code |
 | `sheet_cache.sqlite*` | Cache of the sheets | Rebuilt automatically |
 | `backups/` | Nightly `.xlsx` copies of every sheet, 60 days | Only matters if Drive is damaged |
-| `*.lock` | File locks | Safe to delete when the app is stopped |
-| `events.ndjson` | Event data for the file backend only | Not used with Google Sheets |
+
+The files in `data/` belong to the `drapps` user (uid 1000), the same user the container runs as.
+
+## Changing the app
+
+On your computer, in this repo:
+
+    OFFICIALS_HOST=/nonexistent PYTHONPATH=. venv/bin/pytest -q tests     # tests must pass
+    git commit ...
+    deploy/gcp/deploy.sh
+
+The deploy script runs the tests, refuses uncommitted changes, pushes, then on the server pulls the code,
+copies the compose file, Caddyfile, job units and live timing pages into place, rebuilds and restarts drapps,
+reloads Caddy and checks the site answers. Signed-in people stay signed in. Then check the GitHub test run:
+`gh run list --limit 1`.
+
+To undo a bad update: `git revert` the commit and deploy again.
+
+Server-only changes (secrets, `officials.json` by hand) are made on the server, never in git; restart with
+`sudo docker compose restart drapps` in `/opt/drscca`.
 
 ## Automatic jobs
 
-| Job | When | Unit | What it does |
+All run on the server. Any failure emails admin@drscca.org (from apps@) with the last log lines
+(`drscca-alert@.service`, `deploy/gcp/alert.py`).
+
+| Job | When (Detroit time) | Unit | What it does |
 |---|---|---|---|
-| QuickBooks sync | 02:30 nightly | `drscca-qbo.timer` | Actuals, funds requests paid, bank balances, books check exceptions. On the 1st it also emails the treasurer the worker points journal entry and adds the month's automatic points. |
+| QuickBooks sync | 02:30 nightly | `drscca-qbo.timer` | Actuals, funds requests paid, bank balances, books check. On the 1st it also emails the treasurer the worker points journal entry and adds the month's automatic points. |
 | Sync now | When the treasurer presses it | `drscca-qbo-refresh.path` | The same sync, on request |
-| Sheet backup | 02:45 nightly | `drscca-backup.timer` | `.xlsx` copies into `data/backups/`; alerts on failure through `drscca-backup-failed.service` |
+| Sheet backup | 02:45 nightly | `drscca-backup.timer` | `.xlsx` copies into `data/backups/` |
+| Live timing archive | 03:30 nightly | `drscca-livetiming-archive.timer` | Saves each event's pages, see "Live timing" |
 | Officials changes | When the admin saves a person in Admin > Users | `drscca-officials.path` | Updates `officials.json` and the drscca.org Google Groups with GAM |
+| Software updates | Sundays 04:30 | `drscca-update.timer` | Newest Caddy, nginx and SFTP images, drapps rebuilt on the newest Python, newest GAM and libraries |
+| System updates | daily | `unattended-upgrades` | Debian, Docker, Node and Google packages; reboots at 04:00 only when an update needs it |
 
-Check them: `systemctl --user list-timers | grep drscca` and `systemctl --user status drscca-officials.path
-drscca-qbo-refresh.path`. The user units only run while the user has lingering on
-(`loginctl enable-linger <user>`).
+Check them: `systemctl list-timers 'drscca-*'` and `systemctl status drscca-officials.path
+drscca-qbo-refresh.path`.
 
-**Known gap:** a failed QuickBooks sync sends no alert. The sign is the Treasurer page: "QuickBooks sync"
-shows the last good run, and it should never be more than a day old.
+## Live timing
 
-## Routine checks
+AXWare on each program's timing laptop uploads its live results every minute over SFTP:
 
-- **Weekly:** the Treasurer page shows a QuickBooks sync from last night.
-- **Monthly:** `ls data/backups | tail` shows last night's files; `journalctl --user -u drscca-qbo -n 20` has no
-  errors; the treasurer received the worker points email on the 1st.
-- **Each election or handover:** the officials list and the groups match (`python3 tools/handover.py sync`
-  without `--apply` shows any drift).
+| AXWare setting (Setup > Configuration Settings > Live Results) | Value |
+|---|---|
+| Host Name | livetiming.drscca.org |
+| Port # | 2222 |
+| File Protocol | SFTP |
+| User Name | `autocross` or `rallycross` |
+| Upload Location | /livetiming |
+| Public Browse URL | `autocross/` or `rallycross/` |
 
-## Updating the app
+Each login can only write its own program's folder (`/opt/drscca/data/livetiming/www/<program>/`); nothing
+else on the server is reachable. Every upload replaces the last. The front page lists both programs and the
+past events.
 
-    cd <repo folder>
-    git pull
-    OFFICIALS_HOST=/nonexistent PYTHONPATH=. venv/bin/pytest -q tests
-    docker compose -f docker-compose.prod.yml up -d --build
+**Archive:** each night the server copies a program's latest event to `www/archive/<program>/<date>/`, lists it
+under "Past events" on the front page, and copies it to "Live Timing Archive" in the region shared drive.
+Nothing is ever deleted.
 
-Then sign in and open the page you changed. Check that the GitHub test run for the commit passed:
-`gh run list --limit 1`. The host jobs run from the repo folder's `venv/`; after a `requirements.txt` change,
-run `venv/bin/pip install -r requirements.txt` there too.
-
-To undo a bad update: `git log --oneline -5`, `git checkout <good commit>`, rebuild as above, then fix forward
-on `main`.
+**Logins** are in `/opt/drscca/data/livetiming/users.conf` (hashed). To change a password:
+`openssl passwd -6`, put the hash in that line, then `sudo docker compose restart livetiming-sftp`. To add a
+program, add a line (new uid), a folder owned by that uid, and a volume line in `docker-compose.yml`.
 
 ## Logs and restarts
 
-| Want | Command |
+| Want | Command (on the server, in `/opt/drscca`) |
 |---|---|
-| App errors | `docker logs --since 1h <container>` (each error starts with `Traceback`) |
-| Restart the app | `docker compose -f docker-compose.prod.yml restart` |
-| A job's last run | `journalctl --user -u drscca-qbo -n 50` (or `drscca-backup`, `drscca-officials`, `drscca-qbo-refresh`) |
-| Run the sync by hand, changing nothing | `venv/bin/python tools/qbo_nightly.py --dry-run` |
-| Who did what | the Audit page in the app, or `tail data/audit.ndjson` |
+| What is running | `sudo docker compose ps` |
+| App errors | `sudo docker logs --since 1h drapps` (each error starts with `Traceback`) |
+| Restart the app | `sudo docker compose restart drapps` |
+| A job's last run | `sudo journalctl -u drscca-qbo -n 50` (or `drscca-backup`, `drscca-officials`, `drscca-livetiming-archive`, `drscca-update`) |
+| Run a job now | `sudo systemctl start drscca-backup.service` |
+| Who did what | the Audit page in the app, or `tail app/data/audit.ndjson` |
 
 ## When something breaks
 
-**The site does not load.** Check the container is up (`docker ps`), then its log. If the container is fine,
-check the HTTPS proxy and DNS in front of it. The data is safe in Drive whatever happens to the host.
+**The site does not load.** `sudo docker compose ps`, then the container's log. If the VM itself is down,
+start it in the Cloud console (Compute Engine > VM instances). The data is safe in Drive whatever happens to the
+server.
 
-**"Internal Server Error" on one page.** `docker logs` shows the traceback. Most often a sheet tab or column
-was renamed or deleted by hand in Drive; put it back, or fix the code and add a test.
+**"Internal Server Error" on one page.** `sudo docker logs drapps` shows the traceback. Most often a sheet tab or
+column was renamed or deleted by hand in Drive; put it back, or fix the code and add a test.
 
-**Nobody receives email (sign-in codes, approvals).** Check the log for mail errors. With SMTP: the app
-password was revoked or the account's password changed; make a new app password and update `.env`, then
-restart. With the Gmail API: the service account's domain-wide delegation for `gmail.send` was removed in the
-Workspace admin console. Also check the role group still exists and accepts mail from the sending address.
+**Nobody receives email.** The app sends through the Gmail API as the service account. Check the log for mail
+errors; the usual cause is the service account's domain-wide delegation for Gmail being removed in the
+Workspace admin console.
 
-**One person is not receiving app email.** App email goes to role groups. Check the person is a member of
-the group for their job (`tools/handover.py show`), and their spam folder.
+**One person is not receiving app email.** App email goes to role groups. Check the person is a member of the
+group for their job (`tools/handover.py show`), and their spam folder.
 
-**Someone cannot sign in.** They must use the address on their user in Admin > Users (officials) or on the
-App access page. A code works once, for 15 minutes; ask them to request a new one.
+**Someone cannot sign in.** They must use the address on their user in Admin > Users (officials) or on the App
+access page. A code works once, for 15 minutes; ask them to request a new one.
 
-**Every page fails with a Google permission error.** The service account lost access to the Shared Drive, or
-its key was deleted. Re-add it as Content manager, or make a new key in Google Cloud, replace the key file on
-the host, and restart.
+**Every page fails with a Google permission error.** The service account lost access to the Shared Drive, or its
+key was deleted. Re-add it as Content manager, or make a new key, replace `drapps-sa.json`, restart.
 
-**QuickBooks sync fails.** `journalctl --user -u drscca-qbo -n 50`. An `HTTP 401` or a token error means the
-QuickBooks connection expired: Intuit's refresh token lapses after about 100 days without use, or when someone
-disconnects the app in QuickBooks. Reconnect the qbo-mcp install as a QuickBooks admin, then run Sync now.
-Until then the apps work; actuals and paid status just stop updating.
+**QuickBooks sync fails.** `sudo journalctl -u drscca-qbo -n 50`. A 401 or token error means the QuickBooks
+connection expired (about 100 days without use, or someone disconnected the app in QuickBooks). Reconnect as a
+QuickBooks admin and put the new refresh token in `qbo.env`. QuickBooks replaces the token every time it is
+used, so there must only ever be one copy of `qbo.env`: the one on the server.
 
-**An officials change says it is still being saved.** `journalctl --user -u drscca-officials -n 50` and
-`data/officials-done.json` show why. A GAM error usually means its service account lost a Workspace admin
-role. Fix that, then touch the queue file to retry: `touch data/officials-queue.json`.
+**An officials change says it is still being saved.** `sudo journalctl -u drscca-officials -n 50` and
+`data/officials-done.json` show why. A GAM error usually means its service account lost a Workspace admin role.
+Fix that, then `sudo touch app/data/officials-queue.json` to retry.
 
-**The backup failed.** The sheets are still the record; only the second copy is missing. Run it by hand to
-see the error: `docker exec <container> python backup_sheets.py`.
+**A sheet was damaged or rows were deleted.** First use Drive's version history on that spreadsheet. If that is
+not enough, the matching file in `data/backups/` is the sheet as of a past night: copy back what is missing. Do
+not replace the whole spreadsheet, or its ID changes.
 
-**A sheet was damaged or rows were deleted.** First use Drive's own version history (File > Version history)
-on that spreadsheet. If that is not enough, the matching file in `data/backups/` is the sheet as of a past
-night: open it and copy back what is missing. Do not replace the whole spreadsheet, or the file ID changes and
-`.env` would need the new ID.
+**The server itself is lost or broken.** The disk is snapshotted daily, 7 days kept (snapshot schedule
+`daily-7`): in the Cloud console, create a disk from the latest snapshot and a VM from that disk with the same
+network tag `drapps` and the IP `drapps-ip`. To build from scratch instead: Debian 12 VM, Docker, clone this repo
+to `/opt/drscca/app`, copy `deploy/gcp/` into place, restore `/opt/drscca/data/secrets/` from the Account
+Recovery folder, `sudo docker compose up -d`, install the units, then run `deploy/gcp/deploy.sh`.
 
 ## Secrets
 
-| Secret | Where | How to replace |
+All on the server in `/opt/drscca/data/secrets/` (root only), never in git. A copy of anything you cannot
+recreate belongs in the admin-only Account Recovery folder in the region shared drive.
+
+| Secret | File | How to replace |
 |---|---|---|
-| `FLASK_SECRET_KEY` | `.env` | New random value, restart. Everyone is signed out. |
-| Service account key | file on the host, path in `GOOGLE_SA_KEY_HOST` | New key in Google Cloud, swap the file, restart, delete the old key |
-| SMTP app password (if SMTP) | `.env` | New app password, restart |
-| Google OAuth client secret | `.env` | New secret on the OAuth client, restart |
-| `API_KEYS` | `.env` | Generate, update the MCP client's env file, restart |
-| QuickBooks tokens | qbo-mcp token store | Reconnect as above |
-| `officials.json` | host file | Not secret, but private: names and addresses |
+| App settings incl. `FLASK_SECRET_KEY`, `API_KEYS` | `drapps.env` | Edit, restart drapps. A new `FLASK_SECRET_KEY` signs everyone out and voids emailed links. |
+| App service account key | `drapps-sa.json` | New key in Google Cloud, swap the file, restart, delete the old key |
+| Workspace service account key (GAM, Drive archive) | `workspace-sa.json`, `gam/gam.cfg` | New key, swap the file |
+| QuickBooks token | `qbo.env` | Reconnect as above |
+| Live timing logins | `/opt/drscca/data/livetiming/users.conf` | See "Live timing" |
+| Officials list | `officials.json` | Not secret, but private: names and addresses |
 
 ## Handing over
 
-The new maintainer needs: an account on the host (or its replacement), push access to the GitHub repo,
-Content manager on the DRSCCA Apps Shared Drive, and this page. Walk through one update and one restart
-together. When the old maintainer leaves, replace the service account key and `FLASK_SECRET_KEY`, and remove
-their access to the host, the repo and the drive.
+The new maintainer needs the four things in "What you need", and this page. Walk through one deploy and one
+restart together. When a maintainer leaves: remove their access to the Google Cloud project, the repo and the
+drive, and replace `FLASK_SECRET_KEY`, the service account keys and the API key they used.

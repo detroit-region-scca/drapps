@@ -38,23 +38,20 @@ drapps.drscca.org. Keeping it running: [docs/RUNBOOK.md](docs/RUNBOOK.md).
   actuals, paid status and a books check into the sheets. The Treasurer page's Sync now button asks for an
   extra run.
 
-## Setting up a new host
+## Where it runs
 
-1. **A server with Docker** and HTTPS in front (Caddy, nginx or a Cloudflare Tunnel). The container listens
-   on `HOST_PORT` (default 5858).
-2. **The code:** `git clone` this repo.
-3. **A Google service account** with a JSON key, added as *Content manager* of the DRSCCA Apps Shared Drive.
-   Its Google Cloud project needs the Sheets and Drive APIs. The data stays where it is.
-4. **`.env`:** copy `.env.example` and fill it in. Every setting has a comment. The sheet and folder IDs are
-   the long IDs in each Google URL.
-5. **`officials.json`:** copy the current one, or start from `officials.example.json`.
-6. **Email:** either SMTP (a Workspace address with an app password works) or the Gmail API as the service
-   account (`MAIL_TRANSPORT=gmail_api`). Send from a drscca.org address so approvals stay out of spam.
-7. **Copy `data/`** from the old host (see the runbook for what is in it).
-8. **Start it:** `docker compose -f docker-compose.prod.yml up -d --build`
-9. **Host jobs:** install the systemd user units in `deploy/` (runbook, "Automatic jobs"). Fix the paths in
-   `drscca-qbo.service` first.
-10. **Point DNS** at the new host, sign in, open each app, and file a test funds request to confirm email.
+On a small server the region owns, in its Google Cloud account (project `drscca-automation`, VM `drapps`),
+together with live timing (livetiming.drscca.org). Everything for that server is in `deploy/gcp/`: the
+compose file, the Caddyfile, the host jobs, the alert and update scripts, and `deploy.sh`, which tests and
+deploys a change in one step. **[docs/RUNBOOK.md](docs/RUNBOOK.md) is the maintainer's guide:** access,
+deploying, the automatic jobs, live timing, secrets, and what to do when something breaks.
+
+To run it somewhere else: a Linux server with Docker; clone this repo to `/opt/drscca/app`; copy
+`deploy/gcp/` into `/opt/drscca` and adjust it; a Google service account with a JSON key added as *Content
+manager* of the DRSCCA Apps Shared Drive (Sheets and Drive APIs on); `.env` from `.env.example`;
+`officials.json`; the old server's `data/`; email through the Gmail API as the service account
+(`MAIL_TRANSPORT=gmail_api`) from a drscca.org address; then point DNS at it. The runbook's "The server itself
+is lost" section lists the order.
 
 ## Configuration
 
@@ -89,7 +86,7 @@ dev server with the code mounted.
 - `auth.py` (sign-in, volunteers), `access.py` (roles and permissions), `officials.py`, `officer.py`,
   `csrf.py`.
 - `utils.py`: email, dates, the audit log, shared helpers. `qbo_logic.py`: matching QuickBooks to the sheets.
-- `templates/`: one Jinja template per app. `tools/`: host jobs. `deploy/`: their systemd units.
+- `templates/`: one Jinja template per app. `tools/`: host jobs. `deploy/gcp/`: the server setup, its systemd units and `deploy.sh`.
 
 ## API and MCP server
 
