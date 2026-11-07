@@ -1,0 +1,7 @@
+[Unit]
+Description=DRSCCA apps: weekly container and library updates
+OnFailure=drscca-alert@%n.service
+After=docker.service
+[Service]
+Type=oneshot
+ExecStart=/opt/drscca/app/deploy/gcp/update.sh

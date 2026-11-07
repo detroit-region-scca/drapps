@@ -1,0 +1,8 @@
+[Unit]
+Description=DRSCCA apps: weekly updates
+[Timer]
+OnCalendar=Sun *-*-* 04:30 America/Detroit
+Persistent=true
+RandomizedDelaySec=10min
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,12 @@
+// DRSCCA drapps VM: also take updates from Docker, NodeSource and Google's guest tools (Debian + security are in
+// 50unattended-upgrades), and reboot at 4 am Detroit time when an update needs it (about a minute offline).
+Unattended-Upgrade::Origins-Pattern {
+        "origin=Docker,label=Docker CE";
+        "site=deb.nodesource.com";
+        "site=packages.cloud.google.com";
+};
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+Unattended-Upgrade::Automatic-Reboot-Time "04:00";
