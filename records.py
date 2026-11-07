@@ -169,6 +169,12 @@ def event(eid):
         rs = rows.get(f['id'])
         if not rs:
             continue
+        if e['program'] == 'Rally':      # one line per crew: the rows read from the same line are driver and navigator
+            crews = {}
+            for r in rs:
+                c = crews.setdefault(r['line_no'], dict(r, crew=[]))
+                c['crew'].append((r['person_id'], r['driver']))
+            rs = list(crews.values())
         cols = [(lab, k) for lab, k in (('Pos', 'position'), ('#', 'car_number'), ('Driver', 'driver'), ('Car', 'vehicle'),
                 ('Total', 'total'), ('Raw', 'raw_time'), ('PAX', 'pax_time')) if any(r[k] for r in rs)]
         groups = []          # class sheets: one table per class, in the sheet's order; other sheets: one table
@@ -184,7 +190,7 @@ def event(eid):
         if f['label'] != 'Class results' or mixed:
             cols.insert(1, ('Class', 'class'))
         if e['program'] == 'Rally':      # a rally crew is a driver and a navigator, scored in points
-            cols = [({'vehicle': 'Partner', 'total': 'Score'}.get(k, lab), k) for lab, k in cols]
+            cols = [({'driver': 'Crew', 'total': 'Score'}.get(k, lab), k) for lab, k in cols if k != 'vehicle']
         same = [x for x in sheets if x['label'] == f['label']]
         sheets.append(dict(id=f['id'], label=f['label'] + (f' {len(same) + 1}' if same else ''), cols=cols, groups=groups,
                            drivers=len({r['person_id'] for r in rs})))
