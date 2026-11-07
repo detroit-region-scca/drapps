@@ -1,7 +1,9 @@
 # DRSCCA Apps runbook
 
 For whoever keeps drapps.drscca.org and livetiming.drscca.org running. The README covers what the app is. This
-page covers where it runs, how to change it, what runs by itself, and what to do when something breaks.
+page covers where it runs, how to change it, what runs by itself, and what to do when something breaks. The region's
+whole tech stack (website, email, Drive, accounts, costs, hand-off) is in the Google Doc "DRSCCA Technology Handbook"
+at the top of the DRSCCA Region shared drive.
 
 Everything runs on one small server the region owns, in the region's Google Cloud account. Nothing depends on
 anyone's home computer. This repo is public: secrets never go here, only where they live.
@@ -122,6 +124,13 @@ PDFs each program posts after an event. The front page links both programs.
 **Logins** are in `/opt/drscca/data/livetiming/users.conf` (hashed). To change a password:
 `openssl passwd -6`, put the hash in that line, then `sudo docker compose restart livetiming-sftp`. To add a
 program, add a line (new uid), a folder owned by that uid, and a volume line in `docker-compose.yml`.
+
+## Records
+
+`/records` shows region results back to 1982 from `data/records.db`, a read-only SQLite file built off the server by
+`tools/records/` (see its README) and copied in with `gcloud compute scp` and `sudo install -o 1000 -g 1000 -m 644`.
+No restart is needed. New results that people add land in the Drive folder *Timing and Results / Results inbox*
+(`RESULTS_INBOX_FOLDER_ID`); they are read in later, in a batch. Records never holds worker points.
 
 ## Logs and restarts
 
