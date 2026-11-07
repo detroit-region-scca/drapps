@@ -23,10 +23,12 @@ for f in docker-compose.yml Caddyfile livetiming-nginx.conf; do sudo cp app/depl
 sudo install -m 755 app/deploy/gcp/qbo-mcp.sh /opt/drscca/qbo-mcp.sh
 sudo install -m 644 app/deploy/gcp/livetiming-www/*.html data/livetiming/www/
 sudo cp app/deploy/gcp/systemd/* /etc/systemd/system/ && sudo systemctl daemon-reload
-sudo systemctl enable --now drscca-livetiming-archive.timer drscca-update.timer >/dev/null 2>&1
+sudo systemctl enable --now drscca-livetiming-archive.timer drscca-update.timer drscca-secrets-backup.timer >/dev/null 2>&1
+command -v fail2ban-client >/dev/null || sudo apt-get install -y -qq fail2ban >/dev/null 2>&1
+sudo install -m 644 app/deploy/gcp/fail2ban/livetiming-sftp.local /etc/fail2ban/jail.d/livetiming-sftp.local && sudo systemctl reload-or-restart fail2ban
 sudo install -m 644 app/deploy/gcp/apt/52drscca-upgrades /etc/apt/apt.conf.d/52drscca-upgrades
 [ "$(timedatectl show -p Timezone --value)" = America/Detroit ] || sudo timedatectl set-timezone America/Detroit
-sudo docker compose up -d --build drapps 2>&1 | tail -1
+sudo docker compose up -d --build 2>&1 | tail -1
 sudo docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null || true
 sudo docker image prune -f >/dev/null' 2>&1 | grep -v -i -e numpy -e "tunnel" -e "^WARNING" -e "please see" -e "^$"
 

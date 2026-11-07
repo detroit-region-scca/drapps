@@ -16,6 +16,7 @@ WHAT = {
     'drscca-qbo-refresh.service': ('QuickBooks refresh from the app', 'The apps keep showing the last good sync.'),
     'drscca-livetiming-archive.service': ('nightly live timing archive', 'Live timing itself still works; only the archive or its Drive copy is behind.'),
     'drscca-update.service': ('weekly software update', 'The apps keep running on the previous versions; check that every container is up.'),
+    'drscca-secrets-backup.service': ('weekly secrets copy to Drive', 'Nothing is down; only the off-site copy of the server settings is out of date.'),
     'drscca-officials.service': ('officials-list update', 'A change made in the app was not applied to officials.json or the email groups.'),
 }
 

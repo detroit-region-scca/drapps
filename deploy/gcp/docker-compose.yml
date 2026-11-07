@@ -1,10 +1,19 @@
 # DRSCCA apps on Google Cloud (project drscca-automation, VM "drapps", e2-micro us-central1-a, IP 34.63.237.120).
 # Lives at /opt/drscca on the VM; the drapps code is a clone of this repo at /opt/drscca/app. Secrets, logins, keys and uploaded pages stay in /opt/drscca/data (never in git).
 #   cd /opt/drscca && sudo docker compose up -d
+# Container logs: at most 3 x 10 MB each, so they never fill the disk. The SFTP server logs to the journal instead,
+# tagged "sshd", so fail2ban can ban addresses that keep guessing passwords (deploy/gcp/fail2ban).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   caddy:
     image: caddy:2
     container_name: caddy
+    logging: *logging
     restart: unless-stopped
     ports:
       - "80:80"
@@ -18,6 +27,7 @@ services:
   drapps:
     build: ./app
     container_name: drapps
+    logging: *logging
     restart: unless-stopped
     env_file:
       - ./data/secrets/drapps.env
@@ -34,6 +44,10 @@ services:
   livetiming-sftp:
     image: atmoz/sftp:alpine
     container_name: livetiming-sftp
+    logging:
+      driver: journald
+      options:
+        tag: sshd
     restart: unless-stopped
     ports:
       - "2222:22"
@@ -47,6 +61,7 @@ services:
   livetiming-web:
     image: nginx:alpine
     container_name: livetiming-web
+    logging: *logging
     restart: unless-stopped
     volumes:
       - ./data/livetiming/www:/usr/share/nginx/html:ro

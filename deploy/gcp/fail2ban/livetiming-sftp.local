@@ -1,0 +1,12 @@
+# Live timing SFTP (container livetiming-sftp, port 2222): 5 wrong passwords in 10 minutes blocks that address for
+# an hour. The container logs to the journal tagged "sshd", so the stock sshd filter reads it. Docker's published
+# ports bypass INPUT, so the ban goes in the DOCKER-USER chain.
+[livetiming-sftp]
+enabled   = true
+backend   = systemd
+journalmatch = CONTAINER_NAME=livetiming-sftp
+filter    = sshd
+maxretry  = 5
+findtime  = 10m
+bantime   = 1h
+action    = iptables-allports[name=livetiming-sftp, chain="DOCKER-USER"]
