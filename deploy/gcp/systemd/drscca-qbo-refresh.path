@@ -1,0 +1,6 @@
+[Unit]
+Description=DRSCCA apps: QuickBooks refresh asked for in the app
+[Path]
+PathChanged=/opt/drscca/app/data/qbo-refresh.json
+[Install]
+WantedBy=paths.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=DRSCCA apps: nightly QuickBooks sync (read only on the QuickBooks side)
+[Service]
+Type=oneshot
+User=drapps
+Group=drapps
+WorkingDirectory=/opt/drscca/app
+EnvironmentFile=/opt/drscca/data/secrets/drapps.env
+EnvironmentFile=/opt/drscca/data/secrets/qbo.env
+# One token file for the sync and the QuickBooks MCP: QuickBooks rotates the token on use, so there must be one copy.
+Environment=QUICKBOOKS_TOKEN_STORE_PATH=/opt/drscca/data/secrets/qbo.env
+Environment=QBO_MCP_DIR=/opt/drscca/qbo-mcp
+Environment=GOOGLE_SERVICE_ACCOUNT_FILE=/opt/drscca/data/secrets/drapps-sa.json
+Environment=OFFICIALS_HOST=/opt/drscca/data/secrets/officials.json
+Environment=HOME=/opt/drscca
+ExecStart=/opt/drscca/venv/bin/python tools/qbo_nightly.py

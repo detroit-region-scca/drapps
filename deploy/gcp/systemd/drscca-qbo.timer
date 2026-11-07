@@ -1,0 +1,7 @@
+[Unit]
+Description=DRSCCA apps: nightly QuickBooks sync
+[Timer]
+OnCalendar=*-*-* 02:30 America/Detroit
+Persistent=true
+[Install]
+WantedBy=timers.target
