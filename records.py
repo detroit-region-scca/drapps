@@ -183,6 +183,8 @@ def event(eid):
             groups = [('', rs)]
         if f['label'] != 'Class results' or mixed:
             cols.insert(1, ('Class', 'class'))
+        if e['program'] == 'Rally':      # a rally crew is a driver and a navigator, scored in points
+            cols = [({'vehicle': 'Partner', 'total': 'Score'}.get(k, lab), k) for lab, k in cols]
         same = [x for x in sheets if x['label'] == f['label']]
         sheets.append(dict(id=f['id'], label=f['label'] + (f' {len(same) + 1}' if same else ''), cols=cols, groups=groups,
                            drivers=len({r['person_id'] for r in rs})))

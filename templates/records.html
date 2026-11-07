@@ -135,7 +135,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% for s in standings|reverse %}<tr><td><a href="{{ url_for('records.season', prog=slug(s.program), year=s.year) }}">{{ s.year }} {{ s.program }}</a></td><td>{{ s.class or '' }}</td><td class="num">{% if s.place == 1 %}<strong>1st</strong>{% else %}{{ s.place }}{% endif %}</td><td class="num">{{ '%g'|format(s.score) }}</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}
 {% if results %}<div class="section-label mt-4">Events ({{ results|length }})</div>
-<div class="table-responsive"><table class="table table-sm"><thead><tr><th>Date</th><th>Event</th><th>Class</th><th class="num">Class place</th><th class="num">PAX place</th><th class="d-none d-md-table-cell">Car</th><th class="num">Time</th></tr></thead><tbody>
+<div class="table-responsive"><table class="table table-sm"><thead><tr><th>Date</th><th>Event</th><th>Class</th><th class="num">Class place</th><th class="num">PAX place</th><th class="d-none d-md-table-cell">Car or partner</th><th class="num">Time or score</th></tr></thead><tbody>
 {% for r in results|reverse %}<tr><td class="text-nowrap">{{ nice_date(r.date) or r.year }}</td><td><a href="{{ url_for('records.event', eid=r.eid) }}">{{ r.event }}</a><div class="small text-muted">{{ r.program }}</div></td><td>{{ r['class'] or '' }}</td><td class="num">{{ r.position or '' }}</td><td class="num">{{ r.pax or '' }}</td><td class="d-none d-md-table-cell">{{ r.vehicle or '' }}</td><td class="num">{{ r.time or '' }}</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}
 {% endif %}
