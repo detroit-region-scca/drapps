@@ -250,7 +250,7 @@
         </form>
         {% else %}<div class="small text-muted">After the board approves this budget, the RE, ARE, secretary or treasurer records it here.</div>{% endif %}
         {% endif %}
-        {% if status != 'draft' and (officer or not b.approved) %}
+        {% if status != 'draft' and (officer or not b.approved or directs_budget(code, b)) %}
         <form method="post" action="{{ url_for('bud.to_draft', code=code) }}" class="mt-2" onsubmit="return confirm('Put this budget back into draft?{% if b.approved %} This clears the board approval of {{ b.approved }}.{% endif %} Any open board vote on it is cancelled.')">
             <button class="btn btn-sm btn-link p-0">Back to draft</button> <span class="small text-muted">to rework it before the board looks at it</span>
         </form>{% endif %}

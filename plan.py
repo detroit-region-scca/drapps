@@ -275,7 +275,8 @@ def approve(year, program):
 @login_required
 def to_draft(year, program):
     """Put a plan (for Operations, its budget) back into draft: not turned in, any board approval cleared and any open
-    board vote cancelled. Whoever may write the plan can do this before approval; after it, only an officer."""
+    board vote cancelled. Whoever may write the plan can do this before approval; after it, an officer or the program's
+    own director."""
     if (g := _guard()):
         return g
     year = _year(year)
@@ -284,8 +285,8 @@ def to_draft(year, program):
     who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
     if not info.get('updated'):
         flash('That plan has not been saved yet.', 'warning')
-    elif info.get('approved') and not officer_current():
-        flash('The board approved this budget, so only the RE, ARE, secretary or treasurer can put it back into draft.', 'warning')
+    elif info.get('approved') and not (officer_current() or directs(program)):
+        flash("The board approved this budget, so only its director or the RE, ARE, secretary or treasurer can put it back into draft.", 'warning')
     elif not info.get('approved') and not (officer_current() or may_write(program)):
         flash("You can't change this plan.", 'warning')
     else:
@@ -295,6 +296,13 @@ def to_draft(year, program):
         log_audit_event('PLAN_DRAFT', who, {'year': year, 'program': program, 'was_approved': info.get('approved', '')})
         flash('Back in draft. Turn it in again when it is ready.', 'info')
     return redirect(url_for('plan.detail', year=year, program=program))
+
+
+def directs(program):
+    """Whether the signed-in person holds a role tied to this program (its director), from the officials list."""
+    from auth import user
+    me = ((user() or {}).get('email') or '').lower()
+    return bool(me and program) and any((o.get('email') or '').lower() == me and o.get('program') == program for o in O.all())
 
 
 def may_write(program):

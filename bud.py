@@ -21,8 +21,21 @@ SECTIONS = (('Income', 'inc'), ('Expense', 'exp'))
 
 
 def _ctx(**kw):
-    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Events", who=session.get('who', ''), budgets_on=B.enabled(), officer=officer_current(),
+    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Events", who=session.get('who', ''), budgets_on=B.enabled(), officer=officer_current(), directs_budget=_directs_budget,
                 months=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], **kw)
+
+
+def _directs_budget(code, b=None):
+    """Whether the signed-in person is the director of this budget's program (program budget code, or the event's)."""
+    from plan import directs
+    pg = program_of(code)
+    prog = pg[0] if pg else (b or {}).get('program')
+    if not prog:
+        try:
+            prog = (_event(code) or {}).get('program_code')
+        except Exception:
+            prog = None
+    return directs(prog)
 
 
 def _guard():
@@ -288,7 +301,8 @@ def _cancel_ballots(item, who):
 @login_required
 def to_draft(code):
     """Put a budget back into draft: off the board's list, any approval cleared and any open vote cancelled. Before the
-    board approves it, whoever can edit it may do this; once approved, only the RE, ARE, secretary or treasurer."""
+    board approves it, whoever can edit it may do this; once approved, its program's director or the RE, ARE, secretary
+    or treasurer."""
     if (g := _guard()):
         return g
     b = B.get(code) if B.enabled() else None
@@ -296,8 +310,8 @@ def to_draft(code):
     who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
     if not b:
         flash('That budget has not been saved yet.', 'warning')
-    elif b.get('approved') and not officer_current():
-        flash('The board approved this budget, so only the RE, ARE, secretary or treasurer can put it back into draft.', 'warning')
+    elif b.get('approved') and not (officer_current() or _directs_budget(code, b)):
+        flash('The board approved this budget, so only its director or the RE, ARE, secretary or treasurer can put it back into draft.', 'warning')
     else:
         B.set_draft(code, f"{date.today().isoformat()} by {who}")
         _cancel_ballots(f"budget:{str(b.get('date', ''))[:4]}:{code}", who)

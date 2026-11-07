@@ -87,6 +87,10 @@ def _plain(item):
     return '\n'.join([h for h in head if h] + [r.strip() for r in rest])
 
 
+# A vote link works as long as the vote can be open (the page refuses it once the ballot closes); approval links stay 7 days.
+VOTE_DAYS = BL.OPEN_DAYS + 1
+
+
 def _people():
     """The directors who vote (one entry per person), from the read-only officials list."""
     return BL.roster(O.all())
@@ -98,7 +102,7 @@ def _ser():
 
 def _vote_link(bid, p):
     url = url_for('board.vote_link', token=_ser().dumps({'b': bid, 'e': p['email'], 'n': p['name']}), _external=True)
-    return shortlinks.make(url, shortlinks.DAYS)
+    return shortlinks.make(url, VOTE_DAYS)
 
 
 def _ballot_views(people=None, me=''):
@@ -343,7 +347,7 @@ def vote_link(token):
     if not BS.enabled():
         return redirect(url_for('home'))
     try:
-        t = _ser().loads(token, max_age=shortlinks.DAYS * 86400)
+        t = _ser().loads(token, max_age=VOTE_DAYS * 86400)
     except BadSignature:
         return render_template('board.html', **_ctx(view='vote', b=None, msg='This voting link has expired or is not valid.'))
     b = BS.get(t['b'])

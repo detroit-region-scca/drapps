@@ -143,8 +143,10 @@ def test_draft_budget_is_off_the_boards_list(monkeypatch):
 
 def test_back_to_draft_after_approval_needs_an_officer(monkeypatch):
     import auth
+    import plan
     from app import app
     calls = []
+    monkeypatch.setattr(plan.O, 'all', lambda: [])
     monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Pat', 'level': 'official', 'roles': ['Director'],
                                                    'perms': {'events'}} if e else None)
     monkeypatch.setattr(bud, '_guard', lambda: None)
@@ -162,3 +164,35 @@ def test_back_to_draft_after_approval_needs_an_officer(monkeypatch):
     monkeypatch.setattr(B, 'get', lambda code: {'event_code': '#C', 'date': '2027-01-09', 'approved': ''})
     c.post('/events/event/%23C/draft')
     assert calls[0][0] == '#C' and calls[0][1].endswith('by Pat') and calls[1] == 'budget:2027:#C'
+
+
+def test_own_director_can_put_an_approved_budget_back_to_draft(monkeypatch):
+    import auth
+    import plan
+    from app import app
+    calls = []
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Pat', 'level': 'official', 'roles': ['Director'],
+                                                   'perms': {'events'}} if e else None)
+    monkeypatch.setattr(bud, '_guard', lambda: None)
+    monkeypatch.setattr(B, 'enabled', lambda: True)
+    monkeypatch.setattr(B, 'get', lambda code: {'event_code': '#C', 'date': '2027-01-09', 'approved': '2026-11-01', 'program': 'AX'})
+    monkeypatch.setattr(B, 'set_draft', lambda code, d: calls.append((code, d)))
+    monkeypatch.setattr(bud, '_cancel_ballots', lambda item, who: calls.append(item))
+    monkeypatch.setattr(bud, 'log_audit_event', lambda *a, **k: None)
+    app.config['TESTING'] = True
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s.update(authenticated=True, email='pat@example.org', who='Pat')
+    monkeypatch.setattr(plan.O, 'all', lambda: [{'email': 'pat@example.org', 'program': 'RX'}])   # directs another program
+    c.post('/events/event/%23C/draft')
+    assert calls == []
+    monkeypatch.setattr(plan.O, 'all', lambda: [{'email': 'Pat@example.org', 'program': 'AX'}])  # this budget's director
+    c.post('/events/event/%23C/draft')
+    assert calls[0][0] == '#C' and calls[1] == 'budget:2027:#C'
+
+
+def test_vote_links_last_as_long_as_the_vote():
+    import ballots_logic as BL
+    import board
+    import shortlinks
+    assert board.VOTE_DAYS > BL.OPEN_DAYS and shortlinks.DAYS == 7
