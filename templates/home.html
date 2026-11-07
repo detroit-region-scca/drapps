@@ -111,15 +111,6 @@
                 <div class="what">Register events, budgets, board approval and QuickBooks results</div>
             </a>
         </div>
-        <div class="col">
-            <a class="app-tile" href="{{ url_for('records.home') }}" style="--tile: #d2232a;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#d2232a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>
-                </svg>
-                <div class="name">Records</div>
-                <div class="what">Results, season champions and the Hall of Fame since 1982</div>
-            </a>
-        </div>
         {% set vol = me and me.level == 'volunteer' %}
         {% if members_enabled %}
         {% set on = shows('members') %}
@@ -190,6 +181,15 @@
                 <div class="name">Operations</div>
                 <div class="what">Recurring costs, property, storage and what's due</div>
             </{{ 'a' if on else 'div' }}>
+        </div>
+        <div class="col">
+            <a class="app-tile" href="{{ url_for('records.home') }}" style="--tile: #d2232a;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#d2232a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>
+                </svg>
+                <div class="name">Records</div>
+                <div class="what">Results, season champions and the Hall of Fame since 1982</div>
+            </a>
         </div>
         {% set on = shows('invoices') %}
         <div class="col">
