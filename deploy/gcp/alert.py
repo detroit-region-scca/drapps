@@ -14,6 +14,7 @@ WHAT = {
     'drscca-backup.service': ('nightly sheet backup', 'The Google Sheets are still the record; only the nightly .xlsx copy is missing.'),
     'drscca-qbo.service': ('nightly QuickBooks sync', 'The apps keep showing the last good sync until a run succeeds.'),
     'drscca-qbo-refresh.service': ('QuickBooks refresh from the app', 'The apps keep showing the last good sync.'),
+    'drscca-livetiming-archive.service': ('nightly live timing archive', 'Live timing itself still works; only the archive or its Drive copy is behind.'),
     'drscca-officials.service': ('officials-list update', 'A change made in the app was not applied to officials.json or the email groups.'),
 }
 

@@ -21,7 +21,9 @@ $VM 'set -e; cd /opt/drscca/app && sudo git pull -q --ff-only
 cd /opt/drscca
 for f in docker-compose.yml Caddyfile livetiming-nginx.conf; do sudo cp app/deploy/gcp/$f $f; done
 sudo install -m 755 app/deploy/gcp/qbo-mcp.sh /opt/drscca/qbo-mcp.sh
+sudo install -m 644 app/deploy/gcp/livetiming-www/*.html data/livetiming/www/
 sudo cp app/deploy/gcp/systemd/* /etc/systemd/system/ && sudo systemctl daemon-reload
+sudo systemctl enable --now drscca-livetiming-archive.timer >/dev/null 2>&1
 sudo docker compose up -d --build drapps 2>&1 | tail -1
 sudo docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null || true
 sudo docker image prune -f >/dev/null' 2>&1 | grep -v -i -e numpy -e "tunnel" -e "^WARNING" -e "please see" -e "^$"
