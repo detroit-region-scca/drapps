@@ -280,7 +280,8 @@ def event(eid):
         have = set(rs[0].keys())
         cols = [(lab, k) for lab, k in (('Pos', 'position'), ('In class', 'class_place'), ('#', 'car_number'), ('Driver', 'driver'), ('Car', 'vehicle'),
                 ('Laps', 'laps'), ('Best lap', 'best_lap'), ('Total', 'total'), ('Raw', 'raw_time'), ('PAX', 'pax_time'), ('Status', 'status'))
-                if k in have and any(r[k] for r in rs)]
+                if k in have and any(r[k] for r in rs)
+                and not (k == 'class_place' and all(not r[k] or str(r[k]) == str(r['position']) for r in rs))]   # adds nothing beside Pos
         groups = []          # class sheets: one table per class, in the sheet's order; other sheets: one table
         is_class = f['label'].startswith('Class results')
         if is_class:
