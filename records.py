@@ -277,8 +277,10 @@ def event(eid):
                 c = crews.setdefault(r['line_no'], dict(r, crew=[]))
                 c['crew'].append((r['person_id'], r['driver']))
             rs = list(crews.values())
-        cols = [(lab, k) for lab, k in (('Pos', 'position'), ('#', 'car_number'), ('Driver', 'driver'), ('Car', 'vehicle'),
-                ('Total', 'total'), ('Raw', 'raw_time'), ('PAX', 'pax_time')) if any(r[k] for r in rs)]
+        have = set(rs[0].keys())
+        cols = [(lab, k) for lab, k in (('Pos', 'position'), ('In class', 'class_place'), ('#', 'car_number'), ('Driver', 'driver'), ('Car', 'vehicle'),
+                ('Laps', 'laps'), ('Best lap', 'best_lap'), ('Total', 'total'), ('Raw', 'raw_time'), ('PAX', 'pax_time'), ('Status', 'status'))
+                if k in have and any(r[k] for r in rs)]
         groups = []          # class sheets: one table per class, in the sheet's order; other sheets: one table
         is_class = f['label'].startswith('Class results')
         if is_class:
@@ -302,7 +304,7 @@ def event(eid):
     if e['program'] == 'Rally':        # crews, counted on the main sheet (a crew is two rows)
         everyone = {r['line_no'] for r in rows.get(sheets[0]['id'], [])} if sheets else set()
     return render_template('records.html', **_ctx(view='event', e=e, files=files, sheets=sheets, can_edit=can_edit(e['program']),
-                                                  scanned=any(f['ocr'] and rows.get(f['id']) for f in files),
+                                                  scanned=any(f['ocr'] and str(f['ocr']).startswith('read from a scan') and rows.get(f['id']) for f in files),
                                                   n_people=len(everyone), chooser=_chooser(sheets) if len(sheets) > 6 else None))
 
 
@@ -361,7 +363,8 @@ def event_edit(eid):
 def person(pid):
     _need()
     p = (_q('select * from people where id = ?', pid) or [None])[0] or abort(404)
-    found = _q('''select r.date, r.year, r.program, r.class, r.section, r.position, r.vehicle, coalesce(r.total, r.raw_time, r.pax_time) time,
+    has_cp = any(c['name'] == 'class_place' for c in _q('pragma table_info(result_rows)'))
+    found = _q(f'''select r.date, r.year, r.program, r.class, r.section, {'coalesce(r.class_place, r.position)' if has_cp else 'r.position'} position, r.vehicle, coalesce(r.total, r.raw_time, r.pax_time) time,
         r.pax_time, e.id eid, e.name event, coalesce(f.label, 'Results') label from result_rows r join events e on e.id = r.event_id
         join files f on f.id = r.file_id where r.person_id = ? order by r.date, e.name, f.sort, r.line_no''', pid)
     results, seen = [], {}

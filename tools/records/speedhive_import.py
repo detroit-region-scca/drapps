@@ -28,6 +28,7 @@ import os
 import re
 import sys
 from collections import defaultdict
+from datetime import date
 
 import requests
 
@@ -97,39 +98,69 @@ def kind(name):
     return 'Race'
 
 
+def kind_of(s, span=None):
+    """The session's kind; a plain "Race" on a two-day weekend gets its day from when it ran."""
+    k = kind(s['name'])
+    if k in ('Race', 'Race 1', 'Race 2') and (s.get('_span') if span is None else span) and s.get('startTime'):
+        wd = date.fromisoformat(s['startTime'][:10]).weekday()
+        k = {5: 'Saturday race', 6: 'Sunday race'}.get(wd, k)
+    return k
+
+
 def session_label(s):
-    return f"Group {s['_group']} \u00b7 {kind(s['name'])}" if s.get('_group') else kind(s['name'])
+    return f"Group {s['_group']} \u00b7 {kind_of(s)}" if s.get('_group') else kind_of(s)
 
 
-def key(s):
+def key(s, span=None):
     """Group number and race kind, to match a revised session to the one it replaces."""
-    return (s.get('_group'), kind(s['name']))
+    return (s.get('_group'), kind_of(s, span))
 
 
 def pick(src, have):
-    """One upload per race date (most race sessions, newest), with sessions from any "revised" upload swapped in.
-    have: dates that already have road racing results from the old website."""
+    """One entry per race weekend: {weekend date: (event, sessions)}. Speedhive's event start date is sometimes wrong
+    (2024 Bert: June 23 for July 6-7), so dates come from the race sessions' start times. A weekend posted as one event
+    per day (2012, 2015) becomes one weekend; within a weekend the same session uploaded twice (a revision, or a
+    "revised" event) is kept once, the later upload. have: dates that already have road racing results from the old
+    website."""
     events = []
     for off in range(0, 3000, 100):
         page = get(f"organizations/{src['org']}/events?count=100&offset={off}")
         events += page if isinstance(page, list) else page.get('events', [])
         if len(page) < 100:
             break
-    by_date = defaultdict(list)
+    found = []
     for e in events:
-        date = e['startDate'][:10]
-        if (src['want'].search(e['name']) and not SKIP.search(e['name']) and src['years'][0] <= int(date[:4]) <= src['years'][1]
-                and date not in have):
-            by_date[date].append(get(f"events/{e['id']}?sessions=true"))
+        if not (src['want'].search(e['name']) and not SKIP.search(e['name'])):
+            continue
+        y = int(e['startDate'][:4])
+        if not (src['years'][0] - 1 <= y <= src['years'][1] + 1):
+            continue
+        full = get(f"events/{e['id']}?sessions=true")
+        rs = races(full)
+        days = sorted({(x.get('startTime') or e['startDate'])[:10] for x in rs})
+        if rs and src['years'][0] <= int(days[0][:4]) <= src['years'][1]:
+            found.append((days[0], full, rs))
+    weekends = []                        # [[first race day, [(event, sessions)]]]
+    for day, ev, rs in sorted(found, key=lambda x: x[0]):
+        if weekends and (date.fromisoformat(day) - date.fromisoformat(weekends[-1][0])).days <= 2:
+            weekends[-1][1].append((ev, rs))
+        else:
+            weekends.append([day, [(ev, rs)]])
     chosen = {}
-    for date, evs in by_date.items():
-        revised = [e for e in evs if re.search(r'rev', e['name'], re.I)]
-        main = max((e for e in evs if e not in revised) or evs, key=lambda e: (len(races(e)), e.get('updatedAt', '')))
-        sessions = races(main)
-        for e in revised:
-            for s in races(e):
-                sessions = [x for x in sessions if key(x) != key(s)] + [s]
-        chosen[date] = (main, sessions)
+    for day, evs in weekends:
+        if day in have:
+            continue
+        span = len({(x.get('startTime') or '')[:10] for _, rs in evs for x in rs}) > 1
+        best = {}
+        for ev, rs in evs:
+            for x in rs:
+                k = key(x, span)
+                old = best.get(k)
+                if old is None or (x.get('startTime') or '', x['id']) >= (old[1].get('startTime') or '', old[1]['id']):
+                    best[k] = (ev, x)
+        main = max((ev for ev, _ in evs), key=lambda e: sum(1 for v in best.values() if v[0] is e))
+        sessions = sorted((dict(x, _span=span) for _, x in best.values()), key=lambda x: (x.get('_group') or 99, x.get('startTime') or ''))
+        chosen[day] = (main, sessions)
     return chosen
 
 
@@ -192,7 +223,7 @@ def main():
     plan = [p for p in plan if not p['id'].startswith('speedhive-')]
     sorted_rows = [r for r in sorted_rows if not r['id'].startswith('speedhive-')]
     os.makedirs(f'{WORK}/files', exist_ok=True)
-    have = {r['date'] for r in sorted_rows if r['program'] == 'Road Racing' and r.get('date')}
+    have = {r['date'] for r in sorted_rows if r['program'] == 'Road Racing' and r.get('kind') == 'event' and r.get('date')}   # results files only: a season points sheet dated a race day must not block it
     n = 0
     for src in SOURCES:
       for date, (event, sessions) in sorted(pick(src, have).items()):

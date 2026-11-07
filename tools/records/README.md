@@ -52,3 +52,23 @@ sorting step and OCR use the saved text. After a rebuild, pack the folder again 
    `/opt/drscca/app/data/records.db`. No restart needed.
 
 Rows are read automatically, so some are wrong; the original file is linked from each event in Records.
+
+## Transcriptions and checks (2026-11-08 on)
+
+The automatic readers were not reliable enough for directors, so Records now rests on three things:
+
+- **AXWare sheets** (autocross and RallyCross timing): `axware.py` reads class results, PAX and raw sheets strictly and
+  checks each against the count the sheet prints ("with Times", "Timed Entries") and the order of times. A sheet that
+  fails is not shown; it is marked "needs transcription".
+- **Speedhive** road racing (`speedhive_import.py`): every column kept (class place, laps, best lap, status), sessions
+  named "Group N · Saturday race", weekends dated from the race sessions.
+- **Transcriptions**: every rally sheet, every season standings sheet, the old road races and every sheet the readers
+  could not read reliably were transcribed from the original and checked by a second pass. They live with the private
+  build data (`CURATED_DIR`, never in this repo: they hold member names): `results/<drive id>.json` (one sheet; a
+  second event out of one file is `<drive id>__<name>.json`), `standings/<Program>-<year>.json`, the rules in
+  `BRIEF.md`, and the open questions for directors in `director-questions.md` next to them. `build.py` and
+  `standings.py` use a transcription instead of reading the sheet whenever one exists.
+
+To add a season's results: put the files in the Results inbox, run the build; anything the readers reject or any
+new standings sheet gets transcribed following `BRIEF.md` and checked by someone else before it ships.
+

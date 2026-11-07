@@ -36,7 +36,7 @@ def pages(path, kind, tmp):
     """Page images at their best resolution, with the dpi they were scanned at."""
     if kind == 'img':
         im = Image.open(path)
-        return [(im.convert('RGB'), (im.info.get('dpi') or (150, 150))[0] or 150)]
+        return [(im.convert('RGB'), float((im.info.get('dpi') or (150, 150))[0] or 150))]
     out = []
     lst = subprocess.run(['pdfimages', '-list', path], capture_output=True, text=True).stdout.splitlines()[2:]
     big = [l.split() for l in lst if len(l.split()) > 13 and l.split()[2] == 'image']

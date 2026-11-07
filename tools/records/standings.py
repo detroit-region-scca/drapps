@@ -1,5 +1,5 @@
 """Add season_standings to scca.db from the final season points sheet of each program and year."""
-import re, sqlite3, sys
+import json, os, re, sqlite3, sys
 db = sqlite3.connect(sys.argv[1])
 NAME = re.compile(r"(?<![A-Za-z])([A-Z][A-Za-z'\-.]+(?: (?:[A-Z][A-Za-z'\-.]*|de|da|van|von|del|la|le)){1,4}(?:,? (?:Jr|Sr|II|III|IV)\.?)?)(?: \([a-z]\))?")
 NUM = re.compile(r'(?<![\w.])-?\d{1,4}(?:\.\d{1,2})?(?![\w.])')
@@ -54,7 +54,33 @@ def rally_template(lines, target=None):
 for f in db.execute("select id, name, date, length(text), program, year, text from files where kind='points' and program in ('Autocross','RallyCross','Rally','Road Racing') and year is not null and length(text) > 200"):
     groups.setdefault((f[4], f[5]), []).append(f)
 total = 0
+CURATED = os.environ.get('CURATED_DIR', '')
+def curated_standings(prog, year):
+    """A season transcribed from its final standings sheet (CURATED_DIR/standings/<Program>-<year>.json): the places
+    as the sheet prints them (ties, members-only eligibility and trophy order included), never re-ranked here."""
+    p = os.path.join(CURATED, 'standings', f'{prog}-{year}.json') if CURATED else ''
+    return json.load(open(p)) if p and os.path.exists(p) else None
+done = set()
+for prog in ('Autocross', 'RallyCross', 'Rally', 'Road Racing'):
+    for year in range(1980, 2031):
+        cur = curated_standings(prog, year)
+        if not cur:
+            continue
+        fid = next((r[0] for r in db.execute('select id from files where original_drive_url like ?', (f"%{cur.get('gid', '-')}%",))), None)
+        for cl in cur.get('classes', []):
+            for n, r in enumerate(cl.get('rows', []), 1):
+                for who in [x.strip() for x in [r.get('name') or ''] + (r.get('partner') or '').split(' & ') if x.strip()]:
+                    pid = people.get(who.lower())
+                    if pid is None:
+                        pid = db.execute('insert into people (name) values (?)', (who,)).lastrowid; people[who.lower()] = pid
+                    sc = r.get('score')
+                    db.execute('insert into season_standings (program,year,class,place,person_id,name,score,file_id,line_no,raw_line) values (?,?,?,?,?,?,?,?,?,?)',
+                               (prog, year, cl.get('class') or None, int(r['place']), pid, who, float(sc) if sc not in (None, '') else None, fid, n, 'transcribed'))
+                    total += 1
+        done.add((prog, year))
 for (prog, year), files in sorted(groups.items()):
+    if (prog, year) in done:
+        continue
     f = pick(files); fid, text = f[0], f[6]
     text = text.replace('\u2010', '-').replace('\u2011', '-').replace('\u2013', '-').replace('\u2014', '-')
     lines = text.splitlines()

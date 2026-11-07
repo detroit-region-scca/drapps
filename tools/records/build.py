@@ -4,11 +4,21 @@ Inputs (in $WORK): plan.json, sorted.csv, copied.json from the Drive sort, files
 (pdftotext -layout). Output: data/scca.db (SQLite, opened read-only by Datasette).
 """
 import csv, json, os, re, sqlite3, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import axware
 WORK, OUT = sys.argv[1], sys.argv[2]
 TEXT = os.path.join(os.path.dirname(OUT), 'text')   # pdftotext / OCR output, next to the db
 plan = {p['id']: p for p in json.load(open(f'{WORK}/plan.json'))}
 meta = {r['id']: r for r in csv.DictReader(open(f'{WORK}/sorted.csv'))}
 copies = json.load(open(f'{WORK}/copied.json'))
+_cd = os.environ.get('CURATED_DIR', '')
+SPLITS = {}                                   # '<drive id>__dawnbuster2' -> '<drive id>'
+if _cd and os.path.isdir(os.path.join(_cd, 'results')):      # extra events transcribed out of one file: build them as files of their own
+    for _f in sorted(os.listdir(os.path.join(_cd, 'results'))):
+        _id = _f[:-5]
+        if _f.endswith('.json') and _id not in meta and '__' in _id and _id.rsplit('__', 1)[0] in meta:
+            SPLITS[_id] = _id.rsplit('__', 1)[0]
+            meta[_id] = dict(meta[SPLITS[_id]]); plan[_id] = dict(plan[SPLITS[_id]])
 fallback = json.load(open(f'{WORK}/text.json'))
 
 LABELS = [  # (field, header patterns) first match wins
@@ -445,13 +455,14 @@ db.executescript('''
 CREATE TABLE events (id INTEGER PRIMARY KEY, program TEXT, year INTEGER, date TEXT, name TEXT);
 CREATE TABLE files (id INTEGER PRIMARY KEY, event_id INTEGER REFERENCES events(id), program TEXT, year INTEGER, date TEXT,
   kind TEXT, name TEXT, sorted_name TEXT, sorted_folder TEXT, original_folder TEXT, drive_url TEXT, original_drive_url TEXT,
-  rows_found INTEGER, text TEXT, ocr TEXT);
+  rows_found INTEGER, text TEXT, ocr TEXT, sheet_label TEXT);
 CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
 CREATE TABLE worker_points (id INTEGER PRIMARY KEY, file_id INTEGER REFERENCES files(id), snapshot_date TEXT, person_id INTEGER REFERENCES people(id),
   member_no TEXT, anniversary TEXT, name TEXT, carried_in REAL, used REAL, available REAL, by_event TEXT, line_no INTEGER, raw_line TEXT);
 CREATE TABLE result_rows (id INTEGER PRIMARY KEY, file_id INTEGER REFERENCES files(id), event_id INTEGER REFERENCES events(id),
   person_id INTEGER REFERENCES people(id), program TEXT, year INTEGER, date TEXT, section TEXT, position TEXT, class TEXT,
-  car_number TEXT, driver TEXT, vehicle TEXT, color TEXT, total TEXT, raw_time TEXT, pax_time TEXT, total_s REAL, raw_s REAL, pax_s REAL, cells TEXT, line_no INTEGER, raw_line TEXT);
+  car_number TEXT, driver TEXT, vehicle TEXT, color TEXT, total TEXT, raw_time TEXT, pax_time TEXT, total_s REAL, raw_s REAL, pax_s REAL, cells TEXT, line_no INTEGER, raw_line TEXT,
+  class_place TEXT, laps TEXT, best_lap TEXT, status TEXT);
 ''')
 def event_name(text, name):
     rx = re.search(r'Round\s+\d+\s*-\s*[A-Za-z]+\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\s+(.+?)\s*$', text[:1500], re.M)
@@ -465,6 +476,55 @@ def event_name(text, name):
     n = re.sub(r'[_\-]+', ' ', n)
     n = re.sub(r'\b(\d{1,4}[ /.]?){2,3}\b|\b(final|results?|class|pax|raw|index|overall|by|for|web|corrected|revised|r\d)\b', ' ', n, flags=re.I)
     return ' '.join(n.split()).title() or name
+def parse_speedhive(raw):
+    """A Speedhive session CSV made by speedhive_import.py: every column kept. A DNS/DNF/DQ car shows its status
+    instead of a place, and its zero time is left out."""
+    import csv as _csv
+    rows = []
+    lines = list(_csv.reader(open(raw, errors='ignore')))
+    head = next((i for i, r in enumerate(lines) if r[:2] == ['Pos', 'Class']), None)
+    if head is None:
+        return []
+    cols = {h: i for i, h in enumerate(lines[head])}
+    for n, r in enumerate(lines[head + 1:], head + 2):
+        g = lambda h: (r[cols[h]].strip() if h in cols and cols[h] < len(r) else '')  # noqa: E731
+        if not g('Driver'):
+            continue
+        st = g('Status')
+        tot = g('Total time')
+        if st or re.fullmatch(r'[0:.]*', tot or '0'):
+            tot = '' if re.fullmatch(r'[0:.]*', tot or '0') else tot
+        rows.append({'position': st or g('Pos') or None, 'class': g('Class'), 'section': g('Class'), 'car_number': g('#') or None,
+                     'driver': g('Driver'), 'total': tot or None, 'class_place': None if st else (g('In class') or None),
+                     'laps': g('Laps') or None, 'best_lap': None if re.fullmatch(r'[0:.]*', g('Best lap') or '0') else g('Best lap'),
+                     'status': st or None, 'cells': [], 'line_no': n, 'raw': ','.join(r)})
+    return rows
+CURATED = os.environ.get('CURATED_DIR', '')
+def curated(fid):
+    """A transcription of this sheet (CURATED_DIR/results/<drive id>.json, made by reading the original and checked by a
+    second pass): it replaces the automatic reading. Rally rows are crews (driver and partner)."""
+    p = os.path.join(CURATED, 'results', fid + '.json') if CURATED else ''
+    return json.load(open(p)) if p and os.path.exists(p) else None
+def curated_rows(cur, program):
+    rows = []
+    overall = program == 'Road Racing' or re.match(r'(?i)(pax|raw)', cur.get('label') or '')
+    for n, r in enumerate(cur.get('rows', []), 1):
+        if overall:        # a race's finishing order, a PAX or raw sheet: the overall place; class place beside it
+            place = str(r.get('overall_place') or r.get('status') or r.get('class_place') or '').strip() or None   # a classified "not running" car keeps its place
+        else:
+            place = str(r.get('class_place') or r.get('status') or r.get('overall_place') or '').strip() or None
+        base = {'position': place, 'class_place': (str(r.get('class_place') or '') or None) if overall else None, 'status': r.get('status') or None, 'class': r.get('class') or '', 'car_number': str(r.get('car') or '') or None, 'total': str(r.get('score') if r.get('score') is not None else '') or None,
+                'raw_time': r.get('raw') or None, 'pax_time': r.get('pax') or None, 'section': r.get('class') or '', 'line_no': n,
+                'laps': str(r.get('laps') or '') or None, 'best_lap': str(r.get('best') or '') or None,
+                'cells': [['overall', str(r.get('overall_place') or '')], ['status', r.get('status') or '']], 'raw': 'transcribed'}
+        crew = [x.strip() for x in [r.get('driver') or ''] + (r.get('partner') or '').split(' & ') if x.strip()]
+        placings = [base] + [dict(base, position=str(a.get('place') or ''), class_place=str(a.get('place') or ''), **{'class': a.get('class') or ''},
+                                  section=a.get('class') or '', line_no=n + 10000 * k) for k, a in enumerate(r.get('also') or [], 1)]
+        for pl in placings:          # a Novice crew is also placed in its car class ("S3 N1"): listed in both classes
+            for who in crew:
+                other = [x for x in crew if x is not who]
+                rows.append(dict(pl, driver=who, vehicle=('with ' + ' & '.join(other)) if other and program == 'Rally' else r.get('vehicle') or None))
+    return rows
 OCR_NAME = re.compile(r"[A-Z][A-Za-z'.\-]+(?: (?:[A-Z][A-Za-z'.\-]*|(?:von|van|de|la|du)[A-Za-z'.\-]*|Jr\.?|Sr\.?|II|III)){1,3}")
 def ocr_gate(rows):
     """Rows read from a scan are kept only when the scan read cleanly: a real name and a readable number on at least 80%
@@ -486,8 +546,9 @@ def num(v):
     return float(m[1]) if m else None
 for i, (fid, p) in enumerate(plan.items(), 1):
     m = meta[fid]
-    t_path = os.path.join(TEXT, fid + '.txt')
-    low = m['name'].lower(); raw = f'{WORK}/files/{fid}'
+    src_id = SPLITS.get(fid, fid)             # a second event transcribed out of the same file ("<id>__dawnbuster2")
+    t_path = os.path.join(TEXT, src_id + '.txt')
+    low = m['name'].lower(); raw = f'{WORK}/files/{src_id}'
     if os.path.exists(t_path): text = open(t_path, errors='ignore').read()
     elif low.endswith(('.htm', '.html')): text = html_text(raw)
     elif low.endswith('.csv'):
@@ -497,34 +558,66 @@ for i, (fid, p) in enumerate(plan.items(), 1):
     elif low.endswith(('.xls', '.xlsx')): text = sheet_text(raw, m['name'])
     elif low.endswith('.zip'): text = zip_text(raw)
     else: text = fallback.get(fid, '')
+    cur = curated(fid)
+    ax_note = None
+    if cur:
+        ce = cur.get('event') or {}
+        if ce.get('date'):
+            m = dict(m, date=ce['date'], year=ce['date'][:4])
+        elif ce.get('year'):                          # a re-posted old sheet with no printed date: its own year, never the re-post date
+            m = dict(m, date=None, year=str(ce['year']))
+        if ce.get('program'):
+            m = dict(m, program=ce['program'])          # filed under the wrong program
+        if cur.get('use') is False:
+            m = dict(m, kind='not results')          # not a results sheet (a photo, a fact sheet, a duplicate): kept only as a file
     year = int(m['year']) if m['year'] else None
     ev = None
     if m['program'] not in ('Worker points', 'Not sorted', 'Other') and m['kind'] == 'event':
-        key = (m['program'], m['date'] or f"{year}-?-{event_name(text, m['name'])}")
+        ename = ((cur or {}).get('event') or {}).get('name') or event_name(text, m['name'])
+        key = (m['program'], m['date'] or f"{year}-?-{ename}") if not (cur and (cur.get('event') or {}).get('name')) else (m['program'], m['date'] or year, ename)
         if key not in events:
             events[key] = len(events) + 1
-            db.execute('INSERT INTO events VALUES (?,?,?,?,?)', (events[key], m['program'], year, m['date'] or None, event_name(text, m['name'])))
+            db.execute('INSERT INTO events VALUES (?,?,?,?,?)', (events[key], m['program'], year, m['date'] or None, ename))
         ev = events[key]
     rows = parse_html(raw) if low.endswith(('.htm', '.html')) else zip_rows(raw) if low.endswith('.zip') else []
-    if m['program'] == 'Rally' and low.endswith(('.xls', '.xlsx')):
+    if cur is not None and cur.get('keep_reader_rows'):
+        cur = None                               # a correction of the event only (name, date): the sheet is still read below
+    if cur is not None:
+        rows = curated_rows(cur, m['program']) if cur.get('use') is not False else []
+    elif fid.startswith('speedhive-'):
+        rows = parse_speedhive(raw)
+    elif m['program'] in ('Autocross', 'RallyCross') and m['kind'] == 'event' and text and not low.endswith(('.htm', '.html')):
+        ax_rows, ax_kind, ax_exp = axware.read(text)       # AXWare sheets: the strict reader, checked against the sheet's own count
+        if ax_kind:
+            ax_rows = axware.dedupe(ax_rows)
+            ok, check_note = axware.check(ax_rows, ax_kind, ax_exp)
+            rows = ax_rows if ok else []
+            ax_note = ('read: ' if ok else 'needs transcription: ') + check_note
+    if cur is None and m['program'] == 'Rally' and low.endswith(('.xls', '.xlsx')):
         rows, text = parse_scca_template(raw, m['name']), ''   # rally workbooks: only SCCA's official results template
-    if m['program'] == 'Rally' and text and not rows: rows = parse_scca_official_pdf(text)   # SCCA official results PDF
-    if m['program'] == 'Rally' and text and not rows: rows = parse_rally(text)   # crews: driver and navigator
-    if not rows and text and (low.endswith(('.xls', '.xlsx', '.csv')) or low.endswith('.zip')):
+    if cur is None and ax_note is None and m['program'] == 'Rally' and text and not rows: rows = parse_scca_official_pdf(text)   # SCCA official results PDF
+    if cur is None and ax_note is None and m['program'] == 'Rally' and text and not rows: rows = parse_rally(text)   # crews: driver and navigator
+    if cur is None and ax_note is None and not rows and text and (low.endswith(('.xls', '.xlsx', '.csv')) or low.endswith('.zip')):
         g = parse_grid(text)          # keep it only when it found real results (a place or a time on most rows)
         if g and sum(1 for r in g if r.get('position') or r.get('total')) >= 0.5 * len(g): rows = g
-    if not rows and text and m['program'] == 'RallyCross':
+    if cur is None and ax_note is None and not rows and text and m['program'] == 'RallyCross':
         rx = parse_rx(text)          # the RallyCross layout, when it covers the sheet
         if len(rx) >= 5: rows = rx
-    if not rows and text: rows = parse(text)
-    if not rows and text: rows = parse_lines(text)
-    if not rows and text and m['program'] == 'RallyCross': rows = parse_stacked(text)
-    ocr_note = None
-    if os.path.exists(os.path.join(TEXT, fid + '.ocr.json')) and not prog_is_wp(m):     # text from a scan: gate it
+    if cur is None and ax_note is None and not fid.startswith('speedhive-') and not rows and text: rows = parse(text)
+    if cur is None and ax_note is None and not fid.startswith('speedhive-') and not rows and text: rows = parse_lines(text)
+    if cur is None and ax_note is None and not rows and text and m['program'] == 'RallyCross': rows = parse_stacked(text)
+    ocr_note = ax_note
+    if cur is None and m['program'] in ('Autocross', 'RallyCross') and m['kind'] == 'event' and rows and ax_note is None:
+        k2 = 'class' if any(r.get('total') for r in rows) else 'raw'
+        ok, check_note = axware.check(rows, k2, None)             # other readers: places must agree with times
+        if not ok:
+            rows, ocr_note = [], 'needs transcription: ' + check_note
+    if cur is None and os.path.exists(os.path.join(TEXT, fid + '.ocr.json')) and not prog_is_wp(m):     # text from a scan: gate it
         rows, ocr_note = ocr_gate(rows)
-    db.execute('INSERT INTO files VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (i, ev, m['program'], year, m['date'] or None, m['kind'], m['name'],
-        p['name'], p['folder'], m['oldpath'], f"https://drive.google.com/file/d/{copies.get(fid, fid)}/view",
-        f'https://drive.google.com/file/d/{fid}/view', len(rows), text, ocr_note))
+    db.execute('INSERT INTO files VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (i, ev, m['program'], year, m['date'] or None, m['kind'], m['name'],
+        p['name'], p['folder'], m['oldpath'], f"https://drive.google.com/file/d/{copies.get(src_id, src_id)}/view",
+        f'https://drive.google.com/file/d/{src_id}/view', len(rows), text, ocr_note if cur is None else 'transcribed',
+        (cur or {}).get('label')))
     for r in rows:
         d = flip(' '.join(r['driver'].split()).strip(' ,')) if ',' in r['driver'].strip(' ,') else ' '.join(r['driver'].split()).strip(' ,')
         if prog_is_wp(m):
@@ -545,10 +638,10 @@ for i, (fid, p) in enumerate(plan.items(), 1):
             db.execute('INSERT INTO worker_points (file_id,snapshot_date,person_id,member_no,anniversary,name,carried_in,used,available,by_event,line_no,raw_line) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
                 (i, m['date'] or None, pid, r.get('member_no'), r.get('anniversary'), d, got['carried_in'], got['used'], got['available'], json.dumps(ev_pts), r['line_no'], r['raw']))
             continue
-        db.execute('INSERT INTO result_rows (file_id,event_id,person_id,program,year,date,section,position,class,car_number,driver,vehicle,color,total,raw_time,pax_time,total_s,raw_s,pax_s,cells,line_no,raw_line) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        db.execute('INSERT INTO result_rows (file_id,event_id,person_id,program,year,date,section,position,class,car_number,driver,vehicle,color,total,raw_time,pax_time,total_s,raw_s,pax_s,cells,line_no,raw_line,class_place,laps,best_lap,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             (i, ev, pid, m['program'], year, m['date'] or None, r['section'], r.get('position'), r.get('class'), r.get('car_number'), d,
              r.get('vehicle'), r.get('color'), r.get('total'), r.get('raw_time'), r.get('pax_time'), num(r.get('total')), num(r.get('raw_time')), num(r.get('pax_time')),
-             json.dumps(r['cells']), r['line_no'], r['raw']))
+             json.dumps(r['cells']), r['line_no'], r['raw'], r.get('class_place'), r.get('laps'), r.get('best_lap'), r.get('status')))
 db.executescript('''
 CREATE INDEX rr_person ON result_rows(person_id); CREATE INDEX wp_person ON worker_points(person_id); CREATE INDEX rr_event ON result_rows(event_id); CREATE INDEX rr_file ON result_rows(file_id);
 CREATE INDEX f_event ON files(event_id);
