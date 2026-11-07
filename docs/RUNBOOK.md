@@ -120,9 +120,11 @@ Each login can only write its own program's folder (`/opt/drscca/data/livetiming
 else on the server is reachable. Every upload replaces the last. The front page lists both programs and the
 past events.
 
-**Archive:** each night the server copies a program's latest event to `www/archive/<program>/<date>/`, lists it
-under "Past events" on the front page, and copies it to "Live Timing Archive" in the region shared drive.
-Nothing is ever deleted.
+**Archive:** AXWare overwrites the live pages at every upload, so each night the server copies a program's
+latest event to `www/archive/<program>/<date>/` (pages left over from an earlier event, for classes that did not
+run, are skipped), lists it under "Past events" on the front page, and copies it to "Timing and Results / Live
+timing pages / <Program> / <date>" in the region shared drive. Nothing is ever deleted. Events before November
+2026 there are partial: they were saved from the old website, where each event overwrote the last.
 
 **Logins** are in `/opt/drscca/data/livetiming/users.conf` (hashed). To change a password:
 `openssl passwd -6`, put the hash in that line, then `sudo docker compose restart livetiming-sftp`. To add a

@@ -1,9 +1,10 @@
 """Nightly live timing archive (drapps VM, run as root by drscca-livetiming-archive.timer).
 
 1. For each program, the pages from its latest event are copied to www/archive/<program>/<date>/ (date of the last
-   upload, Detroit time). A later upload the same day replaces that day's copy.
+   upload, Detroit time). A later upload the same day replaces that day's copy. Pages for classes that did not
+   run that day are still there from an earlier event; they are left out.
 2. www/archive/index.json lists every archived event, newest first; the live timing front page shows it.
-3. Each archived event not yet in Drive is copied to "Live Timing Archive/<Program>/<date>" in the region shared drive
+3. Each archived event not yet in Drive is copied to "Timing and Results/Live timing pages/<Program>/<date>" in the region shared drive
    (as admin@ through the workspace service account). Nothing is ever deleted, here or in Drive.
 """
 import json
@@ -21,11 +22,12 @@ ARCHIVE = os.path.join(WWW, 'archive')
 PROGRAMS = {'autocross': 'Autocross', 'rallycross': 'RallyCross'}
 TZ = ZoneInfo('America/Detroit')
 REGION_DRIVE = '0AOGLnEtgl5aCUk9PVA'
-DRIVE_FOLDER = 'Live Timing Archive'
+DRIVE_PATH = ('Timing and Results', 'Live timing pages')
 SA = '/opt/drscca/data/secrets/workspace-sa.json'
 API = 'https://www.googleapis.com/drive/v3/files'
 UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files'
 STAMP = '.in-drive'
+FRESH = 16 * 3600       # pages older than this before the newest upload belong to an earlier event
 
 
 def newest(folder):
@@ -45,8 +47,10 @@ def archive_latest():
             continue
         os.makedirs(dst, exist_ok=True)
         for f in os.listdir(src):
-            if not f.startswith('.') and os.path.isfile(os.path.join(src, f)):
-                shutil.copy2(os.path.join(src, f), dst)
+            p = os.path.join(src, f)
+            # Pages for classes that did not run are left over from an earlier event: skip them.
+            if not f.startswith('.') and os.path.isfile(p) and os.path.getmtime(p) >= last - FRESH:
+                shutil.copy2(p, dst)
         stamp = os.path.join(dst, STAMP)
         if os.path.exists(stamp):
             os.remove(stamp)        # changed since it went to Drive: send it again
@@ -99,7 +103,9 @@ def to_drive():
     if not pending:
         return
     s = drive()
-    top = folder(s, DRIVE_FOLDER, REGION_DRIVE)
+    top = REGION_DRIVE
+    for name in DRIVE_PATH:
+        top = folder(s, name, top)
     for prog, day in pending:
         local = os.path.join(ARCHIVE, prog, day)
         dest = folder(s, day, folder(s, PROGRAMS[prog], top))
