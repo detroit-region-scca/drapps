@@ -286,11 +286,18 @@ def event(eid):
         is_class = f['label'].startswith('Class results')
         if is_class:
             mixed = any(r['section'] and r['class'] and r['section'].lower() != r['class'].lower() for r in rs)
-            for r in rs:
+            by = {}
+            for r in rs:       # one table per class, in order of first appearance (a sheet in overall order interleaves them)
                 key = r['section'] or r['class'] or ''      # the sheet's own headings (a Pro list mixes classes)
-                if not groups or groups[-1][0] != key:
-                    groups.append((key, []))
-                groups[-1][1].append(r)
+                if key not in by:
+                    by[key] = []
+                    groups.append((key, by[key]))
+                by[key].append(r)
+
+            def place(r):
+                m = re.match(r'\d+', str(r['position'] or ''))
+                return (0, int(m[0])) if m else (1, 0)        # placed rows by place, then DNF/DNS in sheet order
+            groups = [(k, sorted(g, key=place)) for k, g in groups]
         else:
             groups = [('', rs)]
         if not is_class or mixed:
