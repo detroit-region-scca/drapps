@@ -1,0 +1,34 @@
+#!/bin/sh
+# Deploy drapps to the Google Cloud VM (run on bodhi, from the repo, after committing):
+#   deploy/gcp/deploy.sh
+# Tests, pushes, then on the VM: pulls the code, copies the compose file, Caddyfile, nginx config, job units and
+# scripts into place, rebuilds and restarts drapps, reloads Caddy, and checks the live site.
+set -e
+cd "$(dirname "$0")/../.."
+VM="gcloud compute ssh drapps --project drscca-automation --zone us-central1-a --tunnel-through-iap --quiet --command"
+
+echo "== tests"
+OFFICIALS_HOST=/nonexistent PYTHONPATH=. venv/bin/pytest -q tests | tail -1
+
+echo "== push"
+if [ -n "$(git status --porcelain)" ]; then echo "Uncommitted changes: commit first."; exit 1; fi
+git push -q origin HEAD
+
+command -v quiet >/dev/null && quiet drapps 15m "deploying drapps" >/dev/null || true
+
+echo "== deploy on the VM ($(git log -1 --format='%h %s'))"
+$VM 'set -e; cd /opt/drscca/app && sudo git pull -q --ff-only
+cd /opt/drscca
+for f in docker-compose.yml Caddyfile livetiming-nginx.conf; do sudo cp app/deploy/gcp/$f $f; done
+sudo install -m 755 app/deploy/gcp/qbo-mcp.sh /opt/drscca/qbo-mcp.sh
+sudo cp app/deploy/gcp/systemd/* /etc/systemd/system/ && sudo systemctl daemon-reload
+sudo docker compose up -d --build drapps 2>&1 | tail -1
+sudo docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null || true
+sudo docker image prune -f >/dev/null' 2>&1 | grep -v -i -e numpy -e "tunnel" -e "^WARNING" -e "please see" -e "^$"
+
+echo "== check"
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://drapps.drscca.org/) && [ "$c" = 200 ] && break; sleep 3
+done
+echo "drapps.drscca.org: $c"
+[ "$c" = 200 ]
