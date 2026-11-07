@@ -18,8 +18,6 @@ p{color:#555}
 <a class="card" href="autocross/"><b>Autocross</b><span id="t-autocross"></span></a>
 <a class="card" href="rallycross/"><b>RallyCross</b><span id="t-rallycross"></span></a>
 </div>
-<h2 id="past-h" style="font-size:1.2rem;margin:28px 0 8px;display:none">Past events</h2>
-<ul id="past" style="list-style:none;padding:0;margin:0"></ul>
 <p style="margin-top:24px"><a href="https://drscca.org/calendar/">Event calendar</a></p>
 </main>
 <script>
@@ -37,18 +35,6 @@ p{color:#555}
   }
   const list = document.getElementById('list');
   got.sort((a, b) => b[1] - a[1]).forEach(([p]) => list.appendChild(document.getElementById('t-' + p).parentNode));
-  // Past events: archived nightly by the server (archive/index.json, newest first).
-  try {
-    const ev = await (await fetch('archive/index.json', {cache: 'no-store'})).json();
-    const ul = document.getElementById('past');
-    ev.forEach(e => {
-      const d = new Date(e.date + 'T12:00:00').toLocaleDateString([], {dateStyle: 'medium'});
-      const li = document.createElement('li'); li.style.cssText = 'padding:8px 0;border-top:1px solid #ddd';
-      const a = document.createElement('a'); a.href = e.url; a.textContent = e.program + ', ' + d; a.style.color = '#1d3fb8';
-      li.appendChild(a); ul.appendChild(li);
-    });
-    if (ev.length) document.getElementById('past-h').style.display = '';
-  } catch (e) {}
 })();
 </script>
 </body></html>

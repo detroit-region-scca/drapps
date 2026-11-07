@@ -1,6 +1,0 @@
-[Unit]
-Description=DRSCCA live timing: archive each event's pages and copy them to the region Drive
-OnFailure=drscca-alert@%n.service
-[Service]
-Type=oneshot
-ExecStart=/opt/drscca/venv/bin/python /opt/drscca/app/deploy/gcp/livetiming_archive.py

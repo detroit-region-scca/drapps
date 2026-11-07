@@ -1,7 +1,0 @@
-[Unit]
-Description=DRSCCA live timing: nightly archive
-[Timer]
-OnCalendar=*-*-* 03:30 America/Detroit
-Persistent=true
-[Install]
-WantedBy=timers.target

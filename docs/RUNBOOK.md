@@ -86,7 +86,6 @@ All run on the server. Any failure emails admin@drscca.org (from apps@) with the
 | QuickBooks sync | 02:30 nightly | `drscca-qbo.timer` | Actuals, funds requests paid, bank balances, books check. On the 1st it also emails the treasurer the worker points journal entry and adds the month's automatic points. |
 | Sync now | When the treasurer presses it | `drscca-qbo-refresh.path` | The same sync, on request |
 | Sheet backup | 02:45 nightly | `drscca-backup.timer` | `.xlsx` copies into `data/backups/` |
-| Live timing archive | 03:30 nightly | `drscca-livetiming-archive.timer` | Saves each event's pages, see "Live timing" |
 | Officials changes | When the admin saves a person in Admin > Users | `drscca-officials.path` | Updates `officials.json` and the drscca.org Google Groups with GAM |
 | Software updates | Sundays 04:30 | `drscca-update.timer` | Newest Caddy, nginx and SFTP images, drapps rebuilt on the newest Python, newest GAM and libraries |
 | System updates | daily | `unattended-upgrades` | Debian, Docker, Node and Google packages; reboots at 04:00 only when an update needs it |
@@ -117,14 +116,8 @@ AXWare on each program's timing laptop uploads its live results every minute ove
 | Public Browse URL | `autocross/` or `rallycross/` |
 
 Each login can only write its own program's folder (`/opt/drscca/data/livetiming/www/<program>/`); nothing
-else on the server is reachable. Every upload replaces the last. The front page lists both programs and the
-past events.
-
-**Archive:** AXWare overwrites the live pages at every upload, so each night the server copies a program's
-latest event to `www/archive/<program>/<date>/` (pages left over from an earlier event, for classes that did not
-run, are skipped), lists it under "Past events" on the front page, and copies it to "Timing and Results / Live
-timing pages / <Program> / <date>" in the region shared drive. Nothing is ever deleted. Events before November
-2026 there are partial: they were saved from the old website, where each event overwrote the last.
+else on the server is reachable. Every upload replaces the last; nothing is kept between events. The official results are the
+PDFs each program posts after an event. The front page links both programs.
 
 **Logins** are in `/opt/drscca/data/livetiming/users.conf` (hashed). To change a password:
 `openssl passwd -6`, put the hash in that line, then `sudo docker compose restart livetiming-sftp`. To add a
@@ -137,7 +130,7 @@ program, add a line (new uid), a folder owned by that uid, and a volume line in 
 | What is running | `sudo docker compose ps` |
 | App errors | `sudo docker logs --since 1h drapps` (each error starts with `Traceback`) |
 | Restart the app | `sudo docker compose restart drapps` |
-| A job's last run | `sudo journalctl -u drscca-qbo -n 50` (or `drscca-backup`, `drscca-officials`, `drscca-livetiming-archive`, `drscca-update`) |
+| A job's last run | `sudo journalctl -u drscca-qbo -n 50` (or `drscca-backup`, `drscca-officials`, `drscca-update`) |
 | Run a job now | `sudo systemctl start drscca-backup.service` |
 | Who did what | the Audit page in the app, or `tail app/data/audit.ndjson` |
 
@@ -191,7 +184,7 @@ recreate belongs in the admin-only Account Recovery folder in the region shared 
 |---|---|---|
 | App settings incl. `FLASK_SECRET_KEY`, `API_KEYS` | `drapps.env` | Edit, restart drapps. A new `FLASK_SECRET_KEY` signs everyone out and voids emailed links. |
 | App service account key | `drapps-sa.json` | New key in Google Cloud, swap the file, restart, delete the old key |
-| Workspace service account key (GAM, Drive archive) | `workspace-sa.json`, `gam/gam.cfg` | New key, swap the file |
+| Workspace service account key (GAM, secrets copy) | `workspace-sa.json`, `gam/gam.cfg` | New key, swap the file |
 | QuickBooks token | `qbo.env` | Reconnect as above |
 | Live timing logins | `/opt/drscca/data/livetiming/users.conf` | See "Live timing" |
 | Officials list | `officials.json` | Not secret, but private: names and addresses |
