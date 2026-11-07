@@ -12,5 +12,6 @@ Environment=QUICKBOOKS_TOKEN_STORE_PATH=/opt/drscca/data/secrets/qbo.env
 Environment=QBO_MCP_DIR=/opt/drscca/qbo-mcp
 Environment=GOOGLE_SERVICE_ACCOUNT_FILE=/opt/drscca/data/secrets/drapps-sa.json
 Environment=OFFICIALS_HOST=/opt/drscca/data/secrets/officials.json
+Environment=GOOGLE_SA_KEY_HOST=/opt/drscca/data/secrets/drapps-sa.json
 Environment=HOME=/opt/drscca
 ExecStart=/opt/drscca/venv/bin/python tools/qbo_nightly.py --manual
