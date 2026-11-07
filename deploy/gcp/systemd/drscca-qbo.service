@@ -1,4 +1,5 @@
 [Unit]
+OnFailure=drscca-alert@%n.service
 Description=DRSCCA apps: nightly QuickBooks sync (read only on the QuickBooks side)
 [Service]
 Type=oneshot

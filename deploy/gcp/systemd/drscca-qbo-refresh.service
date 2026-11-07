@@ -1,4 +1,5 @@
 [Unit]
+OnFailure=drscca-alert@%n.service
 Description=DRSCCA apps: QuickBooks refresh asked for in the app
 [Service]
 Type=oneshot

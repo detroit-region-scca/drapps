@@ -1,4 +1,5 @@
 [Unit]
+OnFailure=drscca-alert@%n.service
 Description=DRSCCA apps: apply officials-list changes (officials.json and the drscca.org Google Groups)
 [Service]
 Type=oneshot

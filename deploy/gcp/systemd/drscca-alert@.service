@@ -1,0 +1,7 @@
+[Unit]
+Description=DRSCCA apps: email admin@ that %i failed
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/drscca/data/secrets/drapps.env
+Environment=ALERT_EMAIL=admin@drscca.org
+ExecStart=/opt/drscca/venv/bin/python /opt/drscca/app/deploy/gcp/alert.py %i
