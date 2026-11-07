@@ -11,7 +11,7 @@ import sqlite3
 from collections import defaultdict
 from datetime import date
 
-from flask import Blueprint, abort, render_template, request, session
+from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 
 from storage import DATA_DIR
 
@@ -19,6 +19,9 @@ PATH = os.path.join(DATA_DIR, 'records.db')
 PROGRAMS = ['Autocross', 'RallyCross', 'Rally', 'Road Racing']
 SLUGS = {re.sub(r'[^a-z]+', '-', p.lower()): p for p in PROGRAMS}
 bp = Blueprint('records', __name__, url_prefix='/records')
+# New results go here first (a Drive folder, RESULTS_INBOX_FOLDER_ID); they are read into the records later, in a batch.
+INBOX = os.environ.get('RESULTS_INBOX_FOLDER_ID', '')
+KINDS = ('.pdf', '.htm', '.html', '.xls', '.xlsx', '.csv', '.jpg', '.jpeg', '.png')
 # Names in the standings that are page text, not people (the sheets are read automatically).
 NOT_A_NAME = re.compile(r'\b(series|season|opener|ender|solo|points|event|results?|region|scca|class|total)\b', re.I)
 
@@ -179,3 +182,51 @@ def person(pid):
     return render_template('records.html', **_ctx(view='person', person=p, results=results, standings=standings, years=years,
                                                   n_events=len({r['eid'] for r in results}), n_titles=sum(1 for s in standings if s['place'] == 1),
                                                   progs=sorted({r['program'] for r in results} | {s['program'] for s in standings})))
+
+
+def _inbox_files():
+    """What is waiting in the inbox, newest first."""
+    from storage import DRIVE, sheets_client
+    r = sheets_client().http_client.session.get(DRIVE, params={
+        'q': f"'{INBOX}' in parents and trashed = false", 'supportsAllDrives': 'true', 'includeItemsFromAllDrives': 'true',
+        'orderBy': 'createdTime desc', 'pageSize': 100, 'fields': 'files(name,createdTime,description,webViewLink)'})
+    r.raise_for_status()
+    return r.json().get('files', [])
+
+
+@bp.route('/add', methods=['GET', 'POST'])
+def add():
+    """Drop new results files into the inbox: anyone signed in. Nothing is read automatically."""
+    if not INBOX:
+        abort(404)
+    from utils import log_audit_event
+    who = session.get('who') or 'Unknown'
+    if request.method == 'POST':
+        prog = request.form.get('program') if request.form.get('program') in PROGRAMS else ''
+        when = (request.form.get('date') or '').strip()[:10]
+        what = re.sub(r'[\\/:*?"<>|]+', ' ', (request.form.get('event') or '')).strip()[:80]
+        files = [f for f in request.files.getlist('files') if f and f.filename]
+        bad = [f.filename for f in files if not f.filename.lower().endswith(KINDS)]
+        if not prog or not what or not files:
+            flash('Pick the program, name the event and choose at least one file.', 'warning')
+        elif bad:
+            flash(f"Results files only (PDF, spreadsheet, web page or picture): {', '.join(bad)}", 'warning')
+        else:
+            import json
+            from storage import UPLOAD, sheets_client
+            sess = sheets_client().http_client.session
+            for f in files:
+                name = ' - '.join(x for x in (when, prog, what, f.filename) if x)[:200]
+                meta = {'name': name, 'parents': [INBOX], 'description': f'{prog}, {what}, {when or "no date"}. Added in DRSCCA Apps by {who}.'}
+                r = sess.post(UPLOAD, params={'uploadType': 'multipart', 'supportsAllDrives': 'true', 'fields': 'id'},
+                              files={'metadata': ('metadata', json.dumps(meta), 'application/json'),
+                                     'file': (name, f.stream, f.mimetype or 'application/octet-stream')})
+                r.raise_for_status()
+            log_audit_event('RESULTS_ADDED', who, {'program': prog, 'event': what, 'date': when, 'files': [f.filename for f in files]})
+            flash(f"Thanks. {len(files)} file{'s' if len(files) != 1 else ''} saved; the results show in Records after the next update.", 'success')
+            return redirect(url_for('records.add'))
+    try:
+        waiting = _inbox_files()
+    except Exception:
+        waiting = None
+    return render_template('records.html', **_ctx(view='add', waiting=waiting, today=date.today().isoformat()))

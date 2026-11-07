@@ -77,3 +77,46 @@ def test_records_off_without_a_database(tmp_path, monkeypatch):
     with c.session_transaction() as s:
         s.update(authenticated=True, email='pat@example.org', who='Pat')
     assert c.get('/records/').status_code == 404
+
+
+def test_add_results_saves_files_to_the_inbox(tmp_path, monkeypatch):
+    import io
+    import auth
+    import storage
+    from app import app
+    path = str(tmp_path / 'records.db'); _db(path)
+    monkeypatch.setattr(records, 'PATH', path)
+    monkeypatch.setattr(records, 'INBOX', 'inbox-folder')
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Vol', 'level': 'volunteer', 'roles': [], 'perms': set()} if e else None)
+    sent = []
+
+    class Resp:
+        def __init__(self, data=None): self.data = data or {}
+        def raise_for_status(self): pass
+        def json(self): return self.data
+
+    class Sess:
+        def post(self, url, params=None, files=None, **k):
+            import json
+            sent.append(json.loads(files['metadata'][1])); return Resp({'id': 'x'})
+        def get(self, url, params=None, **k): return Resp({'files': []})
+
+    class Client:
+        class http_client:
+            session = Sess()
+    monkeypatch.setattr(storage, 'sheets_client', lambda: Client)
+    monkeypatch.setattr('utils.log_audit_event', lambda *a, **k: None)
+    app.config['TESTING'] = True
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s.update(authenticated=True, email='vol@example.org', who='Vol', _csrf='t')
+    assert c.get('/records/add').status_code == 200
+    r = c.post('/records/add', data={'_csrf': 't', 'program': 'Autocross', 'date': '2026-11-14', 'event': 'Turkey/Trot',
+                                     'files': (io.BytesIO(b'%PDF-1.4'), 'ClassResults.pdf')}, content_type='multipart/form-data')
+    assert r.status_code == 302
+    assert sent[0]['name'] == '2026-11-14 - Autocross - Turkey Trot - ClassResults.pdf' and sent[0]['parents'] == ['inbox-folder']
+    assert 'by Vol' in sent[0]['description']
+    sent.clear()
+    c.post('/records/add', data={'_csrf': 't', 'program': 'Autocross', 'event': 'X', 'files': (io.BytesIO(b'MZ'), 'tool.exe')},
+           content_type='multipart/form-data')
+    assert sent == []

@@ -3,6 +3,7 @@
 {% block nav %}
     <li class="nav-item"><a class="nav-link {% if view == 'home' %}active{% endif %}" href="{{ url_for('records.home') }}">Search</a></li>
     <li class="nav-item"><a class="nav-link {% if view == 'hall' %}active{% endif %}" href="{{ url_for('records.hall') }}">Hall of Fame</a></li>
+    <li class="nav-item"><a class="nav-link {% if view == 'add' %}active{% endif %}" href="{{ url_for('records.add') }}">Add results</a></li>
     {% for pg in programs %}<li class="nav-item"><a class="nav-link {% if p == pg %}active{% endif %}" href="{{ url_for('records.program', prog=slug(pg)) }}">{{ pg }}</a></li>{% endfor %}
 {% endblock %}
 {% block style %}
@@ -38,6 +39,23 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 <div class="rec-cards">{% for pg in programs %}{% set ys = seasons[pg] %}
     <a href="{{ url_for('records.program', prog=slug(pg)) }}"><b>{{ pg }}</b><br><span class="text-muted small">{% if ys %}{{ ys[0] }} to {{ ys[-1] }}, {{ ys|length }} seasons{% endif %}</span></a>{% endfor %}
     <a href="{{ url_for('records.hall') }}"><b>Hall of Fame</b><br><span class="text-muted small">All-time leaders</span></a></div>
+
+{% elif view == 'add' %}
+<div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a></div>
+<div class="page-title">Add results</div>
+<p class="text-muted" style="max-width: 44rem;">Send in the final results of an event (the AXWare class, raw and pax files, or a season points sheet). They are saved in the region's Drive and added to the records in the next update.</p>
+<form method="post" enctype="multipart/form-data" class="card p-3 mb-4" style="max-width: 44rem;">
+  <div class="row g-2">
+    <div class="col-md-4"><label class="form-label small">Program</label><select name="program" class="form-select" required><option value="">Pick one</option>{% for pg in programs %}<option>{{ pg }}</option>{% endfor %}</select></div>
+    <div class="col-md-4"><label class="form-label small">Event date</label><input type="date" name="date" class="form-control" max="{{ today }}"></div>
+    <div class="col-md-4"><label class="form-label small">Event</label><input name="event" class="form-control" placeholder="Turkey Trot" required></div>
+    <div class="col-12"><label class="form-label small">Files</label><input type="file" name="files" class="form-control" multiple required accept=".pdf,.htm,.html,.xls,.xlsx,.csv,.jpg,.jpeg,.png"></div>
+    <div class="col-12"><button class="btn btn-accent">Save results</button></div>
+  </div>
+</form>
+{% if waiting %}<div class="section-label">Waiting for the next update ({{ waiting|length }})</div>
+<div class="list-group" style="max-width: 44rem;">{% for f in waiting %}<a class="list-group-item list-group-item-action" href="{{ f.webViewLink }}">{{ f.name }} <span class="text-muted small">{{ (f.description or '').split('Added in DRSCCA Apps by ')[-1].rstrip('.') }}, {{ nice_date(f.createdTime[:10]) }}</span></a>{% endfor %}</div>
+{% elif waiting is not none %}<p class="text-muted">Nothing waiting.</p>{% endif %}
 
 {% elif view == 'hall' %}
 <div class="page-title">Hall of Fame</div>
