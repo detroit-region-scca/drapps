@@ -144,7 +144,7 @@ def season(prog, year):
     _need()
     p = SLUGS.get(prog) or abort(404)
     events = _q('''select e.id, e.date, e.name, (select count(distinct r.person_id) from result_rows r where r.event_id = e.id) n from events e
-        where e.program = ? and e.year = ? order by e.date, e.name''', p, year)
+        where e.program = ? and e.year = ? order by e.date is null, e.date, e.name''', p, year)
     st = _q('select * from season_standings where program = ? and year = ? order by class, place', p, year)
     by_class = defaultdict(list)
     for s in st:
