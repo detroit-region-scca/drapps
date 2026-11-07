@@ -143,7 +143,7 @@ def gate():
     if getattr(g, 'api_user', None) or request.endpoint is None:
         return None
     ep = request.endpoint
-    if ep.startswith(('auth.', 'api.')) or ep == 'static':   # the API checks its own key
+    if ep.startswith(('auth.', 'api.', 'records.')) or ep == 'static':   # the API checks its own key; Records are public
         return None
     if session.get('authenticated') and not session.get('email'):
         # Signed in with the old shared password: that is gone, sign in again by email.

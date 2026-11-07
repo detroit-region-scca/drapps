@@ -34,4 +34,5 @@ data/*.tmp
 data/officials-queue.json
 data/officials-done.json
 data/role-access.json
-
+# Public records database, built off the server (see records.py)
+data/records.db

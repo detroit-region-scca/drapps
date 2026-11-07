@@ -55,6 +55,8 @@ import audit_view  # noqa: E402
 import bud_store  # noqa: E402
 import plan_store  # noqa: E402
 app.register_blueprint(members_bp)
+from records import bp as records_bp  # noqa: E402
+app.register_blueprint(records_bp)
 app.register_blueprint(minutes_bp)
 app.register_blueprint(board_bp)
 app.register_blueprint(admin_bp)
