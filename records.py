@@ -277,13 +277,18 @@ def event(eid):
                 c = crews.setdefault(r['line_no'], dict(r, crew=[]))
                 c['crew'].append((r['person_id'], r['driver']))
             rs = list(crews.values())
+        real = {(r['driver'], r['car_number']) for r in rs if r['total'] or r['laps']}
+        rs = [r for r in rs if not (str(r['position'] or '').upper() == 'DNS' and not (r['total'] or r['laps'])
+                                    and (r['driver'], r['car_number']) in real)]     # Speedhive lists a non-start beside the car's own result
         have = set(rs[0].keys())
         cols = [(lab, k) for lab, k in (('Pos', 'position'), ('In class', 'class_place'), ('#', 'car_number'), ('Driver', 'driver'), ('Car', 'vehicle'),
                 ('Laps', 'laps'), ('Best lap', 'best_lap'), ('Total', 'total'), ('Raw', 'raw_time'), ('PAX', 'pax_time'), ('Status', 'status'))
                 if k in have and any(r[k] for r in rs)
                 and not (k == 'class_place' and all(not r[k] or str(r[k]) == str(r['position']) for r in rs))]   # adds nothing beside Pos
         groups = []          # class sheets: one table per class, in the sheet's order; other sheets: one table
-        is_class = f['label'].startswith('Class results')
+        placed = [str(r['position']) for r in rs if str(r['position'] or '').isdigit()]
+        is_class = f['label'].startswith('Class results') or (    # places repeat: they are class places, so one table per class
+            len(placed) != len(set(placed)) and len({r['class'] for r in rs if r['class']}) > 1)
         if is_class:
             mixed = any(r['section'] and r['class'] and r['section'].lower() != r['class'].lower() for r in rs)
             by = {}
@@ -299,18 +304,21 @@ def event(eid):
                 return (0, int(m[0])) if m else (1, 0)        # placed rows by place, then DNF/DNS in sheet order
             groups = [(k, sorted(g, key=place)) for k, g in groups]
         else:
+            mixed = False
             groups = [('', rs)]
         if not is_class or mixed:
             cols.insert(1, ('Class', 'class'))
         if e['program'] == 'Rally':      # a rally crew is a driver and a navigator, scored in points
             cols = [({'driver': 'Crew', 'total': 'Score'}.get(k, lab), k) for lab, k in cols if k != 'vehicle']
+        keep = ('position', 'driver', 'class')         # per table: leave out a column that is empty in it (a DNS-only table has no Score)
+        groups = [(k, g, [(lab, c) for lab, c in cols if c in keep or any(r[c] for r in g)]) for k, g in groups]
         same = [x for x in sheets if x['label'] == f['label']]
         lab = f['label'] + (f' {len(same) + 1}' if same else '')
         group, _, part = lab.partition(' \u00b7 ')          # "Group 2 · Saturday race": chooser grouped by run group
         sheets.append(dict(id=f['id'], label=lab, group=group if part else '', part=part or lab, cols=cols, groups=groups))
     everyone = {r['person_id'] or r['driver'] for rs in rows.values() for r in rs}
     if e['program'] == 'Rally':        # crews, counted on the main sheet (a crew is two rows)
-        everyone = {r['line_no'] for r in rows.get(sheets[0]['id'], [])} if sheets else set()
+        everyone = {frozenset(n for _, n in r['crew']) for _, g, _ in sheets[0]['groups'] for r in g} if sheets else set()
     return render_template('records.html', **_ctx(view='event', e=e, files=files, sheets=sheets, can_edit=can_edit(e['program']),
                                                   scanned=any(f['ocr'] and str(f['ocr']).startswith('read from a scan') and rows.get(f['id']) for f in files),
                                                   n_people=len(everyone), chooser=_chooser(sheets) if len(sheets) > 6 else None))

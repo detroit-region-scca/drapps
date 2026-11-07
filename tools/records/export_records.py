@@ -59,13 +59,28 @@ RALLY_NAMES = [   # one name per recurring rally, whatever the file called it
     (r'clare color', 'Clare Color Tour'), (r'pavement ends', 'Pavement Ends'), (r'dawnbuster', 'Dawnbuster'),
     (r'cast in stone', 'Cast in Stone'), (r'are you territorial', 'Are You Territorial'), (r'rights of spring', 'Rights of Spring'),
     (r'rally school', 'Rally School'), (r'august madness', 'August Madness'), (r'great northern', 'Great Northern'),
-    (r'santas? nightmare', "Santa's Nightmare"), (r'how the west', 'How the West Was Won')]
+    (r'santas? nightmare', "Santa's Nightmare"), (r'how the west', 'How the West Was Won'), (r'maca grand tour', 'MACA Grand Tour for Children'),
+    (r'mini\W*maca', 'Mini-MACA'), (r'hell and back', 'Hell and Back')]
+SMALL = {'a', 'an', 'and', 'at', 'by', 'for', 'in', 'of', 'on', 'or', 'the', 'to', 'with'}
+def headline(n):
+    """Title case for an event name: small words lower, Roman numerals upper, "Custer's" not "Custer'S"."""
+    out = []
+    for i, w in enumerate(n.split()):
+        if re.fullmatch(r'(?i)[ivx]{1,5}', w) and i:
+            out.append(w.upper())
+        elif w.lower() in SMALL and i:
+            out.append(w.lower())
+        elif w.isupper() and 1 < len(w.strip('.,')) <= 4 or w.isupper() and '.' in w:
+            out.append(w)                                   # acronyms as printed: TSD, MACA, T.G.I.S.
+        else:
+            out.append('-'.join(p[:1].upper() + p[1:].lower() for p in w.split('-')))
+    return ' '.join(out)
 def rally_name(n):
     for rx, name in RALLY_NAMES:
         if re.search(rx, n, re.I):
-            return name
+            return re.sub(r'(?i)\s+(i{1,3}|iv|v|vi{1,3}|ix|x)$', lambda m: ' ' + m[1].upper(), name if name != 'Ralligators Reunion' else name + (re.search(r'(?i)\s+([ivx]+)\s*$', n.strip()) and ' ' + re.search(r'(?i)\s+([ivx]+)\s*$', n.strip())[1].upper() or ''))
     n = re.sub(r'(?i)\b(rally|results?|summary|scoring|official|dtr|ncr|scca|\d+)\b', ' ', n)
-    return ' '.join(n.split()).title() or 'Rally'
+    return headline(' '.join(n.split())) or 'Rally'
 for i, nm in d.execute("select id, name from events where program = 'Rally'").fetchall():
     d.execute('update events set name = ? where id = ?', (rally_name(nm), i))
 # the 2007 Grattan race groups were posted as "2007-5-12_results_grp4.pdf"; one was sorted as RallyCross
