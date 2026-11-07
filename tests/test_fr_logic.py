@@ -47,6 +47,19 @@ def test_over_110_percent_needs_board_and_board_approval_clears_it():
     assert L.ready(L.review(r, 'approved', 1000, 5000))
 
 
+def test_once_ready_the_bill_in_quickbooks_does_not_reopen_the_overrun_check():
+    # Ready with $900 of other spending; then the bill is entered in QuickBooks, so the same $300 shows up in spending
+    # while the request is still open. It stays ready, and the approvals list is unchanged.
+    r = req(net=300, approvals=CHAIR)
+    assert L.ready(L.review(r, 'approved', 1000, 800))
+    r['approvals'] = L.add(r['approvals'], 'ready', 'DRSCCA Apps', '2026-11-06')
+    items = L.review(r, 'approved', 1000, 1100)
+    assert L.ready(items) and 'when every approval was in, 2026-11-06' in [i for i in items if i['key'] == 'overrun'][0]['by']
+    assert [a['role'] for a in L.parse(r['approvals'])] == ['chair'] and L.ready_on(r['approvals']) == '2026-11-06'
+    # a budget changed after approval still holds it
+    assert 'budget' in keys(L.review(r, 'changed', 1000, 1100), False)
+
+
 def test_non_event_uses_the_program_budget():
     r = req(code='', approvals=CHAIR)
     items = L.review(r, None, scope='program')

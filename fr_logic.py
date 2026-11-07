@@ -10,6 +10,9 @@ Policy (Detroit Region policies, Financial Policy II.A, and Bylaws Article VIII)
 
 Approvals are kept on the request as "role|name|date|note" entries joined by "; ".
 A board approval (with the meeting date) covers both budget items.
+A "ready|DRSCCA Apps|date|" entry records the day a request first had everything. After that the overrun check counts
+as passed: once the treasurer enters the bill in QuickBooks, the sync adds it to the event's spending and the open
+request would otherwise be counted twice (FR-2026-113: $9,600 in QuickBooks plus the same $9,600 still open).
 
 Approvals come from an emailed link sent to the official's address in the read-only officials list (fr.py). A
 director who files a request for their own program, signed in as themselves, has approved it by filing it.
@@ -28,6 +31,15 @@ def parse(text):
         if bits[0] in ROLES:
             out.append({'role': bits[0], 'name': bits[1], 'date': bits[2], 'note': bits[3]})
     return out
+
+
+def ready_on(text):
+    """The day the request first had every approval ('ready' entry), or ''."""
+    for part in (text or '').split(';'):
+        bits = [b.strip() for b in part.split('|')] + ['', '', '']
+        if bits[0] == 'ready':
+            return bits[2]
+    return ''
 
 
 def add(text, role, name, day, note=''):
@@ -90,8 +102,9 @@ def review(r, budget_status=None, budget_expense=None, spent=0.0, scope='event',
         if ok and budget_expense is not None and scope != 'ops':
             cap = round(budget_expense * OVERRUN, 2)
             within = spent + net <= cap + 0.005
-            item('overrun', f'Within 110% of budgeted expenses (${spent + net:,.2f} of ${cap:,.2f})', within or board,
-                 by(board) if board and not within else '')
+            frozen = ready_on(r.get('approvals'))
+            item('overrun', f'Within 110% of budgeted expenses (${spent + net:,.2f} of ${cap:,.2f})', within or board or frozen,
+                 by(board) if board and not within else f'within budget when every approval was in, {frozen}' if frozen and not within else '')
     if net > SECOND_SIGNER_LIMIT:
         s = got.get('second')
         item('second', f'Second signer, over ${SECOND_SIGNER_LIMIT:,.0f} (RE or ARE)', s, by(s) if s else '')

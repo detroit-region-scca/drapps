@@ -208,6 +208,15 @@ def board_motion(r, no_budget=True):
     return mid
 
 
+def mark_ready(rid, r=None):
+    """Record the day a request first has everything (see fr_logic.ready_on). Returns True when it was just marked."""
+    r = r or F.get(rid)
+    if not r or FL.ready_on(r.get('approvals')) or not FL.ready(Approvals().items(r)):
+        return False
+    F.update(rid, approvals=FL.add(r.get('approvals'), 'ready', 'DRSCCA Apps', date.today().isoformat()))
+    return True
+
+
 def announce_ready(rids):
     """Tell the treasurer about each of these open requests that now has everything (after a board vote)."""
     F.refresh()
@@ -215,6 +224,7 @@ def announce_ready(rids):
     for rid in rids:
         r = F.get(rid)
         if r and r['status'] == 'Submitted' and FL.ready(a.items(r)):
+            mark_ready(rid, r)
             send_mail(f"Funds request {rid} is ready to pay: {r['payee_name']} ${r['net']:,.2f}",
                       f"The board's approval is recorded. Everything the policy asks for is in.\n\n"
                       f"{url_for('fr.detail', req_id=rid, _external=True)}")
@@ -349,6 +359,7 @@ def new():
     n_files = sum(1 for r in receipts if r and r.filename)
     log_audit_event('FUNDS_REQUESTED', sub['name'], {'id': rid, 'payee': payee['name'], 'net': req['net'], 'event_code': req['event_code']})
     notify(rid, req, lines, n_files)
+    mark_ready(rid)
     flash(f'Submitted {rid}. The treasurer has been emailed.', 'success')
     return redirect(url_for('fr.detail', req_id=rid))
 
@@ -375,6 +386,7 @@ def _approved(rid, role, who, note=''):
     log_audit_event('FUNDS_APPROVED', who, {'id': rid, 'role': role, 'note': note})
     r = F.get(rid)
     if FL.ready(Approvals().items(r)):
+        mark_ready(rid, r)
         send_mail(f"Funds request {rid} is ready to pay: {r['payee_name']} ${r['net']:,.2f}",
                   f"{FL.ROLES[role]} approval from {who}. Everything the policy asks for is in.\n\n"
                   f"{request.url_root.rstrip('/')}{url_for('fr.detail', req_id=rid)}")
