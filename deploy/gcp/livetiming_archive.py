@@ -93,8 +93,9 @@ def folder(s, name, parent):
 
 
 def to_drive():
-    pending = [(prog, day) for prog in PROGRAMS for day in sorted(os.listdir(os.path.join(ARCHIVE, prog)))
-               if os.path.isdir(os.path.join(ARCHIVE, prog)) and not os.path.exists(os.path.join(ARCHIVE, prog, day, STAMP))]
+    pending = [(prog, day) for prog in PROGRAMS if os.path.isdir(os.path.join(ARCHIVE, prog))
+               for day in sorted(os.listdir(os.path.join(ARCHIVE, prog)))
+               if not os.path.exists(os.path.join(ARCHIVE, prog, day, STAMP))]
     if not pending:
         return
     s = drive()
