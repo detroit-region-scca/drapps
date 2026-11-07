@@ -165,3 +165,52 @@ def test_unlinked_names_show_as_text(tmp_path, monkeypatch):
         s.update(authenticated=True, email='pat@example.org', who='Pat')
     r = cl.get('/records/event/1')
     assert r.status_code == 200 and b'Jordan' in r.data and b'/records/person/None' not in r.data
+
+
+def _signed_in(monkeypatch, roles=(), email='pat@example.org'):
+    import auth
+    from app import app
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Pat Director', 'level': 'official', 'roles': list(roles), 'perms': set()} if e else None)
+    app.config['TESTING'] = True
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s.update(authenticated=True, email=email, who='Pat Director')
+    return c
+
+
+def test_the_programs_director_corrects_records_and_corrections_survive_a_rebuild(tmp_path, monkeypatch):
+    import officials as O
+    path = str(tmp_path / 'records.db'); _db(path)
+    monkeypatch.setattr(records, 'PATH', path)
+    monkeypatch.setattr(O, 'director_email', lambda code: 'pat@example.org' if code == 'AX' else '')
+    c = _signed_in(monkeypatch, roles=['Director'])
+    assert b'Correct this event' in c.get('/records/event/1').data
+    r = c.post('/records/event/1/edit', data={'name': 'Spring Opener', 'date': '2025-05-24', 'driver1': 'Alexis Example', 'class1': 'SS',
+                                              'position1': '1', 'total1': '45.123'})
+    assert r.status_code == 302
+    page = c.get('/records/event/1').data
+    assert b'Spring Opener' in page and b'Alexis Example' in page
+    c.post('/records/autocross/2025/edit', data={'rm2': '1', 'new_class0': 'SS - Super Street', 'new_place0': '2', 'new_name0': 'Lee Sample', 'new_score0': '410'})
+    season = c.get('/records/autocross/2025').data
+    assert b'Season Opener Points' not in season and b'Lee Sample' in season
+    # a rebuilt database arrives: the log is applied to it on the next page view
+    import os
+    import time
+    os.remove(path); _db(path)
+    os.utime(path, (time.time() + 5, time.time() + 5))
+    page = c.get('/records/event/1').data
+    assert b'Spring Opener' in page and b'Alexis Example' in page
+    assert b'Lee Sample' in c.get('/records/autocross/2025').data
+
+
+def test_only_the_programs_director_or_an_officer_corrects(tmp_path, monkeypatch):
+    import officials as O
+    path = str(tmp_path / 'records.db'); _db(path)
+    monkeypatch.setattr(records, 'PATH', path)
+    monkeypatch.setattr(O, 'director_email', lambda code: 'someone-else@example.org')
+    c = _signed_in(monkeypatch, roles=['Director'])
+    assert b'Correct this event' not in c.get('/records/event/1').data
+    assert c.post('/records/event/1/edit', data={'name': 'Nope'}).status_code == 403
+    assert c.get('/records/autocross/2025/edit').status_code == 403
+    officer = _signed_in(monkeypatch, roles=['Treasurer'], email='t@example.org')
+    assert officer.get('/records/autocross/2025/edit').status_code == 200

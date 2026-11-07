@@ -38,11 +38,15 @@ sorting step and OCR use the saved text. After a rebuild, pack the folder again 
    saved as one CSV per race session into Results by program / Road Racing / <year> / Waterford Hills (Speedhive).
 4. `tools/records/build.py <work> <data>/scca.db`: every table row (AXWare PDFs and web pages, old layouts, RallyCross
    sheets, road rally score sheets, spreadsheets, zips).
-5. `tools/records/standings.py <db>`: season standings from the final points sheet of each season.
+5. `tools/records/standings.py <db>`: season standings from the final points sheet of each season; then
+   `tools/records/sim_import.py <db> <data>/sim/league.json <data>/sim/champions.csv`: the iRacing league (Sim Racing),
+   from the league pages and the league's posted podiums (both files are in the private build data).
 6. `tools/records/dates.py <db>`: event dates printed in the files, when the file name had none; then
    `tools/records/site_dates.py <db> <data>/old-website-api --apply`: dates from the old website's posts
    (a date near the event's name, in its year, clearly the most mentioned).
-7. `tools/records/export_records.py <db> <data>/records.db`: the drapps copy (no worker points, no full text, cleaned
+7. First copy the corrections log off the server (directors' and officers' fixes made in drapps):
+   `gcloud compute scp ... drapps:/opt/drscca/app/data/records-edits.json <data>/` (it may not exist yet). Then
+   `tools/records/export_records.py <db> <data>/records.db <data>/records-edits.json`: the drapps copy (no worker points, no full text, cleaned
    event names, duplicates merged). Copy it to the VM:
    `gcloud compute scp ... drapps:/tmp/records.db` then `sudo install -o 1000 -g 1000 -m 644` into
    `/opt/drscca/app/data/records.db`. No restart needed.

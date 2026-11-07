@@ -1,8 +1,10 @@
 """Records: the region's results history at /records, for everyone signed in to the apps (volunteers too).
 
-Read-only SQLite at data/records.db, built off the server from every results, standings and points file the region
-posted on its old website (1982 to 2026): events, result rows, season standings and the people in them. The heavy work
-(reading PDFs, OCR of old scans) happens where the database is built, never here; this module only reads it.
+SQLite at data/records.db, built off the server from every results, standings and points file the region posted on
+its old website (1982 to 2026): events, result rows, season standings and the people in them. The heavy work (reading
+PDFs, OCR of old scans) happens where the database is built, never here. A program's director and the officers can
+correct what was read (records_edits.py): each correction goes into data/records-edits.json and is applied to the
+live database at once, again whenever a rebuilt database arrives, and by every rebuild.
 """
 import functools
 import os
@@ -13,11 +15,19 @@ from datetime import date
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 
+import records_edits as RE
 from storage import DATA_DIR
 
 PATH = os.path.join(DATA_DIR, 'records.db')
-PROGRAMS = ['Autocross', 'RallyCross', 'Rally', 'Road Racing']
+PROGRAMS = ['Autocross', 'RallyCross', 'Rally', 'Road Racing', 'Sim Racing']
 SLUGS = {re.sub(r'[^a-z]+', '-', p.lower()): p for p in PROGRAMS}
+PROGRAM_CODES = {'Autocross': 'AX', 'RallyCross': 'RX', 'Rally': 'RY', 'Road Racing': 'RR'}   # whose director may correct it
+
+
+def _side(name):
+    """Files kept next to records.db: records-edits.json (the corrections log) and records-edits.applied (the database
+    file the log was last applied to)."""
+    return os.path.join(os.path.dirname(PATH), name)
 bp = Blueprint('records', __name__, url_prefix='/records')
 # New results go here first (a Drive folder, RESULTS_INBOX_FOLDER_ID); they are read into the records later, in a batch.
 INBOX = os.environ.get('RESULTS_INBOX_FOLDER_ID', '')
@@ -102,6 +112,65 @@ def _ctx(**kw):
 def _need():
     if not enabled():
         abort(404)
+    _replay()
+
+
+def _replay():
+    """A rebuilt records.db arrived (its mtime changed): apply the corrections log to it once."""
+    try:
+        mark = open(_side('records-edits.applied')).read().strip()
+    except FileNotFoundError:
+        mark = ''
+    now = str(os.path.getmtime(PATH))
+    if mark == now:
+        return
+    edits = RE.load(_side('records-edits.json'))
+    if edits:
+        c = sqlite3.connect(PATH)
+        try:
+            RE.apply_all(c, edits)
+            c.commit()
+        finally:
+            c.close()
+    with open(_side('records-edits.applied'), 'w') as f:
+        f.write(str(os.path.getmtime(PATH)))
+
+
+def can_edit(program):
+    """The program's director (Admin > Officials) and the officers may correct a program's records."""
+    import auth
+    import officials as O
+    u = auth.user()
+    if not u:
+        return False
+    if set(u.get('roles') or ()) & set(auth.OFFICER_ROLES):
+        return True
+    code = PROGRAM_CODES.get(program)
+    return bool(code) and (u.get('email') or '') == O.director_email(code)
+
+
+def _record(entries, what):
+    """Save corrections: apply them to the live database, add them to the log, audit them."""
+    import auth
+    from datetime import datetime
+    from utils import log_audit_event
+    if not entries:
+        return 0
+    who = (auth.user() or {}).get('name') or session.get('email') or 'unknown'
+    for e in entries:
+        e.update(who=who, when=datetime.now().isoformat(timespec='seconds'))
+    c = sqlite3.connect(PATH)
+    try:
+        for e in entries:
+            RE.apply(c, e)
+        c.commit()
+    finally:
+        c.close()
+    RE.save(_side('records-edits.json'), RE.load(_side('records-edits.json')) + entries)
+    with open(_side('records-edits.applied'), 'w') as f:
+        f.write(str(os.path.getmtime(PATH)))
+    log_audit_event('RECORDS_CORRECTED', who, {'what': what, 'changes': len(entries)})
+    return len(entries)
 
 
 @bp.route('/')
@@ -153,7 +222,38 @@ def season(prog, year):
     if not events and not st:
         abort(404)
     return render_template('records.html', **_ctx(view='season', p=p, year=year, events=events, by_class=by_class,
-                                                  champs=[s for s in st if s['place'] == 1], sheets=sheets))
+                                                  champs=[s for s in st if s['place'] == 1], sheets=sheets, can_edit=can_edit(p)))
+
+
+@bp.route('/<prog>/<int:year>/edit', methods=['GET', 'POST'])
+def season_edit(prog, year):
+    """Correct a season's standings: class, place, name and score of each row, remove rows, add missing ones."""
+    _need()
+    p = SLUGS.get(prog) or abort(404)
+    if not can_edit(p):
+        abort(403)
+    st = _q('select * from season_standings where program = ? and year = ? order by class, place, name', p, year)
+    if request.method == 'POST':
+        f, out = request.form, []
+        for s in st:
+            k = {'program': p, 'year': year, 'class': s['class'] or '', 'name': s['name']}
+            if f.get(f'rm{s["id"]}'):
+                out.append({'kind': 'standing', 'key': k, 'remove': True})
+                continue
+            ch = {fld: f.get(f'{fld}{s["id"]}', '').strip() for fld in RE.STANDING_FIELDS if f'{fld}{s["id"]}' in f}
+            old = {'class': s['class'] or '', 'place': str(s['place']), 'name': s['name'], 'score': '' if s['score'] is None else '%g' % s['score']}
+            ch = {fld: v for fld, v in ch.items() if v != old[fld]}
+            if ch:
+                out.append({'kind': 'standing', 'key': k, 'set': ch})
+        for i in range(5):
+            nm, pl = f.get(f'new_name{i}', '').strip(), f.get(f'new_place{i}', '').strip()
+            if nm and pl.isdigit():
+                out.append({'kind': 'add_standing', 'set': {'program': p, 'year': year, 'class': f.get(f'new_class{i}', '').strip(),
+                                                            'place': pl, 'name': nm, 'score': f.get(f'new_score{i}', '').strip()}})
+        n = _record(out, f'standings {p} {year}')
+        flash(f'Saved {n} correction{"s" if n != 1 else ""}.' if n else 'Nothing changed.', 'success' if n else 'info')
+        return redirect(url_for('records.season', prog=prog, year=year))
+    return render_template('records.html', **_ctx(view='season_edit', p=p, year=year, st=st))
 
 
 @bp.route('/event/<int:eid>')
@@ -194,7 +294,48 @@ def event(eid):
         same = [x for x in sheets if x['label'] == f['label']]
         sheets.append(dict(id=f['id'], label=f['label'] + (f' {len(same) + 1}' if same else ''), cols=cols, groups=groups,
                            drivers=len({r['person_id'] or r['driver'] for r in rs})))
-    return render_template('records.html', **_ctx(view='event', e=e, files=files, sheets=sheets))
+    return render_template('records.html', **_ctx(view='event', e=e, files=files, sheets=sheets, can_edit=can_edit(e['program'])))
+
+
+@bp.route('/event/<int:eid>/edit', methods=['GET', 'POST'])
+def event_edit(eid):
+    """Correct an event: its name and date, each result line (name, class, place, score), or remove it."""
+    _need()
+    e = (_q('select * from events where id = ?', eid) or [None])[0] or abort(404)
+    if not can_edit(e['program']):
+        abort(403)
+    files = _q('select id, name, drive_url, coalesce(label, \'Results\') label from files where event_id = ? order by coalesce(sort, 9), name', eid)
+    url = {f['id']: f['drive_url'] for f in files}
+    rows = _q('select * from result_rows where event_id = ? order by file_id, line_no, id', eid)
+    if request.method == 'POST':
+        f, out = request.form, []
+        key = {'url': files[0]['drive_url']} if files else None
+        if key and f.get('remove_event'):
+            out.append({'kind': 'event', 'key': key, 'remove': True})
+        elif key:
+            ch = {}
+            if f.get('name', '').strip() and f['name'].strip() != e['name']:
+                ch['name'] = f['name'].strip()
+            if f.get('date', '') and f['date'] != (e['date'] or ''):
+                ch['date'] = f['date']
+            if ch:
+                out.append({'kind': 'event', 'key': key, 'set': ch})
+            for r in rows:
+                k = {'url': url[r['file_id']], 'line': r['line_no'], 'driver': r['driver']}
+                if f.get(f'rm{r["id"]}'):
+                    out.append({'kind': 'row', 'key': k, 'remove': True})
+                    continue
+                ch = {fld: f.get(f'{fld}{r["id"]}', '').strip() for fld in RE.ROW_FIELDS if f'{fld}{r["id"]}' in f}
+                ch = {fld: v for fld, v in ch.items() if v != (r[fld] or '')}
+                if ch:
+                    out.append({'kind': 'row', 'key': k, 'set': ch})
+        n = _record(out, f"event {e['program']} {e['date'] or e['year']} {e['name']}")
+        flash(f'Saved {n} correction{"s" if n != 1 else ""}.' if n else 'Nothing changed.', 'success' if n else 'info')
+        if f.get('remove_event'):
+            return redirect(url_for('records.season', prog=slug(e['program']), year=e['year']) if e['year'] else url_for('records.home'))
+        return redirect(url_for('records.event', eid=eid))
+    labels = {f['id']: f['label'] for f in files}
+    return render_template('records.html', **_ctx(view='event_edit', e=e, rows=rows, labels=labels))
 
 
 @bp.route('/person/<int:pid>')

@@ -1,5 +1,7 @@
 """Export the public records database for drapps (drapps.drscca.org/records): results, events, standings and people.
-No worker points, no full text, no raw lines. Usage: export_records.py <scca.db> <records.db>"""
+No worker points, no full text, no raw lines. Usage: export_records.py <scca.db> <records.db> [records-edits.json]
+The optional third file is the corrections log from the server (data/records-edits.json, see records_edits.py): fetch
+it right before exporting, so directors' corrections are applied to the new database too."""
 import collections, difflib, os, sqlite3, sys, unicodedata
 src, out = sys.argv[1], sys.argv[2]
 tmp = out + '.tmp'
@@ -8,7 +10,7 @@ d = sqlite3.connect(tmp)
 d.execute(f"ATTACH '{src}' AS s")
 d.executescript('''
 CREATE TABLE files AS SELECT id, event_id, program, year, date, kind, sorted_name AS name, drive_url FROM s.files
-  WHERE program IN ('Autocross', 'RallyCross', 'Rally', 'Road Racing');
+  WHERE program IN ('Autocross', 'RallyCross', 'Rally', 'Road Racing', 'Sim Racing');
 CREATE TABLE events AS SELECT * FROM s.events WHERE id IN (SELECT event_id FROM files WHERE event_id IS NOT NULL);
 CREATE TABLE result_rows AS SELECT id, file_id, event_id, person_id, program, year, date, section, position, class, car_number,
   driver, vehicle, total, raw_time, pax_time, total_s, raw_s, pax_s, line_no FROM s.result_rows
@@ -48,11 +50,11 @@ def clean(name):
     if not n or len(n) < 4 or n.lower() in ('results', 'results1', 'final', 'final results', 'live', 'esc'):
         return ''
     return n[0].upper() + n[1:]
-for i, nm, prog in d.execute('select id, name, program from events').fetchall():
+for i, nm, prog in d.execute("select id, name, program from events where program != 'Sim Racing'").fetchall():   # sim names are built clean
     d.execute('update events set name = ? where id = ?', ((lambda c: c if c and not c.endswith(' event') and not c.startswith('Run group') else f"{prog} {c or 'event'}".replace(' Saturday event', ', Saturday').replace(' Sunday event', ', Sunday'))(clean(nm)), i))
 RALLY_NAMES = [   # one name per recurring rally, whatever the file called it
     (r'sno\W*d\w*ft|snodrift|son of sno', 'Son of Sno*Drift'), (r'press on regardless|\b[fs]?por\b|^[fs]?por', 'Press On Regardless'),
-    (r'moo\w*\s*monte', 'Moonlight Monte'), (r'th\w*bs up', 'Thumbs Up'), (r'twilight\s*tour', 'Twilight Tour'),
+    (r'moo\w*\s*monte', 'Moonlight Monte'), (r'th\w*bs up', 'Thumbs Up'), (r'twilight', 'Twilight Tour'), (r'michigan winter', 'Michigan Winter Rally'),
     (r'rali+gators', 'Ralligators Reunion'), (r'mid\s*summer', 'Midsummer'), (r'tri\s*-?county', 'Tri-County'),
     (r'clare color', 'Clare Color Tour'), (r'pavement ends', 'Pavement Ends'), (r'dawnbuster', 'Dawnbuster'),
     (r'cast in stone', 'Cast in Stone'), (r'are you territorial', 'Are You Territorial'), (r'rights of spring', 'Rights of Spring'),
@@ -66,6 +68,44 @@ def rally_name(n):
     return ' '.join(n.split()).title() or 'Rally'
 for i, nm in d.execute("select id, name from events where program = 'Rally'").fetchall():
     d.execute('update events set name = ? where id = ?', (rally_name(nm), i))
+# the 2007 Grattan race groups were posted as "2007-5-12_results_grp4.pdf"; one was sorted as RallyCross
+for (eid,) in d.execute("select distinct event_id from files where name glob '*20[0-9][0-9]-*_results_grp[0-9]*'").fetchall():
+    d.execute("update events set program = 'Road Racing' where id = ?", (eid,))
+    d.execute("update result_rows set program = 'Road Racing' where event_id = ?", (eid,))
+    d.execute("update files set program = 'Road Racing' where event_id = ?", (eid,))
+# RallyCross names come from file names and sheet titles ("Rallyx33107Results V2", "R X Adrian", "At South Lyon"):
+# one shape for all, "<event> at <venue>", "RallyCross at <venue>", or "RallyCross, <Mon D>" when the venue is unknown
+RX_VENUES = [(r'crystal', 'Crystal Motor Speedway'), (r'i-?96', 'I-96 Speedway'), (r'oak\s*shade', 'Oakshade Raceway'),
+             (r'thistle\s*hill|south lyon', 'Thistle Hill'), (r'bundy', 'Bundy Hill'), (r'calhoun', 'Calhoun County Fairgrounds'),
+             (r'marshall', 'Marshall'), (r'adrian', 'Adrian'), (r'fowlerville', 'Fowlerville'), (r'clarksville', 'Clarksville'),
+             (r'milan', 'Milan'), (r'\bthe hill\b', 'The Hill')]
+MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+def rx_name(n, dt):
+    low = n.lower()
+    venue = next((v for rx, v in RX_VENUES if re.search(rx, low)), None)
+    title = re.split(r'(?i)\s+at\s+', n)[0].strip(' ,') if re.search(r'(?i)\s+at\s+', n) else ''
+    if not title or re.fullmatch(r'(?i)rally\s*cross|rallyx|r\s*x', title):
+        m = re.search(r'(?i)(divisional championship|gld championship|rallycross championship|national|championship|divisional)', n)
+        title = {'national': 'National RallyCross', 'championship': 'RallyCross Championship', 'divisional': 'Divisional Championship'}.get(
+            m[1].lower(), m[1].title().replace('Gld', 'GLD').replace('Rallycross', 'RallyCross')) if m else 'RallyCross'
+    title = re.sub(r'(?i)rallycross', 'RallyCross', title)
+    if re.search(r'(?i)(,\s*(saturday|sunday))$', n):
+        return 'RallyCross' + re.search(r'(?i)(,\s*(saturday|sunday))$', n)[1].title()
+    if venue:
+        return f'{title} at {venue}'
+    if title != 'RallyCross':
+        return title
+    if dt:
+        return f'RallyCross, {MON[int(dt[5:7]) - 1]} {int(dt[8:10])}'
+    ev = re.search(r'(?i)event\s*(\d+)', n)
+    return f'RallyCross event {ev[1]}' if ev else re.sub(r'(?i)rally\s*cross', 'RallyCross', n.strip()) or 'RallyCross'
+for i, nm, dt in d.execute("select id, name, date from events where program = 'RallyCross'").fetchall():
+    d.execute('update events set name = ? where id = ?', (rx_name(nm, dt), i))
+# Road races the old website's results files don't name (its season pages did): track and event by date
+ROAD_RACES = {'2004-05-15': 'Good Times National at Grattan', '2007-05-12': 'Detroit/Ft. Wayne Regional at Grattan',
+              '2007-05-13': 'Detroit/Ft. Wayne Regional at Grattan', '2018-05-19': 'Spring Sprints at GingerMan'}
+for dt, nm in ROAD_RACES.items():
+    d.execute("update events set name = ? where program = 'Road Racing' and date = ?", (nm, dt))
 # The same event split over several files: one event per program, year and name (when the dates agree or one is missing).
 merged = 0
 groups = {}
@@ -178,18 +218,37 @@ d.execute('update season_standings set name = (select name from people p where p
 for i, v in d.execute('select id, vehicle from result_rows where vehicle is not null').fetchall():
     if re.search(r'(?<![\w/])\d{5,7}(?![\w/])|[a-z],\s*[A-Z]{2}\b(?!\w)', v):
         d.execute('update result_rows set vehicle = null where id = ?', (i,))
+# a hometown read as a name ("Lake Orion MI"): never a person, never a crew partner
+STATE = r'(?:MI|OH|IN|ON|IL|WI|PA|NY|KY|TN|FL|TX|CA|GA|MN|IA|MO|NC|SC|VA|WV|MD|NJ|CT|MA|CO|AZ|QC)'
+for i, drv, veh in d.execute('select id, driver, vehicle from result_rows').fetchall():
+    if drv and re.search(rf'[a-z.]\s+{STATE}\.?$', drv):
+        d.execute('delete from result_rows where id = ?', (i,)); stats['hometowns dropped (read as names)'] += 1
+    elif veh and re.fullmatch(rf'with .*[a-z.]\s+{STATE}\.?', veh):
+        d.execute('update result_rows set vehicle = null where id = ?', (i,)); stats['hometowns dropped (read as names)'] += 1
 # hometowns some 2007 race sheets print after the class: 'GT1 "FENTON, MI"' -> 'GT1'
 d.execute("""update result_rows set class = trim(substr(class, 1, instr(class, '"') - 1)) where class like '%"%, __"%'""")
 d.execute("""update result_rows set class = substr(class, 1, instr(class, ' ') - 1) where class glob '[A-Z0-9]* [A-Z]*, [A-Z][A-Z]'""")
 # class codes in one case
 d.execute("update result_rows set class = upper(class) where class not like '% %' and length(class) <= 8")
 d.execute("update result_rows set section = upper(section) where section not like '% %' and length(section) <= 8")
-# the same event twice (same program and date) outside Rally, where two names on one day mean a date conflict
-for prog, dt in d.execute("select program, date from events where date is not null and program != 'Rally' group by 1, 2 having count(*) > 1").fetchall():
+# the same event twice (same program and date) outside Rally and Sim Racing (two series can race the same night), where two names on one day mean a date conflict
+for prog, dt in d.execute("select program, date from events where date is not null and program not in ('Rally', 'Sim Racing') group by 1, 2 having count(*) > 1").fetchall():
     ids = [r[0] for r in d.execute('select id from events where program = ? and date = ? order by length(name), id', (prog, dt))]
     for i in ids[1:]:
         d.execute('update files set event_id = ? where event_id = ?', (ids[0], i)); d.execute('update result_rows set event_id = ? where event_id = ?', (ids[0], i))
         d.execute('delete from events where id = ?', (i,)); stats['events merged (same day)'] += 1
+# a road race weekend that has Speedhive's timing files and an old-site results file (2018 Spring Sprints): keep
+# Speedhive's rows, which have real columns, so the race is not listed twice; the old file stays linked
+for (eid,) in d.execute("""select event_id from files where program = 'Road Racing' group by event_id
+                            having sum(name like '%.csv' and name like '% - %') > 0 and sum(not (name like '%.csv' and name like '% - %')) > 0""").fetchall():
+    gone = d.execute("""delete from result_rows where event_id = ? and file_id in
+                         (select id from files where event_id = ? and not (name like '%.csv' and name like '% - %'))""", (eid, eid)).rowcount
+    stats['old-site rows dropped (same race on Speedhive)'] += gone
+# an event none of whose files could be read (a scanned narrative, a photo of a sheet) lists nothing but looks like a
+# rally or race that has no results: leave it out; the file is still in Drive under Results by program
+for (eid,) in d.execute('select id from events where id not in (select distinct event_id from result_rows where event_id is not null)').fetchall():
+    d.execute('delete from files where event_id = ?', (eid,)); d.execute('delete from events where id = ?', (eid,))
+    stats['events with no readable results left out'] += 1
 # people left with no results or standings (their rows were dropped as junk, e.g. a town read as a name)
 d.execute('delete from people where id not in (select person_id from result_rows where person_id is not null union select person_id from season_standings where person_id is not null)')
 print(dict(stats))
@@ -202,9 +261,14 @@ for i, nm in d.execute('select id, name from files').fetchall():
     lab, srt = ('Leg scores', 5) if re.search(r'leg\W*by\W*leg', low) else ('PAX', 2) if 'pax' in low or 'index' in low else ('Raw', 3) if 'raw' in low else ('Class results', 1) if re.search(r'class|final|results?', low) else ('Results', 4)
     if low.endswith('.csv') and ' - ' in nm:          # Speedhive race sessions: one tab per session, by group then day
         lab = nm.rsplit(' - ', 1)[1][:-4]
-        g = re.search(r'group\s*#?\s*(\d+)', lab, re.I)
-        srt = (int(g[1]) if g else 50) * 10 + next((i for i, k in enumerate(('saturday', 'sunday', 'feature'), 1) if k in lab.lower()), 5)
+        g = re.search(r'gr(?:ou)?p\s*#?\s*(\d+)', lab, re.I)
+        srt = (int(g[1]) if g else 50) * 10 + next((i for i, k in enumerate(('saturday', 'race 1', 'qual race', 'sunday', 'race 2', 'feature'), 1) if k in lab.lower()), 7)
     d.execute('update files set label = ?, sort = ? where id = ?', (lab, srt, i))
+if len(sys.argv) > 3:         # corrections made in drapps by program directors and officers
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+    import records_edits
+    log = records_edits.load(sys.argv[3])
+    print('corrections applied:', records_edits.apply_all(d, log), 'of', len(log))
 d.commit(); d.execute('DETACH s'); d.execute('VACUUM'); d.close()
 os.replace(tmp, out)
 c = sqlite3.connect(out)

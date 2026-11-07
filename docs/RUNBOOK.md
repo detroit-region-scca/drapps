@@ -127,9 +127,15 @@ program, add a line (new uid), a folder owned by that uid, and a volume line in 
 
 ## Records
 
-`/records` shows region results back to 1982 from `data/records.db`, a read-only SQLite file built off the server by
+`/records` shows region results back to 1982 from `data/records.db`, a SQLite file built off the server by
 `tools/records/` (see its README) and copied in with `gcloud compute scp` and `sudo install -o 1000 -g 1000 -m 644`.
-No restart is needed. New results that people add land in the Drive folder *Timing and Results / Results inbox*
+No restart is needed.
+
+**Corrections.** A program's director (Admin > Officials) and the officers see "Correct this event" and "Correct the
+standings" in Records. Each correction is applied at once, added to `data/records-edits.json` and written to the audit
+log. A newly copied `records.db` gets the whole log applied on the first page view (`records-edits.applied` remembers
+which file it was applied to), and the build applies it too: copy `records-edits.json` off the server before each
+export. Never delete that file: it holds people's corrections. The nightly backup (`backup_sheets.py`) keeps 60 dated copies in `data/backups/`. New results that people add land in the Drive folder *Timing and Results / Results inbox*
 (`RESULTS_INBOX_FOLDER_ID`); they are read in later, in a batch. Records never holds worker points.
 
 ## Logs and restarts

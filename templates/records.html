@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block app_name %}Records{% endblock %}
 {% block nav %}
-    <li class="nav-item"><a class="nav-link {% if view in ('home', 'program', 'season', 'event', 'person') %}active{% endif %}" href="{{ url_for('records.home') }}">Records</a></li>
+    <li class="nav-item"><a class="nav-link {% if view in ('home', 'program', 'season', 'event', 'person', 'event_edit', 'season_edit') %}active{% endif %}" href="{{ url_for('records.home') }}">Records</a></li>
     <li class="nav-item"><a class="nav-link {% if view == 'hall' %}active{% endif %}" href="{{ url_for('records.hall') }}">Hall of Fame</a></li>
     <li class="nav-item"><a class="nav-link {% if view == 'add' %}active{% endif %}" href="{{ url_for('records.add') }}">Add results</a></li>
 {% endblock %}
@@ -95,25 +95,26 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% elif view == 'season' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.program', prog=slug(p)) }}">{{ p }}</a></div>
 <div class="page-title">{{ year }} {{ p }}</div>
+{% if can_edit %}<p class="small mb-1"><a href="{{ url_for('records.season_edit', prog=slug(p), year=year) }}">Correct the standings</a> <span class="text-muted">(open an event to correct its results)</span></p>{% endif %}
 {% if events %}<div class="section-label mt-3">Events</div>
 <div class="table-responsive"><table class="table"><thead><tr><th>Date</th><th>Event</th><th class="num">Drivers</th></tr></thead><tbody>
 {% for e in events %}<tr><td class="text-nowrap">{{ nice_date(e.date) }}</td><td><a href="{{ url_for('records.event', eid=e.id) }}">{{ e.name }}</a></td><td class="num">{{ e.n or '' }}</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}
 {% if champs %}<div class="section-label mt-4">Class champions</div>
 <div class="table-responsive"><table class="table"><thead><tr><th>Class</th><th>Champion</th><th class="num">Score</th></tr></thead><tbody>
-{% for s in champs %}<tr><td>{{ s.class or '' }}</td><td><a href="{{ url_for('records.person', pid=s.person_id) }}">{{ s.name }}</a></td><td class="num">{{ '%g'|format(s.score) }}</td></tr>{% endfor %}
+{% for s in champs %}<tr><td>{{ s.class or '' }}</td><td>{% if s.person_id %}<a href="{{ url_for('records.person', pid=s.person_id) }}">{{ s.name }}</a>{% else %}{{ s.name }}{% endif %}</td><td class="num">{{ '%g'|format(s.score) if s.score is not none else '' }}</td></tr>{% endfor %}
 </tbody></table></div>
 <div class="section-label mt-4">Final standings</div>
 {% for cl, ss in by_class.items() %}<details><summary>{{ cl or 'Unclassed' }} ({{ ss|length }})</summary>
 <div class="table-responsive"><table class="table table-sm"><thead><tr><th class="num">Place</th><th>Name</th><th class="num">Score</th></tr></thead><tbody>
-{% for s in ss %}<tr><td class="num">{{ s.place }}</td><td><a href="{{ url_for('records.person', pid=s.person_id) }}">{{ s.name }}</a></td><td class="num">{{ '%g'|format(s.score) }}</td></tr>{% endfor %}
+{% for s in ss %}<tr><td class="num">{{ s.place }}</td><td>{% if s.person_id %}<a href="{{ url_for('records.person', pid=s.person_id) }}">{{ s.name }}</a>{% else %}{{ s.name }}{% endif %}</td><td class="num">{{ '%g'|format(s.score) if s.score is not none else '' }}</td></tr>{% endfor %}
 </tbody></table></div></details>{% endfor %}{% endif %}
 {% if sheets %}<div class="section-label mt-4">Points sheets</div>{% for f in sheets %}<a class="badge-soft" href="{{ f.drive_url }}">{{ f.name }}</a>{% endfor %}{% endif %}
 
 {% elif view == 'event' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.program', prog=slug(e.program)) }}">{{ e.program }}</a>{% if e.year %} / <a href="{{ url_for('records.season', prog=slug(e.program), year=e.year) }}">{{ e.year }}</a>{% endif %}</div>
 <div class="page-title">{{ e.name }}</div>
-<p class="text-muted mb-2">{{ nice_date(e.date) or e.year }}{% if sheets %} &middot; {{ sheets[0].drivers }} {{ 'crews' if e.program == 'Rally' else 'drivers' }}{% endif %}</p>
+<p class="text-muted mb-2">{{ nice_date(e.date) or e.year }}{% if sheets %} &middot; {{ sheets[0].drivers }} {{ 'crews' if e.program == 'Rally' else 'drivers' }}{% endif %}{% if can_edit %} &middot; <a href="{{ url_for('records.event_edit', eid=e.id) }}">Correct this event</a>{% endif %}</p>
 {% if files %}<div class="mb-3 small"><span class="text-muted">Original files:</span> {% for f in files %}<a class="badge-soft" href="{{ f.drive_url }}" target="_blank" rel="noopener">{{ f.label }}</a>{% endfor %}</div>{% endif %}
 {% if sheets %}
 {% if sheets|length > 1 %}<ul class="nav nav-tabs mb-3" role="tablist">{% for s in sheets %}
@@ -129,6 +130,52 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 </div>{% endfor %}</div>
 {% else %}<p class="text-muted">The results file for this event could not be read automatically{% if files %}; open the original file above{% endif %}.</p>{% endif %}
 
+{% elif view == 'event_edit' %}
+<div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.event', eid=e.id) }}">{{ e.name }}</a> / Correct</div>
+<div class="page-title">Correct this event</div>
+<p class="text-muted small">Change what is wrong and save. Your corrections are kept when the records are rebuilt, and each one is in the audit log.</p>
+<form method="post">
+<div class="row g-2 mb-3" style="max-width:40rem">
+  <div class="col-sm-8"><label class="form-label small">Event name</label><input class="form-control" name="name" value="{{ e.name }}"></div>
+  <div class="col-sm-4"><label class="form-label small">Date</label><input class="form-control" type="date" name="date" value="{{ e.date or '' }}"></div>
+</div>
+<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Sheet</th><th>Place</th><th>Class</th><th>Name</th><th>{{ 'Score' if e.program == 'Rally' else 'Total' }}</th><th>Remove</th></tr></thead><tbody>
+{% for r in rows %}<tr>
+  <td class="small text-muted">{{ labels.get(r.file_id, '') }}</td>
+  <td><input class="form-control form-control-sm" style="width:4.5rem" name="position{{ r.id }}" value="{{ r.position or '' }}"></td>
+  <td><input class="form-control form-control-sm" style="width:6rem" name="class{{ r.id }}" value="{{ r['class'] or '' }}"></td>
+  <td><input class="form-control form-control-sm" style="min-width:12rem" name="driver{{ r.id }}" value="{{ r.driver or '' }}"></td>
+  <td><input class="form-control form-control-sm" style="width:6rem" name="total{{ r.id }}" value="{{ r.total or '' }}"></td>
+  <td class="text-center"><input class="form-check-input" type="checkbox" name="rm{{ r.id }}" value="1" aria-label="Remove this line"></td>
+</tr>{% endfor %}
+</tbody></table></div>
+<div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="remove_event" value="1" id="rmev"><label class="form-check-label" for="rmev">This event is not a real event: remove it from Records</label></div>
+<button class="btn btn-primary">Save corrections</button> <a class="btn btn-link" href="{{ url_for('records.event', eid=e.id) }}">Cancel</a>
+</form>
+
+{% elif view == 'season_edit' %}
+<div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.season', prog=slug(p), year=year) }}">{{ year }} {{ p }}</a> / Correct</div>
+<div class="page-title">Correct the {{ year }} {{ p }} standings</div>
+<p class="text-muted small">Place 1 in a class is its champion. Your corrections are kept when the records are rebuilt, and each one is in the audit log.</p>
+<form method="post">
+<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Class</th><th>Place</th><th>Name</th><th>Score</th><th>Remove</th></tr></thead><tbody>
+{% for s in st %}<tr>
+  <td><input class="form-control form-control-sm" style="width:9rem" name="class{{ s.id }}" value="{{ s['class'] or '' }}"></td>
+  <td><input class="form-control form-control-sm" style="width:4.5rem" name="place{{ s.id }}" value="{{ s.place }}"></td>
+  <td><input class="form-control form-control-sm" style="min-width:12rem" name="name{{ s.id }}" value="{{ s.name }}"></td>
+  <td><input class="form-control form-control-sm" style="width:6rem" name="score{{ s.id }}" value="{{ '%g'|format(s.score) if s.score is not none else '' }}"></td>
+  <td class="text-center"><input class="form-check-input" type="checkbox" name="rm{{ s.id }}" value="1" aria-label="Remove this row"></td>
+</tr>{% endfor %}
+{% for i in range(5) %}<tr class="table-light">
+  <td><input class="form-control form-control-sm" style="width:9rem" name="new_class{{ i }}" placeholder="Class"></td>
+  <td><input class="form-control form-control-sm" style="width:4.5rem" name="new_place{{ i }}" placeholder="Place"></td>
+  <td><input class="form-control form-control-sm" style="min-width:12rem" name="new_name{{ i }}" placeholder="Add a missing person"></td>
+  <td><input class="form-control form-control-sm" style="width:6rem" name="new_score{{ i }}" placeholder="Score"></td><td></td>
+</tr>{% endfor %}
+</tbody></table></div>
+<button class="btn btn-primary">Save corrections</button> <a class="btn btn-link" href="{{ url_for('records.season', prog=slug(p), year=year) }}">Cancel</a>
+</form>
+
 {% elif view == 'person' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a></div>
 <div class="page-title">{{ person.name }}</div>
@@ -136,7 +183,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 <div>{% for pg in progs %}<span class="badge-soft">{{ pg }}</span>{% endfor %}</div>
 {% if standings %}<div class="section-label mt-4">Season standings</div>
 <div class="table-responsive"><table class="table"><thead><tr><th>Season</th><th>Class</th><th class="num">Place</th><th class="num">Score</th></tr></thead><tbody>
-{% for s in standings|reverse %}<tr><td><a href="{{ url_for('records.season', prog=slug(s.program), year=s.year) }}">{{ s.year }} {{ s.program }}</a></td><td>{{ s.class or '' }}</td><td class="num">{% if s.place == 1 %}<strong>1st</strong>{% else %}{{ s.place }}{% endif %}</td><td class="num">{{ '%g'|format(s.score) }}</td></tr>{% endfor %}
+{% for s in standings|reverse %}<tr><td><a href="{{ url_for('records.season', prog=slug(s.program), year=s.year) }}">{{ s.year }} {{ s.program }}</a></td><td>{{ s.class or '' }}</td><td class="num">{% if s.place == 1 %}<strong>1st</strong>{% else %}{{ s.place }}{% endif %}</td><td class="num">{{ '%g'|format(s.score) if s.score is not none else '' }}</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}
 {% if results %}<div class="section-label mt-4">Events ({{ results|length }})</div>
 <div class="table-responsive"><table class="table table-sm"><thead><tr><th>Date</th><th>Event</th><th>Class</th><th class="num">Class place</th><th class="num">PAX place</th><th class="d-none d-md-table-cell">Car or partner</th><th class="num">Time or score</th></tr></thead><tbody>

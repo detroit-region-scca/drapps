@@ -7,7 +7,8 @@ M = r'(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?'
 PATS = [(re.compile(M + r'\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*[-&,]\s*\d{1,2})*,?\s+((?:19|20)\d\d)', re.I), lambda m: (int(m[3]), MON[m[1].lower()[:3]], int(m[2]))),
         (re.compile(r'(?<![\d/])(\d{1,2})/(\d{1,2})/((?:19|20)?\d\d)(?![\d/])'), lambda m: (int(m[3]) + (0 if len(m[3]) == 4 else 2000 if int(m[3]) < 50 else 1900), int(m[1]), int(m[2]))),
         (re.compile(r'(\d{1,2})\s+' + M + r'\s+((?:19|20)\d\d)', re.I), lambda m: (int(m[3]), MON[m[2].lower()[:3]], int(m[1]))),
-        (re.compile(r'(?<!\d)(\d{1,2})' + M + r'(\d{2})(?!\d)', re.I), lambda m: (2000 + int(m[3]), MON[m[2].lower()[:3]], int(m[1])))]   # "24Sept05"
+        (re.compile(r'(?<!\d)(\d{1,2})' + M + r'(\d{2})(?!\d)', re.I), lambda m: (2000 + int(m[3]), MON[m[2].lower()[:3]], int(m[1]))),   # "24Sept05"
+        (re.compile(r'(?<![\d-])(\d{1,2})-' + M + r'-(\d{2})(?![\d-])', re.I), lambda m: (2000 + int(m[3]), MON[m[2].lower()[:3]], int(m[1])))]   # "7-Sep-24" (SCCA rally results)
 YEARLESS = re.compile(M + r'\s+(\d{1,2})(?:st|nd|rd|th)\b', re.I)          # "December 4th", when the season is known
 def found(text, year):
     for rx, f in PATS:

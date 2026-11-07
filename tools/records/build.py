@@ -161,6 +161,46 @@ def parse_rally(text):
                          'driver': who, 'vehicle': 'with ' + mate, 'total': score, 'cells': [['score', score]],
                          'line_no': n, 'section': cls, 'raw': line.strip()})
     return rows
+OFF_NAME = re.compile(r"^\s*([A-Z][A-Za-z'.\-]+(?: [A-Za-z'.\-]+){0,3})\s{2,}\S")       # "Pat Example    Hometown ST   12345   DET"
+OFF_PLACE = re.compile(r'^\s*(\d+|DNF|DNS|DQ)\s{2,}([A-Z]{1,3})(\d+)\b(?:\s{2,}(\d{1,4})\b)?')   # "  1      E1      3   ..."
+def parse_scca_official_pdf(text):
+    """SCCA's road rally "Official Results" sheet saved as a PDF (2023 on): each crew is the driver's line, the finish
+    line (overall place, class letter and class place, car #, vehicle, sometimes the score), the score, then the
+    navigator's line. The name lines also print hometown, member # and region: only the names are kept."""
+    if not re.search(r'Team Members', text) or not re.search(r'Hometown', text):
+        return []
+    lines = text.splitlines()
+    start = next((n for n, l in enumerate(lines) if 'Finish Positions' in l), None)
+    if start is None:
+        return []
+    kinds = []                                  # ('name', n, name) / ('place', n, oa, cls, place, car, score)
+    for n in range(start + 1, len(lines)):
+        l = lines[n]
+        p = OFF_PLACE.match(l)
+        if p:
+            sc = re.search(r'(\d+\.\d+)\s*$', l)
+            kinds.append(['place', n, p[1], p[2], p[3], p[4], sc[1] if sc else None])
+            continue
+        m = OFF_NAME.match(l)
+        if m and not re.search(r'(?i)worker|first last|team members|hometown|member #|signature', l):
+            kinds.append(['name', n, ' '.join(m[1].split())])
+            continue
+        sc = re.fullmatch(r'\s*(\d+\.\d+)\s*', l)
+        if sc and kinds and kinds[-1][0] == 'place' and not kinds[-1][6]:
+            kinds[-1][6] = sc[1]
+    rows = []
+    for i, k in enumerate(kinds):
+        if k[0] != 'place':
+            continue
+        before = kinds[i - 1][2] if i and kinds[i - 1][0] == 'name' else ''
+        after = kinds[i + 1][2] if i + 1 < len(kinds) and kinds[i + 1][0] == 'name' else ''
+        _, n, oa, cls, place, car, score = k
+        for who, other in ((before, after), (after, before)):
+            if who:
+                rows.append({'position': place, 'class': cls, 'car_number': car, 'driver': who,
+                             'vehicle': ('with ' + other) if other else None, 'total': score,
+                             'cells': [['score', score or '']], 'line_no': n + 1, 'section': cls, 'raw': f'overall {oa}'})
+    return rows
 PRIVATE_SHEET = re.compile(r'address|entry|entries|waiver|contact|registration|roster|member|phone|email|emergency', re.I)
 def pick_sheets(sheets, title):
     """Results sheets only: never address lists, entry lists or waivers (they hold people's private details)."""
@@ -454,6 +494,7 @@ for i, (fid, p) in enumerate(plan.items(), 1):
     rows = parse_html(raw) if low.endswith(('.htm', '.html')) else zip_rows(raw) if low.endswith('.zip') else []
     if m['program'] == 'Rally' and low.endswith(('.xls', '.xlsx')):
         rows, text = parse_scca_template(raw, m['name']), ''   # rally workbooks: only SCCA's official results template
+    if m['program'] == 'Rally' and text and not rows: rows = parse_scca_official_pdf(text)   # SCCA official results PDF
     if m['program'] == 'Rally' and text and not rows: rows = parse_rally(text)   # crews: driver and navigator
     if not rows and text and (low.endswith(('.xls', '.xlsx', '.csv')) or low.endswith('.zip')):
         g = parse_grid(text)          # keep it only when it found real results (a place or a time on most rows)

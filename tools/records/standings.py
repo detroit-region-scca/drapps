@@ -23,6 +23,34 @@ CREATE TABLE season_standings (id INTEGER PRIMARY KEY, program TEXT, year INTEGE
   name TEXT, score REAL, file_id INTEGER REFERENCES files(id), line_no INTEGER, raw_line TEXT);''')
 people = {n.lower(): i for i, n in db.execute('select id, name from people')}
 groups = {}
+RALLY_CLASSES = r'Equipped|GPS|Limited|Stock|Novice|Unlimited|SOP|Open|Sport|Tour'
+def rally_template(lines, target=None):
+    """The Detroit Region road rally "Class Standings" sheet (2018 on): Class, Organizer (rallies the person organized,
+    "SoSD,FPOR,SPOR"), Place, Name, DR member (DET / YES), then places and points per rally, Best last. Returns
+    [(class, name, score, line_no, line)]: the member column and organizer codes never end up in names."""
+    out, cls = [], ''
+    for n, l in enumerate(lines, 1):
+        st = l.strip()
+        c = re.match(r'^(%s)\b' % RALLY_CLASSES, st)
+        if c:
+            cls, st = c[1], st[c.end():].strip()
+        mem = re.search(r'(?<=[a-z.])\s*\b(DET|YES|NO|WMR|SBR|NEO|\*)\b(?=\s|$)', st)
+        if not mem:
+            continue
+        name = st[:mem.start()]
+        name = re.sub(r'^(?:(?:[A-Z][A-Za-z]{0,4})(?:\s*,\s*|\s+))*?(?=\d+\s+[A-Z][a-z]|[A-Z][a-z]+\s+[A-Z])', '', name)  # organizer codes
+        name = ' '.join(re.sub(r'^\d+\s+', '', name).split())                                                   # place
+        if not re.fullmatch(r"[A-Z][A-Za-z'.\-]+(?: [A-Z][A-Za-z'.\-]+){1,3}", name) or not cls:
+            continue
+        at = l.find(st[mem.end():]) if st[mem.end():] else len(l)
+        nums = [(x.start() + at, x.end() + at, float(x[1])) for x in re.finditer(r'(?<![\w.])(\d+(?:\.\d+)?)(?![\w])', st[mem.end():])]
+        if not nums:
+            continue
+        sc = min(nums, key=lambda x: abs((x[0] + x[1]) / 2 - target))[2] if target is not None else nums[-1][2]   # the Best column
+        out.append((cls, name, sc, n, l.strip()))
+    return out
+
+
 for f in db.execute("select id, name, date, length(text), program, year, text from files where kind='points' and program in ('Autocross','RallyCross','Rally','Road Racing') and year is not null and length(text) > 200"):
     groups.setdefault((f[4], f[5]), []).append(f)
 total = 0
@@ -41,6 +69,10 @@ for (prog, year), files in sorted(groups.items()):
             cls_col = re.search(r'\bclass\b', l, re.I).start()
     target = best if best is not None else tot
     cls, out = '', []
+    if prog == 'Rally' and re.search(r'Organizer', text) and re.search(r'(?i)\bmember\b', text):
+        out = rally_template(lines, target)
+        if out:
+            lines = []                    # read by its own reader: skip the general one below
     for l in lines[:start]:                       # a class named in the page title, above the column header
         t = re.search(r'(?i)points\s*-\s*([A-Z]{1,5}L?)\s*$', l.strip())
         if t: cls = t[1].upper()

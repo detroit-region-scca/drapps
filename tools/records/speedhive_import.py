@@ -1,12 +1,18 @@
-"""Detroit Region SCCA road races at Waterford Hills, from Speedhive (MYLAPS), the timing service the track uses.
+"""Detroit Region SCCA road races from Speedhive (MYLAPS), the timing service the tracks use.
 
-Waterford Hills (Speedhive organization 30476) runs a Detroit Region SCCA Regional each year alongside its own race
-weekend. This saves every race session of those weekends (not qualifying, not drivers schools) as a CSV file:
+- Waterford Hills (Speedhive organization 30476): the Detroit Region SCCA Regional each year, run alongside the
+  track's own race weekend.
+- GingerMan Raceway (the organization 39304 the timers post under): the races Detroit Region co-hosted with South Bend
+  Region, the Bert Olson National and Majors (2012 on, later "The BERT Sprints"), the Great Lakes Division Spring
+  Sprints and the 2023 Fall Sprints. Rounds other regions host alone (Shiloff Series stops) are not Detroit events.
+
+This saves every race session of those weekends (not practice, qualifying, grids or drivers schools) as a CSV file:
 position, class position, class, car number, driver, laps, best lap, total time. Nothing else from Speedhive is kept
-(no transponder or account ids).
+(no transponder or account ids). A date that already has road racing results from the old website is skipped, so the
+same race is never in Records twice.
 
-Each file is uploaded to Drive, *Timing and Results / Results by program / Road Racing / <year> / Waterford Hills
-(Speedhive)*, and added to the build's work folder (index.json, plan.json, sorted.csv, files/) so build.py reads it.
+Each file is uploaded to Drive, *Timing and Results / Results by program / Road Racing / <year> / <track> (Speedhive)*,
+and added to the build's work folder (index.json, plan.json, sorted.csv, files/) so build.py reads it.
 Run it after fetch.py and classify.py/plan.py, before build.py. Safe to run again: existing files are replaced.
 
 Usage: speedhive_import.py <work>      (needs WORKSPACE_SA and TIMING_RESULTS_FOLDER_ID, like the other steps)
@@ -21,11 +27,28 @@ from collections import defaultdict
 
 import requests
 
-ORG = 30476
 API = 'https://eventresults-api.speedhive.com/api/v0.2.3/eventresults'
-WANT = re.compile(r'scca', re.I)
-SKIP = re.compile(r'school', re.I)
 WORK = sys.argv[1]
+
+
+def gingerman_title(name, date):
+    n = name.lower()
+    if 'spring sprint' in n:
+        return 'Spring Sprints at GingerMan'
+    if 'fall sprint' in n:
+        return 'Fall Sprints at GingerMan'
+    return 'Bert Olson National at GingerMan' if date < '2013' else 'Bert Olson Majors at GingerMan'
+
+
+SOURCES = [
+    dict(org=30476, track='Waterford Hills', want=re.compile(r'scca', re.I), years=(0, 9999),
+         title=lambda name, date: 'SCCA Regional at Waterford Hills'),
+    # Detroit Region co-hosted these with South Bend Region from 2012 (the old website's schedules) through 2024
+    dict(org=39304, track='GingerMan', want=re.compile(r'bert|spring sprints|fall sprints', re.I), years=(2012, 2024),
+         title=gingerman_title),
+]
+SKIP = re.compile(r'school', re.I)
+NOT_RACE = re.compile(r'grid|practice|warm', re.I)
 
 
 def get(path):
@@ -38,34 +61,37 @@ def races(event):
     out = []
     for g in event.get('sessions', {}).get('groups', []):
         for s in g.get('sessions', []) + [x for sg in g.get('subGroups', []) for x in sg.get('sessions', [])]:
-            if s.get('type') == 'race':
+            if s.get('type') == 'race' and not NOT_RACE.search(s.get('name', '')):
                 out.append(s)
     return out
 
 
 def key(session_name):
     """Group number and race kind, to match a revised session to the one it replaces."""
-    g = re.search(r'group\s*_?#?\s*(\d+)', session_name, re.I)
-    k = re.search(r'saturday|sunday|feature', session_name, re.I)
+    g = re.search(r'gr(?:ou)?p\s*_?#?\s*(\d+)', session_name, re.I)
+    k = re.search(r'saturday|sunday|feature|race\s*\d|qual\w*\s*race', session_name, re.I)
     return (g[1] if g else '', (k[0] if k else '').lower())
 
 
-def pick():
-    """One upload per race date (most race sessions, newest), with sessions from any "revised" upload swapped in."""
+def pick(src, have):
+    """One upload per race date (most race sessions, newest), with sessions from any "revised" upload swapped in.
+    have: dates that already have road racing results from the old website."""
     events = []
-    for off in range(0, 2000, 100):
-        page = get(f'organizations/{ORG}/events?count=100&offset={off}')
+    for off in range(0, 3000, 100):
+        page = get(f"organizations/{src['org']}/events?count=100&offset={off}")
         events += page if isinstance(page, list) else page.get('events', [])
         if len(page) < 100:
             break
     by_date = defaultdict(list)
     for e in events:
-        if WANT.search(e['name']) and not SKIP.search(e['name']):
-            by_date[e['startDate'][:10]].append(get(f"events/{e['id']}?sessions=true"))
+        date = e['startDate'][:10]
+        if (src['want'].search(e['name']) and not SKIP.search(e['name']) and src['years'][0] <= int(date[:4]) <= src['years'][1]
+                and date not in have):
+            by_date[date].append(get(f"events/{e['id']}?sessions=true"))
     chosen = {}
     for date, evs in by_date.items():
         revised = [e for e in evs if re.search(r'rev', e['name'], re.I)]
-        main = max((e for e in evs if e not in revised), key=lambda e: (len(races(e)), e.get('updatedAt', '')))
+        main = max((e for e in evs if e not in revised) or evs, key=lambda e: (len(races(e)), e.get('updatedAt', '')))
         sessions = races(main)
         for e in revised:
             for s in races(e):
@@ -74,23 +100,19 @@ def pick():
     return chosen
 
 
-def title(event, date):
-    return "SCCA Regional at Waterford Hills"
-
-
 def session_label(name):
     n = re.sub(r'\s*-\s*[A-Z0-9;,/ ]{2,}$', '', name)            # drop the class list after the dash
     n = re.sub(r'_', ' ', n)
     return ' '.join(n.replace('/ SCCA Qualifying', '').split()).strip(' -/')
 
 
-def to_csv(event, date, session):
+def to_csv(src, event, date, session):
     rows = get(f"sessions/{session['id']}/classification").get('rows', [])
     buf = io.StringIO()
     w = csv.writer(buf)
     # first line: the event, the way the build reads event names ("- name - Sat MM-DD-YYYY")
     y, m, d = date.split('-')
-    w.writerow([f"Speedhive - {title(event, date)} - Sat {m}-{d}-{y}"])
+    w.writerow([f"Speedhive - {src['title'](event['name'], date)} - Sat {m}-{d}-{y}"])
     w.writerow([f"Session: {session_label(session['name'])}", f"Source: Speedhive event {event['id']}, session {session['id']}"])
     w.writerow(['Pos', 'Class', 'In class', '#', 'Driver', 'Laps', 'Best lap', 'Total time', 'Status'])   # Class before In class: the build takes the first column whose title says class
     for r in rows:
@@ -132,14 +154,16 @@ def main():
     plan = [p for p in plan if not p['id'].startswith('speedhive-')]
     sorted_rows = [r for r in sorted_rows if not r['id'].startswith('speedhive-')]
     os.makedirs(f'{WORK}/files', exist_ok=True)
+    have = {r['date'] for r in sorted_rows if r['program'] == 'Road Racing' and r.get('date')}
     n = 0
-    for date, (event, sessions) in sorted(pick().items()):
-        dest = folder('Waterford Hills (Speedhive)', folder(date[:4], root))
+    for src in SOURCES:
+      for date, (event, sessions) in sorted(pick(src, have).items()):
+        dest = folder(f"{src['track']} (Speedhive)", folder(date[:4], root))
         for sess in sessions:
-            body, count = to_csv(event, date, sess)
+            body, count = to_csv(src, event, date, sess)
             if not count:
                 continue
-            name = f"{date} Waterford Hills SCCA Regional - {session_label(sess['name'])}.csv"
+            name = f"{date} {src['title'](event['name'], date)} - {session_label(sess['name'])}.csv"
             fid = f"speedhive-{sess['id']}"
             open(f'{WORK}/files/{fid}', 'w').write(body)
             meta = {'name': name, 'description': f"Speedhive (MYLAPS) event {event['id']} '{event['name']}', session {sess['id']}"}
@@ -162,7 +186,7 @@ def main():
     with open(f'{WORK}/sorted.csv', 'w', newline='') as f:
         w = csv.DictWriter(f, fieldnames=list(sorted_rows[0]))
         w.writeheader(); w.writerows(sorted_rows)
-    print(n, 'race sessions saved from Waterford Hills (Speedhive)')
+    print(n, 'race sessions saved from Speedhive')
 
 
 if __name__ == '__main__':

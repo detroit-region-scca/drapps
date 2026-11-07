@@ -1,4 +1,5 @@
-"""Nightly safety copy of the Google Sheets the app uses: exported as .xlsx into data/backups/.
+"""Nightly safety copy of the Google Sheets the app uses: exported as .xlsx into data/backups/. Also a dated copy of
+data/records-edits.json, the Records corrections log (it lives only on the server).
 
 The sheets in the treasurer's Drive are the record; this is a second copy on the server in case the
 Drive files are damaged or deleted. Keeps the last 60 days. Run inside the container (deploy/gcp/systemd/drscca-backup.* runs it nightly):
@@ -36,6 +37,14 @@ def main():
             f.write(r.content)
         print(f'saved {path} ({len(r.content):,} bytes)')
         for old in sorted(glob.glob(os.path.join(OUT, f'*-{label}.xlsx')))[:-KEEP]:
+            os.remove(old)
+    edits = os.path.join(os.path.dirname(OUT), 'records-edits.json')
+    if os.path.exists(edits):
+        import shutil
+        path = os.path.join(OUT, f'{date.today():%Y-%m-%d}-records-edits.json')
+        shutil.copy(edits, path)
+        print(f'saved {path}')
+        for old in sorted(glob.glob(os.path.join(OUT, '*-records-edits.json')))[:-KEEP]:
             os.remove(old)
 
 
