@@ -109,7 +109,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% elif view == 'event' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.program', prog=slug(e.program)) }}">{{ e.program }}</a>{% if e.year %} / <a href="{{ url_for('records.season', prog=slug(e.program), year=e.year) }}">{{ e.year }}</a>{% endif %}</div>
 <div class="page-title">{{ e.name }}</div>
-<p class="text-muted mb-2">{{ nice_date(e.date) or e.year }}{% if sheets %} &middot; {{ sheets[0].drivers }} drivers{% endif %}</p>
+<p class="text-muted mb-2">{{ nice_date(e.date) or e.year }}{% if sheets %} &middot; {{ sheets[0].drivers }} {{ 'crews' if e.program == 'Rally' else 'drivers' }}{% endif %}</p>
 {% if files %}<div class="mb-3 small"><span class="text-muted">Original files:</span> {% for f in files %}<a class="badge-soft" href="{{ f.drive_url }}" target="_blank" rel="noopener">{{ f.label }}</a>{% endfor %}</div>{% endif %}
 {% if sheets %}
 {% if sheets|length > 1 %}<ul class="nav nav-tabs mb-3" role="tablist">{% for s in sheets %}
