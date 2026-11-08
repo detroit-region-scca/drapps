@@ -46,6 +46,12 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
   .rec-table th.w-driver { min-width: 9.5rem; }
   .rec-table td.num, .rec-table th.num { white-space: nowrap; }
 }
+.hof-table { table-layout: fixed; width: 100%; }      /* every Hall of Fame table lines up: rank, name, count, then text */
+.hof-table th:nth-child(1), .hof-table td:nth-child(1) { width: 3rem; }
+.hof-table th:nth-child(2), .hof-table td:nth-child(2) { width: 15rem; }
+.hof-table th:nth-child(3), .hof-table td:nth-child(3) { width: 5.5rem; }
+.hof-table th:nth-child(4), .hof-table td:nth-child(4) { width: 15rem; }
+@media (max-width: 767.98px) { .hof-table { table-layout: auto; } .hof-table th, .hof-table td { width: auto !important; } }
 .class-jump { position: sticky; top: 0; background: var(--bg); padding: .4rem 0; z-index: 2; }
 .nav-tabs .nav-link { color: var(--text); font-weight: 600; }
 .nav-tabs .nav-link.active { color: var(--red); }
@@ -101,20 +107,20 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 <div class="page-title">Hall of Fame</div>
 <p class="text-muted">All-time leaders from the results and standings the region posted. Seasons with no files on record are missing, so long careers count short.</p>
 <div class="section-label mt-4">Most class championships</div>
-<div class="table-responsive"><table class="table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Titles</th><th>Programs</th><th>Seasons</th></tr></thead><tbody>
+<div class="table-responsive"><table class="table hof-table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Titles</th><th>Programs</th><th>Seasons</th></tr></thead><tbody>
 {% for r in h.titles %}<tr><td class="num text-muted">{{ loop.index }}</td><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td>{{ r.programs|join(', ') }}</td><td>{{ r.years }}</td></tr>{% endfor %}
 </tbody></table></div>
 <div class="section-label mt-4">Most events</div>
-<div class="table-responsive"><table class="table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Events</th><th>Years</th><th>Programs</th></tr></thead><tbody>
+<div class="table-responsive"><table class="table hof-table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Events</th><th>Years</th><th>Programs</th></tr></thead><tbody>
 {% for r in h.events %}<tr><td class="num text-muted">{{ loop.index }}</td><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td>{{ r.a }}&ndash;{{ r.b }}</td><td>{{ (r.programs or '').replace(',', ', ') }}</td></tr>{% endfor %}
 </tbody></table></div>
 <div class="section-label mt-4">Most seasons</div>
-<div class="table-responsive"><table class="table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Seasons</th><th class="num">First</th><th class="num">Latest</th></tr></thead><tbody>
-{% for r in h.seasons %}<tr><td class="num text-muted">{{ loop.index }}</td><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td class="num">{{ r.a }}</td><td class="num">{{ r.b }}</td></tr>{% endfor %}
+<div class="table-responsive"><table class="table hof-table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Seasons</th><th>Years</th></tr></thead><tbody>
+{% for r in h.seasons %}<tr><td class="num text-muted">{{ loop.index }}</td><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td>{{ r.a }}&ndash;{{ r.b }}</td></tr>{% endfor %}
 </tbody></table></div>
 {% for pg in programs %}{% if h.by_prog[pg] %}
 <div class="section-label mt-4">{{ pg }}: most class titles</div>
-<div class="table-responsive"><table class="table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Titles</th><th>Classes</th></tr></thead><tbody>
+<div class="table-responsive"><table class="table hof-table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Titles</th><th>Classes</th></tr></thead><tbody>
 {% for r in h.by_prog[pg] %}<tr><td class="num text-muted">{{ loop.index }}</td><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td>{{ r.classes|join(', ') }}</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}{% endfor %}
 
