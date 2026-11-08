@@ -356,7 +356,7 @@ def event(eid):
         if e['program'] == 'Sim Racing':     # iRacing gives the gap to the winner, not a total time
             cols = [('Gap' if k == 'total' else lab, k) for lab, k in cols]
         if e['program'] == 'Rally':      # a rally crew is a driver and a navigator, scored in points
-            cols = [({'driver': 'Crew', 'total': 'Score'}.get(k, lab), k) for lab, k in cols if k != 'vehicle']
+            cols = [({'driver': 'Crew', 'total': 'Score'}.get(k, lab), k) for lab, k in cols]      # Car only when the sheet printed cars
         keep = ('position', 'driver', 'class')         # per table: leave out a column that is empty in it (a DNS-only table has no Score)
         groups = [(k, g, [(lab, c) for lab, c in cols if (c in keep or any(r[c] for r in g))
                           and not (c == 'class' and len({r['class'] for r in g}) == 1 and (k or len(groups) == 1))])   # one class: no column

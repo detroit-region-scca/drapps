@@ -546,7 +546,7 @@ def curated_rows(cur, program):
         for pl in placings:          # a Novice crew is also placed in its car class ("S3 N1"): listed in both classes
             for who in crew:
                 other = [x for x in crew if x is not who]
-                rows.append(dict(pl, driver=who, vehicle=('with ' + ' & '.join(other)) if other and program == 'Rally' else r.get('vehicle') or None))
+                rows.append(dict(pl, driver=who, vehicle=r.get('vehicle') or None))     # the car as printed (rally crews share it)
     return rows
 OCR_NAME = re.compile(r"[A-Z][A-Za-z'.\-]+(?: (?:[A-Z][A-Za-z'.\-]*|(?:von|van|de|la|du)[A-Za-z'.\-]*|Jr\.?|Sr\.?|II|III)){1,3}")
 def ocr_gate(rows):

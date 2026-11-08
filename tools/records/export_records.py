@@ -182,7 +182,7 @@ print('indexed-class rows grouped (Pro, Ladies)', indexed)
 import importlib.util as _iu
 _spec = _iu.spec_from_file_location('cars', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cars.py'))
 cars = _iu.module_from_spec(_spec); _spec.loader.exec_module(cars)
-d.execute("update result_rows set vehicle = null where program = 'Rally' or vehicle in ('#NAME?', '#N/A', '0', '-')")   # rally sheets list no cars
+d.execute("update result_rows set vehicle = null where vehicle like 'with %' or vehicle in ('#NAME?', '#N/A', '0', '-')")   # 'with <navigator>' is not a car
 for col_, typ in (('car_year', 'INT'), ('car_make', 'TEXT'), ('car_model', 'TEXT')):
     d.execute(f'alter table result_rows add column {col_} {typ}')
 split = 0
