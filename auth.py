@@ -41,7 +41,7 @@ VOL_COLS = ['email', 'name', 'note', 'added', 'added_by']
 
 # What a volunteer may open. Everything else redirects home.
 VOLUNTEER_ENDPOINTS = {
-    'home', 'logout', 'static', 'members.home', 'members.enter',
+    'home', 'logout', 'static', 'members.home', 'members.enter', 'members.log',
     'bud.home', 'bud.detail',
     'records.home', 'records.hall', 'records.program', 'records.season', 'records.event', 'records.person', 'records.add',
     'fr.home', 'fr.new', 'fr.detail', 'fr.ask', 'fr.receipts', 'fr.delete',

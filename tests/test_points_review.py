@@ -38,7 +38,7 @@ def test_sheet_keeps_reading_past_one_blank_row_and_reads_every_tab():
     rows = [('Name', 'Points'), ('Pat Example', 9), (None, None), ('Lee Sample', 6), ('Kim Doe', 3), (None, None), (None, None), ('Total', 18)]
     t = L.read_points_sheet([('S', rows)])['tabs'][0]
     assert [x['name'] for x in t['lines']] == ['Pat Example', 'Lee Sample', 'Kim Doe'] and t['total'] == 18
-    rows = [('Name', 'Points'), ('Pat Example', 9), (None, None), (None, None), ('Lee Sample', 6)]
+    rows = [('Name', 'Points'), ('Pat Example', 9), (None, None), (None, None), ('Submitted by: ____', None), ('Lee Sample', 6)]
     t = L.read_points_sheet([('S', rows)])['tabs'][0]
     assert [x['name'] for x in t['lines']] == ['Pat Example'] and t['below'] == 1          # said on the page, not silent
     two = L.read_points_sheet([('Blank form', [('Name', 'Points')]), ('Day 1', [('Name', 'Points'), ('Pat Example', 3), ('Total Points', 3)]),
@@ -202,3 +202,26 @@ def test_api_style_save_refuses_duplicates_unless_allowed(site):
     form.add('allow_duplicates', 'yes')
     c.post('/members/enter', data=form)
     assert len(store['entries']) == 2
+
+
+def test_log_shows_who_added_and_spent_to_everyone_in_points(site):
+    c, store = site
+    store['entries'] += [{'date': date(2026, 5, 14), 'member': '100', 'name': 'Pat Example', 'points': 9.0, 'what': 'Worked X', 'event': '#E1',
+                          'kind': 'Earned', 'status': 'Approved', 'by': 'Ed Chair'},
+                         {'date': date(2026, 6, 1), 'member': '100', 'name': 'Pat Example', 'points': -4.0, 'what': 'Renewal', 'event': '',
+                          'kind': 'Used', 'status': 'Approved', 'by': 'Points Keeper'},
+                         {'date': date(2025, 6, 1), 'member': '200', 'name': 'Lee Sample', 'points': 2.0, 'what': 'Old', 'event': '',
+                          'kind': 'Earned', 'status': 'Approved', 'by': 'Someone'}]
+    page = c.get('/members/log?year=2026').get_data(as_text=True)
+    assert 'Formula Test Event' in page and 'Ed Chair' in page and 'Points Keeper' in page and '9 added, 4 spent' in page
+    assert 'Lee Sample' not in page and '>100<' not in page            # other years hidden; no member numbers
+    enter = c.get('/members/enter').get_data(as_text=True)
+    assert 'worker-points-form.xlsx' in enter and 'Ledger (Google Sheets)' not in enter and 'Balanecki' in enter   # ledger: keeper only
+
+
+def test_log_is_only_for_people_in_worker_points(site, monkeypatch):
+    import auth
+    c, store = site
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Other Official', 'level': 'official', 'roles': [], 'perms': {'funds'}})
+    r = c.get('/members/log')
+    assert r.status_code == 302

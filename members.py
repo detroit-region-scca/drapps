@@ -36,7 +36,7 @@ def _who():
 
 def _ctx(**kw):
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Members", keeper=_keeper(), point_value=L.POINT_VALUE, today_=date.today(),
-                pick_label=L.pick_label,
+                pick_label=L.pick_label, ledger_url=S.members_sheet_url(), current_perms=sorted(_me().get('perms') or ()),
                 structure=L.POINT_STRUCTURE, **kw)
 
 
@@ -269,6 +269,32 @@ def _save_points(f, mem, by_id, events, code, codes, ev, first, what):
     msg = f"Saved {n} entries ({total:+g} points)." + (f" {len(left_out)} left out." if left_out else '')
     flash(msg if _keeper() else msg + ' The points keeper has a copy.', 'success')
     return redirect(url_for('members.home') if _keeper() else url_for('members.enter'))
+
+
+@bp.route('/log')
+@login_required
+def log():
+    """Who added and who spent worker points: every Points entry of a year, newest first. Open to everyone who uses
+    worker points (names, points, what for, the event and who entered it; never member numbers)."""
+    if (g := _guard()):
+        return g
+    if not ({'points_enter', 'points'} & set(_me().get('perms') or ())):
+        flash('The worker points log is for people who enter or keep worker points.', 'warning')
+        return redirect(url_for('home'))
+    ent = S.entries()
+    years = sorted({e['date'].year for e in ent if e.get('date')} | {date.today().year}, reverse=True)
+    try:
+        year = int(request.args.get('year') or years[0])
+    except ValueError:
+        year = years[0]
+    ev = _events_by_code()
+    rows = sorted([e for e in ent if e.get('date') and e['date'].year == year],
+                  key=lambda e: (e['date'], e.get('row', 0)), reverse=True)
+    for e in rows:
+        e['event_name'] = (ev.get(e.get('event')) or {}).get('event_name', '')
+    added = sum(e['points'] for e in rows if e['points'] > 0 and e.get('status') == L.APPROVED)
+    spent = -sum(e['points'] for e in rows if e['points'] < 0 and e.get('status') == L.APPROVED)
+    return render_template('members.html', **_ctx(view='log', rows=rows, years=years, year=year, added=added, spent=spent))
 
 
 @bp.route('/upload', methods=['POST'])

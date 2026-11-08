@@ -181,7 +181,9 @@ def read_points_sheet(sheets):
                         total, end = sum(hits), kk
                         break
             # after a Total line comes the footer (submitted by, mail to); without one, names further down may be missed
-            below = 0 if total is not None else sum(1 for rr in rows[end + 1:] for i, _ in pairs if i < len(rr) and _cell(rr[i]))
+            # (only a name with a number beside it counts: the old form's footer has text but no points)
+            below = 0 if total is not None else sum(1 for rr in rows[end + 1:] for i, j in pairs
+                                                    if j < len(rr) and _cell(rr[i]) and isinstance(rr[j], (int, float)) and not isinstance(rr[j], bool))
             if lines:
                 tabs.append({'tab': tab, 'title': title, 'lines': lines, 'total': total, 'below': below})
             break
