@@ -287,6 +287,8 @@ def log():
         year = int(request.args.get('year') or years[0])
     except ValueError:
         year = years[0]
+    if year not in years:          # the picker only offers years with entries
+        year = years[0]
     ev = _events_by_code()
     rows = sorted([e for e in ent if e.get('date') and e['date'].year == year],
                   key=lambda e: (e['date'], e.get('row', 0)), reverse=True)
