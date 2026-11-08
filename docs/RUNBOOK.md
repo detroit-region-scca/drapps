@@ -33,7 +33,7 @@ That is all. There is no server password: admin access goes through Google's sig
 | App state | `/opt/drscca/app/data/` | See below |
 | Secrets | `/opt/drscca/data/secrets/` (root only; the QuickBooks token in `qbo/`, owned by drapps) | See "Secrets" |
 | Host jobs | systemd units from `deploy/gcp/systemd/` | See "Automatic jobs" |
-| QuickBooks | `/opt/drscca/qbo-mcp` and its one token file | Read only for the sync; an AI assistant reaches it as the `qbo-tunnel` service account, which may only open the IAP tunnel to this VM and run `/opt/drscca/qbo-mcp.sh` |
+| QuickBooks | `/opt/drscca/qbo-mcp` and its one token file | Read only for the sync; an AI assistant runs `/opt/drscca/qbo-mcp.sh` over the IAP tunnel as admin@ (drscca.org's Google Cloud session control never forces a new sign-in) |
 | DNS | drscca.org zone at WordPress.com: `drapps`, `drevent`, `livetiming` A records | Point at the fixed IP |
 | Code | GitHub `detroit-region-scca/drapps`, public | Tests run on every push |
 
