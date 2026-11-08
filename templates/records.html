@@ -23,6 +23,12 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 .rec-table .w-position { width: 4rem; } .rec-table .w-class { width: 5.5rem; } .rec-table .w-car_number { width: 3.5rem; }
 .rec-table .w-vehicle { width: 38%; } .rec-table .w-total, .rec-table .w-raw_time, .rec-table .w-pax_time { width: 6rem; }
 .rec-table td { overflow-wrap: anywhere; }
+@media (max-width: 767.98px) {   /* phones: columns size to their content (fixed widths left the driver no room); wide tables scroll */
+  .rec-table { table-layout: auto; }
+  .rec-table th, .rec-table td { width: auto !important; overflow-wrap: normal; }
+  .rec-table th.w-driver { min-width: 9.5rem; }
+  .rec-table td.num, .rec-table th.num { white-space: nowrap; }
+}
 .class-jump { position: sticky; top: 0; background: var(--bg); padding: .4rem 0; z-index: 2; }
 .nav-tabs .nav-link { color: var(--text); font-weight: 600; }
 .nav-tabs .nav-link.active { color: var(--red); }
@@ -98,7 +104,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 <div class="page-title">{{ year }} {{ p }}</div>
 {% if can_edit %}<p class="small mb-1"><a href="{{ url_for('records.season_edit', prog=slug(p), year=year) }}">Correct the standings</a> <span class="text-muted">(open an event to correct its results)</span></p>{% endif %}
 {% if events %}<div class="section-label mt-3">Events</div>
-<div class="table-responsive"><table class="table"><thead><tr><th>Date</th><th>Event</th><th class="num">Drivers</th></tr></thead><tbody>
+<div class="table-responsive"><table class="table"><thead><tr><th>Date</th><th>Event</th><th class="num">{{ 'Crews' if p == 'Rally' else 'Drivers' }}</th></tr></thead><tbody>
 {% for e in events %}<tr><td class="text-nowrap">{{ nice_date(e.date) }}</td><td><a href="{{ url_for('records.event', eid=e.id) }}">{{ e.name }}</a></td><td class="num">{{ e.n or '' }}</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}
 {% if champs %}<div class="section-label mt-4">Class champions</div>
@@ -128,7 +134,8 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
   <li class="nav-item" role="presentation"><button class="nav-link {{ 'active' if loop.first }}" data-bs-toggle="tab" data-bs-target="#sheet{{ s.id }}" type="button" role="tab">{{ s.label }}</button></li>{% endfor %}</ul>{% endif %}
 <div class="tab-content">{% for s in sheets %}
 <div class="tab-pane {{ 'show active' if loop.first }}" id="sheet{{ s.id }}" role="tabpanel">
-  {% if s.groups|length > 1 %}<div class="mb-2 class-jump">{% for key, rs, cols in s.groups %}<a class="badge-soft" href="#c{{ s.id }}-{{ loop.index }}">{{ key or 'Other' }}</a>{% endfor %}</div>{% endif %}
+  {% if s.groups|length > 1 %}<div class="mb-2 class-jump d-none d-md-block">{% for key, rs, cols in s.groups %}<a class="badge-soft" href="#c{{ s.id }}-{{ loop.index }}">{{ key or 'Other' }}</a>{% endfor %}</div>
+  <select class="form-select form-select-sm mb-2 d-md-none" aria-label="Jump to class" onchange="if (this.value) location.hash = this.value"><option value="">Jump to class</option>{% for key, rs, cols in s.groups %}<option value="c{{ s.id }}-{{ loop.index }}">{{ key or 'Other' }} ({{ rs|length }})</option>{% endfor %}</select>{% endif %}
   {% for key, rs, cols in s.groups %}
   {% if key %}<div class="section-label mt-3" id="c{{ s.id }}-{{ loop.index }}">{{ key }} <span class="text-lowercase">({{ rs|length }})</span></div>{% endif %}
   <div class="table-responsive"><table class="table table-sm rec-table"><thead><tr>{% for lab, k in cols %}<th class="w-{{ k }} {{ 'num' if k in ('total', 'raw_time', 'pax_time', 'laps', 'best_lap', 'class_place') }} {{ 'd-none d-md-table-cell' if k in ('vehicle', 'best_lap', 'laps') }}">{{ lab }}</th>{% endfor %}</tr></thead><tbody>
@@ -198,5 +205,5 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% for r in results|reverse %}<tr><td class="text-nowrap">{{ nice_date(r.date) or r.year }}</td><td><a href="{{ url_for('records.event', eid=r.eid) }}">{{ r.event }}</a><div class="small text-muted">{{ r.program }}</div></td><td>{{ r['class'] or '' }}</td><td class="num">{{ r.position or '' }}</td><td class="num">{{ r.pax or '' }}</td><td class="d-none d-md-table-cell">{{ r.vehicle or '' }}</td><td class="num">{{ r.time or '' }}</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}
 {% endif %}
-<p class="text-muted small mt-5">Read automatically from the files the region posted, so names and numbers can be misread.</p>
+<p class="text-muted small mt-5">From the results files the region posted, checked against the original sheets. If something looks wrong, open the original file from the event page.</p>
 {% endblock %}

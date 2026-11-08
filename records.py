@@ -212,8 +212,9 @@ def program(prog):
 def season(prog, year):
     _need()
     p = SLUGS.get(prog) or abort(404)
-    events = _q('''select e.id, e.date, e.name, (select count(distinct r.person_id) from result_rows r where r.event_id = e.id) n from events e
-        where e.program = ? and e.year = ? order by e.date is null, e.date, e.name''', p, year)
+    events = [dict(e) for e in _q('''select e.id, e.date, e.name from events e
+        where e.program = ? and e.year = ? order by e.date is null, e.date, e.name''', p, year)]
+    _count_entrants(events, p)
     st = _q('select * from season_standings where program = ? and year = ? order by class, place', p, year)
     by_class = defaultdict(list)
     for s in st:
@@ -223,6 +224,31 @@ def season(prog, year):
         abort(404)
     return render_template('records.html', **_ctx(view='season', p=p, year=year, events=events, by_class=by_class,
                                                   champs=[s for s in st if s['place'] == 1], sheets=sheets, can_edit=can_edit(p)))
+
+
+def _count_entrants(events, program):
+    """Sets e['n'] for each event: drivers (by person, or by name when the name is not linked to a person), or for Rally
+    crews, counted on the event's first sheet as the event page does (a crew printed again under a second class counts once)."""
+    if not events:
+        return
+    ids = [e['id'] for e in events]
+    marks = ','.join('?' * len(ids))
+    rows = _q(f'''select r.event_id, r.file_id, r.line_no, r.person_id, r.driver, coalesce(f.sort, 9) sort, f.name fname from result_rows r
+        join files f on f.id = r.file_id where r.event_id in ({marks})''', *ids)
+    per = defaultdict(list)
+    for r in rows:
+        per[r['event_id']].append(r)
+    for e in events:
+        rs = per.get(e['id'], [])
+        if program == 'Rally' and rs:
+            first = min((r['sort'], r['fname'], r['file_id']) for r in rs)[2]
+            crews = defaultdict(set)
+            for r in rs:
+                if r['file_id'] == first:
+                    crews[r['line_no']].add((r['driver'] or '').lower())
+            e['n'] = len({frozenset(c) for c in crews.values()})
+        else:
+            e['n'] = len({r['person_id'] or (r['driver'] or '').lower() for r in rs})
 
 
 @bp.route('/<prog>/<int:year>/edit', methods=['GET', 'POST'])
@@ -311,7 +337,9 @@ def event(eid):
         if e['program'] == 'Rally':      # a rally crew is a driver and a navigator, scored in points
             cols = [({'driver': 'Crew', 'total': 'Score'}.get(k, lab), k) for lab, k in cols if k != 'vehicle']
         keep = ('position', 'driver', 'class')         # per table: leave out a column that is empty in it (a DNS-only table has no Score)
-        groups = [(k, g, [(lab, c) for lab, c in cols if c in keep or any(r[c] for r in g)]) for k, g in groups]
+        groups = [(k, g, [(lab, c) for lab, c in cols if (c in keep or any(r[c] for r in g))
+                          and not (c == 'class' and k and len({r['class'] for r in g}) == 1)])      # one class under its heading: no column
+                  for k, g in groups]
         same = [x for x in sheets if x['label'] == f['label']]
         lab = f['label'] + (f' {len(same) + 1}' if same else '')
         group, _, part = lab.partition(' \u00b7 ')          # "Group 2 · Saturday race": chooser grouped by run group
