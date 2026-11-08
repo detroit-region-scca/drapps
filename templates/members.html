@@ -294,7 +294,7 @@
 {# ================================================================== Log #}
 {% elif view == 'log' %}
 <div class="page-title">Worker points log</div>
-<p class="text-muted">Who added and who spent points in {{ year }}: {{ '%g'|format(added) }} added, {{ '%g'|format(spent) }} spent.</p>
+<p class="text-muted">Who added and who spent points in {{ year }}: {{ '{:,.2f}'.format(added).rstrip('0').rstrip('.') }} added, {{ '{:,.2f}'.format(spent).rstrip('0').rstrip('.') }} spent.</p>
 {% if rows %}
 <div class="card"><table class="table table-sm align-middle mb-0" id="pointslog">
     <thead><tr><th class="ps-3">Date</th><th>Member</th><th class="text-end">Points</th><th>What for</th><th class="pe-3">Entered by</th></tr></thead>
@@ -303,8 +303,8 @@
     <tr>
         <td class="ps-3 text-nowrap" data-label="Date">{{ day(e.date) }}</td>
         <td data-label="Member">{{ e.name }}</td>
-        <td class="text-end text-nowrap" data-label="Points">{{ pts(e.points) }}{% if e.status and e.status != 'Approved' %} <span class="small text-muted">({{ e.status|lower }})</span>{% endif %}</td>
-        <td data-label="What for">{{ e.event_name or e.what }}{% if e.kind and e.kind not in ('Earned',) %} <span class="small text-muted">· {{ e.kind }}</span>{% endif %}</td>
+        <td class="text-end text-nowrap" data-label="Points"><span>{{ pts(e.points) }}{% if e.status and e.status != 'Approved' %} <span class="small text-muted">({{ e.status|lower }})</span>{% endif %}</span></td>
+        <td data-label="What for"><span>{{ e.event_name or e.what }}{% if e.kind and e.kind not in ('Earned',) %} <span class="small text-muted">· {{ e.kind }}</span>{% endif %}</span></td>
         <td class="pe-3" data-label="Entered by">{{ e.by }}</td>
     </tr>
     {% endfor %}
