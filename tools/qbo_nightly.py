@@ -228,6 +228,10 @@ def qbo_writes(data, reqs, say):
                 if not DRY:
                     drive_download(f['id'], path)
                 files.append({'path': path, 'name': f"{r['id']} {f['name']}"[:200], 'contentType': ct})
+            if not files:           # nothing QuickBooks can take: remember them so they are not looked at again
+                if not DRY:
+                    done[r['id']] = done.get(r['id'], []) + [f['id'] for f in new]
+                continue
             ids[r['id']] = [f['id'] for f in new]
             jobs.append({'op': 'attach', 'ref': r['id'], 'type': target[0], 'id': target[1], 'files': files})
         adds = []
@@ -238,6 +242,8 @@ def qbo_writes(data, reqs, say):
             adds = [Q.invoice_job(inv, data.get('income_accounts', [])) for inv in full if inv and inv['lines']]
         jobs += adds
         if not jobs:
+            if not DRY:
+                _save(done)
             return exc
         if DRY:
             for j in jobs:
@@ -260,11 +266,15 @@ def qbo_writes(data, reqs, say):
         elif not r.get('existed'):
             say.append(f"invoice {j['ref']} entered in QuickBooks ({r['customer']}{', event project' if r['project'] else ''})")
             log_audit_event('INVOICE_TO_QBO', WHO, {'id': j['ref'], 'qbo_id': r['id'], 'total': r['total']})
+    _save(done)
+    return exc
+
+
+def _save(done):
     tmpf = ATTACHED + '.tmp'
     with open(tmpf, 'w') as f:
         json.dump(done, f)
     os.replace(tmpf, ATTACHED)
-    return exc
 
 
 def inv_enabled():
