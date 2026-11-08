@@ -7,9 +7,9 @@ User=drapps
 Group=drapps
 WorkingDirectory=/opt/drscca/app
 EnvironmentFile=/opt/drscca/data/secrets/drapps.env
-EnvironmentFile=/opt/drscca/data/secrets/qbo.env
+EnvironmentFile=/opt/drscca/data/secrets/qbo/qbo.env
 # One token file for the sync and the QuickBooks MCP: QuickBooks rotates the token on use, so there must be one copy.
-Environment=QUICKBOOKS_TOKEN_STORE_PATH=/opt/drscca/data/secrets/qbo.env
+Environment=QUICKBOOKS_TOKEN_STORE_PATH=/opt/drscca/data/secrets/qbo/qbo.env
 Environment=QBO_MCP_DIR=/opt/drscca/qbo-mcp
 Environment=GOOGLE_SERVICE_ACCOUNT_FILE=/opt/drscca/data/secrets/drapps-sa.json
 Environment=OFFICIALS_HOST=/opt/drscca/data/secrets/officials.json

@@ -173,8 +173,9 @@ key was deleted. Re-add it as Content manager, or make a new key, replace `drapp
 
 **QuickBooks sync fails.** `sudo journalctl -u drscca-qbo -n 50`. A 401 or token error means the QuickBooks
 connection expired (about 100 days without use, or someone disconnected the app in QuickBooks). Reconnect as a
-QuickBooks admin and put the new refresh token in `qbo.env`. QuickBooks replaces the token every time it is
-used, so there must only ever be one copy of `qbo.env`: the one on the server.
+QuickBooks admin and put the new refresh token in `qbo/qbo.env`. QuickBooks replaces the token every time it is
+used, so there must only ever be one copy of `qbo.env`: the one on the server. Its folder `qbo/` belongs to
+drapps so the new token can be saved; if drapps cannot write there the token goes stale within a day.
 
 **An officials change says it is still being saved.** `sudo journalctl -u drscca-officials -n 50` and
 `data/officials-done.json` show why. A GAM error usually means its service account lost a Workspace admin role.
@@ -200,7 +201,7 @@ recreate belongs in the admin-only Account Recovery folder in the region shared 
 | App settings incl. `FLASK_SECRET_KEY`, `API_KEYS` | `drapps.env` | Edit, restart drapps. A new `FLASK_SECRET_KEY` signs everyone out and voids emailed links. |
 | App service account key | `drapps-sa.json` | New key in Google Cloud, swap the file, restart, delete the old key |
 | Workspace service account key (GAM, secrets copy) | `workspace-sa.json`, `gam/gam.cfg` | New key, swap the file |
-| QuickBooks token | `qbo.env` | Reconnect as above |
+| QuickBooks token | `qbo/qbo.env` | Reconnect as above |
 | Live timing logins | `/opt/drscca/data/livetiming/users.conf` | See "Live timing" |
 | Officials list | `officials.json` | Not secret, but private: names and addresses |
 
