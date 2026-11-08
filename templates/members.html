@@ -24,7 +24,8 @@
 </div>
 {{ steve() }}{% endmacro %}
 {% macro steve() %}
-<div id="steve" class="card p-3 mt-3 small" hidden>
+<div class="mt-2 small"><a href="#" id="stevelink" class="link-secondary text-decoration-none">&#127937; Thank you, Steve</a></div>
+<div id="steve" class="card p-3 mt-2 small" hidden>
     <div class="d-flex align-items-center gap-2 mb-2"><span style="font-size: 1.4rem">&#127937;</span><strong>Thank you, Steve</strong></div>
     <div>For years the worker point forms went to Steve Balanecki, Chief of Membership, and every hour a volunteer gave
         the Detroit Region, Steve counted.</div>
@@ -34,6 +35,8 @@
 (function () {
     const card = document.getElementById('steve'); if (!card) return;
     const show = () => { card.hidden = false; card.scrollIntoView({behavior: 'smooth', block: 'center'}); };
+    const link = document.getElementById('stevelink');
+    if (link) link.addEventListener('click', e => { e.preventDefault(); if (card.hidden) show(); else card.hidden = true; });
     let typed = '';
     document.addEventListener('keydown', e => {
         if (e.target.closest('input, textarea, select')) return;
