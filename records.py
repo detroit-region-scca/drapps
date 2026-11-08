@@ -312,6 +312,14 @@ def event(eid):
     for r in _q('select * from result_rows where event_id = ? order by file_id, line_no', eid):
         rows[r['file_id']].append(r)
     sheets = []
+    car_of = {}                          # Rally: car number -> the car, when the event's sheets agree on one
+    if e['program'] == 'Rally':
+        seen = defaultdict(set)
+        for rs0 in rows.values():
+            for r in rs0:
+                if r['car_number'] and r['vehicle']:
+                    seen[r['car_number']].add(r['vehicle'])
+        car_of = {n: next(iter(v)) for n, v in seen.items() if len(v) == 1}
     for f in files:
         rs = rows.get(f['id'])
         if not rs:
@@ -322,6 +330,9 @@ def event(eid):
                 c = crews.setdefault(r['line_no'], dict(r, crew=[]))
                 c['crew'].append((r['person_id'], r['driver']))
             rs = list(crews.values())
+            for c in rs:                 # a sheet without cars (an overall table) shows the car another sheet of this event printed
+                if not c.get('vehicle') and car_of.get(c.get('car_number')):
+                    c['vehicle'] = car_of[c['car_number']]
         real = {(r['driver'], r['car_number']) for r in rs if r['total'] or r['laps']}
         rs = [r for r in rs if not (str(r['position'] or '').upper() == 'DNS' and not (r['total'] or r['laps'])
                                     and (r['driver'], r['car_number']) in real)]     # Speedhive lists a non-start beside the car's own result
