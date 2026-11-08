@@ -14,7 +14,10 @@
 .rec-stats { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: .75rem 0 1.25rem; }
 .rec-stats b { display: block; font-size: 1.4rem; font-variant-numeric: tabular-nums; }
 .rec-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: .75rem; }
-@media (max-width: 575.98px) { .rec-cards a { gap: .6rem; padding: .7rem .75rem; } .rec-ico { width: 38px; height: 38px; } .rec-ico svg { width: 23px; height: 23px; } .hof .go { margin-left: 0; } }
+@media (min-width: 992px) { .rec-cards { grid-template-columns: repeat(5, 1fr); } }
+@media (max-width: 575.98px) { .rec-cards a { gap: .6rem; padding: .7rem .75rem; } .rec-ico { width: 38px; height: 38px; } .rec-ico svg { width: 23px; height: 23px; }
+  .hof { flex-wrap: nowrap; align-items: flex-start; gap: .8rem; padding: .9rem 1rem; } .hof .rec-ico { width: 44px; height: 44px; } .hof .go { display: none; }
+  .hof .lead-list { flex-direction: column; } }
 .rec-cards a { display: flex; align-items: center; gap: .85rem; border: 1px solid var(--border); border-radius: 10px; padding: .85rem 1rem;
                color: var(--text); text-decoration: none; transition: border-color .15s, box-shadow .15s, transform .15s; }
 .rec-cards a:hover { border-color: var(--red); box-shadow: 0 4px 14px rgba(0,0,0,.08); transform: translateY(-1px); }
