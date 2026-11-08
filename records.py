@@ -88,7 +88,7 @@ def year_ranges(years):
             out[-1][1] = y
         else:
             out.append([y, y])
-    return ', '.join(f'{a}\u2013{b}' if b > a else str(a) for a, b in out)
+    return ', '.join(f'{a}\u2060\u2013\u2060{b}' if b > a else str(a) for a, b in out)      # word joiners: a range never breaks at its dash
 
 
 def _hall(path, mtime):
