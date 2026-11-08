@@ -32,6 +32,11 @@
         <tbody>{% for item, b in balances.items() if b.amount %}<tr><td class="ps-3">{{ item }}</td><td class="num pe-3">{{ money(b.amount) }}</td></tr>{% endfor %}</tbody>
     </table></div></div></section>{% endif %}
 
+    {% if balance_sheet %}<section><h2>Balance sheet{% if balance_sheet[0].as_of %} as of {{ balance_sheet[0].as_of }}{% endif %}</h2>
+    <div class="card"><div class="card-body p-0"><table class="table mb-0">
+        <tbody>{% for b in balance_sheet if b.amount or b.depth == 0 %}<tr class="{{ 'total-row' if b.depth == 0 }}"><td class="ps-3" style="padding-left: {{ 1 + b.depth * 1.25 }}rem !important;">{{ b.name }}</td><td class="num pe-3">{{ money(b.amount) }}</td></tr>{% endfor %}</tbody>
+    </table></div></div></section>{% endif %}
+
     {% if rows %}<section><h2>{{ year }} plan against QuickBooks, by program</h2>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
         <thead><tr><th class="ps-3">Program</th><th class="num">Plan</th><th class="num">Budgeted</th><th class="num">QuickBooks so far</th><th class="num pe-3">Ahead (behind)</th></tr></thead>
@@ -67,6 +72,12 @@
     {% if invoices_open %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
         <tbody>{% for r in invoices_open %}<tr><td class="ps-3 text-nowrap">{{ r.id }}</td><td>{{ r.bill_name }}</td><td class="small text-muted">{{ r.event_name or r.program }}</td><td class="text-nowrap">due {{ r.due }}</td><td class="num pe-3">{{ money(r.total) }}</td></tr>{% endfor %}</tbody>
     </table></div></div>{% else %}<p class="text-muted">None.</p>{% endif %}</section>{% endif %}
+
+    {% if receivables %}<section><h2>Owed to the region in QuickBooks ({{ receivables|length }}, {{ money(receivables|sum(attribute='balance')) }})</h2>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <tbody>{% for r in receivables %}<tr><td class="ps-3 text-nowrap">{{ r.number }}</td><td>{{ r.customer }}</td><td class="text-nowrap">{{ r.date }}</td>
+            <td class="text-nowrap small{{ ' text-danger' if r.due and r.due < today }}">{{ ('due ' ~ r.due) if r.due }}</td><td class="num pe-3">{{ money(r.balance) }}</td></tr>{% endfor %}</tbody>
+    </table></div></div></section>{% endif %}
 
     {% if outstanding is defined %}<section><h2>Outstanding checks ({{ outstanding|length }}, {{ money(outstanding|sum(attribute='amount')) }})</h2>
     {% if outstanding %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">

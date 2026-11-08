@@ -389,6 +389,37 @@ def outstanding():
     return rows
 
 
+def _mirror(title, cols, nums):
+    """A whole QBO mirror tab as rows (empty before the first sync that writes it), cached on the sheet version."""
+    hit = _cache.get(title)
+    if hit and hit[0] == C.version(os.environ['PLAN_SHEET_ID']):
+        return hit[1]
+    try:
+        res = C.batch_get(os.environ['PLAN_SHEET_ID'], [f"'{title}'!A:{chr(64 + len(cols))}"], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        rows = _rows((res.get('valueRanges') or [{}])[0].get('values', []), cols)
+    except (gspread.exceptions.WorksheetNotFound, gspread.exceptions.APIError):
+        rows = []
+    for r in rows:
+        for k in cols:
+            r[k] = (_num(r[k]) or 0.0) if k in nums else str(r[k])
+    _cache[title] = (C.version(os.environ['PLAN_SHEET_ID']), rows)
+    return rows
+
+
+def balance_sheet():
+    """Today's QuickBooks balance sheet as of the last sync, to two levels: [{depth, name, amount, as_of}]."""
+    rows = _mirror('QBO Balance Sheet', ['depth', 'name', 'amount', 'as_of'], {'amount', 'depth'})
+    for r in rows:
+        r['depth'] = int(r['depth'])
+    return rows
+
+
+def receivables():
+    """Invoices still owed in QuickBooks as of the last sync, oldest first."""
+    return sorted(_mirror('QBO Receivables', ['number', 'date', 'due', 'customer', 'total', 'balance', 'as_of'], {'total', 'balance'}),
+                  key=lambda r: r['date'])
+
+
 def accounts(program, years):
     """The QuickBooks accounts a program's money has been booked to in these years: [(section, account)], income first."""
     seen = {}

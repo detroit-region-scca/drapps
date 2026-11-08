@@ -1,4 +1,4 @@
-"""Nightly QuickBooks sync for the DRSCCA apps. Read only on the QuickBooks side.
+"""Nightly QuickBooks sync for the DRSCCA apps.
 
 1. Event project actuals      -> Event Budgets sheet, 'QBO Actuals' tab
 2. Program actuals by year    -> Annual Plan sheet, 'QBO Programs' tab, and by month -> 'QBO Monthly' tab
@@ -6,6 +6,9 @@
 4. Open funds requests that QuickBooks shows as paid are marked paid (check number or region card)
 5. Registered events tied to the annual plan line they clearly match; unclear ones go to the exceptions
 6. Exceptions for the treasurer -> Annual Plan sheet, 'QBO Exceptions' tab
+7. Writes to QuickBooks (tools/qbo_write.mjs), the only ones the apps make: a paid request's receipts are attached
+   to its check or card statement, and new drapps invoices are entered (then marked paid when QuickBooks says so)
+8. Balance sheet and money owed -> Annual Plan sheet, 'QBO Balance Sheet' and 'QBO Receivables' tabs, for the report
 
 Run on the machine with the QuickBooks connection (see qbo_export.mjs); the web app only reads what this writes.
 Needs node, the QBO env (QUICKBOOKS_* from the qbo-mcp token store) and the app's .env. --dry-run prints only.
@@ -14,6 +17,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from datetime import date
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -76,8 +80,24 @@ def main():
         F.refresh()
         reqs = F.requests() if F.enabled() else []
 
+    exc = []
+    try:
+        exc += qbo_writes(data, reqs, say)
+    except Exception as e:      # the sync's reading and mirroring must go on whatever a write does
+        say.append(f'QuickBooks writes failed: {e}')
+
+    inv_all, inv_paid = [], []
+    try:
+        import inv_store
+        if inv_store.enabled():
+            inv_all = inv_store.invoices()
+            inv_paid, inv_exc = Q.invoice_states(inv_all, data.get('app_invoices', []), data.get('deposits', []))
+            exc += inv_exc
+    except Exception as e:
+        say.append(f"invoice check failed: {e}")
+
     events = load_events()
-    exc = Q.exceptions(reqs, data['payments'], events, data['projects'], today)
+    exc += Q.exceptions(reqs, data['payments'], events, data['projects'], today)
     if P.enabled():
         link, ask = P.plan_matches(events, P._snapshot()[0])
         for e, ln in link:
@@ -116,11 +136,20 @@ def main():
         P.write_tab('QBO Monthly', ['year', 'program', 'month', 'net', 'as_of'], monthly_rows)
         P.write_tab('QBO Status', ['item', 'amount', 'as_of'], status_rows)
         P.write_tab('QBO Exceptions', P.EXC_COLS, [[e[c] if c != 'as_of' else as_of for c in P.EXC_COLS] for e in exc])
+        P.write_tab('QBO Balance Sheet', ['depth', 'name', 'amount', 'as_of'],
+                    [[b['depth'], b['name'], b['amount'], as_of] for b in data.get('balance_sheet', [])])
+        P.write_tab('QBO Receivables', ['number', 'date', 'due', 'customer', 'total', 'balance', 'as_of'],
+                    [[r['number'], r['date'], r['due'], r['customer'], r['total'], r['balance'], as_of] for r in data.get('receivables', [])])
         used_deposits = set()
         try:
             import inv_store
-            if inv_store.enabled():
-                for inv, paid in Q.match_invoices(inv_store.invoices(), data.get('deposits', [])):
+            for inv, paid in inv_paid:      # invoices in QuickBooks: paid when QuickBooks says so
+                inv_store.update(inv['id'], status='Paid', closed_by=WHO, **paid)
+                log_audit_event('INVOICE_PAID', WHO, {'id': inv['id'], 'amount': paid['paid_amount'], 'ref': paid['paid_ref']})
+                say.append(f"invoice {inv['id']} paid in QuickBooks")
+            in_qbo = {x['number'] for x in data.get('app_invoices', [])}
+            if inv_store.enabled():         # older invoices, never in QuickBooks: paid by a deposit that names them
+                for inv, paid in Q.match_invoices([i for i in inv_all if i['id'] not in in_qbo], data.get('deposits', [])):
                     inv_store.update(inv['id'], status='Paid', closed_by=WHO, **paid)
                     log_audit_event('INVOICE_PAID', WHO, {'id': inv['id'], 'amount': paid['paid_amount'], 'ref': paid['paid_ref']})
                     say.append(f"invoice {inv['id']} paid by {paid['paid_ref']}")
@@ -162,6 +191,88 @@ def main():
     except Exception as e:
         say.append(f'auto add failed: {e}')
     print(f"QuickBooks sync {as_of}{' (dry run)' if DRY else ''}: " + '\n'.join(say))
+
+
+ATTACHED = os.path.join(ROOT, 'data', 'qbo-attached.json')   # {request id: [Drive file ids already sent]}
+
+
+def qbo_writes(data, reqs, say):
+    """Attach paid requests' receipts and enter new invoices in QuickBooks. Returns exception rows for what failed."""
+    from storage import drive_files, drive_download
+    import re
+    try:
+        with open(ATTACHED) as f:
+            done = json.load(f)
+    except (OSError, ValueError):
+        done = {}
+    exc = []
+    with tempfile.TemporaryDirectory() as tmp:
+        jobs, ids = [], {}
+        for r in reqs:
+            m = re.search(r'/folders/([\w-]+)', r.get('receipts_url') or '')
+            if r['status'] != 'Paid' or not m:
+                continue
+            target = Q.payment_of(r, data['payments'])
+            if not target:
+                continue
+            new = [f for f in drive_files(m.group(1)) if f['id'] not in done.get(r['id'], [])]
+            if not new:
+                continue
+            files = []
+            for n, f in enumerate(new):
+                ct = Q.attach_type(f['name'])
+                if not ct:
+                    say.append(f"{r['id']}: QuickBooks cannot take {f['name']}, left in Drive only")
+                    continue
+                path = os.path.join(tmp, f"{r['id']}-{n}")
+                if not DRY:
+                    drive_download(f['id'], path)
+                files.append({'path': path, 'name': f"{r['id']} {f['name']}"[:200], 'contentType': ct})
+            ids[r['id']] = [f['id'] for f in new]
+            jobs.append({'op': 'attach', 'ref': r['id'], 'type': target[0], 'id': target[1], 'files': files})
+        adds = []
+        if inv_enabled():
+            import inv_store
+            in_qbo = {x['number'] for x in data.get('app_invoices', [])}
+            full = [inv_store.get(i['id']) for i in Q.invoices_to_add(inv_store.invoices(), in_qbo)]
+            adds = [Q.invoice_job(inv, data.get('income_accounts', [])) for inv in full if inv and inv['lines']]
+        jobs += adds
+        if not jobs:
+            return exc
+        if DRY:
+            for j in jobs:
+                say.append(f"would write: {j['op']} {j['ref']}" + (f" ({len(j['files'])} files to {j['type']} {j['id']})" if j['op'] == 'attach'
+                                                                   else f" to {j['account']}" + (f", project {j['project']}" if j['project'] else '')))
+            return exc
+        res = json.loads(subprocess.run(['node', os.path.join(HERE, 'qbo_write.mjs')], input=json.dumps(jobs), check=True,
+                                        capture_output=True, text=True).stdout)
+    for j, r in zip(jobs, res):
+        if not r['ok']:
+            say.append(f"QuickBooks {j['op']} {j['ref']} failed: {r['error']}")
+            exc.append({'key': f"qbowrite:{j['op']}:{j['ref']}", 'kind': 'QuickBooks write failed', 'date': data['as_of'], 'name': j['ref'],
+                        'amount': None, 'detail': f"Could not {'attach the receipts of' if j['op'] == 'attach' else 'enter'} {j['ref']}: {r['error']}"[:300],
+                        'link': j['ref']})
+        elif j['op'] == 'attach':
+            done[j['ref']] = done.get(j['ref'], []) + ids[j['ref']]
+            if r['added']:
+                say.append(f"{j['ref']}: {len(r['added'])} receipts attached to QuickBooks {j['type']} {j['id']}")
+                log_audit_event('FUNDS_RECEIPTS_TO_QBO', WHO, {'id': j['ref'], 'files': len(r['added']), 'txn': f"{j['type']} {j['id']}"})
+        elif not r.get('existed'):
+            say.append(f"invoice {j['ref']} entered in QuickBooks ({r['customer']}{', event project' if r['project'] else ''})")
+            log_audit_event('INVOICE_TO_QBO', WHO, {'id': j['ref'], 'qbo_id': r['id'], 'total': r['total']})
+    tmpf = ATTACHED + '.tmp'
+    with open(tmpf, 'w') as f:
+        json.dump(done, f)
+    os.replace(tmpf, ATTACHED)
+    return exc
+
+
+def inv_enabled():
+    try:
+        import inv_store
+        return inv_store.enabled()
+    except Exception:
+        return False
 
 
 def run():

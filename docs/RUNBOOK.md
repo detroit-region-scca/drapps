@@ -33,7 +33,7 @@ That is all. There is no server password: admin access goes through Google's sig
 | App state | `/opt/drscca/app/data/` | See below |
 | Secrets | `/opt/drscca/data/secrets/` (root only; the QuickBooks token in `qbo/`, owned by drapps) | See "Secrets" |
 | Host jobs | systemd units from `deploy/gcp/systemd/` | See "Automatic jobs" |
-| QuickBooks | `/opt/drscca/qbo-mcp` and its one token file | Read only for the sync; an AI assistant runs `/opt/drscca/qbo-mcp.sh` over the IAP tunnel as admin@ (drscca.org's Google Cloud session control never forces a new sign-in) |
+| QuickBooks | `/opt/drscca/qbo-mcp` and its one token file | The sync reads, attaches receipts and enters new drapps invoices; an AI assistant runs `/opt/drscca/qbo-mcp.sh` over the IAP tunnel as admin@ (drscca.org's Google Cloud session control never forces a new sign-in) |
 | DNS | drscca.org zone at WordPress.com: `drapps`, `drevent`, `livetiming` A records | Point at the fixed IP |
 | Code | GitHub `detroit-region-scca/drapps`, public | Tests run on every push |
 
@@ -85,7 +85,7 @@ All run on the server. Any failure emails admin@drscca.org (from apps@) with the
 
 | Job | When (Detroit time) | Unit | What it does |
 |---|---|---|---|
-| QuickBooks sync | 02:30 nightly | `drscca-qbo.timer` | Actuals, funds requests paid, bank balances, books check. On the 1st it also emails the treasurer the worker points journal entry and adds the month's automatic points. |
+| QuickBooks sync | 02:30 nightly | `drscca-qbo.timer` | Actuals, funds requests paid, bank balances, balance sheet, money owed, books check; attaches paid requests' receipts and enters new invoices in QuickBooks (`data/qbo-attached.json` remembers which receipts went). On the 1st it also emails the treasurer the worker points journal entry and adds the month's automatic points. |
 | Sync now | When the treasurer presses it | `drscca-qbo-refresh.path` | The same sync, on request |
 | Sheet backup | 02:45 nightly | `drscca-backup.timer` | `.xlsx` copies into `data/backups/` |
 | Officials changes | When the admin saves a person in Admin > Users | `drscca-officials.path` | Updates `officials.json` and the drscca.org Google Groups with GAM |

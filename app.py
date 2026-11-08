@@ -214,6 +214,8 @@ def treasurer_report():
         ctx['rows'], ctx['tot'] = plan_view.summary(year)
         ctx['as_of'] = plan_store.actuals(year)[1]
         ctx['outstanding'] = plan_store.outstanding()
+        ctx['balance_sheet'] = plan_store.balance_sheet()
+        ctx['receivables'] = plan_store.receivables()
         kinds = {}
         for e in plan_store.exceptions():
             kinds[e['kind']] = kinds.get(e['kind'], 0) + 1

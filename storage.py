@@ -148,6 +148,29 @@ def drive_upload(f, parent):
     return r.json()
 
 
+def drive_files(folder_id):
+    """The files (not folders) in a Drive folder: [{'id', 'name', 'mimeType', 'md5Checksum'}]."""
+    s, out, token = sheets_client().http_client.session, [], None
+    while True:
+        r = s.get(DRIVE, params={'q': f"'{folder_id}' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'",
+                                 'supportsAllDrives': 'true', 'includeItemsFromAllDrives': 'true', 'pageSize': 200,
+                                 'fields': 'nextPageToken,files(id,name,mimeType,md5Checksum)', **({'pageToken': token} if token else {})})
+        r.raise_for_status()
+        out += r.json().get('files', [])
+        token = r.json().get('nextPageToken')
+        if not token:
+            return out
+
+
+def drive_download(file_id, path):
+    """Save one Drive file's bytes to path."""
+    r = sheets_client().http_client.session.get(f'{DRIVE}/{file_id}', params={'alt': 'media', 'supportsAllDrives': 'true'}, stream=True)
+    r.raise_for_status()
+    with open(path, 'wb') as f:
+        for chunk in r.iter_content(1 << 16):
+            f.write(chunk)
+
+
 class SheetStore:
     name = 'sheets'
 

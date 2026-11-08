@@ -13,7 +13,7 @@ import inv_store as I
 import officials as O
 import shortlinks
 from officer import current as officer_current, officer_required
-from utils import load_events, load_programs, log_audit_event, login_required, send_mail, to_number
+from utils import load_events, load_programs, log_audit_event, login_required, request_qbo_refresh, send_mail, to_number
 
 bp = Blueprint('inv', __name__, url_prefix='/invoices')
 
@@ -113,6 +113,10 @@ def new():
         flash(f'Saved, but the PDF could not be stored in Drive ({e}). Download it below.', 'warning')
     log_audit_event('INVOICE_CREATED', who, {'id': inv['id'], 'bill_name': inv['bill_name'], 'total': inv['total'], 'program': program,
                                              'event_code': inv['event_code']})
+    try:        # the QuickBooks sync enters it in QuickBooks; ask for one now rather than tonight
+        request_qbo_refresh(who)
+    except OSError:
+        pass
     me = f.get('my_email', '').strip()
     u = auth.user()
     if u and u['level'] != 'volunteer':      # officials get the copy at their role's group, never a personal inbox

@@ -1,6 +1,6 @@
 [Unit]
 OnFailure=drscca-alert@%n.service
-Description=DRSCCA apps: nightly QuickBooks sync (read only on the QuickBooks side)
+Description=DRSCCA apps: nightly QuickBooks sync (writes only receipts and new drapps invoices)
 [Service]
 Type=oneshot
 User=drapps

@@ -6,8 +6,11 @@
 //   payments  checks, bill payments and card charges since PAYMENTS_SINCE
 //   outstanding  checks since PAYMENTS_SINCE the bank has not cleared yet (QuickBooks "Clr" blank; voided $0 checks left out)
 //   deposits  deposit lines since PAYMENTS_SINCE (date, amount, description, payer), to match against open invoices
+//   balance_sheet  today's balance sheet to two levels; receivables  every invoice still owed
+//   app_invoices  the invoices drapps put in QuickBooks (numbered INV-), with balance and payment date
+//   income_accounts  active income account names, for the account a drapps invoice goes to
 // Runs on the machine that holds the QuickBooks connection (the qbo-mcp install and its token
-// store); the web app never talks to QuickBooks. QBO_MCP_DIR points at that install. Read only.
+// store); the web app never talks to QuickBooks. QBO_MCP_DIR points at that install. Read only (writes are qbo_write.mjs).
 const dir = process.env.QBO_MCP_DIR || `${process.env.HOME}/.mcp-servers/qbo-mcp`;
 const { QuickbooksClient } = await import(`${dir}/dist/clients/quickbooks-client.js`);
 const c = await QuickbooksClient.getAuthCredentials();
@@ -120,4 +123,38 @@ for (const d of await query('Deposit', `WHERE TxnDate >= '${since}'`)) {
   }
 }
 
-console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding, deposits }));
+// The balance sheet today, to two levels (Assets > Current Assets > Bank Accounts): [{depth, name, amount}]
+const bs = await get(`reports/BalanceSheet?date_macro=Today&accounting_method=Accrual`);
+const balance_sheet = [];
+const bwalk = (rows, depth) => {
+  for (const r of rows || []) {
+    if (r.type === 'Section' || r.Rows) {
+      const name = r.Header?.ColData?.[0]?.value || r.Summary?.ColData?.[0]?.value?.replace(/^Total /, '') || '';
+      const amount = parseFloat(r.Summary?.ColData?.[1]?.value || '0');
+      if (depth <= 2 && name) balance_sheet.push({ depth, name, amount });
+      if (depth < 2) bwalk(r.Rows?.Row, depth + 1);
+    } else if (r.ColData && depth <= 2) {
+      const amount = parseFloat(r.ColData[1]?.value || '0');
+      if (amount) balance_sheet.push({ depth, name: r.ColData[0].value, amount });
+    }
+  }
+};
+bwalk(bs.Rows?.Row, 0);
+
+// Every invoice still owed, and every invoice the apps made (numbered INV-), to mark paid and check for doubles.
+const receivables = (await query('Invoice', "WHERE Balance > '0'")).map(i => ({
+  number: i.DocNumber || '', date: i.TxnDate, due: i.DueDate || '', customer: i.CustomerRef?.name || '', total: i.TotalAmt, balance: i.Balance,
+}));
+const appInv = await query('Invoice', "WHERE DocNumber LIKE 'INV-%'");
+const payIds = [...new Set(appInv.flatMap(i => (i.LinkedTxn || []).filter(t => t.TxnType === 'Payment').map(t => t.TxnId)))];
+const payDate = {};
+if (payIds.length) for (const p of await query('Payment', `WHERE Id IN (${payIds.map(x => `'${x}'`).join(', ')})`)) payDate[p.Id] = p.TxnDate;
+const app_invoices = appInv.map(i => ({
+  number: i.DocNumber, id: i.Id, total: i.TotalAmt, balance: i.Balance,
+  paid_date: (i.LinkedTxn || []).filter(t => t.TxnType === 'Payment').map(t => payDate[t.TxnId] || '').sort().pop() || '',
+}));
+
+const income_accounts = (await query('Account', "WHERE AccountType = 'Income' AND Active = true")).map(a => a.Name);
+
+console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding, deposits, balance_sheet, receivables,
+                             app_invoices, income_accounts }));

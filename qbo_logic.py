@@ -170,3 +170,86 @@ def match_invoices(invoices, deposits):
             used.add((d['id'], d['description'], d['amount']))
             out.append((inv, {'paid_date': d['date'], 'paid_ref': f"QuickBooks deposit {d['date']}", 'paid_amount': d['amount']}))
     return out
+
+
+# QuickBooks writes (tools/qbo_write.mjs). Invoices made in drapps before this date were never put in QuickBooks
+# (their money was booked as deposits), so only newer ones go in, or the income would count twice.
+INVOICES_FROM = '2026-11-08'
+ATTACH_TYPES = {'pdf': 'application/pdf', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif',
+                'tif': 'image/tiff', 'tiff': 'image/tiff', 'csv': 'text/csv', 'txt': 'text/plain', 'rtf': 'application/rtf',
+                'doc': 'application/msword', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'xls': 'application/vnd.ms-excel', 'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
+
+
+def attach_type(name):
+    """The content type QuickBooks takes for a receipt file, or None (QuickBooks refuses HEIC, ZIP and the like)."""
+    return ATTACH_TYPES.get(name.rsplit('.', 1)[-1].lower()) if '.' in name else None
+
+
+def payment_of(r, payments):
+    """The QuickBooks transaction a paid request was matched to: ('Purchase', '123') or None.
+
+    A check by its number; a region card charge by the statement that has a line of that amount on the paid date."""
+    n = check_number(r.get('paid_ref'))
+    if n:
+        hits = [p for p in payments if p['kind'] == 'check' and p['number'] == n]
+    elif r.get('paid_ref') == 'Region card' and r.get('paid_amount'):
+        hits = [p for p in payments if is_card_statement(p) and p['date'] == str(r.get('paid_date'))
+                and any(abs(ln['amount'] - r['paid_amount']) < 0.005 for ln in p['lines'])]
+    else:
+        return None
+    if len(hits) != 1:
+        return None
+    kind, _, txn = hits[0]['id'].partition(' ')
+    return kind, txn
+
+
+def income_account(program, names):
+    """The income account a program's invoices go to: its "Club XX ... Revenue" account, else Operations Revenue."""
+    hit = [n for n in names if re.match(rf'Club {re.escape(program)} .*Revenue$', n)]
+    return hit[0] if len(hit) == 1 else 'Operations Revenue'
+
+
+def invoice_job(inv, names):
+    """The qbo_write.mjs job that puts a drapps invoice in QuickBooks."""
+    what = (inv.get('event_name') or '') + (f" {inv['event_code']}" if inv.get('event_code') else '')
+    return {'op': 'invoice', 'ref': inv['id'], 'doc': inv['id'], 'date': inv['created'][:10], 'due': inv['due'][:10],
+            'customer': {'name': inv['bill_name'], 'email': inv.get('bill_email') or '', 'address': inv.get('bill_address') or ''},
+            'project': inv.get('event_code') or '', 'account': income_account(inv['program'], names),
+            'memo': inv.get('notes') or '',
+            'note': f"From drapps {inv['id']} for {inv['bill_name']}" + (f", {what.strip()}" if what.strip() else '')
+                    + (f", by {inv['created_by']}" if inv.get('created_by') else '') + '. The deposit should be matched to this invoice.',
+            'lines': [{'description': ln['description'], 'quantity': ln['quantity'] or 1, 'unit_price': ln['unit_price'], 'amount': ln['amount']}
+                      for ln in inv['lines']]}
+
+
+def invoices_to_add(invoices, in_qbo):
+    """drapps invoices that belong in QuickBooks and are not there yet: open or paid, made since INVOICES_FROM."""
+    return [inv for inv in invoices if inv['status'] in ('Open', 'Paid') and inv['created'][:10] >= INVOICES_FROM
+            and inv['id'] not in in_qbo]
+
+
+def invoice_states(invoices, app_invoices, deposits):
+    """What QuickBooks says about drapps invoices that are in it: (paid, exceptions).
+
+    paid: [(invoice, {'paid_date', 'paid_ref', 'paid_amount'})] for open ones QuickBooks shows fully paid.
+    exceptions: rows in the exceptions format, for a deposit that looks like the invoice's money booked straight to
+    income (it would count twice) and for an invoice voided in drapps but still owed in QuickBooks."""
+    q = {i['number']: i for i in app_invoices}
+    paid, exc = [], []
+    for inv in invoices:
+        x = q.get(inv['id'])
+        if not x:
+            continue
+        if inv['status'] == 'Open' and x['balance'] < 0.005 and x['paid_date']:
+            paid.append((inv, {'paid_date': x['paid_date'], 'paid_ref': 'QuickBooks payment', 'paid_amount': x['total']}))
+        elif inv['status'] == 'Void' and x['balance'] >= 0.005:
+            exc.append({'key': f"invvoid:{inv['id']}", 'kind': 'Invoice void in drapps, open in QuickBooks', 'date': inv['created'][:10],
+                        'name': inv['bill_name'], 'amount': x['balance'], 'detail': f"Void {inv['id']} in QuickBooks too", 'link': inv['id']})
+        if x['balance'] >= 0.005 and inv['status'] != 'Void':
+            for _, hit in match_invoices([dict(inv, status='Open')], deposits):
+                exc.append({'key': f"invdouble:{inv['id']}:{hit['paid_date']}", 'kind': 'Invoice money deposited as income',
+                            'date': hit['paid_date'], 'name': inv['bill_name'], 'amount': hit['paid_amount'],
+                            'detail': f"A {hit['paid_date']} deposit looks like {inv['id']}, but the invoice is still open in QuickBooks. "
+                                      'Match the deposit to the invoice in Banking instead, or the income counts twice.', 'link': inv['id']})
+    return paid, exc
