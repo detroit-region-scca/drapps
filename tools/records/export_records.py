@@ -18,7 +18,7 @@ CREATE TABLE result_rows AS SELECT id, file_id, event_id, person_id, program, ye
 CREATE TABLE season_standings AS SELECT id, program, year, class, place, person_id, name, score, file_id FROM s.season_standings;
 CREATE TABLE people AS SELECT id, name FROM s.people
   WHERE id IN (SELECT person_id FROM result_rows UNION SELECT person_id FROM season_standings);
-CREATE INDEX rr_person ON result_rows(person_id); CREATE INDEX rr_event ON result_rows(event_id);
+CREATE INDEX rr_person ON result_rows(person_id); CREATE INDEX rr_event ON result_rows(event_id); CREATE INDEX rr_id ON result_rows(id);
 CREATE INDEX ss_person ON season_standings(person_id); CREATE INDEX ss_season ON season_standings(program, year);
 CREATE INDEX ev_season ON events(program, year); CREATE INDEX f_event ON files(event_id);
 CREATE INDEX p_name ON people(name COLLATE NOCASE);
@@ -162,6 +162,19 @@ for rid, veh in d.execute('select id, vehicle from result_rows where vehicle lik
     if new != veh:
         d.execute('update result_rows set vehicle = ? where id = ?', (new or None, rid)); uncoloured += 1
 print('car colours removed', uncoloured)
+# Year, make and model of each car (the printed car text is kept as it is).
+import importlib.util as _iu
+_spec = _iu.spec_from_file_location('cars', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cars.py'))
+cars = _iu.module_from_spec(_spec); _spec.loader.exec_module(cars)
+d.execute("update result_rows set vehicle = null where program = 'Rally' or vehicle in ('#NAME?', '#N/A', '0', '-')")   # rally sheets list no cars
+for col_, typ in (('car_year', 'INT'), ('car_make', 'TEXT'), ('car_model', 'TEXT')):
+    d.execute(f'alter table result_rows add column {col_} {typ}')
+split = 0
+for rid, veh in d.execute('select id, vehicle from result_rows where vehicle is not null').fetchall():
+    y, mk, md = cars.parse(veh)
+    if y or mk:
+        d.execute('update result_rows set car_year = ?, car_make = ?, car_model = ? where id = ?', (y, mk, md, rid)); split += mk is not None
+print('cars split into make and model', split)
 d.execute("delete from result_rows where position is null and total is null and raw_time is null and pax_time is null and status is null and file_id not in (select id from files where ocr = 'transcribed')")
 d.execute("delete from result_rows where file_id not in (select id from files where ocr = 'transcribed') and id not in (select min(id) from result_rows group by file_id, line_no, coalesce(person_id, -id))")   # a name repeated on one line; never two unlinked crew members
 d.execute("update result_rows set section = null where section like '%page % of %' or section glob '*[0-9][0-9][0-9][0-9]*'")
