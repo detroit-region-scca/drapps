@@ -53,3 +53,14 @@ def test_invoice_states():
     assert paid == [] and exc[0]['kind'] == 'Invoice money deposited as income'
     paid, exc = Q.invoice_states([dict(INV, status='Void')], open_q, [])
     assert exc[0]['kind'] == 'Invoice void in drapps, open in QuickBooks'
+
+
+def test_invoice_states_flags_changes_and_deletes():
+    q = [{'number': 'INV-2026-001', 'id': '9', 'total': 120.0, 'balance': 120.0, 'paid_date': ''},
+         {'number': 'INV-2026-005', 'id': '10', 'total': 50.0, 'balance': 50.0, 'paid_date': ''}]
+    paid, exc = Q.invoice_states([INV], q, [])
+    kinds = sorted(e['kind'] for e in exc)
+    assert kinds == ['Invoice deleted in drapps, open in QuickBooks', 'Invoice differs in QuickBooks']
+    q[0]['total'] = 100.0
+    paid, exc = Q.invoice_states([dict(INV, status='Paid')], q[:1], [])
+    assert [e['kind'] for e in exc] == ['Invoice paid in drapps, open in QuickBooks']

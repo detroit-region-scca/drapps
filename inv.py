@@ -179,7 +179,7 @@ def close(inv_id):
             return redirect(url_for('inv.detail', inv_id=inv_id))
         I.update(inv_id, status='Void', closed_by=who, closed_note=note)
         log_audit_event('INVOICE_VOID', who, {'id': inv_id, 'note': note})
-        flash(f'{inv_id} voided.', 'warning')
+        flash(f'{inv_id} voided. Void it in QuickBooks too.', 'warning')
     elif action == 'reopen':
         I.update(inv_id, status='Open', paid_date='', paid_ref='', paid_amount='', closed_by='', closed_note='')
         log_audit_event('INVOICE_REOPENED', who, {'id': inv_id})
@@ -243,7 +243,7 @@ def delete_confirm(token):
         I.delete(t['id'])
         log_audit_event('INVOICE_DELETED', 'Treasurer (email link)', {'id': t['id'], 'bill_name': inv['bill_name'], 'total': inv['total'],
                                                                       'asked_by': t['by'], 'why': t['why']})
-        msg = f"{t['id']} is deleted. Its PDF is in the Drive trash if it is ever needed."
+        msg = f"{t['id']} is deleted. Its PDF is in the Drive trash if it is ever needed. If it was in QuickBooks, delete it there too."
         inv = None
     return render_template('inv.html', **_ctx(view='delete', inv=inv, t=t, msg=msg))
 
