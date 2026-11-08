@@ -22,7 +22,7 @@ cd /opt/drscca
 for f in docker-compose.yml Caddyfile livetiming-nginx.conf; do sudo cp app/deploy/gcp/$f $f; done
 sudo install -m 755 app/deploy/gcp/qbo-mcp.sh /opt/drscca/qbo-mcp.sh
 # QuickBooks swaps its token on use and saves the new one with a temp file + rename, so the token needs a folder
-# drapps can write (the secrets folder is root's): a token it cannot save goes stale and QuickBooks refuses it.
+# drapps can write (the secrets folder belongs to root): a token it cannot save goes stale and QuickBooks refuses it.
 sudo install -d -o drapps -g drapps -m 700 data/secrets/qbo
 [ -f data/secrets/qbo.env ] && [ ! -f data/secrets/qbo/qbo.env ] && sudo mv data/secrets/qbo.env data/secrets/qbo/qbo.env
 sudo install -m 644 app/deploy/gcp/livetiming-www/*.html data/livetiming/www/
