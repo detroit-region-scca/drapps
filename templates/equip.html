@@ -115,7 +115,7 @@
     <thead><tr><th class="ps-3" style="width: 1%">Year</th><th>Item</th><th class="num">Estimated cost</th>{% if later %}<th class="num {{ 'pe-3' if not editor }}">Set aside a month</th>{% endif %}{% if editor %}<th class="no-print"></th>{% endif %}</tr></thead>
 {%- endmacro %}
 {% block content %}
-    {% if not editor %}<div class="small text-muted mb-2 no-print">Changes are made by the equipment committee and the club officers.</div>{% endif %}
+    {% if not editor %}<div class="small text-muted mb-2 no-print">Changes are made by the Operations committee and the club officers.</div>{% endif %}
 
     {% if view == 'home' %}
     <p class="text-muted mb-3">What the region pays for and looks after between events: bills, chores, vehicles, trailers and gear.
@@ -327,7 +327,7 @@
             <input name="place" class="form-control form-control-sm" style="max-width: 22rem" list="whereNames" value="{{ it.place or '' }}" placeholder="Wixom storage unit, Race Trailer, With a person">
             <datalist id="whereNames">{% for n in locations %}<option value="{{ n }}">{% endfor %}</datalist>
             <button class="btn btn-sm btn-accent">Confirm or move</button></form>
-        {% else %}<div class="small text-muted mt-1 no-print">Moved it? Ask the equipment committee to record where it is.</div>{% endif %}
+        {% else %}<div class="small text-muted mt-1 no-print">Moved it? Ask the Operations committee to record where it is.</div>{% endif %}
     </div>
     {{ docs_box(docs) }}
     {% if tasks %}<h2 class="h6 text-muted">To do for this</h2><ul>{% for t in tasks %}<li>{{ t.task }}: {{ t.due or 'no date' }}</li>{% endfor %}</ul>{% endif %}
@@ -445,7 +445,7 @@
     {% elif view == 'signin' %}
     <div class="card p-4 mx-auto" style="max-width: 30rem;">
         <div class="page-title">Sign in to edit</div>
-        <p class="text-muted small">Anyone can look. Changes are limited to the equipment committee and the club officers: enter your email and we'll send a sign-in link to it.</p>
+        <p class="text-muted small">Anyone can look. Changes are limited to the Operations committee and the club officers: enter your email and we'll send a sign-in link to it.</p>
         <form method="post"><input type="hidden" name="next" value="{{ nxt }}">
             <input type="email" name="email" class="form-control mb-3" required autofocus placeholder="you@example.com">
             <button class="btn btn-accent w-100">Email me a link</button></form>

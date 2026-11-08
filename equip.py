@@ -56,7 +56,7 @@ def editor_required(f):
         ed = session.get('equip_editor')
         if not ed or ed.get('email', '').lower() not in editors():
             session.pop('equip_editor', None)
-            flash('Changes are made by the equipment committee and the club officers.', 'warning')
+            flash('Changes are made by the Operations committee and the club officers.', 'warning')
             return redirect(url_for('equip.home'))
         return f(*a, **kw)
     return wrapped
@@ -93,7 +93,7 @@ def _serializer():
 @bp.route('/signin/<token>')
 def signin(token=None):
     """Old separate sign-in: everyone now signs in once by email code, and the role comes from the officials list."""
-    flash('This needs the equipment committee or an officer, signed in with their own email address.', 'warning')
+    flash('This needs the Operations committee or an officer, signed in with their own email address.', 'warning')
     return redirect(url_for('equip.home'))
 
 
