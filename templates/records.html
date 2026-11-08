@@ -50,7 +50,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 .hof-table th:nth-child(1), .hof-table td:nth-child(1) { width: 3rem; }
 .hof-table th:nth-child(2), .hof-table td:nth-child(2) { width: 15rem; }
 .hof-table th:nth-child(3), .hof-table td:nth-child(3) { width: 5.5rem; }
-.hof-table th:nth-child(4), .hof-table td:nth-child(4) { width: 15rem; }
+.hof-table th:nth-child(4):not(:last-child), .hof-table td:nth-child(4):not(:last-child) { width: 15rem; }
 @media (max-width: 767.98px) { .hof-table { table-layout: auto; } .hof-table th, .hof-table td { width: auto !important; } }
 .class-jump { position: sticky; top: 0; background: var(--bg); padding: .4rem 0; z-index: 2; }
 .nav-tabs .nav-link { color: var(--text); font-weight: 600; }
