@@ -29,6 +29,29 @@ LABELS = [  # (field, header patterns) first match wins
 ]
 HEAD_WORDS = re.compile(r'\b(driver|class|pos\.?|name|total|vehicle|car)\b', re.I)
 TIME = re.compile(r'^-?\d{1,4}\.\d{1,4}')
+
+COLOR = re.compile(r'(?i)^((light|dark|bright|metallic|pearl|met\.?)\s+)?(red|blue|black|white|silver|green|gr[ae]y|yellow|orange|purple|gold|tan|brown|maroon|burgundy|beige|pink|teal|bronze|champagne|navy)'
+                   r'(\s*(/|&|and|-|w/)\s*\w+)*$')
+MAKES = re.compile(r'\b(Acura|Alfa|Audi|BMW|Buick|Cadillac|Chevrolet|Chevy|Chrysler|Corvette|Datsun|Dodge|Ferrari|Fiat|Ford|Honda|Hyundai|Infiniti|Jeep|Kia|Lexus|Lotus|Mazda|'
+                   r'Mercedes|Miata|Mini|Mitsubishi|Mustang|Nissan|Plymouth|Pontiac|Porsche|Saab|Saturn|Scion|Subaru|Toyota|Volkswagen|VW|Volvo)\b')
+
+
+def car_out_of_name(r):
+    """Reader rows only (transcriptions are right as written): a car colour is never the car, and a long name that ran
+    into the car column ("Pat Q Example BMW M2") is split back into driver and car."""
+    r = dict(r)
+    if r.get('vehicle') and COLOR.match(r['vehicle'].strip()):
+        r['color'], r['vehicle'] = r.get('color') or r['vehicle'], None
+    words = r['driver'].split()
+    for k, w in enumerate(words):
+        if k >= 2 and MAKES.fullmatch(w) and ',' not in r['driver'] and not (k == len(words) - 1 and w in ('Ford', 'Mini', 'Lotus', 'Saturn', 'Kia', 'Jeep')):   # a surname
+            car = re.sub(r'(\s+\d+\.\d+)+$', '', ' '.join(words[k:]))            # times that ran in after the car
+            car = ' '.join(x for x in car.split() if not COLOR.match(x))
+            r['driver'] = ' '.join(words[:k])
+            r['vehicle'] = r.get('vehicle') or car
+            break
+    return r
+
 def cells(line):
     return [(m.start(), m.end(), m.group().strip()) for m in re.finditer(r'\S+(?: \S+)*', line)]
 def field(label):
@@ -619,6 +642,8 @@ for i, (fid, p) in enumerate(plan.items(), 1):
         f'https://drive.google.com/file/d/{src_id}/view', len(rows), text, ocr_note if cur is None else 'transcribed',
         (cur or {}).get('label')))
     for r in rows:
+        if cur is None and not prog_is_wp(m):
+            r = car_out_of_name(r)
         d = flip(' '.join(r['driver'].split()).strip(' ,')) if ',' in r['driver'].strip(' ,') else ' '.join(r['driver'].split()).strip(' ,')
         if prog_is_wp(m):
             d = ' '.join(x for x in (r.get('first'), r.get('last')) if x) or d
