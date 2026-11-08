@@ -46,6 +46,20 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
   .rec-table th.w-driver { min-width: 9.5rem; }
   .rec-table td.num, .rec-table th.num { white-space: nowrap; }
 }
+.hof-head { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem; margin-bottom: 1rem; border-radius: 10px;
+            border: 1px solid #e6d3a3; background: linear-gradient(135deg, #fffaf0, #fbf1da); }
+.hof-head .rec-ico { background: #b8860b; color: #fff; width: 54px; height: 54px; }
+.hof-head .rec-ico svg { width: 30px; height: 30px; }
+.podium { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; margin-bottom: 1.5rem; }
+.pod { display: flex; flex-direction: column; align-items: center; text-align: center; gap: .15rem; padding: 1rem .75rem; border-radius: 10px;
+       border: 1px solid var(--border); border-top: 5px solid; color: var(--text); text-decoration: none; }
+.pod:hover { box-shadow: 0 4px 14px rgba(0,0,0,.08); color: var(--text); }
+.pod b { font-size: 1.05rem; } .pod .n { font-weight: 600; }
+.pod .medal { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; margin-bottom: .25rem; }
+.pod-1 { border-top-color: #c9a227; background: #fffaf0; } .pod-1 .medal { background: #c9a227; }
+.pod-2 { border-top-color: #9aa3ad; } .pod-2 .medal { background: #9aa3ad; }
+.pod-3 { border-top-color: #b07040; } .pod-3 .medal { background: #b07040; }
+@media (max-width: 575.98px) { .podium { grid-template-columns: 1fr; } .pod { flex-direction: row; flex-wrap: wrap; text-align: left; justify-content: flex-start; } .pod .medal { margin: 0 .5rem 0 0; } }
 .hof-table { table-layout: fixed; width: 100%; }      /* every Hall of Fame table lines up: rank, name, count, then text */
 .hof-table th:nth-child(1), .hof-table td:nth-child(1) { width: 3rem; }
 .hof-table th:nth-child(2), .hof-table td:nth-child(2) { width: 15rem; }
@@ -104,8 +118,13 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% elif waiting is not none %}<p class="text-muted">Nothing waiting.</p>{% endif %}
 
 {% elif view == 'hall' %}
-<div class="page-title">Hall of Fame</div>
-<p class="text-muted">All-time leaders from the results and standings the region posted. Seasons with no files on record are missing, so long careers count short.</p>
+<div class="hof-head">
+  <span class="rec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5h8v5.5a4 4 0 0 1-8 0z"/><path d="M8 5.5H5.2a2.8 2.8 0 0 0 3 4M16 5.5h2.8a2.8 2.8 0 0 1-3 4"/><path d="M12 13v3.5M8.5 20.5h7M9.5 16.5h5v4h-5z"/></svg></span>
+  <div><div class="page-title mb-0">Hall of Fame</div><div class="text-muted small">All-time leaders from the results and standings the region posted.</div></div>
+</div>
+{% if h.titles|length >= 3 %}<div class="podium">{% for r in h.titles[:3] %}
+  <a class="pod pod-{{ loop.index }}" href="{{ url_for('records.person', pid=r.id) }}"><span class="medal">{{ loop.index }}</span>
+    <b>{{ r.name }}</b><span class="n">{{ r.n }} class titles</span><span class="small text-muted">{{ r.programs|join(', ') }}</span></a>{% endfor %}</div>{% endif %}
 <div class="section-label mt-4">Most class championships</div>
 <div class="table-responsive"><table class="table hof-table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Titles</th><th>Programs</th><th>Seasons</th></tr></thead><tbody>
 {% for r in h.titles %}<tr><td class="num text-muted">{{ loop.index }}</td><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td>{{ r.programs|join(', ') }}</td><td>{{ r.years }}</td></tr>{% endfor %}
@@ -131,6 +150,10 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 <div class="table-responsive"><table class="table"><thead><tr><th>Season</th><th class="num">Events</th><th class="num">Class champions</th></tr></thead><tbody>
 {% for y, ne, nc in rows %}<tr><td><a href="{{ url_for('records.season', prog=slug(p), year=y) }}">{{ y }}</a></td><td class="num">{{ ne or '' }}</td><td class="num">{{ nc or '' }}</td></tr>{% endfor %}
 </tbody></table></div>
+{% if top_cars %}<div class="section-label mt-4">Most common cars</div>
+<div class="table-responsive"><table class="table hof-table"><thead><tr><th class="num">#</th><th>Car</th><th class="num">Drivers</th><th>Years</th></tr></thead><tbody>
+{% for c in top_cars %}<tr><td class="num text-muted">{{ loop.index }}</td><td>{{ c.car_make }} {{ c.car_model }}</td><td class="num">{{ c.drivers }}</td><td>{{ c.a }}{% if c.b != c.a %}&ndash;{{ c.b }}{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>{% endif %}
 
 {% elif view == 'season' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.program', prog=slug(p)) }}">{{ p }}</a></div>
@@ -232,6 +255,10 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% if standings %}<div class="section-label mt-4">Season standings</div>
 <div class="table-responsive"><table class="table"><thead><tr><th>Season</th><th>Class</th><th class="num">Place</th><th class="num">Score</th></tr></thead><tbody>
 {% for s in standings|reverse %}<tr><td><a href="{{ url_for('records.season', prog=slug(s.program), year=s.year) }}">{{ s.year }} {{ s.program }}</a></td><td>{{ s.class or '' }}</td><td class="num">{% if s.place == 1 %}<strong>1st</strong>{% else %}{{ s.place }}{% endif %}</td><td class="num">{{ '%g'|format(s.score) if s.score is not none else '' }}</td></tr>{% endfor %}
+</tbody></table></div>{% endif %}
+{% if cars %}<div class="section-label mt-4">Cars</div>
+<div class="table-responsive"><table class="table table-sm"><thead><tr><th>Car</th><th class="num">Events</th><th>Years</th></tr></thead><tbody>
+{% for c in cars %}<tr><td>{{ c.car_year or '' }} {{ c.car_make }} {{ c.car_model or '' }}</td><td class="num">{{ c.n }}</td><td>{{ c.a }}{% if c.b != c.a %}&ndash;{{ c.b }}{% endif %}</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}
 {% if results %}<div class="section-label mt-4">Events ({{ results|length }})</div>
 <div class="table-responsive"><table class="table table-sm"><thead><tr><th>Date</th><th>Event</th><th>Class</th><th class="num">Class place</th><th class="num">PAX place</th><th class="d-none d-md-table-cell">Car or partner</th><th class="num">Time or score</th></tr></thead><tbody>

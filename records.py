@@ -218,7 +218,13 @@ def program(prog):
         champs[r['year']] = r['n']
     ys = _ctx()['seasons'][p]
     missing = [y for y in range(ys[0], ys[-1] + 1) if y not in ys] if ys else []
-    return render_template('records.html', **_ctx(view='program', p=p, rows=[(y, ev[y], champs[y]) for y in reversed(ys)], missing=missing))
+    top_cars = []
+    if any(c['name'] == 'car_make' for c in _q('pragma table_info(result_rows)')):
+        top_cars = _q('''select car_make, car_model, count(distinct coalesce(person_id, driver)) drivers, count(distinct event_id) events,
+            min(year) a, max(year) b from result_rows where program = ? and car_make is not null and car_model is not null
+            group by car_make, car_model order by drivers desc limit 10''', p)
+    return render_template('records.html', **_ctx(view='program', p=p, rows=[(y, ev[y], champs[y]) for y in reversed(ys)], missing=missing,
+                                                  top_cars=top_cars))
 
 
 @bp.route('/<prog>/<int:year>')
@@ -442,8 +448,12 @@ def person(pid):
             x['time'] = r['time']
     standings = _q('select * from season_standings where person_id = ? order by year, program', pid)
     years = sorted({r['year'] for r in results if r['year']} | {s['year'] for s in standings})
+    cars = []
+    if any(c['name'] == 'car_make' for c in _q('pragma table_info(result_rows)')):     # databases built before 2026-11-08 lack it
+        cars = _q('''select car_year, car_make, car_model, count(distinct event_id) n, min(year) a, max(year) b from result_rows
+            where person_id = ? and car_make is not null group by car_year, car_make, car_model order by max(year) desc, n desc''', pid)
     return render_template('records.html', **_ctx(view='person', person=p, results=results, standings=standings, years=years,
-                                                  n_events=len(results), n_titles=sum(1 for s in standings if s['place'] == 1),
+                                                  n_events=len(results), n_titles=sum(1 for s in standings if s['place'] == 1), cars=cars,
                                                   progs=sorted({r['program'] for r in results} | {s['program'] for s in standings})))
 
 
