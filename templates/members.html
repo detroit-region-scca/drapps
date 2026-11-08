@@ -143,7 +143,7 @@
                 {% if keeper %}<option value="none" {% if form.get('event') == 'none' %}selected{% endif %}>No event (volunteer job, adjustment)</option>{% endif %}
             </select></div>
         <div class="col-md-4"><label class="form-label">Start date</label><input type="date" name="first" class="form-control" value="{{ form.get('first', '') }}"><div class="form-text">Blank = the event date</div></div>
-        {% if keeper %}<div class="col-12"><label class="form-label">What for <span class="text-muted">(only when there is no event)</span></label><input name="what" class="form-control" placeholder="e.g. Equipment chief, 2026" value="{{ form.get('what', '') }}"></div>{% endif %}
+        {% if keeper %}<div class="col-12"><label class="form-label">What for <span class="text-muted">(only when there is no event)</span></label><input name="what" class="form-control" placeholder="e.g. Operations chief, 2026" value="{{ form.get('what', '') }}"></div>{% endif %}
     </div>
     <datalist id="memberlist">{% for m in members %}<option value="{{ pick_label(m) }}">{% endfor %}</datalist>
     <table class="table table-sm align-middle mb-2">
@@ -238,7 +238,7 @@
         </tbody>
     </table>
     <template id="autotpl"><tr><td><input name="member" list="memberlist" class="form-control form-control-sm" placeholder="Type a name"></td>
-        <td><input name="role" class="form-control form-control-sm" placeholder="e.g. Equipment chief"></td>
+        <td><input name="role" class="form-control form-control-sm" placeholder="e.g. Operations chief"></td>
         <td><input name="season" type="number" min="0" step="0.5" class="form-control form-control-sm" value="1"></td>
         <td><input name="offseason" type="number" min="0" step="0.5" class="form-control form-control-sm" value="1"></td>
         <td><button type="button" class="btn btn-sm btn-link text-muted p-1" onclick="this.closest('tr').remove()">✕</button></td></tr></template>

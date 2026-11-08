@@ -341,10 +341,10 @@ def add_document():
             abort(404)
         root = D.folder_id(os.environ.get('OPERATIONS_DOCS_FOLDER_URL', ''))
         if not root:
-            flash('No Documents folder is set up in Drive (OPERATIONS_DOCS_FOLDER_URL).', 'warning')
+            flash('No Operations folder is set up in Drive (OPERATIONS_DOCS_FOLDER_URL).', 'warning')
             return redirect(back)
         name = it['name'] if it else p['name']
-        folder = drive_folder(name, root)
+        folder = drive_folder(name, D.section_folder(root, rid))
         row = {'for_id': rid, 'for_name': name, 'folder': folder['webViewLink'],
                'needed': D.DEFAULT_NEEDED.get(it['category'] if it else 'place', ''), 'notes': ''}
         row['id'] = E.save('Documents', row)

@@ -1,7 +1,8 @@
 """Which documents the region has for each vehicle, trailer and storage place, and which are missing. Each row of the
 Documents tab names a Drive folder and the documents it should hold ("Title, Registration, Insurance card"); a document
 counts as there when a file in that folder has its name in the file name ("Title - front.jpg"). The folders are plain
-Drive folders in Operations/Documents, so people can add files there directly, without the app.
+Drive folders in the Operations folder (vehicles and trailers in "Fleet Titles & Registrations", storage places in
+"Storage Locations"), so people can add files there directly, without the app.
 """
 import re
 
@@ -12,6 +13,27 @@ CACHE_SECONDS = 300
 ALSO = {'agreement': r'agreement|lease|contract', 'insurance card': r'insurance card|proof of insurance|no-fault certificate',
         'registration': r'registration|license tab', 'policy': r'policy|declaration'}
 _cache = {}
+
+
+# Where a new item's folder goes, inside the Operations folder (OPERATIONS_DOCS_FOLDER_URL).
+SECTION = {'EQ': 'Fleet Titles & Registrations', 'PL': 'Storage Locations'}
+
+
+def section_folder(root, rid):
+    """The id of the Operations subfolder a vehicle (EQ-) or storage place (PL-) belongs in, made if missing."""
+    name = SECTION[rid[:2]]
+    session = sheets_client().http_client.session
+    q = f"'{root}' in parents and name = '{name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    r = session.get(DRIVE, params={'q': q, 'supportsAllDrives': 'true', 'includeItemsFromAllDrives': 'true', 'corpora': 'allDrives',
+                                   'fields': 'files(id)'})
+    r.raise_for_status()
+    hit = r.json().get('files', [])
+    if hit:
+        return hit[0]['id']
+    r = session.post(DRIVE, params={'supportsAllDrives': 'true', 'fields': 'id'},
+                     json={'name': name, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [root]})
+    r.raise_for_status()
+    return r.json()['id']
 
 
 def folder_id(url):

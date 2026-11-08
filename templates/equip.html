@@ -233,7 +233,7 @@
         <div><div class="page-title m-0">{% if n_missing %}{{ n_missing }} documents missing{% else %}Every document is in Drive{% endif %}</div>
             <div class="text-muted small">Each vehicle, trailer and storage place has a folder in Drive (Operations › Documents). Found one? Open the vehicle, trailer or place (or use "Add a document" below its row), say what it is and upload the file or take a photo; it is named and filed for you.
                 Files put straight into the Drive folder count too when the name starts with what it is, for example "Title - front.jpg".</div></div>
-        <div class="d-flex gap-2 no-print">{% if root %}<a class="btn btn-sm btn-outline-light" href="{{ root }}" target="_blank" rel="noopener">Open Documents in Drive</a>{% endif %}
+        <div class="d-flex gap-2 no-print">{% if root %}<a class="btn btn-sm btn-outline-light" href="{{ root }}" target="_blank" rel="noopener">Open Operations in Drive</a>{% endif %}
             <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('equip.documents', fresh=1) }}">Check again</a></div>
     </div>
     {% if error %}<div class="alert alert-warning small">Couldn't read Drive just now, so nothing shows as there or missing. Try again in a minute.</div>{% endif %}
