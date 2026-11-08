@@ -241,16 +241,6 @@ def invoice_states(invoices, app_invoices, deposits):
         x = q.get(inv['id'])
         if not x:
             continue
-        if abs((inv['total'] or 0) - x['total']) >= 0.005:
-            exc.append({'key': f"invdiff:{inv['id']}:{inv['total']}:{x['total']}", 'kind': 'Invoice differs in QuickBooks', 'date': inv['created'][:10],
-                        'name': inv['bill_name'], 'amount': inv['total'],
-                        'detail': f"{inv['id']} is ${inv['total'] or 0:,.2f} in drapps but ${x['total']:,.2f} in QuickBooks "
-                                  '(changed by hand, or a deleted invoice number used again). Fix QuickBooks to match.', 'link': inv['id']})
-            continue
-        if inv['status'] == 'Paid' and x['balance'] >= 0.005:
-            exc.append({'key': f"invpaid:{inv['id']}", 'kind': 'Invoice paid in drapps, open in QuickBooks', 'date': str(inv.get('paid_date') or ''),
-                        'name': inv['bill_name'], 'amount': x['balance'],
-                        'detail': f"{inv['id']} is marked paid in drapps; receive the payment against it in QuickBooks", 'link': inv['id']})
         if inv['status'] == 'Open' and x['balance'] < 0.005 and x['paid_date']:
             paid.append((inv, {'paid_date': x['paid_date'], 'paid_ref': 'QuickBooks payment', 'paid_amount': x['total']}))
         elif inv['status'] == 'Void' and x['balance'] >= 0.005:
@@ -262,10 +252,4 @@ def invoice_states(invoices, app_invoices, deposits):
                             'date': hit['paid_date'], 'name': inv['bill_name'], 'amount': hit['paid_amount'],
                             'detail': f"A {hit['paid_date']} deposit looks like {inv['id']}, but the invoice is still open in QuickBooks. "
                                       'Match the deposit to the invoice in Banking instead, or the income counts twice.', 'link': inv['id']})
-    ours = {inv['id'] for inv in invoices}
-    for x in app_invoices:
-        if x['number'] not in ours and x['balance'] >= 0.005:
-            exc.append({'key': f"invgone:{x['number']}:{x['id']}", 'kind': 'Invoice deleted in drapps, open in QuickBooks', 'date': '',
-                        'name': x['number'], 'amount': x['balance'],
-                        'detail': f"{x['number']} is no longer in drapps but is still owed in QuickBooks. Void or delete it there.", 'link': ''})
     return paid, exc
