@@ -162,6 +162,22 @@ for rid, veh in d.execute('select id, vehicle from result_rows where vehicle lik
     if new != veh:
         d.execute('update result_rows set vehicle = ? where id = ?', (new or None, rid)); uncoloured += 1
 print('car colours removed', uncoloured)
+# Indexed classes printed per car class: the Pro class lists "proevx", "procm", "procs" and the Ladies class "libs", "licamt"
+# (the prefix plus the car's own class). When the sheet's places run straight through them (1T, 2T, 3T, 4 with no repeat)
+# they are one class, scored on indexed time, so they become one table "Pro" / "Ladies" with the car class beside each driver.
+indexed = 0
+for (fid,) in d.execute("select distinct file_id from result_rows where lower(class) glob 'pro?*' or lower(class) glob 'li?*'").fetchall():
+    rows = d.execute('select id, class, position, class_place from result_rows where file_id = ?', (fid,)).fetchall()
+    for prefix, name in (('pro', 'Pro'), ('li', 'Ladies')):
+        grp = [r for r in rows if r[1] and r[1].lower().startswith(prefix) and len(r[1]) > len(prefix)]
+        if len({r[1].lower() for r in grp}) < 2:
+            continue
+        use_cp = any(r[3] for r in grp)          # PAX/raw sheets carry the class place; class sheets print it as the position
+        places = [re.match(r'\d+', str((r[3] if use_cp else r[2]) or '')) for r in grp]
+        nums = [int(m[0]) for m in places if m]
+        if len(nums) >= 2 and len(nums) == len(set(nums)):
+            d.executemany('update result_rows set section = ? where id = ?', [(name, r[0]) for r in grp]); indexed += len(grp)
+print('indexed-class rows grouped (Pro, Ladies)', indexed)
 # Year, make and model of each car (the printed car text is kept as it is).
 import importlib.util as _iu
 _spec = _iu.spec_from_file_location('cars', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cars.py'))
@@ -319,7 +335,8 @@ for (eid,) in d.execute('''select id from events where id not in (select distinc
 d.execute('alter table files add column label text')
 d.execute('alter table files add column sort integer')
 def sheet_label(nm):
-    low = (nm or '').lower().replace('_', ' ').replace('-', ' ')
+    low = re.sub(r'(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])', ' ', nm or '')    # "BeforNats_RawResults" -> "Befor Nats Raw Results"
+    low = low.lower().replace('_', ' ').replace('-', ' ')
     if re.search(r'leg\s*by\s*leg', low):
         base, srt = 'Leg scores', 5
     elif re.search(r'\bpax\b|\bindex\b', low):
@@ -335,6 +352,7 @@ def sheet_label(nm):
     q = []
     for rx, word in ((r'\bsat(urday)?\b', 'Saturday'), (r'\bsun(day)?\b', 'Sunday'), (r'\b(am|morning)\b', 'AM'),
                      (r'\b(pm|afternoon)\b', 'PM'), (r'\bday\s*([12])\b', 'Day {}'), (r'\bheat\s*(\d)\b', 'Heat {}'),
+                     (r'\brun\s*group\s*(\d)', 'Run group {}'), (r'\btrials?\b', 'Trials'), (r'\bdiv\s*champ', 'Championship'),
                      (r'\bcourse\s*([ab12])\b', 'Course {}')):
         m = re.search(rx, low)
         if m:
@@ -353,6 +371,13 @@ for i, nm, given in d.execute('select id, name, sheet_label from files').fetchal
         lab = nm.rsplit(' - ', 1)[1][:-4]
         g = re.search(r'group\s*(\d+)', lab, re.I)
         srt = (int(g[1]) if g else 50) * 10 + next((k for k, w in enumerate(('saturday', 'race 1', 'qualifying', 'sunday', 'race 2', 'feature'), 1) if w in lab.lower()), 7)
+    if not given and lab.startswith('Class results'):     # the sheet itself says what it is when the file name does not
+        k = d.execute('''select count(*), sum(total is not null), sum(raw_time is not null), sum(pax_time is not null)
+                         from result_rows where file_id = ?''', (i,)).fetchone()
+        if k[0] and not k[1] and k[3]:
+            lab, srt = 'PAX' + lab[len('Class results'):], srt + 1
+        elif k[0] and not k[1] and k[2] and not k[3]:
+            lab, srt = 'Raw' + lab[len('Class results'):], srt + 2
     d.execute('update files set label = ?, sort = ? where id = ?', (lab, srt, i))
 # the same results posted twice (a PDF and a web page, or a revision): keep one sheet, the latest revision or the
 # fuller one; the other file stays linked under Original files
