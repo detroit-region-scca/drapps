@@ -21,6 +21,7 @@ dates.py and export_records.py. Safe to run again: earlier Sim Racing rows are r
 
 Usage: sim_import.py <scca.db> <league.json> <champions.csv>   (needs WORKSPACE_SA and TIMING_RESULTS_FOLDER_ID)
 """
+import hashlib
 import csv
 import io
 import json
@@ -72,6 +73,7 @@ class Drive:
 
     def __init__(self):
         self.s = drive()
+        self._seen = {}
 
     def _find(self, name, parent, folder=False):
         q = f"'{parent}' in parents and trashed=false and name='{name.replace(chr(39), chr(92) + chr(39))}'"
@@ -84,8 +86,27 @@ class Drive:
         return self._find(name, parent, True) or self.s.post(self.API, params=self.P, json=dict(
             name=name, parents=[parent], mimeType='application/vnd.google-apps.folder')).json()['id']
 
+    def _listing(self, parent):
+        """{name: (id, md5)} of the files in a folder, read once per run (one request per folder, not one per race)."""
+        if parent not in self._seen:
+            out, token = {}, None
+            while True:
+                r = self.s.get(self.API, params=dict(self.P, q=f"'{parent}' in parents and trashed=false", includeItemsFromAllDrives='true',
+                                                     pageSize=1000, fields='nextPageToken,files(id,name,md5Checksum)', **({'pageToken': token} if token else {})))
+                r.raise_for_status()
+                body = r.json()
+                out.update({f['name']: (f['id'], f.get('md5Checksum')) for f in body.get('files', [])})
+                token = body.get('nextPageToken')
+                if not token:
+                    break
+            self._seen[parent] = out
+        return self._seen[parent]
+
     def put(self, name, parent, body, description):
-        old = self._find(name, parent)
+        """Save a race's file in Drive, only when it is new or its contents changed (rebuilds then make no uploads)."""
+        old, md5 = self._listing(parent).get(name, (None, None))
+        if old and md5 == hashlib.md5(body.encode()).hexdigest():
+            return old
         if old:
             self.s.patch(f'{self.UP}/{old}', params=dict(self.P, uploadType='media'), data=body.encode(),
                          headers={'Content-Type': 'text/csv'}).raise_for_status()
@@ -161,10 +182,17 @@ def main(db_path, league_path, champs_path):
                 g = lambda h: row[col[h]].strip() if h in col and col[h] < len(row) else ''  # noqa: E731
                 nm = driver(g('Driver'))
                 best = re.sub(r'\s*Lap\s*\d+$', '', g('Best Lap'))
+                m = re.match(r'(.*?)([A-Za-z ]+)?$', g('Interval'))         # "-0:02.022Running", "---Running", "-1LDisconnected"
+                gap = (m[1] or '').strip()
+                state = (m[2] or '').strip()
+                laps = re.match(r'\d+', g('Laps'))
+                car = g('Car')
                 db.execute('insert into result_rows (id, file_id, event_id, person_id, program, year, date, section, position, class, car_number, '
-                           'driver, vehicle, total, raw_time, line_no, raw_line) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                           (new('result_rows'), fid, eid, person(nm), PROGRAM, year, f'{t:%Y-%m-%d}', ser, str(pos), ser, g('#'), nm, g('Car'),
-                            re.sub(r'(?i)running$', '', g('Interval')).strip() or None, best or None, pos, ' | '.join(row)))
+                           'driver, vehicle, total, best_lap, laps, status, line_no, raw_line) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                           (new('result_rows'), fid, eid, person(nm), PROGRAM, year, f'{t:%Y-%m-%d}', ser, str(pos), ser, g('#'), nm,
+                            None if car.lower() == ser.lower() else car or None,       # the car only when it says more than the class
+                            None if gap in ('', '---') else gap, best or None, laps[0] if laps else None,
+                            None if state.lower() in ('', 'running') else state, pos, ' | '.join(row)))
                 n_rows += 1
             n_races += 1
         # standings

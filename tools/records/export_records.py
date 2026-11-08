@@ -153,6 +153,15 @@ for i in junk:
     d.execute('delete from people where id = ?', (i,))
 print('cleaned names;', len(junk), 'junk names dropped')
 # ---- Data hygiene: rows, names, people, classes, events ----
+# A car is never shown with its colour ("2003 Kia Rio/White", "Kart Blue/Red"): RallyCross sheets print "Year Make Model / Color".
+COLOUR = r'(?:light |dark |bright |metallic |pearl )?(?:red|blue|black|white|silver|green|gr[ae]y|yellow|orange|purple|gold|tan|brown|maroon|burgundy|beige|pink|teal|bronze|champagne|navy|lime|copper|charcoal|cream)'
+COLOUR_TAIL = re.compile(r'(?i)(?:\s+' + COLOUR + r')?\s*/\s*' + COLOUR + r'(?:\s*(?:/|&|and|w/)\s*' + COLOUR + r')*\s*$')
+uncoloured = 0
+for rid, veh in d.execute('select id, vehicle from result_rows where vehicle like ?', ('%/%',)).fetchall():
+    new = COLOUR_TAIL.sub('', veh).strip(' /,-')
+    if new != veh:
+        d.execute('update result_rows set vehicle = ? where id = ?', (new or None, rid)); uncoloured += 1
+print('car colours removed', uncoloured)
 d.execute("delete from result_rows where position is null and total is null and raw_time is null and pax_time is null and status is null and file_id not in (select id from files where ocr = 'transcribed')")
 d.execute("delete from result_rows where file_id not in (select id from files where ocr = 'transcribed') and id not in (select min(id) from result_rows group by file_id, line_no, coalesce(person_id, -id))")   # a name repeated on one line; never two unlinked crew members
 d.execute("update result_rows set section = null where section like '%page % of %' or section glob '*[0-9][0-9][0-9][0-9]*'")

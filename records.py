@@ -80,15 +80,27 @@ def _summary(path, mtime):
 
 
 @functools.lru_cache(maxsize=4)
+def year_ranges(years):
+    """[2006, 2007, 2008, 2010] -> '2006-2008, 2010' (with en dashes), so a long run of seasons stays one short line."""
+    out, ys = [], sorted(set(years))
+    for y in ys:
+        if out and y == out[-1][1] + 1:
+            out[-1][1] = y
+        else:
+            out.append([y, y])
+    return ', '.join(f'{a}\u2013{b}' if b > a else str(a) for a, b in out)
+
+
 def _hall(path, mtime):
     titles = defaultdict(list)
-    for s in _q('select person_id, name, program, year, class from season_standings where place = 1 order by year'):
+    for s in _q("select person_id, name, program, year, class from season_standings where place = 1 "
+                "and lower(coalesce(class, '')) != 'overall' order by year"):      # an Overall table is not a class
         if real_name(s['name']):
             titles[s['person_id']].append(dict(s))
     names = {r['id']: r['name'] for r in _q('select id, name from people')}
     top = sorted(titles.items(), key=lambda kv: (-len(kv[1]), names.get(kv[0], '')))
     most_titles = [dict(id=pid, name=names.get(pid, ts[0]['name']), n=len(ts), programs=sorted({t['program'] for t in ts}),
-                        years=sorted({t['year'] for t in ts})) for pid, ts in top[:25]]
+                        years=year_ranges(t['year'] for t in ts)) for pid, ts in top[:25]]
     by_prog = {}
     for p in PROGRAMS:
         rows = sorted(((pid, [t for t in ts if t['program'] == p]) for pid, ts in titles.items()), key=lambda kv: (-len(kv[1]), names.get(kv[0], '')))
@@ -334,11 +346,13 @@ def event(eid):
             groups = [('', rs)]
         if not is_class or mixed:
             cols.insert(1, ('Class', 'class'))
+        if e['program'] == 'Sim Racing':     # iRacing gives the gap to the winner, not a total time
+            cols = [('Gap' if k == 'total' else lab, k) for lab, k in cols]
         if e['program'] == 'Rally':      # a rally crew is a driver and a navigator, scored in points
             cols = [({'driver': 'Crew', 'total': 'Score'}.get(k, lab), k) for lab, k in cols if k != 'vehicle']
         keep = ('position', 'driver', 'class')         # per table: leave out a column that is empty in it (a DNS-only table has no Score)
         groups = [(k, g, [(lab, c) for lab, c in cols if (c in keep or any(r[c] for r in g))
-                          and not (c == 'class' and k and len({r['class'] for r in g}) == 1)])      # one class under its heading: no column
+                          and not (c == 'class' and len({r['class'] for r in g}) == 1 and (k or len(groups) == 1))])   # one class: no column
                   for k, g in groups]
         same = [x for x in sheets if x['label'] == f['label']]
         lab = f['label'] + (f' {len(same) + 1}' if same else '')

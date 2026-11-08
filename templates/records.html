@@ -75,7 +75,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 <p class="text-muted">All-time leaders from the results and standings the region posted. Seasons with no files on record are missing, so long careers count short.</p>
 <div class="section-label mt-4">Most class championships</div>
 <div class="table-responsive"><table class="table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Titles</th><th>Programs</th><th>Seasons</th></tr></thead><tbody>
-{% for r in h.titles %}<tr><td class="num text-muted">{{ loop.index }}</td><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td>{{ r.programs|join(', ') }}</td><td>{{ r.years|join(', ') }}</td></tr>{% endfor %}
+{% for r in h.titles %}<tr><td class="num text-muted">{{ loop.index }}</td><td><a href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }}</a></td><td class="num">{{ r.n }}</td><td>{{ r.programs|join(', ') }}</td><td>{{ r.years }}</td></tr>{% endfor %}
 </tbody></table></div>
 <div class="section-label mt-4">Most events</div>
 <div class="table-responsive"><table class="table"><thead><tr><th class="num">#</th><th>Name</th><th class="num">Events</th><th>Years</th><th>Programs</th></tr></thead><tbody>
@@ -127,7 +127,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% if sheets %}
 {% if chooser %}
 <div class="mb-3" style="max-width:24rem"><label class="form-label small text-muted" for="sheetPick">Session</label>
-<select class="form-select" id="sheetPick">{% for g, ss in chooser %}{% if g %}<optgroup label="{{ g }}">{% endif %}{% for s in ss %}<option value="sheet{{ s.id }}">{{ s.part if g else s.label }}</option>{% endfor %}{% if g %}</optgroup>{% endif %}{% endfor %}</select></div>
+<select class="form-select" id="sheetPick">{% for g, ss in chooser %}{% if g %}<optgroup label="{{ g }}">{% endif %}{% for s in ss %}<option value="sheet{{ s.id }}">{{ g ~ " · " ~ s.part if g else s.label }}</option>{% endfor %}{% if g %}</optgroup>{% endif %}{% endfor %}</select></div>
 <script>document.getElementById('sheetPick').addEventListener('change', function () {
   document.querySelectorAll('.tab-pane').forEach(function (p) { p.classList.toggle('show', p.id === this.value); p.classList.toggle('active', p.id === this.value); }, this); });</script>
 {% elif sheets|length > 1 %}<ul class="nav nav-tabs mb-3" role="tablist">{% for s in sheets %}
