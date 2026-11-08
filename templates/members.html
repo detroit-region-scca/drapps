@@ -294,7 +294,7 @@
 {# ================================================================== Log #}
 {% elif view == 'log' %}
 <div class="page-title">Worker points log</div>
-<p class="text-muted">Who added and who spent points in {{ year }}: {{ '{:,.2f}'.format(added).rstrip('0').rstrip('.') }} added, {{ '{:,.2f}'.format(spent).rstrip('0').rstrip('.') }} spent.</p>
+<p class="text-muted">Who added and who spent points in {{ year }}: {{ '{:,.3f}'.format(added).rstrip('0').rstrip('.') }} added, {{ '{:,.3f}'.format(spent).rstrip('0').rstrip('.') }} spent.</p>
 {% if rows %}
 <div class="card"><table class="table table-sm align-middle mb-0" id="pointslog">
     <thead><tr><th class="ps-3">Date</th><th>Member</th><th class="text-end">Points</th><th>What for</th><th class="pe-3">Entered by</th></tr></thead>
