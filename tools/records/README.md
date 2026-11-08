@@ -51,7 +51,13 @@ sorting step and OCR use the saved text. After a rebuild, pack the folder again 
    `gcloud compute scp ... drapps:/tmp/records.db` then `sudo install -o 1000 -g 1000 -m 644` into
    `/opt/drscca/app/data/records.db`. No restart needed.
 
-Rows are read automatically, so some are wrong; the original file is linked from each event in Records.
+The export also: labels each sheet from its file name split into words, or from its contents when the name does not
+say (a sheet of raw times only is Raw); groups the Pro and Ladies index classes ("procm", "libs") into one class when the
+sheet's places run through them; removes car colours from the car text; and splits each car into year, make and model
+(`cars.py`) for the person pages and the most common cars lists. A rebuild from `run-from-build.sh` takes about four
+minutes.
+
+Rows the readers took that no transcription replaces can still be wrong; the original file is linked from each event.
 
 ## Transcriptions and checks (2026-11-08 on)
 

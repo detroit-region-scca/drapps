@@ -31,11 +31,11 @@ That is all. There is no server password: admin access goes through Google's sig
 | Live timing pages | container `livetiming-web`, at livetiming.drscca.org | See "Live timing" |
 | The record | Google Sheets and Drive folders in the DRSCCA Apps Shared Drive | The app is a front end to these |
 | App state | `/opt/drscca/app/data/` | See below |
-| Secrets | `/opt/drscca/data/secrets/` (root only) | See "Secrets" |
+| Secrets | `/opt/drscca/data/secrets/` (root only; the QuickBooks token in `qbo/`, owned by drapps) | See "Secrets" |
 | Host jobs | systemd units from `deploy/gcp/systemd/` | See "Automatic jobs" |
-| QuickBooks | `/opt/drscca/qbo-mcp` and its one token file | Read only for the sync |
+| QuickBooks | `/opt/drscca/qbo-mcp` and its one token file | Read only for the sync; an AI assistant reaches it as the `qbo-tunnel` service account, which may only open the IAP tunnel to this VM and run `/opt/drscca/qbo-mcp.sh` |
 | DNS | drscca.org zone at WordPress.com: `drapps`, `drevent`, `livetiming` A records | Point at the fixed IP |
-| Code | GitHub, public | Tests run on every push |
+| Code | GitHub `detroit-region-scca/drapps`, public | Tests run on every push |
 
 The server only accepts web (80/443) and live timing uploads (2222) from the internet. Admin SSH (22) is
 allowed only from Google's IAP range, so you connect through Google:
