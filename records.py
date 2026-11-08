@@ -196,7 +196,8 @@ def home():
             (select count(*) from season_standings s where s.person_id = p.id and s.place = 1) t
             from people p where p.name like ? order by n desc limit 30''', like)
         events = _q('select id, program, date, year, name from events where name like ? order by date desc limit 20', like)
-    return render_template('records.html', **_ctx(view='home', q=q, people=people, events=events))
+    top = _hall(PATH, os.path.getmtime(PATH))['titles'][:3]
+    return render_template('records.html', **_ctx(view='home', q=q, people=people, events=events, top=top))
 
 
 @bp.route('/hall-of-fame')
