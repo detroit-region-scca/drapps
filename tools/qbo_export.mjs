@@ -7,8 +7,6 @@
 //   outstanding  checks since PAYMENTS_SINCE the bank has not cleared yet (QuickBooks "Clr" blank; voided $0 checks left out)
 //   deposits  deposit lines since PAYMENTS_SINCE (date, amount, description, payer), to match against open invoices
 //   balance_sheet  today's balance sheet to two levels; receivables  every invoice still owed
-//   app_invoices  the invoices drapps put in QuickBooks (numbered INV-), with balance and payment date
-//   income_accounts  active income account names, for the account a drapps invoice goes to
 // Runs on the machine that holds the QuickBooks connection (the qbo-mcp install and its token
 // store); the web app never talks to QuickBooks. QBO_MCP_DIR points at that install. Read only (writes are qbo_write.mjs).
 const dir = process.env.QBO_MCP_DIR || `${process.env.HOME}/.mcp-servers/qbo-mcp`;
@@ -141,20 +139,8 @@ const bwalk = (rows, depth) => {
 };
 bwalk(bs.Rows?.Row, 0);
 
-// Every invoice still owed, and every invoice the apps made (numbered INV-), to mark paid and check for doubles.
+// Every invoice still owed in QuickBooks, for the treasurer's report.
 const receivables = (await query('Invoice', "WHERE Balance > '0'")).map(i => ({
   number: i.DocNumber || '', date: i.TxnDate, due: i.DueDate || '', customer: i.CustomerRef?.name || '', total: i.TotalAmt, balance: i.Balance,
 }));
-const appInv = await query('Invoice', "WHERE DocNumber LIKE 'INV-%'");
-const payIds = [...new Set(appInv.flatMap(i => (i.LinkedTxn || []).filter(t => t.TxnType === 'Payment').map(t => t.TxnId)))];
-const payDate = {};
-if (payIds.length) for (const p of await query('Payment', `WHERE Id IN (${payIds.map(x => `'${x}'`).join(', ')})`)) payDate[p.Id] = p.TxnDate;
-const app_invoices = appInv.map(i => ({
-  number: i.DocNumber, id: i.Id, total: i.TotalAmt, balance: i.Balance,
-  paid_date: (i.LinkedTxn || []).filter(t => t.TxnType === 'Payment').map(t => payDate[t.TxnId] || '').sort().pop() || '',
-}));
-
-const income_accounts = (await query('Account', "WHERE AccountType = 'Income' AND Active = true")).map(a => a.Name);
-
-console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding, deposits, balance_sheet, receivables,
-                             app_invoices, income_accounts }));
+console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding, deposits, balance_sheet, receivables }));

@@ -1,11 +1,7 @@
-// The only QuickBooks writes the apps make, asked for by qbo_nightly.py as one JSON list on stdin:
+// The only QuickBooks write the apps make, asked for by qbo_nightly.py as one JSON list on stdin:
 //   {op: 'attach', ref, type, id, files: [{path, name, contentType}]}
 //       uploads receipts onto a QuickBooks transaction (type Purchase or BillPayment). A file whose name is
-//       already attached to that transaction is skipped, so running it twice adds nothing.
-//   {op: 'invoice', ref, doc, date, due, customer: {name, email, address}, project, account, memo, note, lines: [{description, quantity, unit_price, amount}]}
-//       creates the invoice once, numbered doc (the drapps invoice number). Billed to the event's QuickBooks
-//       project when the invoice is for an event (so it lands in that event's profit and loss), otherwise to the
-//       customer (found by name, or made). Each line uses a service item for the program's income account.
+//       already attached to that transaction is skipped, so running it twice adds nothing. Amounts never change.
 // Prints [{ref, ok, ...}] as JSON. Runs where the QuickBooks connection is (see qbo_export.mjs).
 import { readFileSync } from 'node:fs';
 
@@ -22,7 +18,6 @@ const call = async (path, init = {}) => {
 };
 const esc = s => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 const query = async (entity, where) => (await call(`query?query=${encodeURIComponent(`SELECT * FROM ${entity} ${where} MAXRESULTS 1000`)}`)).QueryResponse?.[entity] || [];
-const post = (entity, obj) => call(entity.toLowerCase(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(obj) });
 
 async function attach(job) {
   const have = new Set((await query('Attachable', `WHERE AttachableRef.EntityRef.Type = '${job.type}' AND AttachableRef.EntityRef.value = '${esc(job.id)}'`))
@@ -41,60 +36,11 @@ async function attach(job) {
   return { added };
 }
 
-const items = {};
-async function itemFor(accountName) {
-  if (items[accountName]) return items[accountName];
-  const acct = (await query('Account', `WHERE Name = '${esc(accountName)}' AND AccountType = 'Income'`))[0];
-  if (!acct) throw new Error(`no income account named ${accountName}`);
-  const name = `${accountName} (invoices)`.slice(0, 100);
-  let it = (await query('Item', `WHERE Name = '${esc(name)}'`))[0];
-  if (!it) it = (await post('Item', { Name: name, Type: 'Service', IncomeAccountRef: { value: acct.Id } })).Item;
-  return (items[accountName] = it);
-}
-
-async function customerFor(job) {
-  if (job.project) {
-    const p = (await query('Customer', `WHERE DisplayName LIKE '%${esc(job.project)}%'`)).filter(x => x.IsProject && x.Active);
-    if (p.length === 1) return { cust: p[0], project: true };
-  }
-  const name = job.customer.name.replace(/:/g, ' ').slice(0, 100);
-  let cu = (await query('Customer', `WHERE DisplayName = '${esc(name)}'`))[0];
-  if (!cu) {
-    cu = (await post('Customer', {
-      DisplayName: name, CompanyName: name.slice(0, 50),
-      ...(job.customer.email ? { PrimaryEmailAddr: { Address: job.customer.email } } : {}),
-    })).Customer;
-  }
-  return { cust: cu, project: false };
-}
-
-async function invoice(job) {
-  const had = (await query('Invoice', `WHERE DocNumber = '${esc(job.doc)}'`))[0];
-  if (had) return { id: had.Id, existed: true };
-  const it = await itemFor(job.account);
-  const { cust, project } = await customerFor(job);
-  const addr = (job.customer.address || '').split('\n').map(s => s.trim()).filter(Boolean);
-  const bill = [job.customer.name, ...addr].slice(0, 5);
-  const inv = {
-    DocNumber: job.doc, TxnDate: job.date, DueDate: job.due, CustomerRef: { value: cust.Id },
-    BillAddr: Object.fromEntries(bill.map((s, i) => [`Line${i + 1}`, s.slice(0, 500)])),
-    ...(job.customer.email ? { BillEmail: { Address: job.customer.email } } : {}),
-    EmailStatus: 'NotSet', PrintStatus: 'NotSet',
-    PrivateNote: job.note.slice(0, 4000), ...(job.memo ? { CustomerMemo: { value: job.memo.slice(0, 1000) } } : {}),
-    Line: job.lines.map(l => ({
-      DetailType: 'SalesItemLineDetail', Amount: l.amount, Description: l.description.slice(0, 4000),
-      SalesItemLineDetail: { ItemRef: { value: it.Id }, Qty: l.quantity || 1, UnitPrice: l.unit_price },
-    })),
-  };
-  const made = (await post('Invoice', inv)).Invoice;
-  return { id: made.Id, total: made.TotalAmt, customer: cust.DisplayName, project };
-}
-
 const jobs = JSON.parse(readFileSync(0, 'utf8'));
 const out = [];
 for (const job of jobs) {
   try {
-    out.push({ ref: job.ref, ok: true, ...(job.op === 'attach' ? await attach(job) : await invoice(job)) });
+    out.push({ ref: job.ref, ok: true, ...(await attach(job)) });
   } catch (e) {
     out.push({ ref: job.ref, ok: false, error: String(e.message || e) });
   }

@@ -35,11 +35,10 @@ drapps.drscca.org. Keeping it running: [docs/RUNBOOK.md](docs/RUNBOOK.md).
   through a signed link. App email goes to role groups (autocross@, treasurer@ and so on), never a person's
   own inbox, so mail follows the job. The sign-in code is the one exception.
 - **QuickBooks runs outside the web app.** A nightly host job reads QuickBooks and writes actuals, paid status,
-  the balance sheet, money owed and a books check into the sheets. Its only QuickBooks writes
-  (`tools/qbo_write.mjs`): a paid funds request's receipts are attached to its check or card statement, and each
-  new drapps invoice is entered as a QuickBooks invoice (billed to the event's project when it has one), so its
-  deposit is matched to the invoice in Banking. Bills are not used: checks are written the usual way. The
-  Treasurer page's Sync now button asks for an extra run; creating an invoice asks for one too.
+  the balance sheet, money owed and a books check into the sheets. Its only QuickBooks write
+  (`tools/qbo_write.mjs`) attaches a paid funds request's receipts to its check or card statement; amounts are
+  never changed. Invoices stay in drapps only (kept simple on purpose, 2026-11-08). The Treasurer page's Sync
+  now button asks for an extra run.
 
 ## Where it runs
 

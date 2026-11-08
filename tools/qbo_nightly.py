@@ -6,8 +6,7 @@
 4. Open funds requests that QuickBooks shows as paid are marked paid (check number or region card)
 5. Registered events tied to the annual plan line they clearly match; unclear ones go to the exceptions
 6. Exceptions for the treasurer -> Annual Plan sheet, 'QBO Exceptions' tab
-7. Writes to QuickBooks (tools/qbo_write.mjs), the only ones the apps make: a paid request's receipts are attached
-   to its check or card statement, and new drapps invoices are entered (then marked paid when QuickBooks says so)
+7. The one QuickBooks write (tools/qbo_write.mjs): a paid request's receipts are attached to its check or card statement
 8. Balance sheet and money owed -> Annual Plan sheet, 'QBO Balance Sheet' and 'QBO Receivables' tabs, for the report
 
 Run on the machine with the QuickBooks connection (see qbo_export.mjs); the web app only reads what this writes.
@@ -86,16 +85,6 @@ def main():
     except Exception as e:      # the sync's reading and mirroring must go on whatever a write does
         say.append(f'QuickBooks writes failed: {e}')
 
-    inv_all, inv_paid = [], []
-    try:
-        import inv_store
-        if inv_store.enabled():
-            inv_all = inv_store.invoices()
-            inv_paid, inv_exc = Q.invoice_states(inv_all, data.get('app_invoices', []), data.get('deposits', []))
-            exc += inv_exc
-    except Exception as e:
-        say.append(f"invoice check failed: {e}")
-
     events = load_events()
     exc += Q.exceptions(reqs, data['payments'], events, data['projects'], today)
     if P.enabled():
@@ -143,13 +132,8 @@ def main():
         used_deposits = set()
         try:
             import inv_store
-            for inv, paid in inv_paid:      # invoices in QuickBooks: paid when QuickBooks says so
-                inv_store.update(inv['id'], status='Paid', closed_by=WHO, **paid)
-                log_audit_event('INVOICE_PAID', WHO, {'id': inv['id'], 'amount': paid['paid_amount'], 'ref': paid['paid_ref']})
-                say.append(f"invoice {inv['id']} paid in QuickBooks")
-            in_qbo = {x['number'] for x in data.get('app_invoices', [])}
-            if inv_store.enabled():         # older invoices, never in QuickBooks: paid by a deposit that names them
-                for inv, paid in Q.match_invoices([i for i in inv_all if i['id'] not in in_qbo], data.get('deposits', [])):
+            if inv_store.enabled():
+                for inv, paid in Q.match_invoices(inv_store.invoices(), data.get('deposits', [])):
                     inv_store.update(inv['id'], status='Paid', closed_by=WHO, **paid)
                     log_audit_event('INVOICE_PAID', WHO, {'id': inv['id'], 'amount': paid['paid_amount'], 'ref': paid['paid_ref']})
                     say.append(f"invoice {inv['id']} paid by {paid['paid_ref']}")
@@ -197,7 +181,7 @@ ATTACHED = os.path.join(ROOT, 'data', 'qbo-attached.json')   # {request id: [Dri
 
 
 def qbo_writes(data, reqs, say):
-    """Attach paid requests' receipts and enter new invoices in QuickBooks. Returns exception rows for what failed."""
+    """Attach paid requests' receipts in QuickBooks. Returns exception rows for what failed."""
     from storage import drive_files, drive_download
     import re
     try:
@@ -234,21 +218,13 @@ def qbo_writes(data, reqs, say):
                 continue
             ids[r['id']] = [f['id'] for f in new]
             jobs.append({'op': 'attach', 'ref': r['id'], 'type': target[0], 'id': target[1], 'files': files})
-        adds = []
-        if inv_enabled():
-            import inv_store
-            in_qbo = {x['number'] for x in data.get('app_invoices', [])}
-            full = [inv_store.get(i['id']) for i in Q.invoices_to_add(inv_store.invoices(), in_qbo)]
-            adds = [Q.invoice_job(inv, data.get('income_accounts', [])) for inv in full if inv and inv['lines']]
-        jobs += adds
         if not jobs:
             if not DRY:
                 _save(done)
             return exc
         if DRY:
             for j in jobs:
-                say.append(f"would write: {j['op']} {j['ref']}" + (f" ({len(j['files'])} files to {j['type']} {j['id']})" if j['op'] == 'attach'
-                                                                   else f" to {j['account']}" + (f", project {j['project']}" if j['project'] else '')))
+                say.append(f"would attach {len(j['files'])} files of {j['ref']} to {j['type']} {j['id']}")
             return exc
         res = json.loads(subprocess.run(['node', os.path.join(HERE, 'qbo_write.mjs')], input=json.dumps(jobs), check=True,
                                         capture_output=True, text=True).stdout)
@@ -256,16 +232,13 @@ def qbo_writes(data, reqs, say):
         if not r['ok']:
             say.append(f"QuickBooks {j['op']} {j['ref']} failed: {r['error']}")
             exc.append({'key': f"qbowrite:{j['op']}:{j['ref']}", 'kind': 'QuickBooks write failed', 'date': data['as_of'], 'name': j['ref'],
-                        'amount': None, 'detail': f"Could not {'attach the receipts of' if j['op'] == 'attach' else 'enter'} {j['ref']}: {r['error']}"[:300],
+                        'amount': None, 'detail': f"Could not attach the receipts of {j['ref']}: {r['error']}"[:300],
                         'link': j['ref']})
-        elif j['op'] == 'attach':
+        else:
             done[j['ref']] = done.get(j['ref'], []) + ids[j['ref']]
             if r['added']:
                 say.append(f"{j['ref']}: {len(r['added'])} receipts attached to QuickBooks {j['type']} {j['id']}")
                 log_audit_event('FUNDS_RECEIPTS_TO_QBO', WHO, {'id': j['ref'], 'files': len(r['added']), 'txn': f"{j['type']} {j['id']}"})
-        elif not r.get('existed'):
-            say.append(f"invoice {j['ref']} entered in QuickBooks ({r['customer']}{', event project' if r['project'] else ''})")
-            log_audit_event('INVOICE_TO_QBO', WHO, {'id': j['ref'], 'qbo_id': r['id'], 'total': r['total']})
     _save(done)
     return exc
 
@@ -275,14 +248,6 @@ def _save(done):
     with open(tmpf, 'w') as f:
         json.dump(done, f)
     os.replace(tmpf, ATTACHED)
-
-
-def inv_enabled():
-    try:
-        import inv_store
-        return inv_store.enabled()
-    except Exception:
-        return False
 
 
 def run():
