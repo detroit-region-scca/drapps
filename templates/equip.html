@@ -98,6 +98,15 @@
             table.repl td[data-label] { display: flex; align-items: center; }
             table.repl td.repl-save { margin-left: auto; }
         }
+        /* phones: each vehicle is a card (name, then labelled lines) instead of a six-column table */
+        @media (max-width: 767.98px) {
+            table.veh-cards thead { display: none; }
+            table.veh-cards tr { display: block; padding: .6rem .9rem; border-bottom: 1px solid var(--bs-border-color); }
+            table.veh-cards td { display: block; border: 0; padding: .1rem 0 !important; text-align: left !important; }
+            table.veh-cards td[data-label]:empty { display: none; }
+            table.veh-cards td[data-label]::before { content: attr(data-label) ": "; color: var(--bs-secondary-color); font-size: .85rem; }
+            table.veh-cards td:first-child a { font-weight: 600; }
+        }
         ul.where-inside li { padding: .1rem 0 .1rem .5rem; font-size: .92rem; }
 {% endblock %}
 {% macro repl_row(r, later) -%}
@@ -175,13 +184,13 @@
         {% if editor %}<a class="btn btn-sm btn-accent no-print" href="{{ url_for('equip.item') }}">+ Add a vehicle or trailer</a>{% endif %}</div>
     {% for cat in ('Vehicle', 'Trailer') %}{% set rows = big|selectattr('category', 'equalto', cat)|list %}
     <h2 class="h6 text-muted">{{ cat }}s</h2>
-    <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+    <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0 veh-cards">
         <thead><tr><th class="ps-3">Name</th><th>Kept at</th><th>Condition</th><th>Documents</th><th class="num">Value left</th><th class="num pe-3">Replace in</th></tr></thead>
         <tbody>{% for i in rows %}<tr class="row-link" onclick="location.href='{{ url_for('equip.item', item_id=i.id) }}'">
             <td class="ps-3"><a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}</a> <span class="small text-muted">{{ i.program }}</span></td>
-            <td>{{ i.place }}</td><td class="small">{{ i.condition or i.status }}</td>
-            <td class="small"><a href="{{ url_for('equip.item', item_id=i.id) }}#documents" class="{{ 'text-warning' if i.docs.missing else 'text-success' }}">{% if i.docs.error %}?{% elif i.docs.missing %}Missing {{ i.docs.missing|join(', ')|lower }}{% else %}✓ all on file{% endif %}</a></td>
-            <td class="num">{{ money(i.lc.left, 0) if i.lc and i.lc.left is not none else '' }}</td><td class="num pe-3">{{ i.lc.replace if i.lc else '' }}</td></tr>
+            <td data-label="Kept at">{{ i.place }}</td><td class="small" data-label="Condition">{{ i.condition or i.status }}</td>
+            <td class="small" data-label="Documents"><a href="{{ url_for('equip.item', item_id=i.id) }}#documents" class="{{ 'text-warning' if i.docs.missing else 'text-success' }}">{% if i.docs.error %}?{% elif i.docs.missing %}Missing {{ i.docs.missing|join(', ')|lower }}{% else %}✓ all on file{% endif %}</a></td>
+            <td class="num" data-label="Value left">{{ money(i.lc.left, 0) if i.lc and i.lc.left is not none else '' }}</td><td class="num pe-3" data-label="Replace in">{{ i.lc.replace if i.lc else '' }}</td></tr>
         {% else %}<tr><td class="ps-3 text-muted" colspan="6">None.</td></tr>{% endfor %}</tbody>
     </table></div></div>
     {% endfor %}
@@ -231,7 +240,7 @@
     {% elif view == 'documents' %}
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
         <div><div class="page-title m-0">{% if n_missing %}{{ n_missing }} documents missing{% else %}Every document is in Drive{% endif %}</div>
-            <div class="text-muted small">Each vehicle, trailer and storage place has a folder in Drive (Operations › Documents). Found one? Open the vehicle, trailer or place (or use "Add a document" below its row), say what it is and upload the file or take a photo; it is named and filed for you.
+            <div class="text-muted small">Each vehicle, trailer and storage place has a folder in Drive (Operations › Fleet Titles &amp; Registrations, or Storage Locations). Found one? Open the vehicle, trailer or place (or use "Add a document" below its row), say what it is and upload the file or take a photo; it is named and filed for you.
                 Files put straight into the Drive folder count too when the name starts with what it is, for example "Title - front.jpg".</div></div>
         <div class="d-flex gap-2 no-print">{% if root %}<a class="btn btn-sm btn-outline-light" href="{{ root }}" target="_blank" rel="noopener">Open Operations in Drive</a>{% endif %}
             <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('equip.documents', fresh=1) }}">Check again</a></div>
