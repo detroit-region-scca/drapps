@@ -34,6 +34,12 @@
         .nav-pills .nav-link.pill-add.active { background: #1a8a5a; color: #fff; font-weight: 600; }
         .nav-pills .nav-link.pill-auto.active { background: #555; color: #fff; font-weight: 600; }
         .nav-pills .nav-link.pill-use.active { background: #c2232e; color: #fff; font-weight: 600; }
+        @media (max-width: 767.98px) {
+            #review thead { display: none; }
+            #review tr { display: block; border-bottom: 1px solid var(--bs-border-color); padding: .5rem 0; }
+            #review td { display: block; border: 0; padding: .2rem 0; }
+            #review td input[name=points] { max-width: 7rem; }
+        }
 {% endblock %}
 {% block content %}
 
@@ -134,7 +140,7 @@
 {{ points_switch('add') }}
 <p class="text-muted">Who worked an event, and their points. Enter them within 30 days of the event.</p>
 <div class="row g-4"><div class="col-lg-8">
-<form method="post" class="card p-3">
+<form method="post" class="card p-3" enctype="multipart/form-data">
     <div class="row g-2 mb-3">
         <div class="col-md-8"><label class="form-label">Event</label>
             <select name="event" class="form-select" required>
@@ -158,8 +164,10 @@
     <div class="d-flex flex-wrap align-items-center gap-2">
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addPeople(1)">Add a person</button>
         <span class="small text-muted ms-auto" id="tally"></span>
-        <button class="btn btn-accent">Save</button>
     </div>
+    <div class="mt-3"><label class="form-label">Or upload the worker points sheet</label>
+        <input type="file" name="sheet" accept=".xlsx,.xlsm,.csv" class="form-control"></div>
+    <div class="d-flex justify-content-end mt-3"><button class="btn btn-accent">Review</button></div>
 </form>
 </div><div class="col-lg-4">{{ cheat() }}</div></div>
 <script>
@@ -184,6 +192,70 @@
         tally();
     }
     addPeople(Math.max(5, START.length), START);
+</script>
+
+{# ================================================================== Review before saving #}
+{% elif view == 'review' %}
+<div class="page-title">Check and save</div>
+<p class="mb-1"><strong>{{ ev.event_name if ev else what }}</strong>{% if code %} · {{ code }}{% endif %} · {{ day(first) }}</p>
+{% for t in tabs %}<p class="small mb-1 {{ '' if t.ok else 'text-warning fw-semibold' }}">Tab "{{ t.tab }}"{% if t.title %} ({{ t.title|join(' · ') }}){% endif %}: {{ t.lines|length }} lines, {{ '%g'|format(t.sum) }} points.
+    {% if t.total is none %}No Total on the sheet to check against.{% elif t.ok %}Matches the sheet's Total.{% else %}The sheet's Total says {{ '%g'|format(t.total) }}. Check the sheet.{% endif %}
+    {% if t.below %}<span class="text-warning fw-semibold">{{ t.below }} more {{ 'line' if t.below == 1 else 'lines' }} below the list {{ 'was' if t.below == 1 else 'were' }} not read; check the sheet.</span>{% endif %}</p>{% endfor %}
+<div class="mb-3"></div>
+<form method="post" class="card p-3" id="reviewform">
+    <input type="hidden" name="step" value="save">
+    <input type="hidden" name="event" value="{{ code or 'none' }}">
+    <input type="hidden" name="first" value="{{ first.isoformat() }}">
+    <input type="hidden" name="what" value="{{ form.get('what', '') }}">
+    <input type="hidden" name="seen" value="{{ seen }}">
+    <input type="hidden" name="sheet_name" value="{{ sheet_name }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <table class="table table-sm align-middle mb-2" id="review">
+        <thead><tr><th>Name given</th><th>Member</th><th style="width:7rem">Points</th></tr></thead>
+        <tbody>
+        {% for r in rows %}
+        <tr>
+            <td><input type="hidden" name="name" value="{{ r.name }}">{{ r.name or '(no name)' }}
+                {% if r.problem %}<div class="small text-warning">{{ r.problem }}</div>{% endif %}</td>
+            <td><select name="member" class="form-select form-select-sm">
+                {% if r.member %}
+                    {% if r.already %}<option value="">Leave out: already has {{ '%g'|format(r.already.points) }} points{% if r.already.by %} (entered by {{ r.already.by|join(', ') }}){% endif %}</option>
+                    {% elif r.twice %}<option value="">Leave out: listed twice</option>
+                    {% else %}<option value="">Leave out</option>{% endif %}
+                    <option value="{{ r.member }}" {{ 'selected' if r.choice == r.member }}>{{ 'Add anyway: ' if (r.already or r.twice) }}{{ r.member_name }} ({{ r.member }})</option>
+                {% else %}
+                    <option value="">{{ 'Leave out: pick who this is' if r.candidates else 'Leave out: not on the member list' }}</option>
+                    {% for c in r.candidates %}<option value="{{ c.member }}" {{ 'selected' if r.choice == c.member }}>{{ c.label }}{% if c.already %} · already has {{ '%g'|format(c.already.points) }} points{% endif %}</option>{% endfor %}
+                {% endif %}
+            </select></td>
+            <td><input name="points" inputmode="decimal" class="form-control form-control-sm" value="{{ '%g'|format(r.points) if r.points is not none }}" aria-label="Points"></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('members.enter') }}">Start over</a>
+        <span class="small text-muted ms-auto" id="rtally"></span>
+        <button class="btn btn-accent" id="savebtn">Save</button>
+    </div>
+</form>
+<script>
+    function rtally() {
+        let n = 0, t = 0, out = 0;
+        document.querySelectorAll('#review tbody tr').forEach(tr => {
+            if (!tr.querySelector('[name=member]').value) { out++; return; }
+            n++; t += parseFloat(tr.querySelector('[name=points]').value) || 0;
+        });
+        document.getElementById('rtally').textContent = `${n} ${n === 1 ? 'person' : 'people'} · ${t} points` + (out ? ` · ${out} left out` : '');
+        document.getElementById('savebtn').textContent = n ? `Save ${n}` : 'Save';
+    }
+    document.querySelectorAll('#review select, #review input').forEach(x => x.addEventListener('input', rtally));
+    document.getElementById('reviewform').addEventListener('submit', e => {
+        const b = document.getElementById('savebtn');
+        if (b.disabled) { e.preventDefault(); return; }
+        b.disabled = true; b.textContent = 'Saving…';
+    });
+    rtally();
 </script>
 
 {# ================================================================== Use points #}

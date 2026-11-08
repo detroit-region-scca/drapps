@@ -1,7 +1,7 @@
 """Members: worker points and member milestones (DRSCCA Members sheet + the public drscca.org sheet).
 
   Members      (keeper/officers) the SCCA list upload, members and points, lapsed, QuickBooks
-  Enter points (everyone signed in) one grid for an event or a single member; event chairs' entries wait for the keeper
+  Enter points (everyone signed in) typed names or the worker points sheet, checked on a review page before saving
   Milestones   (keeper/officers) each month's new members and anniversaries, published to drscca.org
 Nothing is added or spent without a click from the keeper or an officer.
 """
@@ -117,50 +117,158 @@ def member(mid):
 @bp.route('/enter', methods=['GET', 'POST'])
 @login_required
 def enter():
+    """Add points in two steps: the names (typed, or the worker points sheet uploaded) go to a review page where each
+    line shows the member it is, the members it might be, and any points already saved for the event; nothing is saved
+    until Save there. The API posts step=save straight away (its caller is the confirmation); the same checks run."""
     if (g := _guard()):
         return g
     mem = S.members()
     by_id = {m['member']: m for m in mem}
     events = _events_for_me()
-    if request.method == 'POST':
-        f = request.form
-        code = f.get('event', '').strip()
-        if code == 'none':
-            code = ''
-        ev = _events_by_code().get(code) or {}
-        first = L.to_date(f.get('first')) or L.to_date(ev.get('date')) or date.today()
-        what = f"Worked {ev.get('event_name')}" if ev else (f.get('what', '').strip() or 'Volunteer job')
-        grid = [{'member': n, 'points': p} for n, p in zip(f.getlist('member'), f.getlist('points'))]
-        rows, problems = L.rows_from_form(f.getlist('member'), f.getlist('points'), by_id, code, first, what, default_points=1)
-        if not code:
-            for r in rows:
-                r['kind'] = 'Role points'
-        keeper = _keeper()
-        problems += [f"{e['name']}: pick the name from the list (or ask the points keeper to add them)" for e in rows if not e['member']]
-        if problems or not rows:
-            for p in problems or ['Add at least one person.']:
-                flash(p, 'danger')
+    if request.method == 'GET':
+        grid = []
+        if request.args.get('member') in by_id:
+            grid = [{'member': L.pick_label(by_id[request.args['member']])}]
+        return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form={}, grid=grid))
+    f = request.form
+    code = f.get('event', '').strip()
+    if code == 'none':
+        code = ''
+    ev = _events_by_code().get(code) or {}
+    if f.get('event', '').strip() not in ('none', '') and not ev:
+        flash('Pick the event from the list.', 'danger')
+        return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form=f, grid=[]))
+    if ev:          # one code per event in the ledger (the one the event list shows); both count for duplicates
+        code = ev.get('custom_tag') or ev.get('unique_code') or code
+    codes = {c for c in (code, ev.get('custom_tag'), ev.get('unique_code')) if c}
+    first = L.to_date(f.get('first')) or L.to_date(ev.get('date')) or date.today()
+    what = f"Worked {ev.get('event_name')}" if ev else (f.get('what', '').strip() or 'Volunteer job')
+    if f.get('step') == 'save':
+        return _save_points(f, mem, by_id, events, code, codes, ev, first, what)
+    # step 1: the lines, typed and/or from the uploaded sheet
+    lines, sheet = [], None
+    for n, p in zip(f.getlist('member'), f.getlist('points')):
+        if (n or '').strip():
+            lines.append({'name': ' '.join(n.split()), 'points': L.num(p) if str(p or '').strip() else 1.0})
+    up = request.files.get('sheet')
+    if up and up.filename:
+        try:
+            sheet = _read_sheet(up)
+        except ValueError as e:
+            flash(str(e), 'danger')
+            grid = [{'member': x['name'], 'points': x['points']} for x in lines]
             return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form=f, grid=grid))
-        status = L.APPROVED
-        n = S.add_entries(rows, status, _who())
-        log_audit_event('POINTS_ENTERED', _who(), {'event': code, 'rows': n, 'points': sum(e['points'] for e in rows), 'status': status})
-        if keeper:
-            flash(f"Saved {n} entries ({sum(e['points'] for e in rows):+g} points).", 'success')
-            return redirect(url_for('members.home'))
+        lines += [{'name': x['name'], 'points': x['points']} for x in sheet['lines']]
+    if not lines:
+        flash('Add at least one person, or upload the worker points sheet.', 'danger')
+        return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form=f, grid=[]))
+    rows = L.review_lines(lines, mem, S.entries(), codes)
+    return _review(f, code, codes, ev, first, what, rows, sheet)
+
+
+def _read_sheet(up):
+    name = up.filename.lower()
+    data = up.read()
+    if name.endswith('.csv'):
+        import csv
+        rows = list(csv.reader(io.StringIO(data.decode('utf-8-sig', errors='replace'))))
+        return L.read_points_sheet([(up.filename, rows)])
+    if not name.endswith(('.xlsx', '.xlsm')):
+        raise ValueError('Upload the sheet as .xlsx (or .csv). For an old .xls file, open it and save it as .xlsx.')
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)   # read only: some forms carry drawings openpyxl cannot load
+        return L.read_points_sheet([(ws.title, list(ws.iter_rows(values_only=True))) for ws in wb.worksheets])
+    except ValueError:
+        raise
+    except Exception:
+        raise ValueError('Could not open that file. Save it as .xlsx and try again.')
+
+
+def _review(f, code, codes, ev, first, what, rows, sheet=None, chosen=None, seen_before=None):
+    """The review page. chosen: {line n: member} when coming back from a refused save, so the picks are kept, except a
+    member who got points for the event since the page was made (seen_before): that one goes back to Leave out, so a
+    second entry always takes a deliberate pick. Each page has a one-time token: it can be saved once."""
+    import json
+    import secrets
+    have = L.existing_points(S.entries(), codes)
+    for r in rows:
+        if chosen is not None:
+            r['choice'] = chosen.get(r['n'], '')
+            k = L.canon(r['choice']) if r['choice'] else ''
+            if k and have.get(k, {}).get('count', 0) > (seen_before or {}).get(k, 0):
+                r['choice'] = ''
+        else:                       # leave out by default only what needs a decision: a duplicate, a repeat, no match
+            r['choice'] = '' if (r['already'] or r['twice'] or not r['member']) else r['member']
+    ids = {L.canon(r['member']) for r in rows if r['member']} | {L.canon(c['member']) for r in rows for c in r['candidates']}
+    seen = json.dumps({k: have[k]['count'] for k in sorted(ids) if k in have})
+    tabs = []
+    for t in (sheet or {}).get('tabs', []):
+        got = sum(x['points'] or 0 for x in t['lines'])
+        tabs.append(dict(t, sum=got, ok=t['total'] is None or abs(got - t['total']) < 0.01))
+    sheet_name = (request.files.get('sheet').filename if request.files.get('sheet') else '') or f.get('sheet_name', '')
+    return render_template('members.html', **_ctx(view='review', seen=seen, token=secrets.token_urlsafe(16), code=code, ev=ev,
+                                                  first=first, what=what, rows=rows, tabs=tabs, sheet_name=sheet_name, form=f))
+
+
+def _save_points(f, mem, by_id, events, code, codes, ev, first, what):
+    import json
+    names, picks, pts = f.getlist('name'), f.getlist('member'), f.getlist('points')
+    from_review = bool(names)
+    try:                     # how many entries each member had for this event when the review page was made
+        seen = {str(k): int(v) for k, v in json.loads(f.get('seen') or '{}').items()}
+    except (ValueError, TypeError, AttributeError):
+        seen = {}
+    chosen, left_out, bad = [], [], []
+    for i, raw in enumerate(picks):
+        nm = names[i] if i < len(names) else raw
+        if not (raw or '').strip():
+            if (nm or '').strip():
+                left_out.append(nm.strip())
+            continue
+        mid = L.pick_id(raw, by_id)
+        if not mid:
+            bad.append(f"{raw}: pick the name from the list (or ask the points keeper to add them)")
+            continue
+        p = pts[i] if i < len(pts) else ''
+        chosen.append({'n': i, 'member': mid, 'name': nm, 'points': L.num(p) if str(p or '').strip() else (0.0 if from_review else 1.0),
+                       'seen': seen.get(L.canon(mid), 0)})
+    if not chosen and not bad:
+        bad = ['Nobody to save: every line is left out.']
+    rows = [{'date': first, 'member': c['member'], 'name': L.full_name(by_id[c['member']]), 'points': c['points'], 'what': what,
+             'event': code, 'kind': 'Earned' if code else 'Role points'} for c in chosen]
+
+    def build(entries):      # run again under the lock, on a fresh read of the Points tab
+        return rows, bad + L.save_check(by_id, entries, codes, chosen, allow_duplicates=f.get('allow_duplicates') == 'yes')
+    n, problems = (0, bad) if bad else S.save_checked(build, _who(), f.get('token', ''))
+    if problems == ['ALREADY_SAVED']:
+        flash('This list was already saved. Nothing was added again.', 'warning')
+        return redirect(url_for('members.home') if _keeper() else url_for('members.enter'))
+    if problems:
+        for p in problems:
+            flash(p, 'danger')
+        if not from_review:
+            grid = [{'member': m, 'points': p} for m, p in zip(picks, pts)]
+            return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form=f, grid=grid))
+        lines = [{'name': nm, 'points': L.num(pts[i]) if i < len(pts) and str(pts[i]).strip() else None} for i, nm in enumerate(names)]
+        rows2 = L.review_lines(lines, mem, S.entries(), codes)
+        return _review(f, code, codes, ev, first, what, rows2, chosen={i: (picks[i] if i < len(picks) else '') for i in range(len(names))},
+                       seen_before=seen)
+    total = sum(e['points'] for e in rows)
+    log_audit_event('POINTS_ENTERED', _who(), {'event': code, 'rows': n, 'points': total, 'status': L.APPROVED,
+                                               'left_out': len(left_out), 'sheet': f.get('sheet_name', '')})
+    if not _keeper():
         from utils import send_mail
-        ev = _events_by_code().get(code) or {}
         send_mail(f"Worker points added: {ev.get('event_name') or 'entries'} from {_who()}",
-                  f"{_who()} sent {n} worker points entries{(' for ' + ev.get('event_name', '')) if ev else ''}:\n\n"
-                  + '\n'.join(f"  {e['name']}: {e['points']:g} ({e['what']})" for e in rows)
+                  f"{_who()} saved {n} worker points entries{(' for ' + ev.get('event_name', '')) if ev else ''}"
+                  + (f" from the sheet {f.get('sheet_name')}" if f.get('sheet_name') else '') + ":\n\n"
+                  + '\n'.join(f"  {e['name']}: {e['points']:g}" for e in rows)
+                  + (("\n\nLeft out (not matched to a member, or already entered):\n" + '\n'.join(f'  {x}' for x in left_out)) if left_out else '')
                   + f"\n\nThey count now. Fix anything on the Members page: {url_for('members.home', _external=True)}",
                   recipient=os.environ.get('MEMBERSHIP_EMAIL', 'membership@drscca.org'))
-        flash(f'Thanks. {n} entries added; the points keeper has a copy.', 'success')
-        return redirect(url_for('members.enter'))
-    grid = []
-    if request.args.get('member') in by_id:
-        m = by_id[request.args['member']]
-        grid = [{'member': L.pick_label(m)}]
-    return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form={}, grid=grid))
+    msg = f"Saved {n} entries ({total:+g} points)." + (f" {len(left_out)} left out." if left_out else '')
+    flash(msg if _keeper() else msg + ' The points keeper has a copy.', 'success')
+    return redirect(url_for('members.home') if _keeper() else url_for('members.enter'))
 
 
 @bp.route('/upload', methods=['POST'])

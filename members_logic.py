@@ -105,6 +105,183 @@ def rows_from_form(names, points, members_by_id, event_code, when, specialty, de
                     'what': specialty or 'Worker', 'event': event_code or '', 'kind': kind})
     return out, problems
 
+# ---------- the worker points sheet (upload) and the review step ----------
+
+NAME_HEAD = re.compile(r"(?i)^\s*(workers?'?s?\s+)?name\s*$")
+POINTS_HEAD = re.compile(r'(?i)^\s*points?\s*$')
+SUFFIX = re.compile(r'(?i)[ ,]+(jr|sr|ii|iii|iv)\.?$')
+
+
+def _cell(v):
+    return '' if v is None else str(v).strip()
+
+
+TOTAL = re.compile(r'(?i)^\s*total\b')
+
+
+def read_points_sheet(sheets):
+    """The worker point form as volunteer leads send it: a few title lines, then Worker's Name | Points pairs (often two
+    pairs side by side), then a Total line and a footer (who submitted it, where to mail it). sheets: [(tab, rows)].
+    Every tab with the Name / Points heading and at least one line is read (a Day 1 and a Day 2 tab). A tab's list ends
+    at its Total line, or at two empty rows in a row, so the footer is never read as names; anything left in the name
+    columns below that is counted in 'below' for the page to mention. A name with no number in Points keeps points None.
+    Returns {'tabs': [{'tab', 'title', 'lines', 'total', 'below'}], 'lines': every line} or raises ValueError."""
+    tabs = []
+    for tab, rows in sheets:
+        rows = [list(r) for r in rows]
+        for hi, r in enumerate(rows):
+            cells = [_cell(c) for c in r]
+            pairs = []
+            for i, c in enumerate(cells):
+                if NAME_HEAD.match(c):
+                    j = next((k for k in range(i + 1, len(cells)) if cells[k]), None)
+                    if j is not None and POINTS_HEAD.match(cells[j]):
+                        pairs.append((i, j))
+            if not pairs:
+                continue
+            width = max(j for _, j in pairs) + 1
+            title = [t for t in (_cell(x) for row in rows[:hi] for x in row) if t][:6]
+            lines, total, started, blanks, end, done = [], None, False, 0, len(rows), set()
+            for k in range(hi + 1, len(rows)):
+                row = rows[k] + [None] * (width - len(rows[k]))
+                got = [(_cell(row[i]), row[j]) for i, j in pairs]
+                live = [(q, n, p) for q, (n, p) in enumerate(got) if q not in done]   # a column ends at its own Total
+                if all(not n and _cell(p) == '' for _, n, p in live):
+                    blanks += 1
+                    if started and blanks >= 2:
+                        end = k
+                        break
+                    continue
+                blanks = 0
+                hit = any(TOTAL.match(n) for _, n, _ in live)
+                for q, n, p in live:
+                    if TOTAL.match(n):
+                        total = (total or 0) + num(p)
+                        done.add(q)
+                        continue
+                    if (hit or total is not None) and not n and _cell(p) == '':
+                        done.add(q)       # after a Total, a column ends at its first empty cell (the footer follows)
+                        continue
+                    started = True
+                    if not n:
+                        if _cell(p):
+                            lines.append({'name': '', 'points': None, 'raw': _cell(p), 'cell': f'row {k + 1}', 'tab': tab})
+                        continue
+                    pv = p if isinstance(p, (int, float)) and not isinstance(p, bool) else (num(p) if re.fullmatch(r'\s*\d+(\.\d+)?\s*', _cell(p)) else None)
+                    lines.append({'name': ' '.join(n.split()), 'points': float(pv) if pv is not None else None, 'raw': _cell(p),
+                                  'cell': f'row {k + 1}', 'tab': tab})
+                if len(done) == len(pairs):
+                    end = k
+                    break
+            if total is None:                  # the Total a row or two below where the list stopped
+                for kk in range(end, min(end + 4, len(rows))):
+                    rr = rows[kk] + [None] * (width - len(rows[kk]))
+                    hits = [num(rr[j]) for i, j in pairs if TOTAL.match(_cell(rr[i]))]
+                    if hits:
+                        total, end = sum(hits), kk
+                        break
+            # after a Total line comes the footer (submitted by, mail to); without one, names further down may be missed
+            below = 0 if total is not None else sum(1 for rr in rows[end + 1:] for i, _ in pairs if i < len(rr) and _cell(rr[i]))
+            if lines:
+                tabs.append({'tab': tab, 'title': title, 'lines': lines, 'total': total, 'below': below})
+            break
+    if not tabs:
+        raise ValueError("No Worker's Name / Points list in that file. Use the worker points form (Worker's Name and Points columns).")
+    return {'tabs': tabs, 'lines': [x for t in tabs for x in t['lines']]}
+
+
+def _plain(n):
+    n = ' '.join(str(n or '').replace('.', ' ').split()).strip()
+    if ',' in n:                                     # "Last, First"
+        last, first = [x.strip() for x in n.split(',', 1)]
+        if first and not SUFFIX.fullmatch(',' + first):
+            n = f'{first} {last}'
+    return SUFFIX.sub('', n).lower()
+
+
+def candidates(name, members, limit=8):
+    """Members a sheet name might be: the same last name (suffixes and "Last, First" ignored), the same first initial
+    first. Shown in a short dropdown; never picked for the user."""
+    t = _plain(name).split()
+    if not t:
+        return []
+    first, last = t[0], t[-1]
+    out = []
+    for m in members:
+        mt = _plain(full_name(m)).split()
+        if mt and mt[-1] == last:
+            out.append((0 if mt[0][:1] == first[:1] else 1, full_name(m).lower(), m))
+    return [m for _, _, m in sorted(out, key=lambda x: (x[0], x[1]))][:limit]
+
+
+def review_lines(lines, members, entries, event_code):
+    """Each submitted line ready for the review page: the member it is (only an exact pick or an exact full name that
+    fits one member), the members it might be, the points it already has for this event, and what is wrong with it.
+    lines: [{'name', 'points'}]."""
+    by_id = {m['member']: m for m in members}
+    have = existing_points(entries, event_code)
+    seen, out = {}, []
+    for n, ln in enumerate(lines):
+        mid = pick_id(ln['name'], by_id)
+        cands = candidates(ln['name'], members) if not mid else []
+        if not mid and not cands:
+            same = [m for m in members if full_name(m).lower() == ' '.join(ln['name'].split()).lower()]
+            cands = same[:8]                          # the same name twice on the list: pick which
+        pts = ln.get('points')
+        problem = ''
+        if pts is None:
+            problem = 'No points on the sheet'
+        elif pts <= 0 or pts > MAX_POINTS_PER_LINE:
+            problem = f'{pts:g} points: check it'
+        dup = have.get(canon(mid)) if mid else None
+        twice = mid and canon(mid) in seen
+        if mid:
+            seen.setdefault(canon(mid), n)
+        out.append({'n': n, 'name': ln['name'], 'points': pts, 'member': mid, 'member_name': full_name(by_id[mid]) if mid else '',
+                    'candidates': [{'member': m['member'], 'label': pick_label(m), 'already': have.get(canon(m['member']))} for m in cands],
+                    'problem': problem,
+                    'already': dup, 'twice': bool(twice)})
+    return out
+
+
+def existing_points(entries, event_code):
+    """{member: {'points', 'count', 'by'}} already saved for this event (Approved, earned). event_code: the event's code,
+    or a set of its codes (an event can have a custom tag and its unique code). No event, no check."""
+    out = {}
+    codes = {c for c in ([event_code] if isinstance(event_code, str) else event_code or []) if c}
+    if not codes:
+        return out
+    for e in entries:
+        if e.get('event') in codes and e.get('status') == APPROVED and (e.get('points') or 0) > 0 and e.get('member'):
+            d = out.setdefault(canon(e['member']), {'points': 0.0, 'count': 0, 'by': []})
+            d['points'] += e['points']; d['count'] += 1
+            if e.get('by') and e['by'] not in d['by']:
+                d['by'].append(e['by'])
+    return out
+
+
+def save_check(members_by_id, entries, event_code, chosen, allow_duplicates=False):
+    # event_code: the event's code or the set of its codes
+    """The last check before saving, run again on the server whatever the page showed. chosen: [{'member', 'points',
+    'seen'}] (seen = how many entries the member already had for this event when the review page was made). Returns
+    problems: an unknown member, bad points, a member twice, or points saved for the event since the review."""
+    have = existing_points(entries, event_code)
+    problems, count = [], defaultdict(int)
+    for c in chosen:
+        m = members_by_id.get(c['member'])
+        if not m:
+            problems.append(f"{c.get('name') or c['member']}: not on the member list"); continue
+        if not (0 < c['points'] <= MAX_POINTS_PER_LINE):
+            problems.append(f"{full_name(m)}: {c['points']:g} points; use more than 0 and at most {MAX_POINTS_PER_LINE}")
+        count[canon(c['member'])] += 1
+        if count[canon(c['member'])] == 2:
+            problems.append(f"{full_name(m)} is listed twice: leave one out or add the points together")
+        h = have.get(canon(c['member']))
+        if h and not allow_duplicates and h['count'] > (c.get('seen') or 0):
+            problems.append(f"{full_name(m)} already has {h['points']:g} points for this event (entered by {', '.join(h['by']) or 'someone'})")
+    return problems
+
+
 def check_spending(entries, balances):
     """Problems if any member would go below zero."""
     use = defaultdict(float)

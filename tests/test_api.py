@@ -134,6 +134,7 @@ def test_worker_points_become_the_enter_form(client):
                                                'entries': [{'member': '123', 'points': 2}, {'member': 'Pat Example'}]}, headers=auth())
     s = client.sent[-1]
     assert s['path'] == '/members/enter' and s['form']['event'] == 'none' and s['form']['member'] == ['123', 'Pat Example']
+    assert s['form']['step'] == 'save' and s['form']['allow_duplicates'] == ''
     assert s['form']['points'] == [2, 1] and s['form']['first'] == '2026-11-01'
 
 

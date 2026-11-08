@@ -80,6 +80,45 @@ def add_entries(rows, status, who):
     return len(values)
 
 
+SAVES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'points-saves.json')
+
+
+def save_checked(build, who, token=''):
+    """Add points with the check and the write under one lock shared by every server process: read the Points tab
+    fresh, build(entries) -> (rows, problems), append only when there are no problems. token: the review page's one-time
+    token; a page already saved (a double click, the back button, a second tab) is refused. Returns (count, problems)."""
+    import json
+    import time
+    from filelock import FileLock
+    os.makedirs(os.path.dirname(SAVES_FILE), exist_ok=True)
+    with FileLock(SAVES_FILE + '.lock', timeout=60):
+        try:
+            used = json.load(open(SAVES_FILE))
+        except (OSError, ValueError):
+            used = {}
+        if token and token in used:
+            return 0, ['ALREADY_SAVED']
+        refresh()
+        rows, problems = build(entries())
+        if problems or not rows:
+            return 0, problems
+        def write(d):
+            tmp = SAVES_FILE + '.tmp'
+            json.dump(d, open(tmp, 'w'))
+            os.replace(tmp, SAVES_FILE)
+        if token:                 # recorded before the append: a retry after a timeout is refused, not saved twice
+            now = time.time()
+            used = {k: v for k, v in used.items() if now - v < 90 * 86400}
+            write(dict(used, **{token: now}))
+        try:
+            n = add_entries(rows, L.APPROVED, who)
+        except Exception:
+            if token:             # nothing reached the sheet as far as we know: let the page be saved again (the
+                write(used)       # fresh duplicate check still guards an event if the append did land)
+            raise
+        return n, []
+
+
 def delete_rows(row_numbers):
     with _lock:
         ws = worksheet(_sid(), 'Points')

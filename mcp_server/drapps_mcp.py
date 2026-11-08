@@ -332,10 +332,13 @@ def get_member(member: str) -> Any:
 
 
 @server.tool()
-def add_worker_points(entries: list[dict], event_code: str = '', what: str = '', date: str = '') -> Any:
-    """Worker points, as on Members > Enter. entries: [{"member": number or full name, "points": 1}].
-    event_code (#DR...) for an event; otherwise what (the volunteer job) and date (YYYY-MM-DD). Emails the points keeper."""
-    return _call('POST', '/members/points', {'entries': entries, 'event_code': event_code, 'what': what, 'date': date})
+def add_worker_points(entries: list[dict], event_code: str = '', what: str = '', date: str = '', allow_duplicates: bool = False) -> Any:
+    """Worker points, as on Members > Enter; saved at once, so show the list to the user and get their OK first.
+    entries: [{"member": number or full name, "points": 1}]. event_code (#DR...) for an event; otherwise what (the volunteer
+    job) and date (YYYY-MM-DD). A member who already has points for the event is refused unless allow_duplicates is true
+    (only after the user says the second entry is right). Emails the points keeper."""
+    return _call('POST', '/members/points', {'entries': entries, 'event_code': event_code, 'what': what, 'date': date,
+                                             'allow_duplicates': allow_duplicates})
 
 
 # ---------- Board ----------

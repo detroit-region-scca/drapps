@@ -138,6 +138,10 @@ which file it was applied to), and the build applies it too: copy `records-edits
 export. Never delete that file: it holds people's corrections. The nightly backup (`backup_sheets.py`) keeps 60 dated copies in `data/backups/`. New results that people add land in the Drive folder *Timing and Results / Results inbox*
 (`RESULTS_INBOX_FOLDER_ID`); they are read in later, in a batch. Records never holds worker points.
 
+Worker points: Add points (typed or the uploaded worker points sheet) shows a review page first; Save there is the only
+write. Each review page saves once (`data/points-saves.json` remembers saved pages), and the duplicate check runs again
+under a file lock on a fresh read, so two people sending the same names for an event cannot double-count them.
+
 ## Logs and restarts
 
 | Want | Command (on the server, in `/opt/drscca`) |

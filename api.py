@@ -503,12 +503,14 @@ def member_detail(mid):
 
 @bp.post('/members/points')
 def members_add_points():
-    """Worker points for an event or a volunteer job, as on Members > Enter.
+    """Worker points for an event or a volunteer job, as on Members > Enter (saved at once: the caller is the review).
     {"event_code": "#DR..." or "", "what": "job (when no event)", "date": "YYYY-MM-DD",
-     "entries": [{"member": "number or full name", "points": 1}]}"""
+     "entries": [{"member": "number or full name", "points": 1}], "allow_duplicates": false}
+    A member who already has points for the event is refused unless allow_duplicates is true."""
     d = _body()
     es = d.get('entries') or []
-    st, loc, fl = _forward('/members/enter', {'event': d.get('event_code') or 'none', 'what': d.get('what', ''), 'first': d.get('date', ''),
+    st, loc, fl = _forward('/members/enter', {'step': 'save', 'event': d.get('event_code') or 'none', 'what': d.get('what', ''),
+                                              'first': d.get('date', ''), 'allow_duplicates': 'yes' if d.get('allow_duplicates') is True else '',
                                               'member': [str(e.get('member', '')) for e in es], 'points': [e.get('points', 1) for e in es]})
     ok, errors = _result(st, loc, fl)
     return (jsonify(flashes=fl), 201) if ok else _err('Not saved.', errors=errors, flashes=fl)
