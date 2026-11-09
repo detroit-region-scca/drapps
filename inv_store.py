@@ -7,8 +7,10 @@ shared drive, Invoices folder, with each invoice's PDF in the PDFs folder beside
 Plain column headers, so the region can keep invoicing by hand from the sheet if the app is gone.
 """
 import io
+import json
 import os
 import threading
+import time
 from datetime import date, timedelta
 
 from filelock import FileLock
@@ -28,6 +30,9 @@ TERMS_DAYS = 30
 REMIT = {'payee': 'Detroit Region SCCA', 'lines': ['PO Box 401018', 'Redford, MI 48240-9018'], 'email': 'treasurer@drscca.org', 'web': 'drscca.org'}
 CACHE_SECONDS = 15
 LOCK = os.path.join(DATA_DIR, 'invoices.lock')
+# Numbers already issued and the New invoice pages already used: a number is never given out twice (not even after the
+# newest invoice is deleted), and a double click or the back button never makes a second invoice.
+ISSUED_FILE = os.path.join(DATA_DIR, 'invoices-issued.json')
 
 _lock = threading.Lock()
 _cache = {}
@@ -83,23 +88,54 @@ def _cell(v):
     return '' if v is None else v if isinstance(v, (int, float)) else str(v)
 
 
-def create(inv, lines):
-    """inv: INV_COLS fields except id/created/status/total/due; lines: [{description, quantity, unit_price}]. Returns the new invoice."""
+def _issued():
+    try:
+        with open(ISSUED_FILE) as f:
+            d = json.load(f)
+        return {'last': dict(d.get('last') or {}), 'tokens': dict(d.get('tokens') or {})}
+    except (OSError, ValueError):
+        return {'last': {}, 'tokens': {}}
+
+
+def _save_issued(d):
+    now = time.time()
+    d['tokens'] = {k: v for k, v in d['tokens'].items() if now - v.get('at', 0) < 90 * 86400}
+    tmp = ISSUED_FILE + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(d, f)
+    os.replace(tmp, ISSUED_FILE)
+
+
+def create(inv, lines, token=''):
+    """inv: INV_COLS fields except id/created/status/total/due; lines: [{description, quantity, unit_price}].
+    token: the New invoice page's one-time token. Returns (the invoice, True) when that page already made one
+    (nothing new is written), else (the new invoice, False)."""
     with FileLock(LOCK), _lock:
+        issued = _issued()
+        if token and token in issued['tokens']:
+            done = get(issued['tokens'][token]['id'])
+            if done:
+                return done, True
         ws = _ws('Invoices')
         year = date.today().year
         prefix = f'INV-{year}-'
         nums = [int(v[len(prefix):]) for v in ws.col_values(1) if v.startswith(prefix) and v[len(prefix):].isdigit()]
-        iid = f'{prefix}{max(nums, default=0) + 1:03d}'
+        n = max(nums + [int(issued['last'].get(str(year), 0))], default=0) + 1
+        iid = f'{prefix}{n:03d}'
         rows = [dict(ln, invoice_id=iid, amount=round((ln['quantity'] or 1) * ln['unit_price'], 2)) for ln in lines]
         total = round(sum(r['amount'] for r in rows), 2)
         today = date.today()
         row = dict(inv, id=iid, created=today.isoformat(), status='Open', total=total,
                    due=inv.get('due') or (today + timedelta(days=TERMS_DAYS)).isoformat())
+        # Recorded before the writes: a retry after a timeout part-way is refused rather than billed twice.
+        issued['last'][str(year)] = n
+        if token:
+            issued['tokens'][token] = {'id': iid, 'at': time.time()}
+        _save_issued(issued)
         ws.append_row([_cell(row.get(c)) for c in INV_COLS], value_input_option='RAW')
         _ws('Lines').append_rows([[_cell(r.get(c)) for c in LINE_COLS] for r in rows], value_input_option='RAW')
         refresh()
-        return dict(row, lines=rows)
+        return dict(row, lines=rows), False
 
 
 def update(inv_id, **fields):
@@ -239,11 +275,13 @@ def pdf_bytes(inv, region='Detroit Region SCCA'):
         p.set_font('Helvetica', 'B', 10.5)
         p.set_text_color(*ink)
         p.cell(cw, 14, v)
-    label(L + W - 16 - W * 0.3, y + 10, W * 0.3, 'Amount due', 'R')
+    status = inv.get('status') or 'Open'
+    due_now = 0 if status in ('Paid', 'Void') else inv['total']
+    label(L + W - 16 - W * 0.3, y + 10, W * 0.3, 'Amount due' if status == 'Open' else 'Status', 'R')
     p.set_xy(L + W - 16 - W * 0.3, y + 20)
     p.set_font('Helvetica', 'B', 15)
-    p.set_text_color(*navy)
-    p.cell(W * 0.3, 18, money(inv['total']), align='R')
+    p.set_text_color(*((20, 120, 60) if status == 'Paid' else grey if status == 'Void' else navy))
+    p.cell(W * 0.3, 18, money(due_now) if status == 'Open' else status.upper(), align='R')
     y += ph + 24
 
     # Bill to, and what it is for.
@@ -313,38 +351,53 @@ def pdf_bytes(inv, region='Detroit Region SCCA'):
     p.set_font('Helvetica', 'B', 10)
     p.set_xy(L + W - tw + 12, y)
     p.set_char_spacing(0.8)
-    p.cell(tw / 2, 28, 'TOTAL DUE')
+    p.cell(tw / 2, 28, 'TOTAL DUE' if status == 'Open' else 'TOTAL')
     p.set_char_spacing(0)
     p.set_font('Helvetica', 'B', 13)
     p.set_xy(L + W - tw / 2, y)
     p.cell(tw / 2 - 8, 28, money(inv['total']), align='R')
-    y += 28 + 30
+    y += 28
+    if status == 'Paid':
+        p.set_xy(L + W - tw, y + 6)
+        p.set_font('Helvetica', '', 9.5)
+        p.set_text_color(20, 120, 60)
+        ref = f" ({inv['paid_ref']})" if inv.get('paid_ref') else ''
+        p.cell(tw - 8, 14, f"Paid {_long_date(inv.get('paid_date'))}{ref}: {money(inv.get('paid_amount'))}. Thank you.", align='R')
+    elif status == 'Void':
+        p.set_xy(L + W - tw, y + 6)
+        p.set_font('Helvetica', 'B', 9.5)
+        p.set_text_color(*red)
+        p.cell(tw - 8, 14, 'This invoice is void. Nothing is owed.', align='R')
+    y += 30
 
     # How to pay, in a light panel.
     rows = [('Payable to', REMIT['payee']), ('Mail to', f"{REMIT['lines'][0]}, {REMIT['lines'][1]}"),
             ('Reference', f"Write {inv['id']} on your check"), ('Questions', REMIT['email'])]
     bh = 22 + 15 * len(rows) + 8
-    if y + bh > 792 - 72:
+    if status != 'Open':
+        bh = 0
+    elif y + bh > 792 - 72:
         p.add_page()
         y = 54
-    p.set_fill_color(*panel)
-    p.rect(L, y, W, bh, 'F')
-    p.set_fill_color(*navy)
-    p.rect(L, y, 3, bh, 'F')
-    label(L + 16, y + 10, W, 'How to pay')
-    yy = y + 26
-    for k, v in rows:
-        p.set_xy(L + 16, yy)
-        p.set_font('Helvetica', '', 9.5)
-        p.set_text_color(*grey)
-        p.cell(72, 13, k)
-        p.set_font('Helvetica', '', 10)
-        p.set_text_color(*ink)
-        p.cell(W - 100, 13, v)
-        yy += 15
+    if bh:
+        p.set_fill_color(*panel)
+        p.rect(L, y, W, bh, 'F')
+        p.set_fill_color(*navy)
+        p.rect(L, y, 3, bh, 'F')
+        label(L + 16, y + 10, W, 'How to pay')
+        yy = y + 26
+        for k, v in rows:
+            p.set_xy(L + 16, yy)
+            p.set_font('Helvetica', '', 9.5)
+            p.set_text_color(*grey)
+            p.cell(72, 13, k)
+            p.set_font('Helvetica', '', 10)
+            p.set_text_color(*ink)
+            p.cell(W - 100, 13, v)
+            yy += 15
     y += bh
     if inv.get('notes'):
-        y += 20
+        y += 20 if bh else 0
         label(L, y, W, 'Notes')
         p.set_xy(L, y + 14)
         p.set_font('Helvetica', '', 10)

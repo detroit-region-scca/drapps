@@ -46,7 +46,7 @@ VOLUNTEER_ENDPOINTS = {
     'records.home', 'records.hall', 'records.program', 'records.season', 'records.event', 'records.person', 'records.add',
     'fr.home', 'fr.new', 'fr.detail', 'fr.ask', 'fr.receipts', 'fr.delete',
     'fr.in_list', 'fr.in_new', 'fr.in_detail', 'fr.in_files', 'fr.in_delete',
-    'inv.home', 'inv.new', 'inv.detail', 'inv.pdf',
+    'inv.home', 'inv.new', 'inv.detail', 'inv.pdf', 'inv.delete_request',
 }
 # Reachable without signing in: the sign-in itself, and the emailed approval and confirmation links.
 PUBLIC_ENDPOINTS = {'home', 'static', 'logout', 'fr.approve_link', 'board.vote_link', 'inv.delete_confirm', 'auth.google', 'auth.google_back', 'privacy', 'short.go'}
@@ -181,7 +181,7 @@ def gate():
         import fr_store
         if not owns_request(fr_store.get(request.view_args.get('req_id'))):
             abort(403)
-    if ep in ('inv.detail', 'inv.pdf') and limited('invoices'):
+    if ep in ('inv.detail', 'inv.pdf', 'inv.delete_request') and limited('invoices'):
         import inv_store
         if not owns_invoice(inv_store.get(request.view_args.get('inv_id'))):
             abort(403)

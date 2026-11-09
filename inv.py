@@ -4,6 +4,7 @@ director sends the PDF to the customer; the treasurer marks it paid when the mon
 """
 import auth
 import os
+import secrets
 from datetime import date
 
 from flask import Blueprint, Response, abort, current_app, flash, redirect, render_template, request, session, url_for
@@ -20,6 +21,12 @@ bp = Blueprint('inv', __name__, url_prefix='/invoices')
 
 def _programs():
     return dict(load_programs(), OPS='Operations')
+
+
+def _copy_to():
+    """Where an official's copy of a new invoice goes (their role's group); None for volunteers, who type an address."""
+    u = auth.user()
+    return auth.group_address(u['email']) if u and u['level'] != 'volunteer' else None
 
 
 def _ctx(**kw):
@@ -77,7 +84,8 @@ def new():
         return g
     if request.method == 'GET':
         return render_template('inv.html', **_ctx(view='new', form={'program': request.args.get('program', ''), 'event_code': request.args.get('event', '')},
-                                                  events=_events(), rows=[{}] * 2, due=''))
+                                                  events=_events(), rows=[{}] * 2, due='', token=secrets.token_urlsafe(16),
+                                                  copy_to=_copy_to()))
     f = request.form
     errors, lines = [], []
     for desc, qty, price in zip(f.getlist('desc'), f.getlist('qty'), f.getlist('price')):
@@ -96,16 +104,27 @@ def new():
     if not f.get('bill_name', '').strip():
         errors.append('Who is the invoice to?')
     ev = next((e for e in load_events() if (e.get('custom_tag') or e.get('unique_code')) == f.get('event_code')), None)
+    if f.get('event_code') and (not ev or ev.get('program_code') != program):
+        errors.append('That event is not in the program picked. Pick the event again.')
+    if f.get('due'):
+        try:
+            date.fromisoformat(f['due'])
+        except ValueError:
+            errors.append('The due date is not a date.')
     if errors:
         for e in errors:
             flash(e, 'danger')
         rows = [{'description': d, 'quantity': q, 'unit_price': p} for d, q, p in zip(f.getlist('desc'), f.getlist('qty'), f.getlist('price'))]
-        return render_template('inv.html', **_ctx(view='new', form=f, events=_events(), rows=rows or [{}], due=f.get('due', ''))), 400
+        return render_template('inv.html', **_ctx(view='new', form=f, events=_events(), rows=rows or [{}], due=f.get('due', ''),
+                                                  token=f.get('token') or secrets.token_urlsafe(16), copy_to=_copy_to())), 400
     who = session.get('who', '') or 'Unknown'
-    inv = I.create({'program': program, 'event_code': f.get('event_code', '') if ev else '', 'event_name': ev['event_name'] if ev else '',
+    inv, again = I.create({'program': program, 'event_code': f.get('event_code', '') if ev else '', 'event_name': ev['event_name'] if ev else '',
                     'bill_name': f['bill_name'].strip(), 'bill_contact': f.get('bill_contact', '').strip(), 'bill_email': f.get('bill_email', '').strip(),
                     'bill_address': f.get('bill_address', '').strip(), 'due': f.get('due', ''), 'notes': f.get('notes', '').strip(),
-                    'created_by': who}, lines)
+                    'created_by': who}, lines, f.get('token', ''))
+    if again:      # a double click, the back button or a second tab: that page already made this invoice
+        flash(f"{inv['id']} was already created from that page, so no second invoice was made.", 'info')
+        return redirect(url_for('inv.detail', inv_id=inv['id']))
     pdf = I.pdf_bytes(_full(inv))
     try:
         I.update(inv['id'], pdf_url=I.save_pdf(inv, pdf))
@@ -113,10 +132,7 @@ def new():
         flash(f'Saved, but the PDF could not be stored in Drive ({e}). Download it below.', 'warning')
     log_audit_event('INVOICE_CREATED', who, {'id': inv['id'], 'bill_name': inv['bill_name'], 'total': inv['total'], 'program': program,
                                              'event_code': inv['event_code']})
-    me = f.get('my_email', '').strip()
-    u = auth.user()
-    if u and u['level'] != 'volunteer':      # officials get the copy at their role's group, never a personal inbox
-        me = auth.group_address(u['email'])
+    me = _copy_to() or f.get('my_email', '').strip()      # officials get the copy at their role's group, never a personal inbox
     body = (f"{who} created invoice {inv['id']} for {inv['bill_name']}: {I.money(inv['total'])}, due {inv['due']}.\n"
             f"{(inv['event_name'] + ' ' + inv['event_code']) if inv['event_name'] else 'Program ' + program}\n\n"
             f"The PDF is attached. Send it to the customer from your own email.\n"
@@ -162,8 +178,14 @@ def close(inv_id):
         abort(404)
     who = officer_current('pay')['name']
     action = request.form.get('action')
+    if (action in ('paid', 'void')) != (inv['status'] == 'Open'):
+        flash(f"{inv_id} is {inv['status'].lower()} now, so nothing was changed.", 'warning')
+        return redirect(url_for('inv.detail', inv_id=inv_id))
     if action == 'paid':
         amount = _money(request.form.get('paid_amount') or inv['total'])
+        if amount is None or amount <= 0:
+            flash('The amount paid is not a number above zero.', 'danger')
+            return redirect(url_for('inv.detail', inv_id=inv_id))
         I.update(inv_id, status='Paid', paid_date=request.form.get('paid_date') or date.today().isoformat(),
                  paid_ref=request.form.get('paid_ref', '').strip(), paid_amount=amount, closed_by=who)
         log_audit_event('INVOICE_PAID', who, {'id': inv_id, 'amount': amount, 'ref': request.form.get('paid_ref', '').strip()})
