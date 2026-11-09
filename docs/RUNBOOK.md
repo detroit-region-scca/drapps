@@ -92,6 +92,7 @@ All run on the server. Any failure emails admin@drscca.org (from apps@) with the
 | Software updates | Sundays 04:30 | `drscca-update.timer` | Newest Caddy, nginx and SFTP images, drapps rebuilt on the newest Python, newest GAM and libraries |
 | System updates | daily | `unattended-upgrades` | Debian, Docker, Node and Google packages; reboots at 04:00 only when an update needs it |
 | Secrets copy | Sundays 05:00 | `drscca-secrets-backup.timer` | Updates "drapps server secrets (weekly).tar.gz" in the admin-only Account Recovery folder (Drive keeps earlier versions) |
+| Website copy | Sundays 05:15 | `drscca-site-backup.timer` | drscca.org is on WordPress.com Premium (no do-it-yourself backups), so `deploy/gcp/site_backup.py` saves every published page, post, category, tag, the media list and the home page as JSON to "Website Archive/Weekly site backups" in the region drive; keeps 8 |
 
 **Outside the server:** Google Cloud uptime checks look at drapps.drscca.org and livetiming.drscca.org every 5
 minutes from three US locations, and email admin@ ("... is down") if two of them fail for 10 minutes (Cloud

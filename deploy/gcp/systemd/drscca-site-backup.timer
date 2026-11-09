@@ -1,0 +1,7 @@
+[Unit]
+Description=DRSCCA apps: weekly website content copy
+[Timer]
+OnCalendar=Sun *-*-* 05:15 America/Detroit
+Persistent=true
+[Install]
+WantedBy=timers.target

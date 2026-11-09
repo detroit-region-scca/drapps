@@ -1,0 +1,6 @@
+[Unit]
+Description=DRSCCA apps: weekly copy of the drscca.org website's content to the region shared drive
+OnFailure=drscca-alert@%n.service
+[Service]
+Type=oneshot
+ExecStart=/opt/drscca/venv/bin/python /opt/drscca/app/deploy/gcp/site_backup.py
