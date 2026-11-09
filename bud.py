@@ -140,9 +140,16 @@ def _warnings(e, b, today=None, info=False):
     info: what its MotorsportReg page says (False = use the last copy read; the list never fetches)."""
     if not e or e.get('program_budget') or e.get('cancelled'):
         return []
+    link = msr.link_for(e, _code(e))[0]
     if info is False:
-        info = msr.cached(e.get('msr_url'))
+        info = msr.cached(link)
     out = [(r, 'msr_cancel' if 'cancelled' in r else 'msr_date') for r in msr.differences(e, info)]
+    try:
+        soon = 0 <= (date.fromisoformat(str(e.get('date', ''))[:10]) - (today or date.today())).days <= 30
+    except ValueError:
+        soon = False
+    if soon and not link and msr.org_index(refresh=False):   # within a month it should be open for entries
+        out.append((f"Not found on MotorsportReg: put {_code(e)} in its name there", 'msr_missing'))
     if not B.enabled():
         return out
     try:
@@ -294,9 +301,10 @@ def detail(code):
     pg = program_of(code)
     q = program_actuals(*pg) if pg else (B.qbo_actuals().get(code) if B.enabled() else None)
     plan = None if pg else _plan_line(code)
+    msr_link = ('', '') if pg or not e else msr.link_for(e, code, refresh=True)
     return render_template('bud.html', **_ctx(view='detail', code=code, e=e or {}, b=b, funds=_funds(code), received=_received(code), yoy=_year_over_year(code),
-                                              warnings=_warnings(e, b, info=msr.check((e or {}).get('msr_url'))),
-                                              msr_info=msr.cached((e or {}).get('msr_url')),
+                                              warnings=_warnings(e, b, info=msr.check(msr_link[0])),
+                                              msr_link=msr_link, msr_info=msr.cached(msr_link[0]),
                                               q=q, plan=plan,
                                               status=_status(b), today=date.today().isoformat(), programs=load_programs(),
                                               open_lines=_open_lines(e), ballot=_ballot(code)))
