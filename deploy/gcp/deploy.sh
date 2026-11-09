@@ -14,7 +14,6 @@ echo "== push"
 if [ -n "$(git status --porcelain)" ]; then echo "Uncommitted changes: commit first."; exit 1; fi
 git push -q origin HEAD
 
-command -v quiet >/dev/null && quiet drapps 15m "deploying drapps" >/dev/null || true
 
 echo "== deploy on the VM ($(git log -1 --format='%h %s'))"
 $VM 'set -e; cd /opt/drscca/app && sudo git pull -q --ff-only
