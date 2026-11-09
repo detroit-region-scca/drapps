@@ -166,124 +166,201 @@ def money(v):
     return f"${(v or 0):,.2f}"
 
 
+def _long_date(s):
+    """2026-11-08 -> November 8, 2026 (anything else is shown as given)."""
+    try:
+        d = date.fromisoformat(str(s)[:10])
+        return f"{d:%B} {d.day}, {d.year}"
+    except ValueError:
+        return str(s or '')
+
+
 def pdf_bytes(inv, region='Detroit Region SCCA'):
     from fpdf import FPDF
     p = FPDF(unit='pt', format='Letter')
-    p.set_auto_page_break(True, margin=54)
+    p.set_auto_page_break(True, margin=72)
     p.add_page()
     L, W = 54, 612 - 108
-    navy, grey = (20, 40, 80), (110, 110, 110)
+    navy, grey, ink, rule, panel = (20, 40, 80), (115, 120, 130), (30, 30, 35), (215, 219, 226), (243, 245, 249)
+    red = (200, 30, 40)
+
+    def label(x, y, w, t, align='L'):
+        p.set_xy(x, y)
+        p.set_font('Helvetica', 'B', 7.5)
+        p.set_text_color(*grey)
+        p.set_char_spacing(0.8)
+        p.cell(w, 10, t.upper(), align=align)
+        p.set_char_spacing(0)
+
+    # A navy band across the top with a thin red line under it.
+    p.set_fill_color(*navy)
+    p.rect(0, 0, 612, 10, 'F')
+    p.set_fill_color(*red)
+    p.rect(0, 10, 612, 2, 'F')
+
     # The region logo (static/drscca-logo.png, 700x471) at the top left, the region's name and address beside it.
     logo = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'drscca-logo.png')
-    lh = 68
+    lh, top = 62, 40
     tx = L
     if os.path.exists(logo):
-        p.image(logo, x=L, y=48, h=lh)
+        p.image(logo, x=L, y=top, h=lh)
         tx = L + lh * 700 / 471 + 14
     p.set_text_color(*navy)
-    p.set_font('Helvetica', 'B', 17)
-    p.set_xy(tx, 50)
-    p.cell(W / 2, 20, region)
-    p.set_font('Helvetica', 'B', 26)
-    p.set_xy(L + W / 2, 50)
-    p.cell(W / 2, 30, 'INVOICE', align='R')
-    p.set_font('Helvetica', '', 9.5)
+    p.set_font('Helvetica', 'B', 15)
+    p.set_xy(tx, top)
+    p.cell(W / 2, 18, region)
+    p.set_font('Helvetica', '', 8.5)
     p.set_text_color(*grey)
-    y = 72
-    for t in ['Sports Car Club of America', *REMIT['lines'], f"{REMIT['email']} - {REMIT['web']}"]:
+    y = top + 20
+    for t in ['Sports Car Club of America', *REMIT['lines'], f"{REMIT['email']}  |  {REMIT['web']}"]:
         p.set_xy(tx, y)
-        p.cell(W / 2, 12.5, t)
-        y += 12.5
-    y = max(y, 48 + lh)
-    p.set_text_color(0, 0, 0)
-    y2 = 88
-    for k, v in (('Invoice #', inv['id']), ('Date', inv['created']), ('Due', inv['due'])):
-        p.set_xy(L + W / 2, y2)
-        p.set_font('Helvetica', '', 10)
-        p.cell(W / 4, 14, k, align='R')
-        p.set_font('Helvetica', 'B', 10)
-        p.cell(W / 4, 14, v, align='R')
-        y2 += 15
-    y = max(y, y2) + 22
-    p.set_draw_color(*navy)
-    p.set_line_width(1.2)
-    p.line(L, y, L + W, y)
-    y += 14
-    p.set_xy(L, y)
-    p.set_font('Helvetica', 'B', 9)
-    p.set_text_color(*grey)
-    p.cell(W / 2, 12, 'BILL TO')
-    if inv.get('event_name') or inv.get('program'):
-        p.set_xy(L + W / 2, y)
-        p.cell(W / 2, 12, 'FOR', align='R')
-    p.set_text_color(0, 0, 0)
+        p.cell(W / 2, 11, t)
+        y += 11
+    p.set_text_color(*navy)
+    p.set_font('Helvetica', 'B', 24)
+    p.set_char_spacing(3)
+    p.set_xy(L + W / 2, top - 2)
+    p.cell(W / 2, 28, 'INVOICE', align='R')
+    p.set_char_spacing(0)
+    y = max(y, top + lh) + 20
+
+    # The summary panel: number, dates and the amount due.
+    ph = 46
+    p.set_fill_color(*panel)
+    p.rect(L, y, W, ph, 'F')
+    p.set_fill_color(*navy)
+    p.rect(L, y, 3, ph, 'F')
+    cells = [('Invoice number', inv['id']), ('Issued', _long_date(inv['created'])), ('Due', _long_date(inv['due']))]
+    cw = W * 0.22
+    for i, (k, v) in enumerate(cells):
+        x = L + 16 + i * cw
+        label(x, y + 10, cw, k)
+        p.set_xy(x, y + 22)
+        p.set_font('Helvetica', 'B', 10.5)
+        p.set_text_color(*ink)
+        p.cell(cw, 14, v)
+    label(L + W - 16 - W * 0.3, y + 10, W * 0.3, 'Amount due', 'R')
+    p.set_xy(L + W - 16 - W * 0.3, y + 20)
+    p.set_font('Helvetica', 'B', 15)
+    p.set_text_color(*navy)
+    p.cell(W * 0.3, 18, money(inv['total']), align='R')
+    y += ph + 24
+
+    # Bill to, and what it is for.
+    label(L, y, W / 2, 'Bill to')
+    has_for = inv.get('event_name') or inv.get('program_name')
+    if has_for:
+        label(L + W / 2 + 20, y, W / 2 - 20, 'For')
     y += 14
     bill = [inv['bill_name'], inv.get('bill_contact') and f"Attn: {inv['bill_contact']}", *(inv.get('bill_address') or '').splitlines(), inv.get('bill_email')]
     fory = y
+    p.set_text_color(*ink)
     for t in [b for b in bill if b]:
         p.set_xy(L, y)
-        p.set_font('Helvetica', 'B' if t == inv['bill_name'] else '', 10.5)
+        p.set_font('Helvetica', 'B' if t == inv['bill_name'] else '', 10.5 if t == inv['bill_name'] else 10)
         p.cell(W / 2, 14, t)
         y += 14
-    for t in [inv.get('event_name'), inv.get('program_name')]:
+    for i, t in enumerate([inv.get('event_name'), inv.get('program_name')]):
         if t:
-            p.set_xy(L + W / 2, fory)
-            p.set_font('Helvetica', '', 10.5)
-            p.multi_cell(W / 2, 14, t, align='R')
-            fory += 14
-    y = max(y, fory) + 18
-    cols = [(W * 0.58, 'Description', 'L'), (W * 0.12, 'Qty', 'R'), (W * 0.15, 'Unit price', 'R'), (W * 0.15, 'Amount', 'R')]
-    p.set_fill_color(*navy)
-    p.set_text_color(255, 255, 255)
-    p.set_font('Helvetica', 'B', 10)
-    p.set_xy(L, y)
+            p.set_xy(L + W / 2 + 20, fory)
+            p.set_font('Helvetica', 'B' if i == 0 else '', 10.5 if i == 0 else 10)
+            p.set_text_color(*(ink if i == 0 else grey))
+            p.multi_cell(W / 2 - 20, 14, t)
+            fory = p.get_y()
+    y = max(y, fory) + 22
+
+    # The line items.
+    cols = [(W * 0.58, 'Description', 'L'), (W * 0.10, 'Qty', 'R'), (W * 0.16, 'Unit price', 'R'), (W * 0.16, 'Amount', 'R')]
+    x = L
     for w, t, a in cols:
-        p.cell(w, 20, f' {t} ' if a == 'L' else f'{t} ', fill=True, align=a)
-    y += 20
-    p.set_text_color(0, 0, 0)
-    p.set_font('Helvetica', '', 10.5)
-    p.set_draw_color(220, 220, 220)
-    p.set_line_width(0.6)
+        label(x + (4 if a == 'L' else 0), y, w - 4, t, a)
+        x += w
+    y += 14
+    p.set_draw_color(*navy)
+    p.set_line_width(1.2)
+    p.line(L, y, L + W, y)
+    y += 4
+    p.set_draw_color(*rule)
+    p.set_line_width(0.5)
     for ln in inv['lines']:
         q = ln['quantity'] or 1
-        p.set_xy(L, y)
-        p.multi_cell(cols[0][0], 18, f" {ln['description']}", new_x='RIGHT', new_y='TOP')
-        h = max(18, p.get_y() - y) if p.get_y() > y else 18
-        p.set_xy(L + cols[0][0], y)
-        p.cell(cols[1][0], 18, f'{q:g} ', align='R')
-        p.cell(cols[2][0], 18, f"{money(ln['unit_price'])} ", align='R')
-        p.cell(cols[3][0], 18, f"{money(ln['amount'])} ", align='R')
-        y += h + 4
+        p.set_text_color(*ink)
+        p.set_font('Helvetica', '', 10)
+        n = len(p.multi_cell(cols[0][0] - 8, 14, ln['description'], dry_run=True, output='LINES')) or 1
+        h = 14 * n
+        if y + h + 10 > 792 - 72:     # start the row on a new page, not across the break
+            p.add_page()
+            y = 54
+        p.set_xy(L + 4, y + 4)
+        p.multi_cell(cols[0][0] - 8, 14, ln['description'], new_x='RIGHT', new_y='TOP')
+        p.set_xy(L + cols[0][0], y + 4)
+        p.cell(cols[1][0], 14, f'{q:g}', align='R')
+        p.cell(cols[2][0], 14, money(ln['unit_price']), align='R')
+        p.set_font('Helvetica', 'B', 10)
+        p.cell(cols[3][0] - 4, 14, money(ln['amount']), align='R')
+        y += h + 10
         p.line(L, y, L + W, y)
-        y += 4
-    y += 6
-    p.set_xy(L + W * 0.55, y)
-    p.set_font('Helvetica', 'B', 12)
-    p.cell(W * 0.30, 22, 'Total due ', align='R')
-    p.cell(W * 0.15, 22, f"{money(inv['total'])} ", align='R')
-    y += 46
-    p.set_xy(L, y)
+
+    # The total, in a navy band at the right.
+    y += 12
+    if y + 28 > 792 - 72:
+        p.add_page()
+        y = 54
+    tw = W * 0.42
+    p.set_fill_color(*navy)
+    p.rect(L + W - tw, y, tw, 28, 'F')
+    p.set_text_color(255, 255, 255)
     p.set_font('Helvetica', 'B', 10)
-    p.set_text_color(*navy)
-    p.cell(W, 14, 'How to pay')
-    y += 16
-    p.set_text_color(0, 0, 0)
-    p.set_font('Helvetica', '', 10)
-    for t in [f"Please make checks payable to {REMIT['payee']} and mail to {REMIT['lines'][0]}, {REMIT['lines'][1]}.",
-              f"Write invoice number {inv['id']} on your check. Questions: {REMIT['email']}."]:
-        p.set_xy(L, y)
-        p.multi_cell(W, 14, t)
-        y = p.get_y()
+    p.set_xy(L + W - tw + 12, y)
+    p.set_char_spacing(0.8)
+    p.cell(tw / 2, 28, 'TOTAL DUE')
+    p.set_char_spacing(0)
+    p.set_font('Helvetica', 'B', 13)
+    p.set_xy(L + W - tw / 2, y)
+    p.cell(tw / 2 - 8, 28, money(inv['total']), align='R')
+    y += 28 + 30
+
+    # How to pay, in a light panel.
+    rows = [('Payable to', REMIT['payee']), ('Mail to', f"{REMIT['lines'][0]}, {REMIT['lines'][1]}"),
+            ('Reference', f"Write {inv['id']} on your check"), ('Questions', REMIT['email'])]
+    bh = 22 + 15 * len(rows) + 8
+    if y + bh > 792 - 72:
+        p.add_page()
+        y = 54
+    p.set_fill_color(*panel)
+    p.rect(L, y, W, bh, 'F')
+    p.set_fill_color(*navy)
+    p.rect(L, y, 3, bh, 'F')
+    label(L + 16, y + 10, W, 'How to pay')
+    yy = y + 26
+    for k, v in rows:
+        p.set_xy(L + 16, yy)
+        p.set_font('Helvetica', '', 9.5)
+        p.set_text_color(*grey)
+        p.cell(72, 13, k)
+        p.set_font('Helvetica', '', 10)
+        p.set_text_color(*ink)
+        p.cell(W - 100, 13, v)
+        yy += 15
+    y += bh
     if inv.get('notes'):
-        y += 10
-        p.set_xy(L, y)
-        p.set_font('Helvetica', 'I', 10)
+        y += 20
+        label(L, y, W, 'Notes')
+        p.set_xy(L, y + 14)
+        p.set_font('Helvetica', '', 10)
+        p.set_text_color(*ink)
         p.multi_cell(W, 14, inv['notes'])
+
     p.set_auto_page_break(False)      # the footer sits in the bottom margin, on this page
-    p.set_xy(L, 792 - 40)
-    p.set_font('Helvetica', '', 9)
+    p.set_draw_color(*rule)
+    p.set_line_width(0.5)
+    p.line(L, 792 - 50, L + W, 792 - 50)
+    p.set_xy(L, 792 - 44)
+    p.set_font('Helvetica', '', 8.5)
     p.set_text_color(*grey)
-    p.cell(W, 12, f'Thank you for supporting the {region}.', align='C')
+    p.cell(W / 3, 12, region)
+    p.cell(W / 3, 12, 'Thank you for your business.', align='C')
+    p.cell(W / 3, 12, REMIT['web'], align='R')
     return bytes(p.output())
 
 
