@@ -1,5 +1,6 @@
 """Email groups shows the saved list of drscca.org groups. Made-up names only."""
 import json
+import os
 
 import pytest
 
@@ -15,6 +16,8 @@ def client(monkeypatch, tmp_path):
         {'email': 'autocross@example.org', 'name': 'DRSCCA Autocross', 'aliases': [],
          'members': [{'email': 'boss@example.org', 'role': 'OWNER'}, {'email': 'pat@example.org', 'role': 'MANAGER'}]},
         {'email': 'legacy@example.org', 'name': 'DRSCCA Old addresses', 'aliases': ['old@example.org'], 'members': []}]}))
+    old = f.stat().st_mtime - 60      # saved a minute ago, so a refresh asked for now is clearly newer on any filesystem
+    os.utime(f, (old, old))
     monkeypatch.setattr(groups, 'GROUPS_FILE', str(f))
     monkeypatch.setattr(officials, 'all', lambda: [{'name': 'Pat Director', 'email': 'pat@example.org'}])
     monkeypatch.setattr(auth, 'volunteers', lambda: {})
