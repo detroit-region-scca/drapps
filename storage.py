@@ -6,7 +6,7 @@ records outlive this app and this server. Every write to Sheets is also mirrored
 files, which double as an offline backup and as the fallback if Google is unreachable.
 
 The Sheets layout (one spreadsheet, REGISTRY_SHEET_ID):
-  Events    id | program_code | event_name | date | sequence_id | unique_code | custom_tag | creator_name
+  Events    id | program_code | event_name | date | sequence_id | unique_code | custom_tag | creator_name | cancelled | msr_url
   Audit     timestamp | action | user | details (JSON)
   Programs  code | name
 """
@@ -31,7 +31,8 @@ AUDIT_FILE = os.environ.get("AUDIT_FILE", os.path.join(DATA_DIR, "audit.ndjson")
 DATA_LOCK_FILE = os.environ.get("DATA_LOCK_FILE", f"{DATA_FILE}.lock")
 PROGRAMS_FILE = os.environ.get("PROGRAMS_FILE", os.path.join(DATA_DIR, "programs.json"))
 
-EVENT_COLS = ['id', 'program_code', 'event_name', 'date', 'sequence_id', 'unique_code', 'custom_tag', 'creator_name']
+EVENT_COLS = ['id', 'program_code', 'event_name', 'date', 'sequence_id', 'unique_code', 'custom_tag', 'creator_name',
+              'cancelled', 'msr_url']   # cancelled: date it was marked; msr_url: its MotorsportReg page, set by a person
 CACHE_SECONDS = 15
 
 
@@ -210,7 +211,7 @@ class SheetStore:
         # Page views read the shared local copy; anything that may write the list back (create, edit, delete
         # read, change and write the whole list) passes fresh=True, so another worker's write is never undone.
         try:
-            rows = self._records('Events!A:H', fresh=fresh)
+            rows = self._records('Events!A:J', fresh=fresh)
             self._degraded = False
             return [{k: (r.get(k) or '') for k in EVENT_COLS} for r in rows if r.get('id')]
         except Exception as e:
@@ -228,10 +229,13 @@ class SheetStore:
         # can never leave the sheet empty.
         if len(rows) + 1 > ws.row_count:
             ws.add_rows(len(rows) + 1 - ws.row_count + 50)
+        if ws.col_count < len(EVENT_COLS):
+            ws.add_cols(len(EVENT_COLS) - ws.col_count)
+        ws.update([EVENT_COLS], 'A1:J1', value_input_option='RAW')   # the header grows with EVENT_COLS
         if rows:
-            ws.update(rows, f"A2:H{len(rows) + 1}", value_input_option='RAW')
+            ws.update(rows, f"A2:J{len(rows) + 1}", value_input_option='RAW')
         if ws.row_count > len(rows) + 1:
-            ws.batch_clear([f"A{len(rows) + 2}:H{ws.row_count}"])
+            ws.batch_clear([f"A{len(rows) + 2}:J{ws.row_count}"])
         self._invalidate()
         self.files.save_events(events)
 

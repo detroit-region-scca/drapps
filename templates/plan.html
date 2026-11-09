@@ -144,6 +144,7 @@
                 <tbody>{% for k in rows %}{% set ln = k.line or {} %}<tr class="{{ 'text-muted' if k.other }}">
                     <td class="ps-3 text-muted text-nowrap">{% if k.date %}{{ months[k.date[5:7]|int - 1] }}{% if k.date|length > 7 %} {{ k.date[8:10]|int }}{% endif %}{% endif %}</td>
                     <td>{% if k.code %}<a href="{{ url_for('bud.detail', code=k.code) }}">{{ k.name }}</a> <span class="small text-muted">{{ k.code }}</span>{% else %}{{ k.name }}{% endif %}
+                        {% if k.cancelled %} <span class="badge rounded-pill text-bg-secondary">Cancelled</span>{% endif %}
                         {% if k.code and not k.line %} <span class="small text-warning">not in plan</span>{% endif %}
                         {% if ln.account %} <span class="small text-muted">· {{ ln.account }}</span>{% endif %}
                         {% if ln.register %} <a class="small ms-1 no-print text-nowrap" href="{{ ln.register }}">Register event</a>{% endif %}

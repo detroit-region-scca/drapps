@@ -9,6 +9,7 @@ from datetime import date
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 import bud_store as B
+import msr
 import fr_store as F
 import officials as O
 import plan_store as P
@@ -133,15 +134,25 @@ def _month_label(d):
         return str(d)[:4]
 
 
-def _warnings(e, b, today=None):
-    """What still needs doing for a registered event, as [(reason, action)]: action 'budget' or 'results'.
-    Shown as a warning sign on the events list and spelled out on the event page."""
-    if not B.enabled() or not e or e.get('program_budget'):
+def _warnings(e, b, today=None, info=False):
+    """What still needs doing for a registered event, as [(reason, action)]: action 'budget', 'results', 'approval',
+    'msr_date' or 'msr_cancel'. Shown as a warning sign on the events list and spelled out on the event page.
+    info: what its MotorsportReg page says (False = use the last copy read; the list never fetches)."""
+    if not e or e.get('program_budget') or e.get('cancelled'):
         return []
+    if info is False:
+        info = msr.cached(e.get('msr_url'))
+    out = [(r, 'msr_cancel' if 'cancelled' in r else 'msr_date') for r in msr.differences(e, info)]
+    if not B.enabled():
+        return out
     try:
         past = date.fromisoformat(str(e.get('date', ''))[:10]) < (today or date.today())
     except ValueError:
-        return []
+        return out
+    return out + _money_warnings(e, b, past)
+
+
+def _money_warnings(e, b, past):
     if not b:
         return [('No budget' if past else 'No budget yet', 'budget')]
     if past and not any(ln.get('actual') is not None for ln in b.get('lines', [])):
@@ -237,21 +248,24 @@ def home():
         except ValueError:
             days = None
         rows.append({'e': e, 'code': _code(e), 'program': e.get('program_code', ''), 'date': d, 'name': e.get('event_name', ''),
-                     'days': days, 'past': days is not None and days < 0,
+                     'days': days, 'past': days is not None and days < 0, 'cancelled': bool(e.get('cancelled')),
                      'warnings': _warnings(e, buds.get(_code(e)), today),
                      # The QuickBooks project's own name once it exists; else the name to give it (as on the event page).
                      'qbo_name': (qbo.get(_code(e)) or {}).get('project') or f"{d[:4]} {e.get('program_code', '')} {e.get('event_name', '')} {_code(e)}"})
-    # Plan lines with a month and no registered event yet: events the director expects but has not registered.
-    # Lines with no month (supplies, trophies) are not events; past months are left to the Annual Plan.
+    # Plan lines with a month and no registered event: events the director expects but has not registered, and,
+    # in months already over, ones that may have run without a #DR code ("Not registered"; register them or take
+    # the line out of the plan). Lines with no month (supplies, trophies) are not events.
     codes = {r['code'] for r in rows}
     first = 1 if int(year) > today.year else 13 if int(year) < today.year else today.month
     for pc, p in (P.plan(year) if P.enabled() else {}).items():
         if pc == 'OPS' or (only and pc != only):
             continue
         for ln in p['lines']:
-            if ln['month'] and ln['month'] >= first and ln['event_code'] not in codes and not P.placeholder(ln['item']):
+            if ln['month'] and ln['event_code'] not in codes and not P.placeholder(ln['item']):
+                missed = ln['month'] < first
                 rows.append({'e': None, 'code': '', 'program': pc, 'date': f"{year}-{ln['month']:02d}", 'name': plan_name(ln['item']),
-                             'days': None, 'past': False, 'warnings': [], 'register': register_url(year, pc, ln)})
+                             'days': None, 'past': missed, 'missed': missed, 'cancelled': False,
+                             'warnings': [], 'register': register_url(year, pc, ln)})
     rows.sort(key=lambda r: (r['date'], r['name']))
     months = []
     for r in rows:
@@ -261,8 +275,9 @@ def home():
         months[-1]['rows'].append(r)
     for m in months:
         m['past'] = all(r['past'] for r in m['rows'])
-    ahead = [r for r in rows if r['e'] and not r['past']]
-    summary = {'next': ahead[0] if ahead else None, 'upcoming': len(ahead), 'done': sum(1 for r in rows if r['past']),
+    ahead = [r for r in rows if r['e'] and not r['past'] and not r['cancelled']]
+    summary = {'next': ahead[0] if ahead else None, 'upcoming': len(ahead),
+               'done': sum(1 for r in rows if r['past'] and r['e'] and not r['cancelled']),
                'planned': sum(1 for r in rows if not r['e'])}
     return render_template('bud.html', **_ctx(view='list', season=months, year=year, years=years, s=summary,
                                               programs=programs, only=only, names=names))
@@ -280,7 +295,8 @@ def detail(code):
     q = program_actuals(*pg) if pg else (B.qbo_actuals().get(code) if B.enabled() else None)
     plan = None if pg else _plan_line(code)
     return render_template('bud.html', **_ctx(view='detail', code=code, e=e or {}, b=b, funds=_funds(code), received=_received(code), yoy=_year_over_year(code),
-                                              warnings=_warnings(e, b),
+                                              warnings=_warnings(e, b, info=msr.check((e or {}).get('msr_url'))),
+                                              msr_info=msr.cached((e or {}).get('msr_url')),
                                               q=q, plan=plan,
                                               status=_status(b), today=date.today().isoformat(), programs=load_programs(),
                                               open_lines=_open_lines(e), ballot=_ballot(code)))
@@ -355,6 +371,53 @@ def _open_lines(e):
     if not e or e.get('program_budget') or not P.enabled() or not e.get('date'):
         return []
     return P.open_lines(e['date'][:4], e.get('program_code'), load_events())
+
+
+@bp.route('/event/<path:code>/cancel', methods=['POST'])
+@login_required
+def cancel(code):
+    """Mark the event cancelled, or not. Its #DR code, budget and money stay; it just stops asking for things."""
+    from auth import user as _signed_in
+    from filelock import FileLock
+    from storage import DATA_LOCK_FILE
+    from utils import save_events
+    who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
+    undo = request.form.get('undo') == '1'
+    with FileLock(DATA_LOCK_FILE):
+        events = load_events()
+        e = next((x for x in events if _code(x) == code), None)
+        if not e:
+            flash('Event not found.', 'warning')
+            return redirect(url_for('bud.home'))
+        e['cancelled'] = '' if undo else date.today().isoformat()
+        save_events(events)
+    log_audit_event('EVENT_UNCANCELLED' if undo else 'EVENT_CANCELLED', who, {'event_code': code, 'event_name': e.get('event_name', '')})
+    flash('Marked as going ahead.' if undo else 'Marked cancelled.', 'success')
+    return redirect(url_for('bud.detail', code=code))
+
+
+@bp.route('/event/<path:code>/msr-date', methods=['POST'])
+@login_required
+def msr_date(code):
+    """Take the date from the event's MotorsportReg page (the button beside "MotorsportReg has it on ...")."""
+    from auth import user as _signed_in
+    from filelock import FileLock
+    from storage import DATA_LOCK_FILE
+    from utils import save_events
+    who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
+    with FileLock(DATA_LOCK_FILE):
+        events = load_events()
+        e = next((x for x in events if _code(x) == code), None)
+        info = msr.cached((e or {}).get('msr_url'))
+        if not e or not info or not info.get('date'):
+            flash('No MotorsportReg date to use.', 'warning')
+            return redirect(url_for('bud.detail', code=code))
+        old = e.get('date', '')
+        e['date'] = info['date']
+        save_events(events)
+    log_audit_event('EVENT_EDITED', who, {'event_code': code, 'date': [old, info['date']], 'from': 'MotorsportReg'})
+    flash(f"Date set to {info['date']}, as on MotorsportReg.", 'success')
+    return redirect(url_for('bud.detail', code=code))
 
 
 @bp.route('/event/<path:code>/tie', methods=['POST'])

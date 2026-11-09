@@ -93,10 +93,10 @@ def _kids(year, program, p, program_actual, future):
             continue
         kids.append({'name': ln['item'], 'date': x['e']['date'] if x else (f"{year}-{ln['month']:02d}" if ln['month'] else ''),
                      'code': ln['event_code'] if x else '', 'plan': ln['net'], 'budget': x['budget'] if x else None,
-                     'actual': x['net'] if x else None, 'line': ln})
+                     'actual': x['net'] if x else None, 'line': ln, 'cancelled': bool(x and x['e'].get('cancelled'))})
     for code, x in events.items():
         kids.append({'name': x['e'].get('event_name', ''), 'date': x['e']['date'], 'code': code, 'plan': None, 'budget': x['budget'],
-                     'actual': x['net']})
+                     'actual': x['net'], 'cancelled': bool(x['e'].get('cancelled'))})
     for k in kids:
         k['diff'] = _diff(k['actual'], k['plan'])
     if not future and program_actual is not None:

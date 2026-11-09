@@ -529,6 +529,11 @@ def edit_event(event_id):
         event_to_edit['date'] = request.form['date'].strip()
         event_to_edit['event_name'] = request.form['event_name'].strip()
         event_to_edit['creator_name'] = request.form['your_name'].strip()
+        if 'msr_url' in request.form:
+            import msr
+            event_to_edit['msr_url'] = msr.clean_url(request.form['msr_url'])
+            if request.form['msr_url'].strip() and not event_to_edit['msr_url']:
+                flash('That is not a MotorsportReg event link (motorsportreg.com/events/...), so it was not saved.', 'warning')
         
         custom_tag = format_custom_tag(request.form.get('custom_tag'))
         
