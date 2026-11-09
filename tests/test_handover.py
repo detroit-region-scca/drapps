@@ -70,7 +70,7 @@ def test_handover_moves_the_job_and_its_bracketed_duties_only(env):
     H.main(['hand', 'Region Executive', 'new@x.com', 'New', '--apply'])
     rows = json.loads(f.read_text())['officials']
     assert [o['email'] for o in rows[:3]] == ['new@x.com', 'new@x.com', 'alex@x.com']   # Alex keeps Equipment
-    ops = {(c[2].split('@')[0], c[3], c[5]) for c in calls if c[:2] == ('update', 'group')}
+    ops = {(c[2].split('@')[0], c[3], c[-1]) for c in calls if c[:2] == ('update', 'group')}
     assert ('re', 'add', 'new@x.com') in ops and ('re', 'remove', 'alex@x.com') in ops
     assert ('officers', 'remove', 'alex@x.com') in ops and not any(g == 'equipment' for g, _, _ in ops)
 
