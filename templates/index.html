@@ -7,12 +7,30 @@
         <div class="page-title">Add event</div>
         <p class="text-muted">Registers the event and gives it its #DR code. Name the QuickBooks project with that code.</p>
 
+        {% if maybe_same %}
+        <div class="alert alert-warning">
+            <div class="fw-semibold mb-2">Is this the same event?</div>
+            {% for m in maybe_same %}
+            <form action="{{ url_for('edit_event', event_id=m.id) }}" method="POST" class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <span>{{ m.name }} · {{ m.date }} · {{ m.code }}</span>
+                <input type="hidden" name="program" value="{{ form_data.program }}">
+                <input type="hidden" name="date" value="{{ form_data.date }}">
+                <input type="hidden" name="event_name" value="{{ form_data.event_name }}">
+                <input type="hidden" name="your_name" value="{{ form_data.your_name }}">
+                <input type="hidden" name="custom_tag" value="{{ m.custom_tag }}">
+                <button class="btn btn-sm btn-outline-dark py-0">Yes, update it</button>
+            </form>
+            {% endfor %}
+            <div class="small">Yes keeps its {{ 'code' if maybe_same|length == 1 else 'codes' }} and annual plan line, with the name and date you entered. If it is a different event, press Submit Event again.</div>
+        </div>
+        {% endif %}
         <!-- Form Card -->
         <div class="card mb-4">
             <div class="card-body">
                 <form action="{{ url_for('index') }}" method="POST" id="createEventForm">
                     <div class="row g-3">
                         <input type="hidden" name="your_name" value="{{ session.get('who', '') }}">
+                        {% if maybe_same %}<input type="hidden" name="new_ok" value="1">{% endif %}
                         <div class="col-md-6">
                             <label class="form-label">Program Name</label>
                             <select class="form-select" name="program" required>

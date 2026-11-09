@@ -344,6 +344,24 @@ def _link_plan_line(event, sort, who):
         flash('The event was created, but tying it to the annual plan failed. Do it from the Annual Plan page.', 'warning')
 
 
+def maybe_same(events, program, date_str, days=45):
+    """Events of the same program within `days` of date_str: maybe the one being registered again."""
+    try:
+        d = datetime.strptime(date_str[:10], '%Y-%m-%d').date()
+    except ValueError:
+        return []
+    out = []
+    for e in events:
+        try:
+            ed = datetime.strptime(str(e.get('date', ''))[:10], '%Y-%m-%d').date()
+        except ValueError:
+            continue
+        if e.get('program_code') == program and abs((ed - d).days) <= days:
+            out.append({'id': e.get('id'), 'code': e.get('custom_tag') or e.get('unique_code'), 'name': e.get('event_name', ''),
+                        'date': str(e.get('date', ''))[:10], 'custom_tag': e.get('custom_tag', '')})
+    return out
+
+
 @app.route('/events/new', methods=['GET', 'POST'])
 def index():
     """Add event: register an event and get its #DR code. The list of events is the Events page (bud.home)."""
@@ -363,6 +381,13 @@ def index():
             if not is_tag_unique(custom_tag, events):
                 session['form_data'] = request.form.to_dict()
                 session['tag_error'] = f"Tag '{custom_tag}' is already in use. Please choose a different one."
+                return redirect(url_for('index'))
+
+            # The program may already have this event registered (a stand-in from the annual plan, or a second
+            # director): ask before making a second #DR code. "No, it's a new event" posts again with new_ok.
+            if not request.form.get('new_ok') and (same := maybe_same(events, program_code, date_str)):
+                session['form_data'] = request.form.to_dict()
+                session['maybe_same'] = same
                 return redirect(url_for('index'))
 
             unique_code = generate_unique_code(program_code, events + [{'custom_tag': custom_tag}])
@@ -405,6 +430,7 @@ def index():
         except ValueError:
             form_data.pop('month', None)
     tag_error = session.pop('tag_error', None)
+    same = session.pop('maybe_same', None)
 
     return render_template('index.html', 
                            title=f"{scca_region_name} Event Registration",
@@ -414,7 +440,7 @@ def index():
                            scca_region_name=scca_region_name,
                            program_directors_text=program_directors_text,
                            form_data=form_data,
-                           tag_error=tag_error,
+                           tag_error=tag_error, maybe_same=same,
                            budgets=_budget_codes(),
                            open_plan=_open_plan_lines(events))
 
