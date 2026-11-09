@@ -13,7 +13,7 @@
 {% macro record_fields(date_name) %}
     <div class="col-6 col-md-3"><label class="form-label small">Date</label><input type="date" name="{{ date_name }}" class="form-control form-control-sm"></div>
     <div class="col-6 col-md-3"><label class="form-label small">How</label><select name="how" class="form-select form-select-sm"><option value="meeting">Board meeting</option><option value="email">Email vote</option></select></div>
-    <div class="col-6 col-md-2"><label class="form-label small">Vote</label><input name="vote" class="form-control form-control-sm" placeholder="7-0" inputmode="numeric"></div>
+    <div class="col-6 col-md-2"><label class="form-label small">Vote</label><input name="vote" class="form-control form-control-sm" placeholder="7-0"></div>
 {% endmacro %}
 {% macro choice_badge(c) %}{% if c == 'yes' %}<span class="badge text-bg-success">Yes</span>{% elif c == 'no' %}<span class="badge text-bg-danger">No</span>{% elif c == 'abstain' %}<span class="badge text-bg-secondary">Abstain</span>{% else %}<span class="text-muted">Not yet</span>{% endif %}{% endmacro %}
 {% macro rollcall(rows) %}
@@ -25,7 +25,7 @@
     {% set st = bal.state %}
     <div class="ballot mt-2 p-2 rounded {% if st in ('passed', 'recorded') %}ballot-passed{% elif st == 'failed' %}ballot-failed{% elif st == 'expired' %}ballot-expired{% else %}ballot-open{% endif %}">
         <div class="d-flex flex-wrap align-items-center gap-2">
-            <span class="badge rounded-pill {% if st == 'open' %}text-bg-primary{% elif st in ('passed', 'recorded') %}text-bg-success{% elif st == 'failed' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">Email vote {{ bal.id }}</span>
+            <span class="badge rounded-pill {% if st == 'open' %}text-bg-primary{% elif st in ('passed', 'recorded') %}text-bg-success{% elif st == 'failed' %}text-bg-danger{% else %}text-bg-secondary{% endif %}" title="{{ bal.id }}">Email vote</span>
             <span class="small">{{ bal.summary }}</span>
         </div>
         {% if st == 'open' %}<div class="progress mt-2" style="height:.5rem" role="progressbar" aria-label="Votes in">
@@ -35,7 +35,7 @@
         <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
             {% if st == 'open' and bal.is_voter %}<span class="small">Your vote:</span>
                 {% for c in BL.CHOICES %}<button form="vote-{{ bal.id }}" name="choice" value="{{ c }}" class="btn btn-sm {% if bal.mine == c %}{{ 'btn-success' if c == 'yes' else 'btn-danger' if c == 'no' else 'btn-secondary' }}{% else %}btn-outline-secondary{% endif %}">{{ BL.LABEL[c] }}</button>{% endfor %}{% endif %}
-            {% if st in ('passed', 'failed') and officer %}<button form="record-{{ bal.id }}" class="btn btn-sm btn-accent">Record result: {{ st }}</button>{% endif %}
+            {% if st in ('passed', 'failed') and officer %}<button form="record-{{ bal.id }}" class="btn btn-sm btn-accent">Record result: {{ st|capitalize }}</button>{% endif %}
             {% if st == 'open' and bal.t.voted < bal.t.of %}<button form="remind-{{ bal.id }}" class="btn btn-sm btn-link p-0" onclick="return confirm('Email a reminder to the {{ bal.t.of - bal.t.voted }} who have not voted?')">Remind the {{ bal.t.of - bal.t.voted }} who have not voted</button>{% endif %}
         </div>
         <details class="mt-1"><summary class="small text-muted">Roll call</summary>{{ rollcall(bal.t.rows) }}</details>

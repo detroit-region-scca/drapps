@@ -204,15 +204,15 @@
     </div>
     {% for cat, rows in cats %}
     <h2 class="h6 text-muted mt-3">{{ cat }} · {{ money(rows|sum(attribute='per_year'), 0) }} a year</h2>
-    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0 stack">
         <thead><tr><th class="ps-3" style="width: 30%">Bill</th><th>How often</th><th class="num">Each time</th><th class="num">A year</th><th class="pe-3" style="width: 34%">QuickBooks</th></tr></thead>
         <tbody>{% for r in rows %}<tr>
             <td class="ps-3">{% if editor %}<a href="{{ url_for('equip.place', place_id=r.id, edit=1, back=request.path) if r.kind == 'place' else url_for('equip.task', task_id=r.id, back=request.path) }}">{{ r.what }}</a>{% else %}{{ r.what }}{% endif %}
                 <div class="small text-muted">{{ r.paid_how }}{% if r.account %} · {{ r.account }}{% endif %}</div></td>
-            <td class="small text-nowrap">{{ r.how_often }}{% if r.next %}<div class="text-muted">next {{ r.next }}</div>{% endif %}{% if r.ends %}<div class="text-warning">ends {{ r.ends }}</div>{% endif %}</td>
-            <td class="num">{{ money(r.each, 2) }}</td>
-            <td class="num">{{ money(r.per_year, 0) }}</td>
-            <td class="small pe-3">{{ qbo(r.qbo) }}</td></tr>{% endfor %}</tbody>
+            <td class="small text-nowrap" data-label="How often">{{ r.how_often }}{% if r.next %}<div class="text-muted">next {{ r.next }}</div>{% endif %}{% if r.ends %}<div class="text-warning">ends {{ r.ends }}</div>{% endif %}</td>
+            <td class="num" data-label="Each time">{{ money(r.each, 2) }}</td>
+            <td class="num" data-label="A year">{{ money(r.per_year, 0) }}</td>
+            <td class="small pe-3" data-label="QuickBooks">{{ qbo(r.qbo) }}</td></tr>{% endfor %}</tbody>
     </table></div></div>
     {% endfor %}
 
@@ -451,13 +451,5 @@
         t.querySelectorAll('.repl-in').forEach(i => i.addEventListener('input', () => i.closest('tr').classList.add('changed')));});</script>{% endif %}
     {% if missing %}<p class="small mt-3"><b>Over $2,500 with no replacement year</b>, so not in the plan: {% set mnames = missing|map(attribute='name')|list %}{% for i in missing %}<a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}{% if mnames.count(i.name) > 1 and i.place %} ({{ i.place }}){% endif %}</a>{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
 
-    {% elif view == 'signin' %}
-    <div class="card p-4 mx-auto" style="max-width: 30rem;">
-        <div class="page-title">Sign in to edit</div>
-        <p class="text-muted small">Anyone can look. Changes are limited to the Operations committee and the club officers: enter your email and we'll send a sign-in link to it.</p>
-        <form method="post"><input type="hidden" name="next" value="{{ nxt }}">
-            <input type="email" name="email" class="form-control mb-3" required autofocus placeholder="you@example.com">
-            <button class="btn btn-accent w-100">Email me a link</button></form>
-    </div>
     {% endif %}
 {% endblock %}

@@ -176,14 +176,14 @@
         <form method="post" action="{{ url_for('plan.approve', year=year, program=program) }}" class="d-flex flex-wrap gap-2 align-items-center">
             <span>Approved {{ p.info.approved }}, recorded by {{ p.info.approved_by }}.</span>
             <input type="hidden" name="approved" value="">
-            {% if officer %}<button class="btn btn-sm btn-outline-secondary ms-auto">Clear approval</button>{% endif %}
+            {% if officer %}<button class="btn btn-sm btn-outline-secondary ms-auto" onclick="return confirm('Clear the board approval?')">Clear approval</button>{% endif %}
         </form>
         {% endif %}
         {% if not p.info.approved or plan_status(p.info) == 'changed' %}
         {% if officer %}<form method="post" action="{{ url_for('plan.approve', year=year, program=program) }}" class="row g-2 align-items-end mt-1">
             <div class="col-6 col-md-3"><label class="form-label small">Approved on</label><input type="date" name="approved" class="form-control form-control-sm" required></div>
             <div class="col-6 col-md-3"><label class="form-label small">How</label><select name="how" class="form-select form-select-sm"><option value="meeting">Board meeting</option><option value="email">Email vote</option></select></div>
-            <div class="col-6 col-md-2"><label class="form-label small">Vote</label><input name="vote" class="form-control form-control-sm" placeholder="7-0" inputmode="numeric"></div>
+            <div class="col-6 col-md-2"><label class="form-label small">Vote</label><input name="vote" class="form-control form-control-sm" placeholder="7-0"></div>
             <div class="col-6 col-md-4"><button class="btn btn-sm btn-accent w-100">Record board approval</button></div>
         </form>
         {% else %}<div class="small text-muted">After the board approves this {{ 'budget' if program == 'OPS' else 'plan' }}, the RE, ARE, secretary or treasurer records it here.</div>{% endif %}
@@ -211,11 +211,11 @@
             <div class="lines">
             {% for ln in (lines or [{'net': none}, {'net': none}, {'net': none}]) %}
                 <div class="row g-2 pline mb-2 pb-2">
-                    <div class="col-12 col-md-5"><input name="item" class="form-control form-control-sm" placeholder="Event or item" value="{{ ln.item or '' }}"{% if ln.event_code and reg %} readonly title="The registered event's name; change it on the event's page"{% endif %}></div>
+                    <div class="col-12 col-md-5"><input name="item" class="form-control form-control-sm" aria-label="Event or item" placeholder="Event or item" value="{{ ln.item or '' }}"{% if ln.event_code and reg %} readonly title="The registered event's name; change it on the event's page"{% endif %}></div>
                     <div class="col-4 col-md-2"><select name="month" class="form-select form-select-sm{{ ' locked' if ln.event_code and reg }}"><option value=""></option>{% for m in months %}<option value="{{ loop.index }}" {% if ln.month == loop.index %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
                     <div class="col-4 col-md-2"><input name="net" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0" value="{{ '' if ln.net is none or ln.net == '' else ('%.0f'|format(ln.net) if ln.net == ln.net|round else ln.net) }}"></div>
-                    <div class="col-3 col-md-2"><input name="note" class="form-control form-control-sm" placeholder="Note" value="{{ ln.note or '' }}"></div>
-                    <div class="col-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)">✕</button></div>
+                    <div class="col-3 col-md-2"><input name="note" class="form-control form-control-sm" aria-label="Note" placeholder="Note" value="{{ ln.note or '' }}"></div>
+                    <div class="col-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)" aria-label="Remove line">✕</button></div>
                     <div class="col-12 col-md-5"><select name="account" class="form-select form-select-sm text-muted" title="The QuickBooks account this is booked to" aria-label="QuickBooks account">
                         <option value="">QuickBooks account: not set</option>{% for sec, acc in accounts %}<option {{ 'selected' if ln.account == acc }}>{{ acc }}</option>{% endfor %}
                         {% if ln.account and ln.account not in accounts|map(attribute=1)|list %}<option selected>{{ ln.account }}</option>{% endif %}

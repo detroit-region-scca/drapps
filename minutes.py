@@ -20,7 +20,7 @@ def _me():
 
 def _guard():
     if not S.enabled():
-        flash('Minutes need MINUTES_PRIVATE_FOLDER_ID and MINUTES_PUBLIC_FOLDER_ID.', 'warning')
+        flash('Minutes isn\'t set up on this server yet. Ask admin@drscca.org.', 'warning')
         return redirect(url_for('home'))
     if 'minutes' not in (_me().get('perms') or ()):
         flash('Minutes are uploaded by the Secretary and the other officers.', 'warning')

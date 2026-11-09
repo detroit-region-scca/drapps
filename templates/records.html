@@ -79,7 +79,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 <div class="page-title">Detroit Region SCCA records</div>
 <p class="text-muted">Results and season standings the region has posted since 1982, in one place.</p>
 <div class="rec-stats"><div><b>{{ '{:,}'.format(n.events) }}</b>events</div><div><b>{{ '{:,}'.format(n.result_rows) }}</b>results</div><div><b>{{ '{:,}'.format(n.people) }}</b>people</div></div>
-<form method="get" class="mb-3" style="max-width: 32rem;"><input class="form-control form-control-lg" name="q" value="{{ q }}" placeholder="Search a driver or event" autofocus></form>
+<form method="get" class="mb-3" style="max-width: 32rem;"><input class="form-control form-control-lg" name="q" value="{{ q }}" aria-label="Search a driver or event" placeholder="Search a driver or event" autofocus></form>
 {% if q %}
   {% if people %}<div class="section-label">People</div><div class="list-group mb-3">{% for r in people %}
     <a class="list-group-item list-group-item-action" href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }} <span class="text-muted small">{{ r.n }} event{{ 's' if r.n != 1 }}{% if r.t %}, {{ r.t }} class title{{ 's' if r.t != 1 }}{% endif %}</span></a>{% endfor %}</div>{% endif %}
@@ -242,7 +242,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% for i in range(5) %}<tr class="table-light">
   <td><input class="form-control form-control-sm" style="width:9rem" name="new_class{{ i }}" placeholder="Class"></td>
   <td><input class="form-control form-control-sm" style="width:4.5rem" name="new_place{{ i }}" placeholder="Place"></td>
-  <td><input class="form-control form-control-sm" style="min-width:12rem" name="new_name{{ i }}" placeholder="Add a missing person"></td>
+  <td><input class="form-control form-control-sm" style="min-width:12rem" name="new_name{{ i }}" aria-label="Add a missing person" placeholder="Add a missing person"></td>
   <td><input class="form-control form-control-sm" style="width:6rem" name="new_score{{ i }}" placeholder="Score"></td><td></td>
 </tr>{% endfor %}
 </tbody></table></div>

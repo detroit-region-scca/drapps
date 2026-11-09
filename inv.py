@@ -3,6 +3,7 @@ number, a professional PDF (kept in the shared drive) and a row in the DRSCCA In
 director sends the PDF to the customer; the treasurer marks it paid when the money is deposited.
 """
 import auth
+import logging
 import os
 import secrets
 from datetime import date
@@ -15,6 +16,8 @@ import officials as O
 import shortlinks
 from officer import current as officer_current, officer_required
 from utils import load_events, load_programs, log_audit_event, login_required, send_mail, to_number
+
+log = logging.getLogger(__name__)
 
 bp = Blueprint('inv', __name__, url_prefix='/invoices')
 
@@ -35,7 +38,7 @@ def _ctx(**kw):
 
 def _guard():
     if not I.enabled():
-        flash('Invoices need the Google Sheets storage (STORAGE_BACKEND=sheets and INVOICES_SHEET_ID).', 'warning')
+        flash('Invoices isn\'t set up on this server yet. Ask admin@drscca.org.', 'warning')
         return redirect(url_for('home'))
     return None
 
@@ -129,7 +132,8 @@ def new():
     try:
         I.update(inv['id'], pdf_url=I.save_pdf(inv, pdf))
     except Exception as e:      # the invoice is recorded; the PDF can always be made again from the record
-        flash(f'Saved, but the PDF could not be stored in Drive ({e}). Download it below.', 'warning')
+        log.warning('invoice PDF not stored in Drive: %s', e)
+        flash('Saved, but the PDF could not be stored in Drive. Download it below.', 'warning')
     log_audit_event('INVOICE_CREATED', who, {'id': inv['id'], 'bill_name': inv['bill_name'], 'total': inv['total'], 'program': program,
                                              'event_code': inv['event_code']})
     me = _copy_to() or f.get('my_email', '').strip()      # officials get the copy at their role's group, never a personal inbox

@@ -38,7 +38,7 @@ def budget_year():
 
 def _guard():
     if not E.enabled():
-        flash('Operations needs the Google Sheets storage (STORAGE_BACKEND=sheets and OPERATIONS_SHEET_ID).', 'warning')
+        flash('Operations isn\'t set up on this server yet. Ask admin@drscca.org.', 'warning')
         return redirect(url_for('home'))
     return None
 
@@ -341,7 +341,7 @@ def add_document():
             abort(404)
         root = D.folder_id(os.environ.get('OPERATIONS_DOCS_FOLDER_URL', ''))
         if not root:
-            flash('No Operations folder is set up in Drive (OPERATIONS_DOCS_FOLDER_URL).', 'warning')
+            flash('No Operations folder is set up in Drive yet. Ask admin@drscca.org.', 'warning')
             return redirect(back)
         name = it['name'] if it else p['name']
         folder = drive_folder(name, D.section_folder(root, rid))

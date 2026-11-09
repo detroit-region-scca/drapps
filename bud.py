@@ -41,7 +41,7 @@ def _directs_budget(code, b=None):
 
 def _guard():
     if not B.enabled():
-        flash('Event budgets need the Google Sheets storage (STORAGE_BACKEND=sheets and BUDGETS_SHEET_ID).', 'warning')
+        flash('Events isn\'t set up on this server yet. Ask admin@drscca.org.', 'warning')
         return redirect(url_for('home'))
     return None
 

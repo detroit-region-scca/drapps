@@ -35,7 +35,7 @@ def _ctx(**kw):
 
 def _guard():
     if not P.enabled():
-        flash('The annual plan needs the Google Sheets storage (STORAGE_BACKEND=sheets and PLAN_SHEET_ID).', 'warning')
+        flash('The annual plan isn\'t set up on this server yet. Ask admin@drscca.org.', 'warning')
         return redirect(url_for('home'))
     return None
 

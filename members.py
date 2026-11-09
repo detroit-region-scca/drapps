@@ -54,7 +54,7 @@ def _month_step(month, n):
 
 def _guard(keeper=False):
     if not S.enabled():
-        flash('Members needs MEMBERS_SHEET_ID and the Google Sheets storage.', 'warning')
+        flash('Members isn\'t set up on this server yet. Ask admin@drscca.org.', 'warning')
         return redirect(url_for('home'))
     if keeper and not _keeper():
         return redirect(url_for('members.enter'))

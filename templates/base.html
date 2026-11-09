@@ -83,6 +83,33 @@
             .card { border-color: #bbb; }
             .table { --bs-table-color: #000; color: #000; }
         }
+        /* One amber and one blue across the apps: Bootstrap's yellow and cyan are unreadable on white. */
+        .text-bg-warning { background-color: #8a5a00 !important; color: #fff !important; }
+        .text-bg-info { background-color: #1d3fb8 !important; color: #fff !important; }
+        .text-info { color: #1d3fb8 !important; }
+        .text-warning-emphasis { color: #8a5a00 !important; }
+        .btn-warning { background: #8a5a00; border-color: #8a5a00; color: #fff; }
+        .btn-warning:hover, .btn-warning:focus { background: #6b4600; border-color: #6b4600; color: #fff; }
+        .alert-warning { background: #fff8e6; border-color: #e8c77a; color: #5c3d00; }
+        .badge { white-space: normal; text-align: left; }
+        /* Phones: tables marked .stack become one card per row, each cell labelled from its data-label. */
+        @media (max-width: 767.98px) {
+            table.stack thead { display: none; }
+            table.stack tr { display: block; padding: .6rem .9rem; border-bottom: 1px solid var(--border); }
+            table.stack td { display: block; border: 0 !important; padding: .1rem 0 !important; text-align: left !important; white-space: normal; }
+            table.stack td[data-label]:empty { display: none; }
+            table.stack td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-size: .85rem; }
+            table.stack td:first-child { font-weight: 600; }
+            table.stack td.text-nowrap, table.stack td .text-nowrap { white-space: normal !important; }
+            .table-responsive:has(> table.stack) { overflow-x: visible; }
+        }
+        /* Phones: buttons big enough to tap. */
+        @media (max-width: 575.98px) {
+            .btn-sm { min-height: 2.5rem; padding-top: .45rem !important; padding-bottom: .45rem !important; }
+            .form-control-sm, .form-select-sm { min-height: 2.5rem; font-size: 1rem; }
+            .site-brand .site-name { font-size: 1rem; }
+            .site-brand .app-line { white-space: normal; }
+        }
         .modal-content { background-color: var(--surface); border-color: var(--border); }
         .site-top { font-size: .8rem; padding: .3rem 0 0; background: var(--bg, #fff); }
         .site-top a { color: var(--muted, #555); text-decoration: none; }
@@ -101,9 +128,9 @@
                 </div></div></div>
         {% if request.endpoint == 'home' %}
         {# The launcher has no sections, so no menu: just log out. #}
-        <span class="btn btn-logout ms-auto me-3 px-0" title="{{ me.email if me }}">{{ session.get('who', '') }}</span>
-        {% if me and 'audit' in (me.perms or []) %}<a class="btn btn-link btn-logout text-decoration-none me-3 px-0" href="{{ url_for('audit_log') }}">Audit log</a>{% endif %}
-        <form action="{{ url_for('logout') }}" method="POST" class="m-0">
+        <span class="btn btn-logout ms-auto me-3 px-0 d-none d-md-inline-block" title="{{ me.email if me }}">{{ session.get('who', '') }}</span>
+        {% if me and 'audit' in (me.perms or []) %}<a class="btn btn-link btn-logout text-decoration-none me-3 px-0 d-none d-md-inline-block" href="{{ url_for('audit_log') }}">Audit log</a>{% endif %}
+        <form action="{{ url_for('logout') }}" method="POST" class="m-0 ms-auto ms-md-0">
             <button type="submit" class="btn btn-link btn-logout text-decoration-none px-0">Log out</button>
         </form>
         {% else %}
@@ -201,6 +228,14 @@
     document.addEventListener('focusout', e => { if (e.target === box) setTimeout(() => { if (document.activeElement !== box) close(); }, 150); });
     window.addEventListener('resize', close);
 })();
+</script>
+<script>
+// A label with no "for" names the field right after it, so tapping the label focuses the field and screen readers read it.
+document.querySelectorAll('label:not([for])').forEach((l, i) => {
+    if (l.querySelector('input, select, textarea')) return;
+    const f = l.nextElementSibling;
+    if (f && f.matches('input:not([type=hidden]), select, textarea')) { if (!f.id) f.id = 'fld-' + i; l.htmlFor = f.id; }
+});
 </script>
 {% block scripts %}{% endblock %}
 </body>

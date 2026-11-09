@@ -45,7 +45,7 @@ def _guard():
         flash('The Board pages are for region officials.', 'warning')
         return redirect(url_for('home'))
     if not M.enabled():
-        flash('The Board pages need the Google Sheets storage (PLAN_SHEET_ID).', 'warning')
+        flash('The Board pages aren\'t set up on this server yet. Ask admin@drscca.org.', 'warning')
         return redirect(url_for('home'))
     return None
 

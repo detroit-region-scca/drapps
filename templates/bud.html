@@ -73,7 +73,6 @@
     <details class="mt-4"><summary class="h6 text-muted">Earlier in {{ year }} ({{ s.done }} event{{ '' if s.done == 1 else 's' }} run)</summary>
         <div class="mt-2">{{ sched(done) }}</div></details>
     {% else %}{{ sched(season) }}{% endif %}
-    <p class="form-text mt-3">The season by month. "Planned" events come from the annual plan and are not registered yet; Register adds them. "Not registered" means a planned event's month is over and it never got a #DR code: register it if it ran. Money for each event (plan, budget, QuickBooks) is on its page and on the Annual Plan.</p>
 
     {% elif view == 'detail' %}
     <div class="crumbs no-print">{% if e.program_budget %}<a href="{{ url_for('plan.home', year=e.date[:4]) }}">Annual Plan {{ e.date[:4] }}</a> / <a href="{{ url_for('plan.detail', year=e.date[:4], program=e.program_code) }}">{{ programs.get(e.program_code, e.program_code) }}</a> / Program budget{% else %}<a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Events {{ (e.date or '')[:4] }}</a> / {{ code }}{% endif %}</div>
@@ -84,28 +83,28 @@
         {% if act == 'budget' and budgets_on %}<a class="btn btn-sm btn-outline-dark py-0" href="{{ url_for('bud.edit', code=code) }}">Create budget</a>
         {% elif act == 'results' %}<a class="btn btn-sm btn-outline-dark py-0" href="{{ url_for('bud.actuals', code=code) }}">Enter reported results</a>
         {% elif act == 'msr_date' %}<form method="post" action="{{ url_for('bud.msr_date', code=code) }}" class="d-inline"><button class="btn btn-sm btn-outline-dark py-0">Use that date</button></form>
-        {% elif act == 'msr_cancel' %}<form method="post" action="{{ url_for('bud.cancel', code=code) }}" class="d-inline"><button class="btn btn-sm btn-outline-dark py-0">Mark cancelled</button></form>{% endif %}{% endfor %}</div>{% endif %}
+        {% elif act == 'msr_cancel' %}<form method="post" action="{{ url_for('bud.cancel', code=code) }}" class="d-inline" onsubmit="return confirm('Mark this event cancelled?')"><button class="btn btn-sm btn-outline-dark py-0">Mark cancelled</button></form>{% endif %}{% endfor %}</div>{% endif %}
     <div class="card p-3 mb-3">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
             <div>
                 <div class="page-title m-0">{{ e.event_name or (b and b.event_name) }}{% if e.cancelled %} <span class="badge rounded-pill text-bg-secondary align-middle fs-6">Cancelled</span>{% endif %}</div>
                 <div class="text-muted">{{ e.date[:4] if e.program_budget else e.date }} · {{ programs.get(e.program_code, e.program_code) }} · {{ code }}{% if e.creator_name %} · registered by {{ e.creator_name }}{% endif %}</div>
-                {% if msr_link and msr_link[0] %}<div class="small"><a href="{{ msr_link[0] }}" target="_blank" rel="noopener">MotorsportReg</a>{% if msr_info and msr_info.date %} · {{ msr_info.date }}{% if msr_info.cancelled %}, cancelled there{% endif %}{% endif %}{% if msr_link[1] == 'pasted' %} <span class="text-muted">· linked by hand; putting {{ code }} in its MotorsportReg name links it the usual way</span>{% endif %}</div>
+                {% if msr_link and msr_link[0] %}<div class="small"><a href="{{ msr_link[0] }}" target="_blank" rel="noopener">MotorsportReg</a>{% if msr_info and msr_info.date %} · {{ msr_info.date }}{% if msr_info.cancelled %}, cancelled there{% endif %}{% endif %}</div>
                 {% elif e.id and not e.program_budget and not e.cancelled %}{% set msr_name = (e.event_name ~ ' ' ~ code)|trim %}<div class="small text-muted">Not on MotorsportReg yet: name it there with {{ code }}, for example "{{ msr_name }}".
                     <button type="button" class="btn btn-sm btn-outline-light py-0 px-2 no-print" data-copy="{{ msr_name }}" onclick="copyText(this)">Copy name</button></div>{% endif %}
                 {% if b %}<div class="small mt-1">{% if b.chair %}Chair: {{ b.chair }}{% endif %}{% if b.location %} · {{ b.location }}{% endif %}</div>
                 <div class="small text-muted">Budget updated {{ b.updated }} by {{ b.updated_by }}</div>{% endif %}
                 <div class="small mt-2">{% if status == 'draft' %}<span class="badge rounded-pill text-bg-secondary">Budget in draft</span> not on the board's list yet
                     {% elif status == 'approved' %}<span class="badge rounded-pill text-bg-success">Budget board approved {{ b.approved }}</span>
-                    {% elif status == 'changed' %}<span class="badge rounded-pill text-bg-info">Budget changed since the board approved it on {{ b.approved }}</span>
+                    {% elif status == 'changed' %}<span class="badge rounded-pill text-bg-info">Budget changed</span> since the board approved it on {{ b.approved }}
                     {% elif b %}<a href="{{ url_for('bud.approve_many', year=(b.date or '')[:4]) }}" class="badge rounded-pill text-bg-primary text-decoration-none">Budget not board approved yet</a>
-                    {% elif budgets_on %}<span class="badge rounded-pill text-bg-warning">No budget yet</span>{% endif %}</div>
+                    {% endif %}</div>
                 {% if e.program_budget %}<div class="small mt-1 text-muted">The program's spending and income that is not one event. Funds requests not tied to an event are paid against this budget once the board approves it.</div>{% endif %}
                 <div class="small mt-2">{% if plan %}Annual plan: <a href="{{ url_for('plan.detail', year=plan.year, program=plan.program) }}">{{ plan.item }}</a>, {{ money(plan.net) }}
                     {% elif open_lines %}<form method="post" action="{{ url_for('bud.tie', code=code) }}" class="d-flex flex-wrap gap-2 align-items-center no-print">
-                        <span class="text-warning">Not tied to the annual plan.</span>
+                        <span class="text-warning">Not linked to the annual plan:</span>
                         <select name="plan_line" class="form-select form-select-sm w-auto" aria-label="Annual plan line">{% for ln in open_lines %}<option value="{{ '%g'|format(ln.sort) }}">{{ months[ln.month - 1] ~ ' · ' if ln.month }}{{ ln.item }}</option>{% endfor %}</select>
-                        <button class="btn btn-sm btn-outline-light">Tie</button></form>
+                        <button class="btn btn-sm btn-outline-light">Link</button></form>
                     {% elif e.program_budget %}<span class="text-muted">Its surplus is a line of its own in the <a href="{{ url_for('plan.detail', year=e.date[:4], program=e.program_code) }}">{{ e.date[:4] }} annual plan</a>.</span>
                     {% elif e.date %}<span class="text-muted">Not in the {{ e.date[:4] }} annual plan.</span>{% endif %}</div>
             </div>
@@ -124,7 +123,7 @@
                     <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">More</button>
                     <ul class="dropdown-menu">
                         {% if e.id %}<li><button class="dropdown-item" type="button" data-bs-toggle="collapse" data-bs-target="#editEvent">Edit event</button></li>
-                        <li><form method="post" action="{{ url_for('bud.cancel', code=code) }}">{% if e.cancelled %}<input type="hidden" name="undo" value="1"><button class="dropdown-item">Not cancelled after all</button>{% else %}<button class="dropdown-item">Mark cancelled</button>{% endif %}</form></li>
+                        <li><form method="post" action="{{ url_for('bud.cancel', code=code) }}"{% if not e.cancelled %} onsubmit="return confirm('Mark this event cancelled?')"{% endif %}>{% if e.cancelled %}<input type="hidden" name="undo" value="1"><button class="dropdown-item">Not cancelled after all</button>{% else %}<button class="dropdown-item">Mark cancelled</button>{% endif %}</form></li>
                         <li><button class="dropdown-item" type="button" data-copy="{{ qbo_name }}" onclick="copyText(this)" title="{{ qbo_name }}">Copy QuickBooks name</button></li>{% endif %}
                         {% if b and b.files_url %}<li><a class="dropdown-item" href="{{ b.files_url }}" target="_blank" rel="noopener">Files</a></li>{% endif %}
                         {% if b %}<li><button class="dropdown-item" type="button" onclick="window.print()">Print</button></li>
@@ -243,7 +242,7 @@
         <form method="post" action="{{ url_for('bud.approve', code=code) }}" class="d-flex flex-wrap gap-2 align-items-center">
             <span>Approved {{ b.approved }}{% if b.approved_by %}, recorded by {{ b.approved_by }}{% endif %}.</span>
             <input type="hidden" name="approved" value=""><input type="hidden" name="who" value="{{ who }}">
-            <button class="btn btn-sm btn-outline-secondary ms-auto">Clear approval</button>
+            <button class="btn btn-sm btn-outline-secondary ms-auto" onclick="return confirm('Clear the board approval?')">Clear approval</button>
         </form>
         {% else %}
         <p class="mb-2"><b>Not approved yet.</b>{% if ballot and ballot.status == 'open' %} The board is voting on it by email until {{ ballot.closes }}. <a href="{{ url_for('board.home') }}">See the vote</a>{% endif %}</p>
@@ -252,7 +251,7 @@
         <form method="post" action="{{ url_for('bud.approve', code=code) }}" class="row g-2 align-items-end">
             <div class="col-6 col-md-3"><label class="form-label small">Approved on</label><input type="date" name="approved" class="form-control form-control-sm" required></div>
             <div class="col-6 col-md-3"><label class="form-label small">How</label><select name="how" class="form-select form-select-sm"><option value="meeting">Board meeting</option><option value="email">Email vote</option></select></div>
-            <div class="col-6 col-md-2"><label class="form-label small">Vote</label><input name="vote" class="form-control form-control-sm" placeholder="7-0" inputmode="numeric"></div>
+            <div class="col-6 col-md-2"><label class="form-label small">Vote</label><input name="vote" class="form-control form-control-sm" placeholder="7-0"></div>
             <input type="hidden" name="who" value="{{ session.get('who', '') }}">
             <div class="col-12 col-md-4"><button class="btn btn-sm btn-accent w-100">Record board approval</button></div>
         </form>
@@ -329,11 +328,11 @@
             {% set rows = lines|selectattr('section', 'equalto', section)|list or starter[section]|map('string')|list %}
             {% for ln in rows %}{% set is_obj = ln is mapping %}
                 <div class="row g-2 bline mb-2 pb-2">
-                    <div class="col-12 col-md-6"><input name="{{ key }}_desc" class="form-control form-control-sm" placeholder="Description" value="{{ ln.description if is_obj else ln }}"></div>
+                    <div class="col-12 col-md-6"><input name="{{ key }}_desc" class="form-control form-control-sm" aria-label="Description" placeholder="Description" value="{{ ln.description if is_obj else ln }}"></div>
                     <div class="col-5 col-md-2"><input name="{{ key }}_ly" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="Last yr" value="{{ amt(ln.last_year) if is_obj else '' }}"></div>
                     <div class="col-6 col-md-3"><input name="{{ key }}_bud" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="Budget" value="{{ amt(ln.budget) if is_obj else '' }}"></div>
                     <input type="hidden" name="{{ key }}_act" value="{{ amt(ln.actual) if is_obj else '' }}">
-                    <div class="col-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)">✕</button></div>
+                    <div class="col-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)" aria-label="Remove line">✕</button></div>
                 </div>
             {% endfor %}
             </div>
@@ -371,7 +370,7 @@
     function addActual(key) {
         const row = document.createElement('div');
         row.className = 'row g-2 align-items-center mb-2';
-        row.innerHTML = `<div class="col-9 col-md-9"><input name="new_${key}_desc" class="form-control form-control-sm" placeholder="What it was"></div>
+        row.innerHTML = `<div class="col-9 col-md-9"><input name="new_${key}_desc" class="form-control form-control-sm" aria-label="What it was" placeholder="What it was"></div>
             <div class="col-3 col-md-3"><input name="new_${key}_act" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0.00"></div>`;
         actForm.querySelector(`.new-lines[data-key=${key}]`).appendChild(row);
         row.querySelector('input').focus();

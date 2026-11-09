@@ -21,15 +21,14 @@
         <div class="text-muted">{% if open_total %}{{ money(open_total) }} waiting to be paid{% if overdue %}, {{ overdue|length }} overdue{% endif %}.{% else %}Nothing waiting to be paid.{% endif %}</div>
         <a class="btn btn-sm btn-accent" href="{{ url_for('inv.new') }}">New invoice</a>
     </div>
-    <div class="card"><div class="card-body p-0 table-responsive"><table class="table table-hover mb-0">
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table table-hover mb-0 stack">
         <thead><tr><th class="ps-3">Invoice</th><th>To</th><th>For</th><th>Due</th><th>Status</th><th class="num pe-3">Total</th></tr></thead>
         <tbody>{% for r in rows %}<tr class="row-link" onclick="location.href='{{ url_for('inv.detail', inv_id=r.id) }}'">
             <td class="ps-3 text-nowrap"><a href="{{ url_for('inv.detail', inv_id=r.id) }}">{{ r.id }}</a><div class="small text-muted">{{ r.created }}</div></td>
-            <td>{{ r.bill_name }}</td><td class="small">{{ r.event_name or programs.get(r.program, r.program) }} <span class="text-muted">{{ r.event_code }}</span></td>
-            <td class="text-nowrap">{{ r.due }}</td><td>{{ status_badge(r) }}</td><td class="num pe-3">{{ money(r.total) }}</td></tr>
-        {% else %}<tr><td colspan="6" class="ps-3 text-muted">No invoices for {{ year }} yet.</td></tr>{% endfor %}</tbody>
+            <td data-label="To">{{ r.bill_name }}</td><td class="small" data-label="For">{{ r.event_name or programs.get(r.program, r.program) }} <span class="text-muted">{{ r.event_code }}</span></td>
+            <td class="text-nowrap" data-label="Due">{{ r.due }}</td><td data-label="Status">{{ status_badge(r) }}</td><td class="num pe-3" data-label="Total">{{ money(r.total) }}</td></tr>
+        {% else %}<tr><td colspan="6" class="ps-3 text-muted fw-normal">No invoices for {{ year }} yet.</td></tr>{% endfor %}</tbody>
     </table></div></div>
-    <p class="form-text mt-3">Every invoice is a row in the DRSCCA Invoices sheet in the shared drive, with its PDF in the PDFs folder beside it.</p>
 
     {% elif view == 'new' %}
     <div class="page-title">New invoice</div>
@@ -42,16 +41,16 @@
                 <select name="event_code" id="eventSel" class="form-select" data-chosen="{{ form.get('event_code', '') }}"><option value="">Not for one event</option></select></div>
         </div></div>
         <div class="card p-3 mb-3"><div class="section-label">Bill to</div><div class="row g-2">
-            <div class="col-md-6"><input name="bill_name" class="form-control mb-2" placeholder="Company or person" required value="{{ form.get('bill_name', '') }}">
+            <div class="col-md-6"><input name="bill_name" class="form-control mb-2" aria-label="Company or person" placeholder="Company or person" required value="{{ form.get('bill_name', '') }}">
                 <input name="bill_contact" class="form-control mb-2" placeholder="Attention (optional)" value="{{ form.get('bill_contact', '') }}">
-                <input name="bill_email" type="email" class="form-control" placeholder="Their email (optional)" value="{{ form.get('bill_email', '') }}"></div>
-            <div class="col-md-6"><textarea name="bill_address" class="form-control h-100" rows="4" placeholder="Mailing address (optional)">{{ form.get('bill_address', '') }}</textarea></div>
+                <input name="bill_email" type="email" class="form-control" aria-label="Their email" placeholder="Their email (optional)" value="{{ form.get('bill_email', '') }}"></div>
+            <div class="col-md-6"><textarea name="bill_address" class="form-control h-100" rows="4" aria-label="Mailing address" placeholder="Mailing address (optional)">{{ form.get('bill_address', '') }}</textarea></div>
         </div></div>
         <div class="card p-3 mb-3"><div class="section-label">Lines</div>
             <div id="lines">{% for r in rows %}
             <div class="row g-2 mb-2 line"><div class="col-12 col-md-7"><input name="desc" class="form-control" placeholder="e.g. 2027 Solo series sponsorship" value="{{ r.description or '' }}"></div>
                 <div class="col-3 col-md-1"><input name="qty" class="form-control text-end" inputmode="decimal" placeholder="1" value="{{ r.quantity if r.quantity is string else ('%g'|format(r.quantity) if r.quantity else '') }}"></div>
-                <div class="col-6 col-md-3"><input name="price" class="form-control text-end" inputmode="decimal" placeholder="Price" value="{{ r.unit_price or '' }}"></div>
+                <div class="col-6 col-md-3"><input name="price" class="form-control text-end" inputmode="decimal" aria-label="Price" placeholder="Price" value="{{ r.unit_price or '' }}"></div>
                 <div class="col-3 col-md-1 d-flex align-items-center"><a href="#" class="text-muted text-decoration-none" onclick="dropLine(this); return false;" aria-label="Remove line">✕</a></div></div>{% endfor %}
             </div>
             <div class="d-flex justify-content-between align-items-center"><button type="button" class="btn btn-sm btn-outline-light" onclick="addLine()">Add a line</button><div class="fw-semibold">Total <span id="total">$0.00</span></div></div>
@@ -93,11 +92,11 @@
             <div class="col-sm-3"><button class="btn btn-accent w-100">Mark paid</button></div></div>
             <div class="form-text">Deposit it in QuickBooks to the program's revenue account (and the event project when there is one).</div></form></div>
         <div class="col-lg-4"><form method="post" action="{{ url_for('inv.close', inv_id=inv.id) }}" class="card p-3 h-100"><input type="hidden" name="action" value="void">
-            <div class="section-label">Void</div><input name="note" class="form-control mb-2" placeholder="Why"><button class="btn btn-outline-danger">Void</button></form></div>
+            <div class="section-label">Void</div><input name="note" class="form-control mb-2" aria-label="Why" placeholder="Why" required><button class="btn btn-outline-danger" onclick="return !this.form.checkValidity() || confirm('Void {{ inv.id }}?')">Void</button></form></div>
     </div>{% endif %}
     {% else %}
     <div class="card p-3">{% if inv.status == 'Paid' %}Paid {{ inv.paid_date }}{% if inv.paid_ref %} · {{ inv.paid_ref }}{% endif %} · {{ money(inv.paid_amount) }} · recorded by {{ inv.closed_by }}{% else %}Void: {{ inv.closed_note }} ({{ inv.closed_by }}){% endif %}
-        {% if officer %}<form method="post" action="{{ url_for('inv.close', inv_id=inv.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary">Reopen</button></form>{% endif %}</div>
+        {% if officer %}<form method="post" action="{{ url_for('inv.close', inv_id=inv.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Reopen {{ inv.id }}?')">Reopen</button></form>{% endif %}</div>
     {% endif %}
     {% if inv.status != 'Paid' %}
     <details class="mt-3 no-print"><summary class="small text-muted">Delete this invoice</summary>

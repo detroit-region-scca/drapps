@@ -32,21 +32,20 @@
     </div>
     {% if counts.Submitted %}<p class="text-muted">{{ counts.Submitted }} not paid yet, {{ money(open_total) }} in all{% if n_ready %}: {{ n_ready }} ready to pay{% endif %}{% if counts.Submitted - n_ready > 0 %}, {{ counts.Submitted - n_ready }} waiting on an approval{% endif %}.</p>{% endif %}
     <div class="card"><div class="card-body p-0 table-responsive">
-        <table class="table table-hover mb-0">
+        <table class="table table-hover mb-0 stack">
             <thead><tr><th class="ps-3">Request</th><th>Submitted</th><th>Pay to</th><th>For</th><th>Status</th><th class="num pe-3">Amount</th></tr></thead>
             <tbody>
             {% for r in reqs %}<tr class="row-link" onclick="location.href='{{ url_for('fr.detail', req_id=r.id) }}'">
                 <td class="ps-3 text-nowrap"><a href="{{ url_for('fr.detail', req_id=r.id) }}">{{ r.id }}</a></td>
-                <td class="text-nowrap">{{ r.submitted }}<div class="small text-muted">{{ r.submitter_name }}</div></td>
-                <td>{{ r.payee_name }}<div class="small text-muted">{{ r.method }}</div></td>
-                <td>{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}{{ r.program }}{% endif %} <span class="small text-muted">{{ r.event_code }}</span></td>
-                <td>{% if r.status == 'Submitted' %}{% if r.waiting %}<span class="badge rounded-pill text-bg-warning">Needs approval</span><div class="small text-muted">{{ r.waiting|join(', ') }}</div>{% elif r.method == 'Region credit card' %}<span class="badge rounded-pill text-bg-info" title="Already paid on the region card">Card, ready to record</span>{% else %}<span class="badge rounded-pill text-bg-info">Ready to pay</span>{% endif %}{% else %}{{ status_badge(r.status) }}{% endif %}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
-                <td class="num pe-3">{{ money(r.net) }}</td></tr>
-            {% else %}<tr><td colspan="6" class="text-muted ps-3">Nothing here.</td></tr>{% endfor %}
+                <td class="text-nowrap" data-label="Submitted">{{ r.submitted }}<div class="small text-muted">{{ r.submitter_name }}</div></td>
+                <td data-label="Pay to">{{ r.payee_name }}<div class="small text-muted">{{ r.method }}</div></td>
+                <td data-label="For">{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}{{ r.program }}{% endif %} <span class="small text-muted">{{ r.event_code }}</span></td>
+                <td data-label="Status">{% if r.status == 'Submitted' %}{% if r.waiting %}<span class="badge rounded-pill text-bg-warning">Needs approval</span><div class="small text-muted">{{ r.waiting|join(', ') }}</div>{% elif r.method == 'Region credit card' %}<span class="badge rounded-pill text-bg-info" title="Already paid on the region card">Card, ready to record</span>{% else %}<span class="badge rounded-pill text-bg-info">Ready to pay</span>{% endif %}{% else %}{{ status_badge(r.status) }}{% endif %}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
+                <td class="num pe-3" data-label="Amount">{{ money(r.net) }}</td></tr>
+            {% else %}<tr><td colspan="6" class="text-muted fw-normal ps-3">Nothing here.</td></tr>{% endfor %}
             </tbody>
         </table>
     </div></div>
-    <p class="form-text mt-3">Every request is also a row in the DRSCCA Funds Requests sheet in the DRSCCA Apps shared drive, with its receipts in a folder beside it.</p>
 
     {% elif view == 'new' %}
     <div class="page-title">New funds request</div>
@@ -81,7 +80,7 @@
                     <div class="col-12 col-md-5 order-3 order-md-2"><input name="line_desc" class="form-control form-control-sm" placeholder="Track rental, cones, trophies…" value="{{ ln.description or '' }}" aria-label="Description"></div>
                     <div class="col-10 col-md-2 order-4 order-md-3"><select name="line_cat" class="form-select form-select-sm" aria-label="Category">{% for c in categories %}<option {% if ln.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
                     <div class="col-6 col-md-2 order-2 order-md-4"><input name="line_amount" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0.00" value="{{ ln.amount or '' }}" aria-label="Amount"></div>
-                    <div class="col-2 col-md-1 order-5 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)">✕</button></div>
+                    <div class="col-2 col-md-1 order-5 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)" aria-label="Remove line">✕</button></div>
                 </div>{% endfor %}
             </div>
             <div class="d-flex flex-wrap align-items-center gap-3">
@@ -104,17 +103,17 @@
                 <div class="col-md-6">
                     <div class="section-label">You</div>
                     {% set src = form if form.get('submitter_name') else last %}
-                    <input name="submitter_name" class="form-control mb-2" placeholder="Your name" required value="{{ src.get('submitter_name') or src.get('name') or who }}" autocomplete="name">
-                    <input name="submitter_email" type="email" class="form-control mb-2" placeholder="Email" required value="{{ src.get('submitter_email') or src.get('email', '') }}" autocomplete="email">
-                    <input name="submitter_phone" class="form-control mb-2" placeholder="Phone" value="{{ src.get('submitter_phone') or src.get('phone', '') }}" autocomplete="tel">
-                    <textarea name="submitter_address" class="form-control" rows="2" placeholder="Mailing address (needed for a reimbursement check)" autocomplete="street-address">{{ src.get('submitter_address') or src.get('address', '') }}</textarea>
+                    <input name="submitter_name" class="form-control mb-2" aria-label="Your name" placeholder="Your name" required value="{{ src.get('submitter_name') or src.get('name') or who }}" autocomplete="name">
+                    <input name="submitter_email" type="email" class="form-control mb-2" aria-label="Email" placeholder="Email" required value="{{ src.get('submitter_email') or src.get('email', '') }}" autocomplete="email">
+                    <input name="submitter_phone" class="form-control mb-2" aria-label="Phone" placeholder="Phone" value="{{ src.get('submitter_phone') or src.get('phone', '') }}" autocomplete="tel">
+                    <textarea name="submitter_address" class="form-control" rows="2" aria-label="Mailing address" placeholder="Mailing address (needed for a reimbursement check)" autocomplete="street-address">{{ src.get('submitter_address') or src.get('address', '') }}</textarea>
                 </div>
                 <div class="col-md-6" id="payeeBox">
                     <div class="section-label">Pay to</div>
-                    <input name="payee_name" class="form-control mb-2" placeholder="Vendor or person" value="{{ form.get('payee_name', '') }}">
-                    <input name="payee_email" type="email" class="form-control mb-2" placeholder="Email (optional)" value="{{ form.get('payee_email', '') }}">
-                    <input name="payee_phone" class="form-control mb-2" placeholder="Phone (optional)" value="{{ form.get('payee_phone', '') }}">
-                    <textarea name="payee_address" class="form-control" rows="2" placeholder="Mailing address (for a check)">{{ form.get('payee_address', '') }}</textarea>
+                    <input name="payee_name" class="form-control mb-2" aria-label="Vendor or person" placeholder="Vendor or person" value="{{ form.get('payee_name', '') }}">
+                    <input name="payee_email" type="email" class="form-control mb-2" aria-label="Email" placeholder="Email (optional)" value="{{ form.get('payee_email', '') }}">
+                    <input name="payee_phone" class="form-control mb-2" aria-label="Phone" placeholder="Phone (optional)" value="{{ form.get('payee_phone', '') }}">
+                    <textarea name="payee_address" class="form-control" rows="2" aria-label="Mailing address" placeholder="Mailing address (for a check)">{{ form.get('payee_address', '') }}</textarea>
                 </div>
                 <div class="col-md-6 d-none text-muted" id="payeeSelf"><div class="section-label">Pay to</div>You, at the address on the left.</div>
             </div>
@@ -124,7 +123,7 @@
             <div class="section-label">Receipts and notes</div>
             <input type="file" name="receipts" class="form-control mb-2" multiple accept="image/*,.pdf,.xls,.xlsx,.xlsm,.doc,.docx">
             <div class="form-text mb-3">Invoices, receipts or photos of them. PDF or pictures are best; several files are fine.</div>
-            <textarea name="notes" class="form-control" rows="2" placeholder="Anything the treasurer should know (optional)">{{ form.get('notes', '') }}</textarea>
+            <textarea name="notes" class="form-control" rows="2" aria-label="Anything the treasurer should know" placeholder="Anything the treasurer should know (optional)">{{ form.get('notes', '') }}</textarea>
             <div class="form-check mt-3"><input class="form-check-input" type="checkbox" name="notify" value="yes" id="notify" {{ 'checked' if form.get('notify') or not form.get('submitter_name') }}>
                 <label class="form-check-label" for="notify">Email me when it is paid or rejected</label></div>
         </div>
@@ -200,8 +199,8 @@
             <input type="hidden" name="action" value="reject">
             <div class="section-label">Reject</div>
             <label class="form-label small" for="rejNote">Why</label>
-            <input name="note" id="rejNote" class="form-control mb-2" placeholder="Duplicate, no receipt…">
-            <button class="btn btn-outline-danger">Reject</button>
+            <input name="note" id="rejNote" class="form-control mb-2" placeholder="Duplicate, no receipt…" required>
+            <button class="btn btn-outline-danger" onclick="return !this.form.checkValidity() || confirm('Reject {{ r.id }}?')">Reject</button>
         </form></div>
     </div>
     {% endif %}
@@ -226,21 +225,20 @@
     </div>
     {% if counts.Received %}<p class="text-muted">{{ counts.Received }} not deposited yet, {{ money(open_total) }} in all{% if open_cash %}, {{ money(open_cash) }} of it cash{% endif %}.</p>{% endif %}
     <div class="card"><div class="card-body p-0 table-responsive">
-        <table class="table table-hover mb-0">
+        <table class="table table-hover mb-0 stack">
             <thead><tr><th class="ps-3">Report</th><th>Received</th><th>From</th><th>Held by</th><th>Status</th><th class="num pe-3">Amount</th></tr></thead>
             <tbody>
             {% for r in reps %}<tr class="row-link" onclick="location.href='{{ url_for('fr.in_detail', rid=r.id) }}'">
                 <td class="ps-3 text-nowrap"><a href="{{ url_for('fr.in_detail', rid=r.id) }}">{{ r.id }}</a></td>
-                <td class="text-nowrap">{{ r.received }}<div class="small text-muted">{{ r.reported_by }}</div></td>
-                <td>{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}{{ r.program }}{% endif %} <span class="small text-muted">{{ r.event_code }}</span></td>
-                <td>{{ r.held_by }}</td>
-                <td>{{ in_badge(r.status) }}{% if r.single and r.status == 'Received' %}<div class="small text-warning-emphasis">Counted by one person</div>{% endif %}{% if r.deposit_ref %}<div class="small text-muted">{{ r.deposit_ref }}</div>{% endif %}</td>
-                <td class="num pe-3">{{ money(r.total) }}{% if r.cash and r.checks %}<div class="small text-muted">cash {{ money(r.cash) }}</div>{% endif %}</td></tr>
-            {% else %}<tr><td colspan="6" class="text-muted ps-3">Nothing here.</td></tr>{% endfor %}
+                <td class="text-nowrap" data-label="Received">{{ r.received }}<div class="small text-muted">{{ r.reported_by }}</div></td>
+                <td data-label="From">{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}{{ r.program }}{% endif %} <span class="small text-muted">{{ r.event_code }}</span></td>
+                <td data-label="Held by">{{ r.held_by }}</td>
+                <td data-label="Status">{{ in_badge(r.status) }}{% if r.single and r.status == 'Received' %}<div class="small text-warning-emphasis">Counted by one person</div>{% endif %}{% if r.deposit_ref %}<div class="small text-muted">{{ r.deposit_ref }}</div>{% endif %}</td>
+                <td class="num pe-3" data-label="Amount">{{ money(r.total) }}{% if r.cash and r.checks %}<div class="small text-muted">cash {{ money(r.cash) }}</div>{% endif %}</td></tr>
+            {% else %}<tr><td colspan="6" class="text-muted fw-normal ps-3">Nothing here.</td></tr>{% endfor %}
             </tbody>
         </table>
     </div></div>
-    <p class="form-text mt-3">Each report is a row on the Money received tab of the Funds Requests sheet. The nightly QuickBooks sync marks it deposited when a deposit of the same amount shows up.</p>
 
     {% elif view == 'in_new' %}
     <div class="page-title">Report money received</div>
@@ -274,7 +272,7 @@
                     <div class="col-6 col-md-2"><select name="line_form" class="form-select form-select-sm" aria-label="Cash or check">{% for m in forms %}<option {% if ln.form == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
                     <div class="col-5 col-md-2"><input name="line_check" class="form-control form-control-sm{% if ln.form != 'Check' %} invisible{% endif %}" placeholder="Check #" value="{{ ln.check_number or '' }}" aria-label="Check number"></div>
                     <div class="col-5 col-md-1"><input name="line_amount" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0.00" value="{{ ln.amount or '' }}" aria-label="Amount"></div>
-                    <div class="col-2 col-md-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)">✕</button></div>
+                    <div class="col-2 col-md-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)" aria-label="Remove line">✕</button></div>
                 </div>{% endfor %}
             </div>
             <div class="d-flex flex-wrap align-items-center gap-3">
@@ -299,7 +297,7 @@
             <div class="section-label">Photos and notes</div>
             <input type="file" name="files" class="form-control mb-2" multiple accept="image/*,.pdf">
             <div class="form-text mb-3">A photo of the count sheet, or of the checks. Optional, but it helps.</div>
-            <textarea name="notes" class="form-control" rows="2" placeholder="Anything the treasurer should know (optional)">{{ form.get('notes', '') }}</textarea>
+            <textarea name="notes" class="form-control" rows="2" aria-label="Anything the treasurer should know" placeholder="Anything the treasurer should know (optional)">{{ form.get('notes', '') }}</textarea>
         </div>
         <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('fr.in_list') }}">Cancel</a><button class="btn btn-accent px-4" id="submitBtn">Report it</button></div>
     </form>
@@ -371,7 +369,7 @@
         <form method="post" class="mb-3 d-flex flex-wrap gap-2 align-items-end"><input type="hidden" name="action" value="approve">
             <button class="btn btn-accent px-4">Approve</button></form>
         <form method="post" class="d-flex gap-2"><input type="hidden" name="action" value="reject">
-            <input name="note" class="form-control" placeholder="Reason to reject" aria-label="Reason to reject"><button class="btn btn-outline-danger">Reject</button></form>
+            <input name="note" class="form-control" placeholder="Reason to reject" aria-label="Reason to reject" required><button class="btn btn-outline-danger" onclick="return !this.form.checkValidity() || confirm('Reject this request?')">Reject</button></form>
         {% endif %}
     </div>
     {% endif %}

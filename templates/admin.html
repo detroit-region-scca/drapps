@@ -45,8 +45,8 @@
                         <div class="col-12 col-md-4"><select name="title" class="form-select form-select-sm" aria-label="Role">{% for t in mine %}<option>{{ t }}</option>{% endfor %}</select></div>
                         <div class="col-12 col-md-4"><select name="to" class="form-select form-select-sm handover-to" aria-label="To">
                             <option value="new">Someone new…</option>{% for o in users if o.email != u.email and not o.region %}<option value="{{ o.email }}">{{ o.name }}</option>{% endfor %}</select></div>
-                        <div class="col-6 col-md-2 handover-new"><input name="name" class="form-control form-control-sm" placeholder="Name"></div>
-                        <div class="col-6 col-md-2 handover-new"><input name="email" type="email" class="form-control form-control-sm" placeholder="Email"></div>
+                        <div class="col-6 col-md-2 handover-new"><input name="name" class="form-control form-control-sm" aria-label="Name" placeholder="Name"></div>
+                        <div class="col-6 col-md-2 handover-new"><input name="email" type="email" class="form-control form-control-sm" aria-label="Email" placeholder="Email"></div>
                     </div>
                     <button class="btn btn-sm btn-outline-secondary mt-2" onclick="return confirm('Hand over this role?')">Hand over</button></form>{% endif %}
             </details>{% endif %}

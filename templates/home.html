@@ -45,7 +45,7 @@
         <div class="page-title">Your name</div>
         <p class="text-muted small">Everything you do in the apps is signed with it, so the audit log shows who did what.</p>
         <form method="post"><input type="hidden" name="next" value="{{ next_url }}">
-            <input class="form-control mb-3" name="name" required autofocus autocomplete="name" value="{{ session.get('who', '') }}" placeholder="First and last name">
+            <input class="form-control mb-3" name="name" required autofocus autocomplete="name" value="{{ session.get('who', '') }}" aria-label="First and last name" placeholder="First and last name">
             <button class="btn btn-accent w-100">Continue</button></form>
     </div></div>
     {% elif view == 'officials' %}
@@ -111,43 +111,6 @@
                 <div class="what">Register events, budgets, board approval and QuickBooks results</div>
             </a>
         </div>
-        {% set vol = me and me.level == 'volunteer' %}
-        {% if members_enabled %}
-        {% set on = shows('members') %}
-        <div class="col">
-            <{{ 'a' if on else 'div' }} class="app-tile{{ '' if on else ' off' }}"{% if on %} href="{{ url_for('members.home') }}"{% else %} title="Not part of your role" aria-disabled="true"{% endif %} style="--tile: #f5b83d;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#f5b83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.6 3-5.6 6-5.6s5.4 2 6 5.6"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.6c2.6-.4 4.8 1.4 5.5 4.6"/>
-                </svg>
-                <div class="name">Members</div>
-                <div class="what">{{ "Enter who worked your event" if vol else "Worker points, member list, service awards" }}</div>
-            </{{ 'a' if on else 'div' }}>
-        </div>
-        {% endif %}
-        {% if me %}
-        {% set on = 'admin' in (me.perms or []) %}
-        <div class="col">
-            <{{ 'a' if on else 'div' }} class="app-tile{{ '' if on else ' off' }}"{% if on %} href="{{ url_for('admin.home') }}"{% else %} title="Not part of your role" aria-disabled="true"{% endif %} style="--tile: #6c757d;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
-                </svg>
-                <div class="name">Admin</div>
-                <div class="what">Users, roles, programs, sign-in access</div>
-            </{{ 'a' if on else 'div' }}>
-        </div>
-        {% endif %}
-        {% if plan_enabled %}
-        {% set on = shows('board') %}
-        <div class="col">
-            <{{ 'a' if on else 'div' }} class="app-tile{{ '' if on else ' off' }}"{% if on %} href="{{ url_for('board.home') }}"{% else %} title="Not part of your role" aria-disabled="true"{% endif %} style="--tile: #1d3fb8;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#1d3fb8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M6 2.5h9l4 4v15H6z"/><path d="M15 2.5v4h4"/><path d="M9 11h7M9 14.5h7M9 18h4"/>
-                </svg>
-                <div class="name">Board</div>
-                <div class="what">Budgets and motions waiting for a vote, decisions, minutes</div>
-            </{{ 'a' if on else 'div' }}>
-        </div>
-        {% endif %}
         {% if fr_enabled %}
         {% set on = shows('funds') %}
         <div class="col">
@@ -172,25 +135,6 @@
             </{{ 'a' if on else 'div' }}>
         </div>
         {% endif %}
-        {% set on = shows('operations') %}
-        <div class="col">
-            <{{ 'a' if on else 'div' }} class="app-tile{{ '' if on else ' off' }}"{% if on %} href="{{ url_for('equip.home') }}"{% else %} title="Not part of your role" aria-disabled="true"{% endif %} style="--tile: #ff9f6b;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#ff9f6b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M2 16V8h11v8M13 11h4l3 3v2h-7"/><circle cx="6" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>
-                </svg>
-                <div class="name">Operations</div>
-                <div class="what">Recurring costs, property, storage and what's due</div>
-            </{{ 'a' if on else 'div' }}>
-        </div>
-        <div class="col">
-            <a class="app-tile" href="{{ url_for('records.home') }}" style="--tile: #d2232a;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#d2232a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>
-                </svg>
-                <div class="name">Records</div>
-                <div class="what">Results, season champions and the Hall of Fame since 1982</div>
-            </a>
-        </div>
         {% set on = shows('invoices') %}
         <div class="col">
             <{{ 'a' if on else 'div' }} class="app-tile{{ '' if on else ' off' }}"{% if on %} href="{{ url_for('inv.home') }}"{% else %} title="Not part of your role" aria-disabled="true"{% endif %} style="--tile: #6ea8ff;">
@@ -201,16 +145,50 @@
                 <div class="what">Bill sponsors and partners in the region's name</div>
             </{{ 'a' if on else 'div' }}>
         </div>
-        {% set on = shows('volunteers') %}
+        {% set vol = me and me.level == 'volunteer' %}
+        {% if members_enabled %}
+        {% set on = shows('members') %}
         <div class="col">
-            <{{ 'a' if on else 'div' }} class="app-tile{{ '' if on else ' off' }}"{% if on %} href="{{ url_for('auth.access') }}"{% else %} title="Not part of your role" aria-disabled="true"{% endif %} style="--tile: #17a2b8;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#17a2b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.6 3-5.6 6-5.6s5.4 2 6 5.6"/><path d="M17 8v6M14 11h6"/>
+            <{{ 'a' if on else 'div' }} class="app-tile{{ '' if on else ' off' }}"{% if on %} href="{{ url_for('members.home') }}"{% else %} title="Not part of your role" aria-disabled="true"{% endif %} style="--tile: #f5b83d;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#f5b83d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.6 3-5.6 6-5.6s5.4 2 6 5.6"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.6c2.6-.4 4.8 1.4 5.5 4.6"/>
                 </svg>
-                <div class="name">App access</div>
-                <div class="what">Let a volunteer sign in</div>
+                <div class="name">Members</div>
+                <div class="what">{{ "Enter who worked your event" if vol else "Worker points, member list, service awards" }}</div>
             </{{ 'a' if on else 'div' }}>
         </div>
+        {% endif %}
+        <div class="col">
+            <a class="app-tile" href="{{ url_for('records.home') }}" style="--tile: #d2232a;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#d2232a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>
+                </svg>
+                <div class="name">Records</div>
+                <div class="what">Results, season champions and the Hall of Fame since 1982</div>
+            </a>
+        </div>
+        {% set on = shows('operations') %}
+        <div class="col">
+            <{{ 'a' if on else 'div' }} class="app-tile{{ '' if on else ' off' }}"{% if on %} href="{{ url_for('equip.home') }}"{% else %} title="Not part of your role" aria-disabled="true"{% endif %} style="--tile: #ff9f6b;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#ff9f6b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2 16V8h11v8M13 11h4l3 3v2h-7"/><circle cx="6" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>
+                </svg>
+                <div class="name">Operations</div>
+                <div class="what">Recurring costs, property, storage and what's due</div>
+            </{{ 'a' if on else 'div' }}>
+        </div>
+        {% if plan_enabled %}
+        {% set on = shows('board') %}
+        <div class="col">
+            <{{ 'a' if on else 'div' }} class="app-tile{{ '' if on else ' off' }}"{% if on %} href="{{ url_for('board.home') }}"{% else %} title="Not part of your role" aria-disabled="true"{% endif %} style="--tile: #1d3fb8;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#1d3fb8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M6 2.5h9l4 4v15H6z"/><path d="M15 2.5v4h4"/><path d="M9 11h7M9 14.5h7M9 18h4"/>
+                </svg>
+                <div class="name">Board</div>
+                <div class="what">Budgets and motions waiting for a vote, decisions, minutes</div>
+            </{{ 'a' if on else 'div' }}>
+        </div>
+        {% endif %}
         {% set on = shows('treasurer') %}
         <div class="col">
             <{{ 'a' if on else 'div' }} class="app-tile{{ '' if on else ' off' }}"{% if on %} href="{{ url_for('treasurer') }}"{% else %} title="Not part of your role" aria-disabled="true"{% endif %} style="--tile: #9aa3ad;">
@@ -230,6 +208,28 @@
                 <div class="what">Every drscca.org address and who it reaches</div>
             </a>
         </div>
+        {% set on = shows('volunteers') %}
+        <div class="col">
+            <{{ 'a' if on else 'div' }} class="app-tile{{ '' if on else ' off' }}"{% if on %} href="{{ url_for('auth.access') }}"{% else %} title="Not part of your role" aria-disabled="true"{% endif %} style="--tile: #17a2b8;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#17a2b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.6 3-5.6 6-5.6s5.4 2 6 5.6"/><path d="M17 8v6M14 11h6"/>
+                </svg>
+                <div class="name">App access</div>
+                <div class="what">Let a volunteer sign in</div>
+            </{{ 'a' if on else 'div' }}>
+        </div>
+        {% if me %}
+        {% set on = 'admin' in (me.perms or []) %}
+        <div class="col">
+            <{{ 'a' if on else 'div' }} class="app-tile{{ '' if on else ' off' }}"{% if on %} href="{{ url_for('admin.home') }}"{% else %} title="Not part of your role" aria-disabled="true"{% endif %} style="--tile: #6c757d;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#6c757d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
+                </svg>
+                <div class="name">Admin</div>
+                <div class="what">Users, roles, programs, sign-in access</div>
+            </{{ 'a' if on else 'div' }}>
+        </div>
+        {% endif %}
     </div>
     {% endif %}
 {% endblock %}
