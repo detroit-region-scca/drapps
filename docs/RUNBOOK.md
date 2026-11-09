@@ -150,9 +150,36 @@ under a file lock on a fresh read, so two people sending the same names for an e
 | What is running | `sudo docker compose ps` |
 | App errors | `sudo docker logs --since 1h drapps` (each error starts with `Traceback`) |
 | Restart the app | `sudo docker compose restart drapps` |
-| A job's last run | `sudo journalctl -u drscca-qbo -n 50` (or `drscca-backup`, `drscca-officials`, `drscca-update`) |
+| A job's last run | `sudo journalctl -u drscca-qbo -n 50` (or `drscca-backup`, `drscca-site-backup`, `drscca-secrets-backup`, `drscca-officials`, `drscca-update`) |
 | Run a job now | `sudo systemctl start drscca-backup.service` |
 | Who did what | the Audit page in the app, or `tail app/data/audit.ndjson` |
+
+## Backups
+
+Everything the region keeps, and where its copies are. Any failed backup job emails admin@drscca.org.
+
+| What | Copy | How often, how long | Where |
+|---|---|---|---|
+| The sheets (all region records) | Drive's own version history | Every edit | On each spreadsheet in the DRSCCA Apps drive |
+| The sheets | `.xlsx` copy of every sheet (`backup_sheets.py`) | Nightly 02:45, 60 days | `data/backups/` on the server |
+| The whole server | Disk snapshot (schedule `daily-7`) | Daily, 7 days | Cloud console > Compute Engine > Snapshots |
+| Server secrets and live timing logins | `drapps server secrets (weekly).tar.gz` (`secrets_backup.py`) | Sundays 05:00; Drive keeps earlier versions | Account Recovery folder, DRSCCA Region drive (admin only) |
+| drscca.org website content | `drscca.org site backup YYYY-MM-DD.tar.gz` (`site_backup.py`) | Sundays 05:15, newest 8 | DRSCCA Region drive > Website Archive > Weekly site backups |
+| drscca.org database, once | `drscca.org WordPress.com database 2026-11-09 (before Premium downgrade).sql.gz` | One time, the last full export | Account Recovery folder (holds user emails and password hashes) |
+| The old website (IONOS, to 2026) | Full archive | One time | DRSCCA Region drive > Website Archive |
+| The app's code | This repository | Every change | GitHub, detroit-region-scca/drapps |
+
+**The website copy.** drscca.org is on WordPress.com Premium, which has no do-it-yourself backups or restores
+(Business has them). Every Sunday the server reads the site's public WordPress API and saves `pages.json`,
+`posts.json`, `categories.json`, `tags.json`, `media.json` (every public file with its address), `home.html` and a
+README into one `.tar.gz`. It reads only published, public content, so it needs no WordPress login; drafts, the theme's
+templates and site settings are not in it. If a run gets back fewer than 10 pages or posts it stops with an error and
+keeps the older copies. For a fuller copy at any time: wp-admin > Tools > Export (posts, pages and media as a WordPress
+export file), saved by hand into the same folder.
+
+**Restoring a page or post.** Open the newest copy, find it in `pages.json` or `posts.json` by its `slug`, and paste
+its `content.rendered` into a Custom HTML block in the editor (or rebuild it from that text). Each item also has its
+title, date, categories and featured image id; `media.json` gives each image's address.
 
 ## When something breaks
 
@@ -189,6 +216,10 @@ Fix that, then `sudo touch app/data/officials-queue.json` to retry.
 **A sheet was damaged or rows were deleted.** First use Drive's version history on that spreadsheet. If that is
 not enough, the matching file in `data/backups/` is the sheet as of a past night: copy back what is missing. Do
 not replace the whole spreadsheet, or its ID changes.
+
+**A page or post on drscca.org was deleted or damaged.** First look in WordPress: Pages or Posts > Trash (kept 30
+days), or the page's Revisions in the editor. If it is not there, restore it from the weekly website copy (see
+Backups above).
 
 **The server itself is lost or broken.** The disk is snapshotted daily, 7 days kept (snapshot schedule
 `daily-7`): in the Cloud console, create a disk from the latest snapshot and a VM from that disk with the same

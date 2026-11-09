@@ -24,6 +24,9 @@ drapps.drscca.org. Keeping it running: [docs/RUNBOOK.md](docs/RUNBOOK.md).
 - **The server keeps a little state of its own** in `data/`: the audit log, sign-in codes, programs, role
   permissions, the officials change queue, the QuickBooks sync status, a cache of the sheets, and nightly
   backups. The runbook lists each file.
+- **Backups** run on the server: nightly sheet copies, a daily disk snapshot, a weekly copy of the server's
+  secrets, and a weekly copy of the drscca.org website's content into the region drive (WordPress.com Premium has
+  no backups of its own). The runbook's Backups section lists each copy, where it is and how to restore from it.
 - **Who holds which job** is `officials.json` on the host, mounted read-only. The admin changes it in
   Admin > Users; a host job (`tools/officials_queue.py`) applies the change and updates the drscca.org Google
   Groups to match. Nobody can make themselves an approver from inside the app.
