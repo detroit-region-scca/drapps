@@ -141,7 +141,7 @@
             <ul class="navbar-nav me-auto gap-xl-1">
                 <li class="nav-item"><a class="apps-btn mt-1 mt-xl-0" href="{{ url_for('home') }}" title="All apps"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Apps</span></a></li>
                 {% block nav %}{% endblock %}</ul>
-            <span class="btn btn-logout nav-user px-xl-2 px-0 d-block text-start" title="{{ me.email if me }}">{{ session.get('who', '') }}</span>
+            <span class="btn btn-logout nav-user px-xl-2 px-0 d-block d-xl-none d-xxl-block text-start" title="{{ me.email if me }}">{{ session.get('who', '') }}</span>
             {% if me and 'audit' in (me.perms or []) %}<a class="btn btn-link btn-logout text-decoration-none px-xl-2 px-0 d-block text-start{% if request.endpoint == 'audit_log' %} fw-semibold{% endif %}" href="{{ url_for('audit_log') }}">Audit log</a>{% endif %}
             <form action="{{ url_for('logout') }}" method="POST" class="m-0">
                 <button type="submit" class="btn btn-link btn-logout text-decoration-none px-xl-2 px-0">Log out</button>

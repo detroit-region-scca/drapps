@@ -21,7 +21,7 @@
                 <button class="btn btn-sm btn-outline-dark py-0">Yes, update it</button>
             </form>
             {% endfor %}
-            <div class="small">Yes keeps its {{ 'code' if maybe_same|length == 1 else 'codes' }} and annual plan line, with the name and date you entered. If it is a different event, press Submit Event again.</div>
+            <div class="small">Yes keeps its {{ 'code' if maybe_same|length == 1 else 'codes' }} and annual plan line, with the name and date you entered. If it is a different event, press Add event again.</div>
         </div>
         {% endif %}
         <!-- Form Card -->
@@ -32,25 +32,25 @@
                         <input type="hidden" name="your_name" value="{{ session.get('who', '') }}">
                         {% if maybe_same %}<input type="hidden" name="new_ok" value="1">{% endif %}
                         <div class="col-md-6">
-                            <label class="form-label">Program Name</label>
+                            <label class="form-label">Program</label>
                             <select class="form-select" name="program" required>
                                 <option value="" {% if not form_data or not form_data.get('program') %}selected{% endif %} disabled>Select...</option>
                                 {% for code, name in programs.items() %}
-                                <option value="{{ code }}" {% if form_data and form_data.get('program') == code %}selected{% endif %}>{{ code }}</option>
+                                <option value="{{ code }}" {% if form_data and form_data.get('program') == code %}selected{% endif %}>{{ name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label">Event Date</label>
+                            <label class="form-label">Date</label>
                             {% set ym = form_data.get('month', '') if form_data else '' %}<input type="date" class="form-control" name="date" value="{{ form_data.get('date', '') if form_data else '' }}" required onkeydown="return false" onclick="this.showPicker()"{% if ym %} min="{{ ym }}-01" max="{{ form_data.month_end }}"{% endif %}>
                             {% if ym %}<div class="form-text">Planned for {{ ym }}; pick the day.</div>{% endif %}
                         </div>
                         <div class="col-md-8">
-                            <label class="form-label">Event Description</label>
+                            <label class="form-label">Event name</label>
                             <input type="text" class="form-control" name="event_name" placeholder="e.g. Summer Heat" value="{{ form_data.get('event_name', '') if form_data else '' }}" required>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label">Custom Tag (Optional)</label>
+                            <label class="form-label">Tag <span class="text-muted">(optional)</span></label>
                             <input type="text" class="form-control" name="custom_tag" placeholder="e.g. #ProSolo" value="{{ form_data.get('custom_tag', '') if form_data else '' }}">
                         </div>
                         <div class="col-12 d-none" id="planLineBox">
@@ -59,7 +59,7 @@
                             <div class="form-text">Ties the event to its line in the annual plan, so the plan, the budget and the actual line up.</div>
                         </div>
                         <div class="col-12 text-end mt-4">
-                            <button type="submit" class="btn btn-accent px-4">Submit Event</button>
+                            <button type="submit" class="btn btn-accent px-4">Add event</button>
                         </div>
                     </div>
                 </form>

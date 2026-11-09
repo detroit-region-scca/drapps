@@ -47,9 +47,10 @@
             <div class="col-md-6"><textarea name="bill_address" class="form-control h-100" rows="4" aria-label="Mailing address" placeholder="Mailing address (optional)">{{ form.get('bill_address', '') }}</textarea></div>
         </div></div>
         <div class="card p-3 mb-3"><div class="section-label">Lines</div>
+            <div class="row g-2 text-muted small mb-1 d-none d-md-flex"><div class="col-md-7">Description</div><div class="col-3 col-md-1 text-end">Qty</div><div class="col-6 col-md-3 text-end">Price</div></div>
             <div id="lines">{% for r in rows %}
-            <div class="row g-2 mb-2 line"><div class="col-12 col-md-7"><input name="desc" class="form-control" placeholder="e.g. 2027 Solo series sponsorship" value="{{ r.description or '' }}"></div>
-                <div class="col-3 col-md-1"><input name="qty" class="form-control text-end" inputmode="decimal" placeholder="1" value="{{ r.quantity if r.quantity is string else ('%g'|format(r.quantity) if r.quantity else '') }}"></div>
+            <div class="row g-2 mb-2 line"><div class="col-12 col-md-7"><input name="desc" class="form-control" aria-label="Description" placeholder="e.g. 2027 Solo series sponsorship" value="{{ r.description or '' }}"></div>
+                <div class="col-3 col-md-1"><input name="qty" class="form-control text-end" inputmode="decimal" aria-label="Quantity" placeholder="Qty" value="{{ r.quantity if r.quantity is string else ('%g'|format(r.quantity) if r.quantity else '') }}"></div>
                 <div class="col-6 col-md-3"><input name="price" class="form-control text-end" inputmode="decimal" aria-label="Price" placeholder="Price" value="{{ r.unit_price or '' }}"></div>
                 <div class="col-3 col-md-1 d-flex align-items-center"><a href="#" class="text-muted text-decoration-none" onclick="dropLine(this); return false;" aria-label="Remove line">✕</a></div></div>{% endfor %}
             </div>

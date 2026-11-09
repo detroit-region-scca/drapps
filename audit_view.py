@@ -62,6 +62,9 @@ def describe(log):
         return Markup('{} registered {} {} ({})').format(who, g('event_name', ''), g('custom_tag') or g('unique_code', ''), g('program_code', ''))
     if a == 'EVENT_DELETED':
         return Markup('{} deleted {} ({})').format(who, g('event_name', ''), g('program_code', ''))
+    if a == 'EVENT_EDITED' and isinstance(g('date'), list):     # the event page's "Use that date" (from MotorsportReg)
+        old, new = (g('date') + ['', ''])[:2]
+        return Markup('{} moved {} from {} to {}, the MotorsportReg date').format(who, g('event_code', ''), old, new)
     if a == 'EVENT_EDITED':
         o, u = g('original') or {}, g('updated') or {}
         diffs = [f"{k.replace('_', ' ')}: '{o.get(k)}' to '{u.get(k)}'"
