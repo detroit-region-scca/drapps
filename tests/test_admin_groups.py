@@ -29,4 +29,19 @@ def client(monkeypatch, tmp_path):
 def test_groups_table(client):
     html = client.get('/admin/groups').get_data(as_text=True)
     assert 'autocross@example.org' in html and 'Pat Director' in html and 'boss@example.org' not in html
-    assert 'Also: old@example.org' in html and 'Nobody' in html
+    assert 'Also receives: old@example.org' in html and 'retired addresses' in html and 'set in Google' in html
+
+
+def test_refresh_asks_the_server(client, tmp_path, monkeypatch):
+    import admin
+    monkeypatch.setattr(admin, 'GROUPS_REFRESH', str(tmp_path / 'groups-refresh'))
+    assert client.post('/admin/groups').status_code == 302
+    assert 'Refreshing' in client.get('/admin/groups').get_data(as_text=True)
+
+
+def test_synced_groups_match_the_handover_tool():
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools'))
+    import admin
+    import handover
+    assert admin.SYNCED_GROUPS == set(handover.wanted([]))

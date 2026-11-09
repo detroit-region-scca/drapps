@@ -2,5 +2,6 @@
 Description=DRSCCA apps: officials-list changes made in the app
 [Path]
 PathChanged=/opt/drscca/app/data/officials-queue.json
+PathChanged=/opt/drscca/app/data/groups-refresh
 [Install]
 WantedBy=paths.target
