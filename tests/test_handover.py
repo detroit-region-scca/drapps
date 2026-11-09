@@ -55,6 +55,16 @@ def test_owner_is_never_removed(env):
     assert H.plan(H.wanted(OFFICIALS)) == []
 
 
+def test_a_manager_who_left_the_role_is_removed_and_newcomers_are_managers(env):
+    _, groups, calls = env
+    groups['re']['old@x.com'] = 'MANAGER'
+    steps = H.plan(H.wanted(OFFICIALS))
+    assert steps == [('re', 'remove', 'old@x.com')]
+    H.run(steps + [('re', 'add', 'new@x.com')], True)
+    assert ('update', 'group', 're@drscca.org', 'remove', 'user', 'old@x.com') in calls
+    assert ('update', 'group', 're@drscca.org', 'add', 'manager', 'user', 'new@x.com') in calls
+
+
 def test_handover_moves_the_job_and_its_bracketed_duties_only(env):
     f, _, calls = env
     H.main(['hand', 'Region Executive', 'new@x.com', 'New', '--apply'])

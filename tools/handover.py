@@ -97,7 +97,9 @@ def plan(want):
     for group, emails in want.items():
         have = members(group)
         steps += [(group, 'add', e) for e in sorted(emails - set(have))]
-        steps += [(group, 'remove', e) for e, role in sorted(have.items()) if role == 'MEMBER' and e not in emails]
+        # Everyone but the owner (the admin account) follows the list; members are managers so they can see the
+        # group's history (decided 2026-11-03), so a manager who no longer holds a role goes too.
+        steps += [(group, 'remove', e) for e, role in sorted(have.items()) if role != 'OWNER' and e not in emails]
     return steps
 
 
@@ -108,7 +110,10 @@ def run(steps, apply):
     for group, op, email in steps:
         print(f'  {group}@{DOMAIN}: {op} {email}')
         if apply:
-            gam('update', 'group', f'{group}@{DOMAIN}', op, 'member', email)
+            if op == 'add':
+                gam('update', 'group', f'{group}@{DOMAIN}', 'add', 'manager', 'user', email)
+            else:                    # no role named: removes them whatever their role
+                gam('update', 'group', f'{group}@{DOMAIN}', 'remove', 'user', email)
     print('Done.' if apply else '(dry run: add --apply to make these changes)')
 
 
