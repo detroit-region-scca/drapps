@@ -5,7 +5,6 @@
     {{ tab('admin.home', 'Users') }}
     {{ tab('admin.roles', 'Roles') }}
     {{ tab('admin.programs', 'Programs') }}
-    {{ tab('admin.email_groups', 'Email groups') }}
     {{ tab('audit_log', 'Audit log') }}
 {% endblock %}
 {% block content %}
@@ -107,24 +106,6 @@
         <div class="col-12 col-md-5"><label class="form-label small">Start with the permissions of</label><select name="like" class="form-select form-select-sm"><option value="">Everyday only</option>{% for c in cols %}<option value="{{ c.role }}">{{ c.role }}</option>{% endfor %}</select></div>
         <div class="col-12 col-md-2"><button class="btn btn-sm btn-accent w-100">Add</button></div>
     </div><div class="small text-muted mt-2">It shows as a column here; give it to someone on Users.</div></form></details>
-{% elif view == 'groups' %}
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
-        <div class="page-title">Email groups</div>
-        <form method="post"><button class="btn btn-sm btn-outline-secondary"{{ ' disabled' if refreshing }}>{{ 'Refreshing…' if refreshing else 'Refresh from Google' }}</button></form>
-    </div>
-    <p class="text-muted small">Every drscca.org email address. Each one forwards to the people listed, at their own email. Read from Google{% if updated %} at {{ updated }}{% endif %}. Role groups follow <a href="{{ url_for('admin.home') }}">Users</a>; the rest are changed at admin.google.com.</p>
-    {% if refreshing %}<meta http-equiv="refresh" content="15">{% endif %}
-    {% if not rows %}<div class="alert alert-warning py-2 small">Not read from Google yet. Press Refresh.</div>{% else %}
-    <div class="list-group">{% for r in rows %}
-        <div class="list-group-item py-2">
-            <div class="d-flex flex-wrap align-items-baseline column-gap-2">
-                <a class="fw-semibold" href="mailto:{{ r.email }}">{{ r.email }}</a><span class="small text-muted">{{ r.label }}</span>
-                {% if not r.synced %}<span class="badge rounded-pill text-bg-light border fw-normal">set in Google</span>{% endif %}
-            </div>
-            <div class="mt-1">{% if r.to %}{{ r.to|join(', ') }}{% else %}<span class="text-muted">{{ r.empty }}</span>{% endif %}</div>
-            {% if r.aliases %}<div class="small text-muted mt-1 text-break">Also receives: {{ r.aliases|map('replace', '@drscca.org', '@')|join(', ') }}</div>{% endif %}
-        </div>{% endfor %}
-    </div>{% endif %}
 {% elif view == 'programs' %}
     <div class="page-title">Programs</div>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><tbody>

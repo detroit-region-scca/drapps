@@ -164,7 +164,7 @@ def main():
         done['results'] = done['results'][-50:]
         _write(DONE, done)
         mirrored = True
-    # Admin > Email groups: read the groups from Google after every change, and when Refresh is pressed (groups-refresh).
+    # the Email groups page: read the groups from Google after every change, and when Refresh is pressed (groups-refresh).
     try:
         print(f"Email groups list: {handover.snapshot(os.path.join(DATA, 'email-groups.json'))} groups")
     except (SystemExit, Exception) as e:     # noqa: BLE001

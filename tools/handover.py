@@ -113,7 +113,7 @@ def run(steps, apply):
 
 
 def snapshot(path):
-    """Write every drscca.org group (address, name, other addresses, members) to path, for Admin > Email groups."""
+    """Write every drscca.org group (address, name, other addresses, members) to path, for the Email groups page."""
     from datetime import datetime
     out = gam('print', 'groups', 'fields', 'email,name,aliases')
     groups = []
@@ -176,7 +176,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest='cmd', required=True)
     sub.add_parser('show', help='who each group should reach, per officials.json').set_defaults(fn=cmd_show)
-    s = sub.add_parser('groups', help='save the list of groups for Admin > Email groups')
+    s = sub.add_parser('groups', help='save the list of groups for the Email groups page')
     s.add_argument('--out', default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'email-groups.json'))
     s.set_defaults(fn=cmd_groups)
     s = sub.add_parser('sync', help='make the groups match officials.json')

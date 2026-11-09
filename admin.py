@@ -265,52 +265,6 @@ def programs():
     return render_template('admin.html', **_ctx(view='programs'))
 
 
-# Groups whose members the server sets from the officials list (tools/handover.py wanted()); the others are set in Google.
-SYNCED_GROUPS = {'re', 'are', 'secretary', 'roadracing', 'autocross', 'rally', 'rallycross', 'sim', 'streetsurvival',
-                 'equipment', 'bod', 'officers'}
-GROUPS_FILE = os.path.join(utils.DATA_DIR, 'email-groups.json')
-
-
-GROUPS_REFRESH = os.path.join(utils.DATA_DIR, 'groups-refresh')
-EMPTY_NOTE = {'apps': 'Nobody: DR Apps sends from it', 'legacy': 'The admin account: catches mail to retired addresses'}
-
-
-@bp.route('/groups', methods=['GET', 'POST'])
-@login_required
-def email_groups():
-    """Every drscca.org email group and who it reaches. The server saves the list (tools/handover.py groups) each
-    time a role is handed over, so it follows the groups without anyone keeping it by hand."""
-    if (g := _guard()):
-        return g
-    if request.method == 'POST':           # the server reads Google (drscca-officials.path) and saves the list
-        with open(GROUPS_REFRESH, 'w') as f:
-            f.write(datetime.now().isoformat())
-        return redirect(url_for('admin.email_groups'))
-    try:
-        with open(GROUPS_FILE) as f:
-            doc = json.load(f)
-    except (OSError, ValueError):
-        doc = {'groups': [], 'updated': ''}
-    names = {(o.get('email') or '').lower(): o.get('name') for o in officials.all() if o.get('name')}
-    names.update({e: v.get('name') for e, v in auth.volunteers().items() if v.get('name') and e not in names})
-    rows = []
-    for gr in doc.get('groups', []):
-        to = [names.get(m['email']) or m['email'] for m in gr.get('members', []) if m.get('role') != 'OWNER']
-        local = gr['email'].split('@')[0]
-        rows.append(dict(gr, label=_re.sub(r'^DRSCCA\s+', '', gr.get('name') or ''), to=sorted(set(to), key=str.lower),
-                         synced=local in SYNCED_GROUPS, empty=EMPTY_NOTE.get(local, 'Nobody (the admin account only)')))
-    refreshing = os.path.exists(GROUPS_REFRESH) and os.path.getmtime(GROUPS_REFRESH) > (os.path.getmtime(GROUPS_FILE) if os.path.exists(GROUPS_FILE) else 0)
-    return render_template('admin.html', **_ctx(view='groups', rows=rows, refreshing=refreshing,
-                                                updated=_nice_time(doc.get('updated', ''))))
-
-
-def _nice_time(iso):
-    try:
-        return datetime.fromisoformat(iso).strftime('%b %-d, %-I:%M %p')
-    except ValueError:
-        return ''
-
-
 @bp.route('/roles', methods=['GET', 'POST'])
 @login_required
 def roles():
