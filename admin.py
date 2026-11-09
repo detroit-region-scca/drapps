@@ -1,7 +1,7 @@
 """Admin: the region's settings, for the admin account (role Admin in the officials list).
 
 - People and roles: who holds each role; change, add or remove a holder. Changes are queued in data/ and applied on the
-  server (tools/officials_queue.py, drscca-officials.path): officials.json and the drscca.org Google Groups follow.
+  server (tools/officials_queue.py, drscca-officials.path) to officials.json. Email group members are changed only in Google.
 - Programs: rename one, or add one (the Registry sheet's Programs tab).
 - Volunteers are added and removed only on the App access page (auth.access); the audit log is linked from here.
 """
@@ -163,7 +163,7 @@ def _hand_over():
     utils.queue_official_change({'op': 'change', 'title': title, 'from': frm, 'name': name, 'email': email,
                                  'drop_volunteer': email in auth.volunteers(), 'by': me.get('name', '')})
     log_audit_event('USER_ROLE_HANDED_OVER', me.get('name', ''), {'title': title, 'from': f"{held.get('name')} <{frm}>", 'to': f'{name} <{email}>'})
-    flash(f"{title} goes from {held.get('name')} to {name} within a minute, with its email group.", 'success')
+    flash(f"{title} goes from {held.get('name')} to {name} within a minute. Change the email group at admin.google.com.", 'success')
     return back
 
 
@@ -249,7 +249,7 @@ def _save_user():
     elif not titles and not volunteer:
         flash(f'{name} will no longer be able to sign in{" once the change is saved (within a minute)" if official_change else ""}.', 'success')
     elif official_change:
-        flash(f'{name}: roles saved; the officials list and email groups update within a minute.', 'success')
+        flash(f'{name}: roles saved; the officials list updates within a minute. Email groups are changed at admin.google.com.', 'success')
     else:
         flash(f'{name} saved{" as a volunteer" if vol else ""}.', 'success')
     return back

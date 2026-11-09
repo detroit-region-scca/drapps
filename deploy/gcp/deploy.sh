@@ -27,7 +27,7 @@ sudo install -d -o drapps -g drapps -m 700 data/secrets/qbo
 sudo install -m 644 app/deploy/gcp/livetiming-www/*.html data/livetiming/www/
 sudo cp app/deploy/gcp/systemd/* /etc/systemd/system/ && sudo systemctl daemon-reload
 sudo systemctl restart drscca-officials.path     # picks up new watched files
-sudo systemctl enable --now drscca-update.timer drscca-secrets-backup.timer drscca-site-backup.timer >/dev/null 2>&1
+sudo systemctl enable --now drscca-update.timer drscca-secrets-backup.timer drscca-site-backup.timer drscca-groups.path >/dev/null 2>&1
 command -v fail2ban-client >/dev/null || sudo apt-get install -y -qq fail2ban >/dev/null 2>&1
 sudo install -m 644 app/deploy/gcp/fail2ban/livetiming-sftp.local /etc/fail2ban/jail.d/livetiming-sftp.local && sudo systemctl reload-or-restart fail2ban
 sudo install -m 644 app/deploy/gcp/apt/52drscca-upgrades /etc/apt/apt.conf.d/52drscca-upgrades

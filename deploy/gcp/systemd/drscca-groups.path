@@ -1,0 +1,6 @@
+[Unit]
+Description=DRSCCA apps: Refresh pressed on the Email groups page
+[Path]
+PathChanged=/opt/drscca/app/data/groups-refresh
+[Install]
+WantedBy=paths.target

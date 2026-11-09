@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Apply officials-list changes the admin made in the apps (data/officials-queue.json): each one is a handover
-(tools/handover.py hand ... --apply), which edits officials.json and brings the drscca.org Google Groups in line.
+(tools/handover.py hand ... --apply), which edits officials.json. The Google Groups are not touched.
 Results go to data/officials-done.json for the Officials page. Run by drscca-officials.path when the queue changes.
 """
 import argparse
@@ -113,7 +113,7 @@ def _drop_volunteer(email):
 
 
 def apply_one(c):
-    """Apply one queued change. Returns (ok, message): officials.json and the email groups are reported separately."""
+    """Apply one queued change to officials.json. Returns (ok, message)."""
     out = io.StringIO()
     try:
         with contextlib.redirect_stdout(out):
@@ -133,11 +133,6 @@ def apply_one(c):
             handover.save(doc)
             if c.get('drop_volunteer'):
                 _drop_volunteer(c['email'].lower())
-        try:
-            with contextlib.redirect_stdout(out):
-                handover.run(handover.plan(handover.wanted(rows)), True)
-        except (SystemExit, Exception) as e:     # noqa: BLE001
-            return True, out.getvalue() + f'\nSaved, but the email groups did not update: {e}. Run handover.py sync.'
         return True, out.getvalue()
     except SystemExit as e:
         return False, str(e)
@@ -164,11 +159,6 @@ def main():
         done['results'] = done['results'][-50:]
         _write(DONE, done)
         mirrored = True
-    # the Email groups page: read the groups from Google after every change, and when Refresh is pressed (groups-refresh).
-    try:
-        print(f"Email groups list: {handover.snapshot(os.path.join(DATA, 'email-groups.json'))} groups")
-    except (SystemExit, Exception) as e:     # noqa: BLE001
-        print(f'Email groups list not updated: {e}')
     if mirrored:
         # The readable copy in the shared drive. Written from inside the app's container: that is where the Drive
         # key is, and it reads the file just changed.

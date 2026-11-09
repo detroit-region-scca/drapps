@@ -88,7 +88,8 @@ All run on the server. Any failure emails admin@drscca.org (from apps@) with the
 | QuickBooks sync | 02:30 nightly | `drscca-qbo.timer` | Actuals, funds requests paid, bank balances, balance sheet, money owed, books check; attaches paid requests' receipts in QuickBooks (`data/qbo-attached.json` remembers which receipts went). On the 1st it also emails the treasurer the worker points journal entry and adds the month's automatic points. |
 | Sync now | When the treasurer presses it | `drscca-qbo-refresh.path` | The same sync, on request |
 | Sheet backup | 02:45 nightly | `drscca-backup.timer` | `.xlsx` copies into `data/backups/` |
-| Officials changes | When the admin saves a person in Admin > Users | `drscca-officials.path` | Updates `officials.json` and the drscca.org Google Groups with GAM |
+| Officials changes | When the admin saves a person in Admin > Users | `drscca-officials.path` | Updates `officials.json` (never the Google Groups) |
+| Email groups list | When an admin presses Refresh on the Email groups page | `drscca-groups.path` | `tools/groups_pull.py` reads every drscca.org group with GAM (read only) into `data/email-groups.json` |
 | Software updates | Sundays 04:30 | `drscca-update.timer` | Newest Caddy, nginx and SFTP images, drapps rebuilt on the newest Python, newest GAM and libraries |
 | System updates | daily | `unattended-upgrades` | Debian, Docker, Node and Google packages; reboots at 04:00 only when an update needs it |
 | Secrets copy | Sundays 05:00 | `drscca-secrets-backup.timer` | Updates "drapps server secrets (weekly).tar.gz" in the admin-only Account Recovery folder (Drive keeps earlier versions) |
@@ -195,7 +196,7 @@ errors; the usual cause is the service account's domain-wide delegation for Gmai
 Workspace admin console.
 
 **One person is not receiving app email.** App email goes to role groups. Check the person is a member of the
-group for their job (`tools/handover.py show`), and their spam folder.
+group for their job (the Email groups page; members are changed at admin.google.com), and their spam folder.
 
 **Someone cannot sign in.** They must use the address on their user in Admin > Users (officials) or on the App
 access page. A code works once, for 15 minutes; ask them to request a new one.

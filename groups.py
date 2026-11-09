@@ -1,7 +1,7 @@
 """Email groups: every drscca.org address and who it reaches, for anyone signed in.
 
-The server reads the groups from Google (tools/handover.py groups) after every role handover and when an admin
-presses Refresh, and saves them to data/email-groups.json. Google is the only place the groups live.
+When an admin presses Refresh, the server reads the groups from Google (tools/groups_pull.py, drscca-groups.path)
+into data/email-groups.json. Google is the only place the groups live; the apps never change them.
 """
 import json
 import os
@@ -54,7 +54,7 @@ def home():
 @bp.route('/refresh', methods=['POST'])
 @login_required
 def refresh():
-    """Admins only: the server re-reads the groups from Google (drscca-officials.path watches this file)."""
+    """Admins only: the server re-reads the groups from Google (drscca-groups.path watches this file)."""
     if 'admin' not in ((auth.user() or {}).get('perms') or []):
         abort(404)
     with open(GROUPS_REFRESH, 'w') as f:

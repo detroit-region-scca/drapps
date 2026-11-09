@@ -5,7 +5,7 @@
         <div class="page-title">Email groups</div>
         {% if is_admin %}<form method="post" action="{{ url_for('groups.refresh') }}"><button class="btn btn-sm btn-outline-secondary"{{ ' disabled' if refreshing }}>{{ 'Refreshing…' if refreshing else 'Refresh from Google' }}</button></form>{% endif %}
     </div>
-    <p class="text-muted small">Every drscca.org email address. Each one forwards to the people listed, at their own email.{% if updated %} As of {{ updated }}.{% endif %}</p>
+    <p class="text-muted small">Every drscca.org email address. Each one forwards to the people listed, at their own email. Members are changed at admin.google.com.{% if updated %} As of {{ updated }}.{% endif %}</p>
     {% if refreshing %}<meta http-equiv="refresh" content="15">{% endif %}
     {% if not rows %}<div class="alert alert-warning py-2 small">The list is not available yet.</div>{% else %}
     <div class="list-group">{% for r in rows %}

@@ -115,16 +115,16 @@ older `DREVENT_*` names still work.
 ## Officials and the drscca.org groups
 
 `officials.json` is the one list of who holds which job. Admin > Users is the normal way to change it. On the
-host, `tools/handover.py` does the same from the command line, using GAM as the region's service account.
-Nothing changes without `--apply`.
+host, `tools/handover.py` does the same from the command line. Nothing changes without `--apply`.
 
-    python3 tools/handover.py show                      # who each group should reach
-    python3 tools/handover.py sync [--apply]            # fix groups that drifted from the file
+The apps never change the drscca.org Google Groups. Members are changed only at admin.google.com; the Email
+groups page reads them (Refresh, admins only, runs `tools/groups_pull.py` with GAM, read only).
+
     python3 tools/handover.py hand "Autocross Director" new@example.com "New Person" [--from old@example.com] [--apply]
 
 The app picks up the edited file on its next read, with no restart.
 
-Each official has `email` (the person: sign-in matches it, and group membership uses it) and `notify` (the
+Each official has `email` (the person: sign-in matches it) and `notify` (the
 role's group, for example autocross@drscca.org). The app emails only `notify` addresses, so mail lands in the
 group's shared inbox. A handover changes `email`; `notify` stays with the role. Volunteers get mail at their own
 address. Region accounts (admin@, treasurer@) are Google Workspace accounts or groups, handed over in

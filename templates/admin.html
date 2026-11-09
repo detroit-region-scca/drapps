@@ -40,7 +40,7 @@
             {% else %}<details class="mt-1"><summary class="small text-muted">Edit</summary><form method="post" class="mt-2 user-form"{% if u.volunteer and not u.titles %} data-volunteer="1"{% endif %}>{{ user_form(u, roles) }}</form>
                 {% set mine = u.titles|reject('in', followers)|list %}{% if mine %}<form method="post" class="border-top mt-3 pt-2">
                     <input type="hidden" name="action" value="handover"><input type="hidden" name="old_email" value="{{ u.email }}">
-                    <div class="small fw-semibold">Hand over a role</div><div class="small text-muted mb-1">The role moves in one step, with its email group.</div>
+                    <div class="small fw-semibold">Hand over a role</div><div class="small text-muted mb-1">Moves the role in the apps. Change its email group at admin.google.com.</div>
                     <div class="row g-2">
                         <div class="col-12 col-md-4"><select name="title" class="form-select form-select-sm" aria-label="Role">{% for t in mine %}<option>{{ t }}</option>{% endfor %}</select></div>
                         <div class="col-12 col-md-4"><select name="to" class="form-select form-select-sm handover-to" aria-label="To">

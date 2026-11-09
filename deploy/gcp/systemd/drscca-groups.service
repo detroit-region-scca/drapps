@@ -1,0 +1,9 @@
+[Unit]
+OnFailure=drscca-alert@%n.service
+Description=DRSCCA apps: read the drscca.org Google Groups for the Email groups page (read only)
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/drscca/app
+Environment=GAM=/opt/drscca/venv/bin/gam
+Environment=GAMCFGDIR=/opt/drscca/data/secrets/gam
+ExecStart=/opt/drscca/venv/bin/python tools/groups_pull.py

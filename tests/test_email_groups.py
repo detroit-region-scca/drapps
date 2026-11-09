@@ -49,3 +49,21 @@ def test_refresh_asks_the_server(client, tmp_path, monkeypatch):
     monkeypatch.setattr(groups, 'GROUPS_REFRESH', str(tmp_path / 'groups-refresh'))
     assert client.post('/email-groups/refresh').status_code == 302
     assert 'Refreshing' in client.get('/email-groups/').get_data(as_text=True)
+
+
+def test_pull_only_reads(monkeypatch, tmp_path):
+    import sys, os
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools'))
+    import groups_pull as G
+    calls = []
+
+    def fake(*a):
+        calls.append(a)
+        if a[1] == 'groups':
+            return 'email,name,aliases\nre@example.org,DRSCCA Region Executive,\n'
+        return 'email,role\nPat@x.com,MANAGER\n'
+    monkeypatch.setattr(G, 'gam', fake)
+    out = tmp_path / 'g.json'
+    G.main(str(out))
+    assert all(c[0] == 'print' for c in calls)
+    assert json.loads(out.read_text())['groups'][0]['members'] == [{'email': 'pat@x.com', 'role': 'MANAGER'}]
