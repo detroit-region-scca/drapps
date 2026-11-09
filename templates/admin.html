@@ -121,8 +121,7 @@
                 <a class="fw-semibold" href="mailto:{{ r.email }}">{{ r.email }}</a><span class="small text-muted">{{ r.label }}</span>
                 {% if not r.synced %}<span class="badge rounded-pill text-bg-light border fw-normal">set in Google</span>{% endif %}
             </div>
-            <div class="small mt-1">{% if r.to %}{% for n in r.to %}<span class="badge rounded-pill text-bg-secondary fw-normal me-1 mb-1">{{ n }}</span>{% endfor %}
-                {% else %}<span class="text-muted">{{ r.empty }}</span>{% endif %}</div>
+            <div class="mt-1">{% if r.to %}{{ r.to|join(', ') }}{% else %}<span class="text-muted">{{ r.empty }}</span>{% endif %}</div>
             {% if r.aliases %}<div class="small text-muted mt-1 text-break">Also receives: {{ r.aliases|map('replace', '@drscca.org', '@')|join(', ') }}</div>{% endif %}
         </div>{% endfor %}
     </div>{% endif %}
