@@ -165,6 +165,10 @@ def main():
         _write(DONE, done)
         mirrored = True
     if mirrored:
+        try:
+            print(f"Email groups list: {handover.snapshot(os.path.join(DATA, 'email-groups.json'))} groups")
+        except (SystemExit, Exception) as e:     # noqa: BLE001
+            print(f'Email groups list not updated: {e}')
         # The readable copy in the shared drive. Written from inside the app's container: that is where the Drive
         # key is, and it reads the file just changed.
         import subprocess

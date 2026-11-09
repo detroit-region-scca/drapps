@@ -5,6 +5,7 @@
     {{ tab('admin.home', 'Users') }}
     {{ tab('admin.roles', 'Roles') }}
     {{ tab('admin.programs', 'Programs') }}
+    {{ tab('admin.email_groups', 'Email groups') }}
     {{ tab('audit_log', 'Audit log') }}
 {% endblock %}
 {% block content %}
@@ -106,6 +107,19 @@
         <div class="col-12 col-md-5"><label class="form-label small">Start with the permissions of</label><select name="like" class="form-select form-select-sm"><option value="">Everyday only</option>{% for c in cols %}<option value="{{ c.role }}">{{ c.role }}</option>{% endfor %}</select></div>
         <div class="col-12 col-md-2"><button class="btn btn-sm btn-accent w-100">Add</button></div>
     </div><div class="small text-muted mt-2">It shows as a column here; give it to someone on Users.</div></form></details>
+{% elif view == 'groups' %}
+    <div class="page-title">Email groups</div>
+    <p class="text-muted small">Every drscca.org email address. Each is a Google Group: mail goes to the people listed, at their own email. Members follow the roles on <a href="{{ url_for('admin.home') }}">Users</a>; manage the groups themselves at admin.google.com as admin@drscca.org.{% if updated %} As of {{ updated }}.{% endif %}</p>
+    {% if not rows %}<div class="alert alert-warning py-2 small">The list has not been saved on the server yet.</div>{% else %}
+    <div class="table-responsive"><table class="table table-sm align-middle">
+        <thead><tr><th>Address</th><th>Name</th><th>Goes to</th></tr></thead>
+        <tbody>{% for r in rows %}<tr>
+            <td class="text-nowrap"><a href="mailto:{{ r.email }}">{{ r.email }}</a>{% if r.aliases %}<div class="small text-muted">Also: {{ r.aliases|join(', ') }}</div>{% endif %}</td>
+            <td>{{ r.label }}</td>
+            <td class="small">{{ r.to|join(', ') if r.to else 'Nobody (admin@drscca.org only)' }}</td>
+        </tr>{% endfor %}</tbody>
+    </table></div>{% endif %}
+    <p class="small text-muted mt-1">The only real user account is admin@drscca.org.</p>
 {% elif view == 'programs' %}
     <div class="page-title">Programs</div>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><tbody>

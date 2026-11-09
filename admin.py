@@ -5,6 +5,7 @@
 - Programs: rename one, or add one (the Registry sheet's Programs tab).
 - Volunteers are added and removed only on the App access page (auth.access); the audit log is linked from here.
 """
+import json
 import os
 import re as _re
 
@@ -261,6 +262,30 @@ def programs():
     if request.method == 'POST':
         return _save_program()
     return render_template('admin.html', **_ctx(view='programs'))
+
+
+GROUPS_FILE = os.path.join(utils.DATA_DIR, 'email-groups.json')
+
+
+@bp.route('/groups')
+@login_required
+def email_groups():
+    """Every drscca.org email group and who it reaches. The server saves the list (tools/handover.py groups) each
+    time a role is handed over, so it follows the groups without anyone keeping it by hand."""
+    if (g := _guard()):
+        return g
+    try:
+        with open(GROUPS_FILE) as f:
+            doc = json.load(f)
+    except (OSError, ValueError):
+        doc = {'groups': [], 'updated': ''}
+    names = {(o.get('email') or '').lower(): o.get('name') for o in officials.all() if o.get('name')}
+    names.update({e: v.get('name') for e, v in auth.volunteers().items() if v.get('name') and e not in names})
+    rows = []
+    for gr in doc.get('groups', []):
+        to = [names.get(m['email']) or m['email'] for m in gr.get('members', []) if m.get('role') != 'OWNER']
+        rows.append(dict(gr, label=_re.sub(r'^DRSCCA\s+', '', gr.get('name') or ''), to=sorted(set(to), key=str.lower)))
+    return render_template('admin.html', **_ctx(view='groups', rows=rows, updated=doc.get('updated', '')[:16].replace('T', ' ')))
 
 
 @bp.route('/roles', methods=['GET', 'POST'])

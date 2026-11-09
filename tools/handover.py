@@ -112,6 +112,26 @@ def run(steps, apply):
     print('Done.' if apply else '(dry run: add --apply to make these changes)')
 
 
+def snapshot(path):
+    """Write every drscca.org group (address, name, other addresses, members) to path, for Admin > Email groups."""
+    from datetime import datetime
+    out = gam('print', 'groups', 'fields', 'email,name,aliases')
+    groups = []
+    for row in csv.DictReader(io.StringIO(out)):
+        g = row['email'].lower()
+        groups.append({'email': g, 'name': row.get('name', ''), 'aliases': (row.get('aliases') or '').split(),
+                       'members': [{'email': e, 'role': r} for e, r in sorted(members(g.split('@')[0]).items())]})
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump({'updated': datetime.now().astimezone().isoformat(timespec='minutes'), 'groups': groups}, f, indent=1)
+    os.replace(tmp, path)
+    return len(groups)
+
+
+def cmd_groups(a):
+    print(f'{snapshot(a.out)} groups written to {a.out}')
+
+
 def cmd_show(_):
     for group, emails in wanted(load()['officials']).items():
         print(f'{group}@{DOMAIN}: {", ".join(sorted(emails)) or "(nobody)"}')
@@ -156,6 +176,9 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest='cmd', required=True)
     sub.add_parser('show', help='who each group should reach, per officials.json').set_defaults(fn=cmd_show)
+    s = sub.add_parser('groups', help='save the list of groups for Admin > Email groups')
+    s.add_argument('--out', default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'email-groups.json'))
+    s.set_defaults(fn=cmd_groups)
     s = sub.add_parser('sync', help='make the groups match officials.json')
     s.add_argument('--apply', action='store_true')
     s.set_defaults(fn=cmd_sync)
