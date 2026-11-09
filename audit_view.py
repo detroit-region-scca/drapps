@@ -65,6 +65,19 @@ def describe(log):
     if a == 'EVENT_EDITED' and isinstance(g('date'), list):     # the event page's "Use that date" (from MotorsportReg)
         old, new = (g('date') + ['', ''])[:2]
         return Markup('{} moved {} from {} to {}, the MotorsportReg date').format(who, g('event_code', ''), old, new)
+    if a == 'EVENT_EDITED' and isinstance(g('after'), dict):     # links and dates set from MotorsportReg
+        o, u = g('before') or {}, g('after') or {}
+        diffs = []
+        for k in u:
+            if u.get(k) == o.get(k):
+                continue
+            if k == 'msr_url':
+                diffs.append('linked its MotorsportReg page' if u.get(k) else 'unlinked its MotorsportReg page')
+            elif k == 'cancelled':
+                diffs.append('marked it cancelled' if u.get(k) else 'marked it not cancelled')
+            else:
+                diffs.append(f"{k.replace('_', ' ')} {o.get(k) or 'none'} to {u.get(k) or 'none'}")
+        return Markup('{} updated {} from MotorsportReg: {}').format(who, g('event_name') or g('event_code', ''), '; '.join(diffs) or 'no change')
     if a == 'EVENT_EDITED':
         o, u = g('original') or {}, g('updated') or {}
         diffs = [f"{k.replace('_', ' ')}: '{o.get(k)}' to '{u.get(k)}'"
