@@ -22,7 +22,6 @@ def test_form_asks_then_new_ok_creates(app_, monkeypatch):  # noqa: F811
     monkeypatch.setattr(A, 'log_audit_event', lambda *a, **k: None)
     monkeypatch.setattr(A, '_link_plan_line', lambda *a, **k: None)
     monkeypatch.setattr(A, '_open_plan_lines', lambda evs: {})
-    monkeypatch.setattr(A, '_budget_codes', lambda: set())
     c = _signed_in(app_, 'treasurer@example.org')
     form = {'program': 'RR', 'date': '2027-05-29', 'event_name': 'Jerry Shiloff', 'your_name': 'Jay'}
     r = c.post('/events/new', data=form)

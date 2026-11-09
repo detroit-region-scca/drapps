@@ -68,8 +68,9 @@ def main():
     for r, paid in Q.match_funds(reqs, data['payments']):
         say.append(f"{r['id']} paid: {paid['note']}")
         if not DRY:
-            F.close(r['id'], 'Paid', paid_date=paid['paid_date'], paid_ref=paid['paid_ref'], paid_amount=paid['paid_amount'],
-                    closed_by=WHO, closed_note=paid['note'])
+            if F.close(r['id'], 'Paid', expect='Submitted', paid_date=paid['paid_date'], paid_ref=paid['paid_ref'],
+                       paid_amount=paid['paid_amount'], closed_by=WHO, closed_note=paid['note']) is None:
+                continue     # paid, rejected or deleted by someone while the sync ran
             log_audit_event('FUNDS_PAID', WHO, {'id': r['id'], 'ref': paid['paid_ref'], 'amount': paid['paid_amount']})
             F.refresh()
             msg = FL.closed_message(F.get(r['id']) or {}, f"https://drapps.drscca.org/funds/{r['id']}")
@@ -129,23 +130,33 @@ def main():
                     [[b['depth'], b['name'], b['amount'], as_of] for b in data.get('balance_sheet', [])])
         P.write_tab('QBO Receivables', ['number', 'date', 'due', 'customer', 'total', 'balance', 'as_of'],
                     [[r['number'], r['date'], r['due'], r['customer'], r['total'], r['balance'], as_of] for r in data.get('receivables', [])])
-        used_deposits = set()
+        # A deposit pays one thing, once: each matcher leaves out what its own records used on earlier nights, and is
+        # told what the other kind (invoices, money received) has used.
+        deposits = data.get('deposits', [])
+        inv_taken, rep_taken = [], []
+        try:
+            import received_store as RS
+            if RS.enabled():
+                rep_taken = [(r['deposit_ref'], r['deposit_date'], r['deposit_amount']) for r in RS.reports() if r['status'] == 'Deposited']
+        except Exception as e:
+            say.append(f"reading money received failed: {e}")
         try:
             import inv_store
             if inv_store.enabled():
-                for inv, paid in Q.match_invoices(inv_store.invoices(), data.get('deposits', [])):
-                    inv_store.update(inv['id'], status='Paid', closed_by=WHO, **paid)
+                for inv, paid in Q.match_invoices(inv_store.invoices(), deposits, taken=rep_taken):
+                    if inv_store.update(inv['id'], expect='Open', status='Paid', closed_by=WHO, **paid) is None:
+                        continue     # paid, voided or deleted by someone while the sync ran
                     log_audit_event('INVOICE_PAID', WHO, {'id': inv['id'], 'amount': paid['paid_amount'], 'ref': paid['paid_ref']})
                     say.append(f"invoice {inv['id']} paid by {paid['paid_ref']}")
-                    used_deposits |= {d['id'] for d in data.get('deposits', []) if d['date'] == paid['paid_date']
-                                      and abs(d['amount'] - paid['paid_amount']) < 0.005}
+                inv_store.refresh()
+                inv_taken = [(i['paid_ref'], i['paid_date'], i['paid_amount']) for i in inv_store.invoices() if i['status'] == 'Paid']
         except Exception as e:
             say.append(f"invoice matching failed: {e}")
         try:   # cash and checks reported received: deposited once QuickBooks shows a deposit of the same amount
-            import received_store as RS
             if RS.enabled():
-                for rep, dep in RS.match_deposits(RS.reports(), data.get('deposits', []), used=used_deposits):
-                    RS.update(rep['id'], status='Deposited', closed_by=WHO, **dep)
+                for rep, dep in RS.match_deposits(RS.reports(), deposits, taken=inv_taken):
+                    if RS.update(rep['id'], expect='Received', status='Deposited', closed_by=WHO, **dep) is None:
+                        continue
                     log_audit_event('MONEY_DEPOSITED', WHO, {'id': rep['id'], 'amount': dep['deposit_amount'], 'ref': dep['deposit_ref']})
                     say.append(f"money received {rep['id']} deposited ({dep['deposit_ref']})")
         except Exception as e:
@@ -175,6 +186,9 @@ def main():
     except Exception as e:
         say.append(f'auto add failed: {e}')
     print(f"QuickBooks sync {as_of}{' (dry run)' if DRY else ''}: " + '\n'.join(say))
+    # Parts that did not work; the rest of the sync still ran. A receipt QuickBooks would not take is left out: it is
+    # retried every night and already shows on the Books check, so it must not email admin@ nightly.
+    return [m for m in say if ' failed' in m and not m.startswith('QuickBooks attach ')]
 
 
 ATTACHED = os.path.join(ROOT, 'data', 'qbo-attached.json')   # {request id: [Drive file ids already sent]}
@@ -255,12 +269,14 @@ def run():
     from datetime import datetime
     from filelock import FileLock
     with FileLock(os.path.join(ROOT, 'data', 'qbo-sync.lock')):
-        main()
+        failed = main()
     if not DRY:
         tmp = os.path.join(ROOT, 'data', 'qbo-last-run.json.tmp')
         with open(tmp, 'w') as f:
             json.dump({'at': datetime.now().astimezone().isoformat(timespec='seconds'), 'manual': MANUAL}, f)
         os.replace(tmp, os.path.join(ROOT, 'data', 'qbo-last-run.json'))
+    if failed:      # a non-zero exit is what makes the server email admin@ (OnFailure)
+        sys.exit('Parts of the sync failed:\n' + '\n'.join(failed))
 
 
 if __name__ == '__main__':

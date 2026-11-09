@@ -147,7 +147,7 @@ def test_motion_for_a_request():
 def test_board_link_no_longer_approves(monkeypatch):
     import app as A
     import fr
-    r = {'id': 'FR-2026-200', 'status': 'Submitted', 'approvals': '', 'payee_name': 'X', 'net': 10.0, 'lines': []}
+    r = {'id': 'FR-2026-200', 'status': 'Submitted', 'submitted': '2026-11-01', 'approvals': '', 'payee_name': 'X', 'net': 10.0, 'lines': []}
     monkeypatch.setattr(fr.F, 'refresh', lambda: None)
     monkeypatch.setattr(fr.F, 'get', lambda rid: r)
     monkeypatch.setattr(fr, '_guard', lambda: None)

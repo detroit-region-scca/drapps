@@ -3,3 +3,15 @@
 {% macro tab(endpoint, label, active=none) %}<li class="nav-item"><a class="nav-link{% if active or (active is none and (request.endpoint == endpoint or request.endpoint.startswith(endpoint ~ '_'))) %} active{% endif %}" href="{{ url_for(endpoint) }}">{{ label }}</a></li>{% endmacro %}
 {# Money: a dot for no value, red with a minus for a loss. places=0 for whole dollars. #}
 {% macro money(v, places=2) %}{% if v is none %}<span class="text-muted">·</span>{% else %}<span class="{{ 'text-danger' if v < 0 else '' }}">{{ '-' if v < 0 }}${{ ('{:,.' ~ places ~ 'f}').format(v|abs) }}</span>{% endif %}{% endmacro %}
+{# A date and time, 12-hour: '2026-11-09 14:03' or '2026-11-09T14:03:22' -> 'Nov 9, 2026, 2:03 PM'. A plain date stays a date. #}
+{% macro nice_time(ts) %}{% set s = (ts or '')|string %}{% if s|length >= 16 and s[13:14] == ':' %}{% set h = s[11:13]|int %}{{ s|nice_date }}, {{ (h % 12) or 12 }}:{{ s[14:16] }} {{ 'AM' if h < 12 else 'PM' }}{% else %}{{ s|nice_date }}{% endif %}{% endmacro %}
+{# A date without its year, for tables on a page that is already one year: '2026-06-14' -> 'Jun 14', '2026-06' -> 'Jun'. #}
+{% macro short_date(d) %}{% set s = (d or '')|string %}{% if s|length == 7 %}{{ ((s ~ '-01')|nice_date).split(' ')[0] }}{% else %}{{ (s|nice_date).rsplit(',', 1)[0] }}{% endif %}{% endmacro %}
+{# A month: '2026-11' -> 'Nov 2026'. #}
+{% macro nice_month(ym) %}{% set p = (((ym or '')|string ~ '-01')|nice_date).split(' ') %}{{ p[0] ~ ' ' ~ p[-1] if p|length == 3 else ym }}{% endmacro %}
+{# The three fields of "Record board approval", shared by an event or program budget and the Operations budget. #}
+{% macro approval_fields() %}
+            <div class="col-6 col-md-3"><label class="form-label small">Approved on</label><input type="date" name="approved" class="form-control form-control-sm" required></div>
+            <div class="col-6 col-md-3"><label class="form-label small">How</label><select name="how" class="form-select form-select-sm"><option value="meeting">Board meeting</option><option value="email">Email vote</option></select></div>
+            <div class="col-6 col-md-2"><label class="form-label small">Vote</label><input name="vote" class="form-control form-control-sm" placeholder="7-0"></div>
+{%- endmacro %}

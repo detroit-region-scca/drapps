@@ -8,10 +8,10 @@ def test_next_motion_id():
 
 
 def test_how_and_vote_read_back_from_approved_by():
-    assert _how_of('Nathan Crosty (email vote, 7-0)') == 'email vote'
-    assert _vote_of('Nathan Crosty (email vote, 7-0)') == '7-0'
-    assert _how_of('Nathan Crosty (board meeting)') == 'board meeting' and _vote_of('Nathan Crosty (board meeting)') == ''
-    assert _how_of('Nathan Crosty') == '' and _vote_of('Nathan Crosty') == ''
+    assert _how_of('Pat Example (email vote, 7-0)') == 'email vote'
+    assert _vote_of('Pat Example (email vote, 7-0)') == '7-0'
+    assert _how_of('Pat Example (board meeting)') == 'board meeting' and _vote_of('Pat Example (board meeting)') == ''
+    assert _how_of('Pat Example') == '' and _vote_of('Pat Example') == ''
 
 
 def test_summary():

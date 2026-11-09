@@ -16,16 +16,20 @@ from datetime import date
 import gspread
 from filelock import FileLock
 
+import bud_store
 import qbo_logic
 from storage import DATA_DIR, open_book, worksheet
 import sheet_cache as C
 
 PLAN_COLS = ['year', 'program', 'item', 'month', 'net', 'event_code', 'note', 'sort', 'account']    # account: the QuickBooks account it is booked to
-PROG_COLS = ['year', 'program', 'director', 'email', 'notes', 'updated', 'updated_by', 'submitted', 'submitted_by', 'approved', 'approved_by']
+PROG_COLS = ['year', 'program', 'director', 'email', 'notes', 'updated', 'updated_by', 'submitted', 'submitted_by', 'approved', 'approved_by',
+             'approved_hash']
+# approved_hash (added last, 2026-11): a fingerprint of the plan lines the board approved (Operations only), see
+# bud_store.lines_hash. A row approved before it existed has none and is compared by day, as before.
 EXC_COLS = ['key', 'kind', 'date', 'name', 'amount', 'detail', 'link', 'as_of']
-CACHE_SECONDS = 15
 SAVE_LOCK = os.path.join(DATA_DIR, 'plan_save.lock')
-RANGES = ['Plan!A:I', 'Programs!A:K', 'QBO Programs!A:F', 'QBO Status!A:C', 'QBO Exceptions!A:H', 'Reviewed!A:D', 'QBO Monthly!A:E']
+# The whole Programs tab, not A:L: a tab that does not have the newest column yet still reads.
+RANGES = ['Plan!A:I', "'Programs'", 'QBO Programs!A:F', 'QBO Status!A:C', 'QBO Exceptions!A:H', 'Reviewed!A:D', 'QBO Monthly!A:E']
 
 _lock = threading.Lock()
 _cache = {}
@@ -108,7 +112,9 @@ def plan(year):
         p['net'] = round(sum(ln['net'] or 0 for ln in p['lines'] if not ln.get('savings')), 2)
     for info in progs:
         if info['year'] == str(year):
-            out.setdefault(info['program'], {'lines': [], 'net': 0.0, 'savings': 0.0})['info'] = info
+            p = out.setdefault(info['program'], {'lines': [], 'net': 0.0, 'savings': 0.0})
+            # 'changed' is worked out here, where the lines are, for plan_status (which only gets the info).
+            p['info'] = dict(info, changed=bool(info.get('approved')) and bud_store.changed_since_approved(info, lines_hash(p['lines'])))
     for p in out.values():
         p.setdefault('info', {})
     _add_program_budgets(str(year), out)
@@ -171,16 +177,38 @@ def mark_reviewed(key, who, note=''):
         refresh()
 
 
+def lines_hash(lines):
+    """The fingerprint of a plan's lines (item, account, amount) that "changed since approved" is judged against."""
+    return bud_store.lines_hash(lines, text=('item', 'account'), amount='net')
+
+
+def _programs_ws():
+    """The Programs tab, wide enough for every column, with a heading on columns added later."""
+    ws = _ws('Programs')
+    if not _cache.get('heading_ok'):
+        if ws.col_count < len(PROG_COLS):          # the tab must be wide enough first, or the write is refused
+            ws.add_cols(len(PROG_COLS) - ws.col_count)
+        top = ws.row_values(1)
+        if len(top) < len(PROG_COLS):
+            ws.update([PROG_COLS[len(top):]], f'{chr(ord("A") + len(top))}1', value_input_option='RAW')
+        _cache['heading_ok'] = True
+    return ws
+
+
 def set_approved(year, program, approved, who):
-    """Record (or clear, with approved='') the board meeting date that approved one program's plan for a year."""
+    """Record (or clear, with approved='') the board meeting date that approved one program's plan for a year, with
+    the fingerprint of its lines as they are right now."""
     year = str(year)
     with FileLock(SAVE_LOCK), _lock:
         refresh()
+        lines = [ln for ln in _snapshot()[0] if ln['year'] == year and ln['program'] == program]
         progs = _snapshot()[1]
         at = next((i for i, p in enumerate(progs) if p['year'] == year and p['program'] == program), None)
         if at is None:
             raise ValueError('That plan has not been saved yet.')
-        _ws('Programs').update([[approved, who if approved else '']], f'J{at + 2}:K{at + 2}', value_input_option='RAW')
+        fresh = approved and str(progs[at].get('updated', '')) <= str(approved)      # edited after that meeting: shows as changed
+        _programs_ws().update([[approved, who if approved else '', lines_hash(lines) if fresh else '']], f'J{at + 2}:L{at + 2}',
+                              value_input_option='RAW')
         refresh()
 
 
@@ -194,7 +222,7 @@ def set_draft(year, program):
         at = next((i for i, p in enumerate(progs) if p['year'] == year and p['program'] == program), None)
         if at is None:
             raise ValueError('That plan has not been saved yet.')
-        _ws('Programs').update([['', '', '', '']], f'H{at + 2}:K{at + 2}', value_input_option='RAW')
+        _programs_ws().update([['', '', '', '', '']], f'H{at + 2}:L{at + 2}', value_input_option='RAW')
         refresh()
 
 
@@ -202,7 +230,9 @@ def plan_status(info):
     """'approved', 'changed' (edited after the board approved it), 'in', 'draft' or '' (nothing saved).
     The board approves budgets, not plans: only Operations, whose plan is its budget, can be board approved."""
     if info.get('approved') and info.get('program') == 'OPS':
-        return 'changed' if info.get('updated', '') > info['approved'] else 'approved'
+        # plan() works out 'changed' from the lines; an info from anywhere else falls back to comparing the days.
+        changed = info['changed'] if 'changed' in info else bud_store.changed_since_approved(info, '')
+        return 'changed' if changed else 'approved'
     return 'in' if info.get('submitted') else 'draft' if info.get('updated') else ''
 
 
@@ -220,12 +250,25 @@ def save(year, program, info, lines, submit=False):
         refresh()
         all_lines, progs = _snapshot()[:2]
         old = next((p for p in progs if p['year'] == year and p['program'] == program), {})
-        info = dict(info, year=year, program=program, updated=date.today().isoformat(),
+        old_lines = [ln for ln in all_lines if ln['year'] == year and ln['program'] == program]
+        # Saving it again with nothing changed is not a change: the day (and who) stay, and an approved budget
+        # stays approved.
+        pick = lambda ls: [(ln.get('item') or '', ln.get('month') or '', ln.get('net'), ln.get('note') or '', ln.get('event_code') or '',  # noqa: E731
+                            ln.get('account') or '') for ln in ls]
+        same = bool(old.get('updated')) and pick(sorted(old_lines, key=lambda ln: ln['sort'])) == pick(lines) \
+            and str(old.get('notes', '')) == str(info.get('notes', ''))
+        who = info.get('updated_by', '')
+        info = dict(info, year=year, program=program, updated=old['updated'] if same else date.today().isoformat(),
+                    updated_by=old.get('updated_by', '') if same else info.get('updated_by', ''),
                     submitted=old.get('submitted', ''), submitted_by=old.get('submitted_by', ''),
-                    approved=old.get('approved', ''), approved_by=old.get('approved_by', ''))
+                    approved=old.get('approved', ''), approved_by=old.get('approved_by', ''), approved_hash=old.get('approved_hash', ''))
+        if old.get('approved') and not old.get('approved_hash') and not bud_store.changed_since_approved(old, ''):
+            # Approved before fingerprints were kept and not edited since: what is saved now is what the board
+            # approved, so fingerprint that. From here on a change shows as "changed" even on the approval day.
+            info['approved_hash'] = lines_hash(old_lines)
         if submit and not info['submitted']:
-            info.update(submitted=date.today().isoformat(), submitted_by=info.get('updated_by', ''))
-        pw = _ws('Programs')
+            info.update(submitted=date.today().isoformat(), submitted_by=who)
+        pw = _programs_ws()
         row = [_cell(info.get(c, '')) for c in PROG_COLS]
         at = next((i for i, p in enumerate(progs) if p['year'] == year and p['program'] == program), None)
         if at is None:

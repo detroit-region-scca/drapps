@@ -7,6 +7,8 @@ Nothing is added or spent without a click from the keeper or an officer.
 """
 import io
 import os
+import re
+import secrets
 from datetime import date
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
@@ -35,9 +37,22 @@ def _who():
 
 
 def _ctx(**kw):
-    return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Members", keeper=_keeper(), point_value=L.POINT_VALUE, today_=date.today(),
-                pick_label=L.pick_label, ledger_url=S.members_sheet_url(), current_perms=sorted(_me().get('perms') or ()),
-                structure=L.POINT_STRUCTURE, **kw)
+    ctx = dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Members", keeper=_keeper(), point_value=L.POINT_VALUE, today_=date.today(),
+               pick_label=L.pick_label, ledger_url=S.members_sheet_url(), current_perms=sorted(_me().get('perms') or ()),
+               structure=L.POINT_STRUCTURE, entry_key=L.entry_key)
+    ctx.update(kw)
+    return ctx
+
+
+def _labels(mem):
+    """How members show in the name pickers. The keeper and officers see SCCA numbers. Everyone else who enters points
+    sees names only, with the number just where two members share a name (the only way to tell them apart)."""
+    if _keeper():
+        return L.pick_label
+    count = {}
+    for m in mem:
+        count[L.full_name(m).lower()] = count.get(L.full_name(m).lower(), 0) + 1
+    return lambda m: L.pick_label(m) if count.get(L.full_name(m).lower(), 0) != 1 else L.full_name(m)
 
 
 def _back():
@@ -50,6 +65,14 @@ def _month_step(month, n):
     y, m = int(month[:4]), int(month[5:]) + n
     y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
     return f'{y:04d}-{m:02d}'
+
+
+def _month(text):
+    """'YYYY-MM' from the address or a form when it is a real month; anything else (2026-13, letters) is this month."""
+    m = re.fullmatch(r'(\d{4})-(\d{2})', (text or '').strip())
+    if m and 1900 <= int(m.group(1)) <= 2200 and 1 <= int(m.group(2)) <= 12:
+        return m.group(0)
+    return f'{date.today():%Y-%m}'
 
 
 def _guard(keeper=False):
@@ -96,7 +119,7 @@ def home():
     open_value = round(sum(e['points'] for e in L.unreconciled(ent)) * L.POINT_VALUE, 2)
     lists = [m['listed'] for m in mem if m.get('listed')]
     return render_template('members.html', **_ctx(view='home', members=mem, total=total, reserve=reserve, open_value=open_value,
-                                                  lapsed=L.lapsed(mem, t),
+                                                  lapsed=L.lapsed(mem, t), token=secrets.token_urlsafe(16),
                                                   latest_list=max(lists) if lists else None, list_url=S.list_folder_url(),
                                                   sheet_url=S.members_sheet_url(), scca_reports=SCCA_REPORTS))
 
@@ -125,11 +148,12 @@ def enter():
     mem = S.members()
     by_id = {m['member']: m for m in mem}
     events = _events_for_me()
+    label = _labels(mem)
     if request.method == 'GET':
         grid = []
         if request.args.get('member') in by_id:
-            grid = [{'member': L.pick_label(by_id[request.args['member']])}]
-        return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form={}, grid=grid))
+            grid = [{'member': label(by_id[request.args['member']])}]
+        return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form={}, grid=grid, pick_label=label))
     f = request.form
     code = f.get('event', '').strip()
     if code == 'none':
@@ -137,7 +161,8 @@ def enter():
     ev = _events_by_code().get(code) or {}
     if f.get('event', '').strip() not in ('none', '') and not ev:
         flash('Pick the event from the list.', 'danger')
-        return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form=f, grid=[]))
+        grid = [{'member': n, 'points': p} for n, p in zip(f.getlist('member'), f.getlist('points')) if (n or '').strip()]   # keep what was typed
+        return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form=f, grid=grid, pick_label=label))
     if ev:          # one code per event in the ledger (the one the event list shows); both count for duplicates
         code = ev.get('custom_tag') or ev.get('unique_code') or code
     codes = {c for c in (code, ev.get('custom_tag'), ev.get('unique_code')) if c}
@@ -157,13 +182,13 @@ def enter():
         except ValueError as e:
             flash(str(e), 'danger')
             grid = [{'member': x['name'], 'points': x['points']} for x in lines]
-            return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form=f, grid=grid))
+            return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form=f, grid=grid, pick_label=label))
         lines += [{'name': x['name'], 'points': x['points']} for x in sheet['lines']]
     if not lines:
         flash('Add at least one person, or upload the worker points sheet.', 'danger')
-        return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form=f, grid=[]))
+        return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form=f, grid=[], pick_label=label))
     rows = L.review_lines(lines, mem, S.entries(), codes)
-    return _review(f, code, codes, ev, first, what, rows, sheet)
+    return _review(f, code, codes, ev, first, what, _relabel(rows, mem), sheet)
 
 
 def _read_sheet(up):
@@ -185,12 +210,20 @@ def _read_sheet(up):
         raise ValueError('Could not open that file. Save it as .xlsx and try again.')
 
 
+def _relabel(rows, mem):
+    """The review page's "who is this?" choices, labelled the way this person sees the name pickers (_labels)."""
+    label, by_id = _labels(mem), {m['member']: m for m in mem}
+    for r in rows:
+        for c in r['candidates']:
+            c['label'] = label(by_id[c['member']])
+    return rows
+
+
 def _review(f, code, codes, ev, first, what, rows, sheet=None, chosen=None, seen_before=None):
     """The review page. chosen: {line n: member} when coming back from a refused save, so the picks are kept, except a
     member who got points for the event since the page was made (seen_before): that one goes back to Leave out, so a
     second entry always takes a deliberate pick. Each page has a one-time token: it can be saved once."""
     import json
-    import secrets
     have = L.existing_points(S.entries(), codes)
     for r in rows:
         if chosen is not None:
@@ -249,10 +282,10 @@ def _save_points(f, mem, by_id, events, code, codes, ev, first, what):
             flash(p, 'danger')
         if not from_review:
             grid = [{'member': m, 'points': p} for m, p in zip(picks, pts)]
-            return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form=f, grid=grid))
+            return render_template('members.html', **_ctx(view='enter', members=mem, events=events, form=f, grid=grid, pick_label=_labels(mem)))
         lines = [{'name': nm, 'points': L.num(pts[i]) if i < len(pts) and str(pts[i]).strip() else None} for i, nm in enumerate(names)]
         rows2 = L.review_lines(lines, mem, S.entries(), codes)
-        return _review(f, code, codes, ev, first, what, rows2, chosen={i: (picks[i] if i < len(picks) else '') for i in range(len(names))},
+        return _review(f, code, codes, ev, first, what, _relabel(rows2, mem), chosen={i: (picks[i] if i < len(picks) else '') for i in range(len(names))},
                        seen_before=seen)
     total = sum(e['points'] for e in rows)
     log_audit_event('POINTS_ENTERED', _who(), {'event': code, 'rows': n, 'points': total, 'status': L.APPROVED,
@@ -321,9 +354,7 @@ def upload():
         flash('Could not open that file. Download the Member List again from SCCA (an .xlsx file) and retry.', 'warning')
         return redirect(_back())
     saved = S.save_list_file(data, _who())
-    before = S.members()
-    merged = L.merge_roster(before, report, date.today())
-    S.write_members(merged)
+    before, merged = S.update_members(lambda rows: L.merge_roster(rows, report, date.today()))
     log_audit_event('MEMBER_LIST_LOADED', _who(), {'file': saved['name'], 'on_list': len(report), 'members': len(merged)})
     flash(f'Loaded the SCCA member list: {len(report)} current members ({len(merged) - len(before)} new). The original is kept in Drive.', 'success')
     return redirect(_back())
@@ -339,9 +370,11 @@ def add_member():
     if not mid or not f.get('last', '').strip():
         flash('Enter the SCCA member number and the name.', 'danger')
         return redirect(url_for('members.home'))
-    if any(m['member'] == mid for m in S.members()):
-        return redirect(url_for('members.member', mid=mid))
-    S.add_member(mid, f.get('first', '').strip(), f['last'].strip(), bool(f.get('life')))
+    same = next((m['member'] for m in S.members() if L.canon(m['member']) == L.canon(mid)), None) \
+        or S.add_member(mid, f.get('first', '').strip(), f['last'].strip(), bool(f.get('life')))
+    if same:          # 500100_0 and 500100 are the same member
+        flash(f'Member {same} is already on the list. Nothing was added.', 'info')
+        return redirect(url_for('members.member', mid=same))
     log_audit_event('MEMBER_ADDED', _who(), {'member': mid})
     flash('Member added.', 'success')
     return redirect(url_for('members.member', mid=mid))
@@ -352,15 +385,22 @@ def add_member():
 def forfeit():
     if (g := _guard(keeper=True)):
         return g
-    mem = S.members()
-    cands = L.lapsed(mem, date.today())
-    if not cands:
+    rows = []
+
+    def build(entries):      # under the lock, on a fresh read: a second click finds the points already gone
+        bal = L.balances(entries)
+        cands = L.lapsed([dict(m, points=bal.get(m['member'], 0.0)) for m in S.members()], date.today())
+        rows[:] = [{'date': date.today(), 'member': m['member'], 'name': L.full_name(m), 'points': -m['points'], 'event': '', 'kind': 'Forfeit',
+                    'what': f"Forfeit: membership lapsed ({'expired ' + m['expires'].isoformat() if m.get('expires') else 'not on the SCCA member list'})"}
+                   for m in cands]
+        return rows, []
+    n, problems = S.save_checked(build, _who(), request.form.get('token', ''))
+    if problems == ['ALREADY_SAVED']:
+        flash('Those points were already deleted. Nothing was deleted again.', 'warning')
+        return redirect(url_for('members.home'))
+    if not n:
         flash('Nobody to forfeit.', 'info')
         return redirect(url_for('members.home'))
-    rows = [{'date': date.today(), 'member': m['member'], 'name': L.full_name(m), 'points': -m['points'], 'event': '', 'kind': 'Forfeit',
-             'what': f"Forfeit: membership lapsed ({'expired ' + m['expires'].isoformat() if m.get('expires') else 'not on the SCCA member list'})"}
-            for m in cands]
-    S.add_entries(rows, L.APPROVED, _who())
     log_audit_event('POINTS_FORFEITED', _who(), {'members': len(rows), 'points': sum(r['points'] for r in rows)})
     flash(f"Deleted {-sum(r['points'] for r in rows):g} points from {len(rows)} members who are not current.", 'success')
     return redirect(url_for('members.home'))
@@ -373,9 +413,7 @@ def forfeit():
 def milestones():
     if (g := _guard(keeper=True)):
         return g
-    month = (request.values.get('month') or '').strip()
-    if not (len(month) == 7 and month[4] == '-' and month[:4].isdigit() and month[5:].isdigit()):
-        month = f'{date.today():%Y-%m}'
+    month = _month(request.values.get('month'))
     mem = S.members()
     proposed = L.milestones(mem, month)
     published = {}
@@ -423,11 +461,23 @@ def use():
         what = f.get('for', '')
         if what == 'Other' or f.get('note', '').strip():
             what = f"{what}: {f.get('note', '').strip()}" if what != 'Other' else (f.get('note', '').strip() or 'Other')
-        entry, problem = (None, 'Pick the member from the list.') if not m else L.use_entry(m, f.get('points'), what, L.to_date(f.get('date')) or date.today())
+        when = L.to_date(f.get('date')) or date.today()
+        made, problem = [], None if m else 'Pick the member from the list.'
+        if m:
+            def build(entries):      # under the lock, on a fresh read: the balance may have been used since the page loaded
+                now = dict(m, points=L.balances(entries).get(m['member'], 0.0))
+                e, bad = L.use_entry(now, f.get('points'), what, when)
+                made[:] = [e] if e else []
+                return made, ([bad] if bad else [])
+            n, problems = S.save_checked(build, _who(), f.get('token', ''))      # token: one page uses points once
+            if problems == ['ALREADY_SAVED']:
+                flash('Those points were already used. Nothing was taken off again.', 'warning')
+                return redirect(url_for('members.member', mid=m['member']))
+            problem = problems[0] if problems else None
         if problem:
             flash(problem, 'danger')
-            return render_template('members.html', **_ctx(view='use', members=mem, form=f, uses=L.USE_FOR))
-        S.add_entries([entry], L.APPROVED, _who())
+            return render_template('members.html', **_ctx(view='use', members=mem, form=f, uses=L.USE_FOR, token=secrets.token_urlsafe(16)))
+        entry = made[0]
         log_audit_event('POINTS_USED', _who(), {'member': entry['member'], 'points': entry['points'], 'for': entry['what']})
         flash(f"Used {-entry['points']:g} points from {entry['name']} for {entry['what']}. If the region pays for it, file a funds request.", 'success')
         return redirect(url_for('members.member', mid=entry['member']))
@@ -435,7 +485,7 @@ def use():
     if request.args.get('member') in by_id:
         m = by_id[request.args['member']]
         form = {'member': f"{m['member']} {L.full_name(m)}"}
-    return render_template('members.html', **_ctx(view='use', members=mem, form=form, uses=L.USE_FOR))
+    return render_template('members.html', **_ctx(view='use', members=mem, form=form, uses=L.USE_FOR, token=secrets.token_urlsafe(16)))
 
 
 def send_books(who='DRSCCA Apps'):
@@ -473,9 +523,14 @@ def quickbooks():
             flash('Tick the entries that are booked.', 'warning')
             return redirect(url_for('members.quickbooks'))
         label = f"{L.to_date(f.get('booked')) or date.today()}" + (f' {ref}' if ref else '')
-        S.mark_reconciled(rows, label)
-        log_audit_event('POINTS_RECONCILED', _who(), {'entries': len(rows), 'ref': label})
-        flash(f'Marked {len(rows)} entries reconciled ({label}).', 'success')
+        # key<row>: what each ticked entry was when the page was made, so a row that moved in the sheet is not marked by mistake
+        done, left = S.mark_reconciled(rows, label, {n: f.get(f'key{n}', '') for n in rows})
+        if done:
+            log_audit_event('POINTS_RECONCILED', _who(), {'entries': len(done), 'ref': label})
+            flash(f'Marked {len(done)} entries reconciled ({label}).', 'success')
+        if left:
+            flash(f"{left} ticked {'entry was' if left == 1 else 'entries were'} left alone: the Points sheet changed since this page was loaded "
+                  '(or they are already marked). Check the list below and tick them again.', 'warning')
         return redirect(url_for('members.quickbooks'))
     ent = S.entries()
     open_entries = sorted(L.unreconciled(ent), key=lambda e: (e['date'] or date.min, e['row']))
@@ -503,19 +558,25 @@ def auto():
             t = date.today()
             n = S.prepare_auto(t.year, t.month, _who())
             flash(f'Added {n} role points entries for {t:%B}.' if n else f'{t:%B} is already added.', 'info')
-            return redirect(url_for('members.home'))
-        rows, problems = [], []
-        for mid, role, season, off in zip(f.getlist('member'), f.getlist('role'), f.getlist('season'), f.getlist('offseason')):
-            mid = L.pick_id(mid, by_id)
-            if not mid and not role.strip():
+            return redirect(url_for('members.auto'))
+        rows, problems, typed = [], [], []
+        for raw, role, season, off in zip(f.getlist('member'), f.getlist('role'), f.getlist('season'), f.getlist('offseason')):
+            raw = re.sub(r'\s*\(\)$', '', ' '.join(raw.split()))      # a name sent back unmatched shows as "Name ()"
+            mid = L.pick_id(raw, by_id)
+            if not raw and not role.strip():
                 continue
+            # the page shows each row as "name (member)": keep an unmatched one as it was typed
+            typed.append({'member': mid, 'name': L.full_name(by_id[mid]) if mid else raw, 'role': role.strip(),
+                          'season': L.num(season), 'offseason': L.num(off)})
             if mid not in by_id:
-                problems.append(f'{mid or role}: pick the member from the list'); continue
+                problems.append(f'{raw or role}: pick the member from the list'); continue
             rows.append({'member': mid, 'name': L.full_name(by_id[mid]), 'role': role.strip() or 'Volunteer job',
                          'season': L.num(season), 'offseason': L.num(off)})
         if problems:
             for p in problems:
                 flash(p, 'danger')
+            flash('Nothing was saved yet. Fix the rows above and press Save again.', 'warning')
+            return render_template('members.html', **_ctx(view='auto', members=mem, auto=typed))      # keep what was typed
         else:
             S.save_auto_rows(rows)
             log_audit_event('AUTO_ADD_SAVED', _who(), {'people': len(rows)})

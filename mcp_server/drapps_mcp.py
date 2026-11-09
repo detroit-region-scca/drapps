@@ -2,7 +2,7 @@
 
 Config from the environment, or from the file named by DRAPPS_ENV (default ~/.secrets/drevent-api.env):
   DRAPPS_URL      https://drapps.drscca.org
-  DRAPPS_API_KEY  a key from the app's API_KEYS (acts as that official; full read and write for now)
+  DRAPPS_API_KEY  a key from the app's API_KEYS (acts as that official, with their roles' permissions on the website)
 The older DREVENT_* names still work.
 
 Receipts are local file paths on the machine running this server; they are uploaded with the request.
@@ -231,8 +231,9 @@ def add_receipts(req_id: str, receipt_paths: list[str]) -> Any:
 
 @server.tool()
 def approve_funds_request(req_id: str, role: str = 'chair', meeting: str = '') -> Any:
-    """Approve a funds request as the key's official. role: chair (program director), second (RE/ARE over $2,500) or
-    board (meeting = board meeting date YYYY-MM-DD)."""
+    """Approve a funds request as the key's official, who must be the one the app would ask: role chair = that
+    program's director, second = the RE or ARE (over $2,500). Anyone else is refused. Board approval is a vote:
+    use record_board_decision. (meeting is no longer used.)"""
     return _call('POST', f'/funds/{req_id}/approve', {'role': role, 'meeting': meeting})
 
 

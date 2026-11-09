@@ -94,15 +94,15 @@ def test_approve_role_is_checked(client):
     assert r.status_code == 400 and not client.sent
 
 
-def test_plan_permission_lets_an_api_key_through(monkeypatch):
+def test_plan_permission_decides_who_may_write(monkeypatch):
     import auth
     import officials
     import plan
     from flask import g
     from app import app
     monkeypatch.setattr(officials, 'all', lambda: [{'role': 'Director', 'program': 'RY', 'name': 'R', 'email': 'r@x.com'}])
-    with app.test_request_context('/'):
-        g.api_user = {'email': 'treasurer@example.org', 'name': 'Pat'}
+    with app.test_request_context('/'):      # a key is its owner: "any program's plan" is what lets it write
+        monkeypatch.setattr(auth, 'user', lambda: {'email': 'treasurer@example.org', 'perms': ['plan_all']})
         assert plan.may_write('AX')
     with app.test_request_context('/'):
         monkeypatch.setattr(auth, 'user', lambda: {'email': 'r@x.com', 'perms': ['plan_own']})

@@ -2,17 +2,16 @@
 storage, subscriptions, registrations, inspections), property (vehicles, trailers, gear), where it is kept, and
 what is due when, on one page. Records live in the Registry sheet (equip_store).
 
-Everyone signed in can look. Only equipment committee members (role "Equipment" in the read-only officials list,
-plus the treasurer) can change anything, and only after signing in through a link emailed to that address, so the
-shared app password alone cannot change the region's records. The records are a plain spreadsheet in the shared
-drive (equip_store), so the region can keep them up by hand without the app.
+Everyone signed in can look. Only people whose role has "Edit Operations" (Admin > Roles: by default the Equipment
+committee and the officers) can change anything; everyone signs in with their own email address, so the app knows
+who they are. The records are a plain spreadsheet in the shared drive (equip_store), so the region can keep them up
+by hand without the app.
 """
 import os
 from datetime import date, timedelta
 from functools import wraps
 
-from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, session, url_for
-from itsdangerous import URLSafeTimedSerializer
+from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 
 import equip_store as E
 import officials as O
@@ -20,7 +19,6 @@ from utils import local_path, log_audit_event, login_required
 
 bp = Blueprint('equip', __name__, url_prefix='/operations')
 
-LINK_DAYS = 30
 SOON_DAYS = 90
 NEXT_DAYS = 30  # the Overview's coming-up window
 
@@ -85,15 +83,10 @@ def _who():
     return (session.get('equip_editor') or {}).get('name') or session.get('who') or 'Unknown'
 
 
-def _serializer():
-    return URLSafeTimedSerializer(current_app.secret_key, salt='equipment-editor')
-
-
-@bp.route('/signin', methods=['GET', 'POST'])
-@bp.route('/signin/<token>')
-def signin(token=None):
-    """Old separate sign-in: everyone now signs in once by email code, and the role comes from the officials list."""
-    flash('This needs the Operations committee or an officer, signed in with their own email address.', 'warning')
+@bp.errorhandler(E.Gone)
+def _row_gone(e):
+    """A save for a row someone deleted from the Operations sheet since the page was loaded: say so, not a server error."""
+    flash('That row is no longer in the Operations sheet (someone deleted it there), so nothing was saved.', 'warning')
     return redirect(url_for('equip.home'))
 
 
@@ -141,11 +134,9 @@ def home():
 def _roll(b, today):
     """An automatic charge's next date on or after today; the sheet's date can be a past one nobody moved on."""
     d = b['next']
-    for _ in range(240):
-        if not d or d >= today:
-            break
-        d = E.next_due({'due': d, 'repeat_months': b['every']})
-    return d or ''
+    if not d or d >= today:
+        return d or ''
+    return E.next_due({'due': d, 'repeat_months': b['every']}, after=(date.fromisoformat(today) - timedelta(days=1)).isoformat()) or ''
 
 
 @bp.route('/vehicles')
@@ -353,14 +344,24 @@ def add_document():
     if not folder:
         flash(f"{row['for_name']} has no Drive folder link on the Documents tab.", 'warning')
         return redirect(back)
-    names = []
+    names, failed = [], []
     for n, x in enumerate(files, 1):
         name = D.file_name(doc, row['for_name'], f.get('note', ''), x.filename, n if len(files) > 1 else 1)
-        D.upload(folder, name, x, _who())
-        names.append(name)
+        try:
+            D.upload(folder, name, x, _who())
+            names.append(name)
+        except Exception:          # say which files made it: the ones before this one are already in Drive
+            import logging
+            logging.exception(f'Operations document upload failed for {x.filename}')
+            failed.append(x.filename)
     D.refresh()
-    log_audit_event('EQUIP_DOCS_UPLOADED', _who(), {'id': row['id'], 'for': row['for_name'], 'doc': doc, 'files': names})
-    flash(f"Saved {doc} for {row['for_name']}" + (f' ({len(names)} files)' if len(names) > 1 else '') + '.', 'success')
+    if names:
+        log_audit_event('EQUIP_DOCS_UPLOADED', _who(), {'id': row['id'], 'for': row['for_name'], 'doc': doc, 'files': names})
+    if failed:
+        flash((f"Saved {len(names)} of {len(files)} files for {row['for_name']}. " if names else 'Google Drive did not answer, so nothing was saved. ')
+              + f"Not saved: {', '.join(failed)}. Add {'just those' if names else 'them'} again.", 'warning')
+    else:
+        flash(f"Saved {doc} for {row['for_name']}" + (f' ({len(names)} files)' if len(names) > 1 else '') + '.', 'success')
     return redirect(back)
 
 
@@ -424,8 +425,14 @@ def tasks():
     groups = [('Overdue', [t for t in rows if t['due'] and t['due'] < today.isoformat()]),
               ('Next 90 days', [t for t in rows if t['due'] and today.isoformat() <= t['due'] <= soon]),
               ('Later', [t for t in rows if t['due'] and t['due'] > soon]),
-              ('No date yet', [t for t in rows if not t['due']])]
+              ('No date yet', [t for t in rows if not t['due'] and not _finished(t)]),
+              ('Done', sorted([t for t in rows if _finished(t)], key=lambda t: t['last_done'], reverse=True))]
     return render_template('equip.html', **_ctx(view='tasks', groups=[(n, g) for n, g in groups if g], today=today.isoformat()))
+
+
+def _finished(t):
+    """A one-time to-do that was marked done: Done clears its date, so it must not sit under "No date yet"."""
+    return not t['due'] and bool(t['last_done']) and not t['repeat_months']
 
 
 @bp.route('/tasks/new', methods=['GET', 'POST'])
@@ -452,11 +459,23 @@ def _save_task(t):
     f = request.form
     row = dict(t or {})
     if f.get('action') == 'done':
-        # Done: note who and when, and move a repeating task to its next date (a one-time task stays, marked done).
-        row.update(last_done=date.today().isoformat(), done_by=_who())
-        nxt = E.next_due(t)
+        # Done: note who and when, and move a repeating task to its next date after today, however overdue it was (a
+        # one-time task stays, marked done). was_due: the date the page showed; if the sheet has another by now, a
+        # second click or someone else already marked it, and it is left alone (not moved on a second cycle).
+        today = date.today().isoformat()
+        back = local_path(f.get('back', '')) or url_for('equip.tasks')
+        was = f.get('was_due')
+        if (was is not None and was != t['due']) or (was is None and t['last_done'] == today):
+            flash(f"{t['task']} was already marked done. Nothing was changed.", 'info')
+            return redirect(back)
+        row.update(last_done=today, done_by=_who())
+        nxt = E.next_due(t, after=today)
         row['due'] = nxt
-        E.save('Recurring costs and to-dos', row, changed=_diff(t, row))
+        try:
+            E.save('Recurring costs and to-dos', row, changed=_diff(t, row), expect={'due': t['due'], 'last_done': t['last_done']})
+        except E.Changed:
+            flash(f"{t['task']} was already marked done. Nothing was changed.", 'info')
+            return redirect(back)
         log_audit_event('EQUIP_TASK_DONE', _who(), {'id': t['id'], 'task': t['task'], 'next': nxt})
         flash(f"Marked done: {t['task']}." + (f" Next due {nxt}." if nxt else ''), 'success')
         back = f.get('back', '')

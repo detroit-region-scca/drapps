@@ -5,13 +5,16 @@ on Lines (joined by id), receipts in a Drive folder per request under FUNDS_RECE
 Receipts need the Shared Drive: a service account has no storage of its own, so it cannot own files
 in anyone's My Drive.
 """
+import json
 import os
 import re
 import threading
+import time
 from datetime import date
 
 from filelock import FileLock
 
+import fr_logic
 from storage import DATA_DIR, drive_folder, drive_upload, worksheet
 import sheet_cache as C
 
@@ -23,8 +26,10 @@ LINE_COLS = ['request_id', 'date', 'description', 'category', 'amount']
 NUMERIC = ('total', 'advances', 'net', 'paid_amount')
 CATEGORIES = ['Site Rental', 'Supplies', 'Professional Service', 'Storage', 'Travel Cost', 'Other']
 METHODS = {'check': 'Check to the payee', 'card': 'Region credit card', 'reimburse': 'Reimburse me'}
-CACHE_SECONDS = 15
 ID_LOCK = os.path.join(DATA_DIR, 'funds_id.lock')
+# The New request pages already used ({token: {'id', 'at'}}): a double click, the back button or a retry after an
+# error part-way never files a second request (as for invoices, inv_store).
+ISSUED_FILE = os.path.join(DATA_DIR, 'funds-issued.json')
 
 _lock = threading.Lock()
 _cache = {}
@@ -90,9 +95,43 @@ def _next_id(year):
     return f'{prefix}{max(nums, default=0) + 1:03d}'
 
 
-def create(req, lines, receipts):
-    """req: dict of REQ_COLS fields (without id/submitted/status/receipts_url). Returns the new id."""
+def _issued():
+    try:
+        with open(ISSUED_FILE) as f:
+            return dict(json.load(f))
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_issued(d):
+    now = time.time()
+    d = {k: v for k, v in d.items() if now - v.get('at', 0) < 90 * 86400}
+    tmp = ISSUED_FILE + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(d, f)
+    os.replace(tmp, ISSUED_FILE)
+
+
+def _line_rows(rid, lines):
+    return [[rid, ln['date'], ln['description'], ln['category'], ln['amount']] for ln in lines]
+
+
+def create_once(req, lines, receipts, token=''):
+    """req: dict of REQ_COLS fields (without id/submitted/status/receipts_url). token: the New request page's one-time
+    token. Returns (id, True) when that page already filed one (nothing new is filed), else (the new id, False). If the
+    first try stopped before its expense lines were written, they are written now and it counts as new, so the
+    emails and the audit entry the first try never reached still happen."""
     with FileLock(ID_LOCK), _lock:
+        issued = _issued()
+        if token and token in issued:
+            refresh()
+            done = get(issued[token]['id'])
+            if done:
+                if not done['lines']:      # the first try stopped part-way, before anyone was told: finish it as new
+                    _ws('Lines').append_rows(_line_rows(done['id'], lines), value_input_option='RAW')
+                    refresh()
+                    return done['id'], False
+                return done['id'], True
         rid = _next_id(date.today().year)
         receipts = [f for f in receipts if f and f.filename]
         url = ''
@@ -102,25 +141,33 @@ def create(req, lines, receipts):
                 drive_upload(f, folder['id'])
             url = folder['webViewLink']
         row = dict(req, id=rid, submitted=date.today().isoformat(), status='Submitted', receipts_url=url)
+        if token:      # recorded before the writes: a retry after a failure part-way finds this request, not a new number
+            issued[token] = {'id': rid, 'at': time.time()}
+            _save_issued(issued)
         _ws('Requests').append_row([_cell(row.get(c, '')) for c in REQ_COLS], value_input_option='RAW')
-        _ws('Lines').append_rows([[rid, ln['date'], ln['description'], ln['category'], ln['amount']] for ln in lines],
-                                 value_input_option='RAW')
+        _ws('Lines').append_rows(_line_rows(rid, lines), value_input_option='RAW')
         refresh()
-        return rid
+        return rid, False
 
 
 def _cell(v):
     return v if isinstance(v, (int, float)) else str(v or '')
 
 
-def update(req_id, **fields):
-    """Change fields on one request (re-reads the row so concurrent edits to other columns survive). Takes the file lock
-    shared by every worker process, so two changes at the same moment run one after the other."""
+def _change(req_id, change):
+    """Re-read one request's row under the file lock shared by every worker process, let change(row) edit it, and write
+    it back. Returns the row, or None when nothing was written: the row is gone from the sheet, or change said no
+    (returned False). Cells are read as stored, not as shown, so an amount column formatted as Currency keeps its
+    number."""
     with FileLock(ID_LOCK), _lock:
         ws = _ws('Requests')
-        row = ws.col_values(1).index(req_id) + 1
-        cur = dict(zip(REQ_COLS, ws.row_values(row) + [''] * len(REQ_COLS)))
-        cur.update(fields)
+        col = ws.col_values(1)
+        if req_id not in col:
+            return None
+        row = col.index(req_id) + 1
+        cur = dict(zip(REQ_COLS, ['' if v is None else v for v in ws.row_values(row, value_render_option='UNFORMATTED_VALUE')] + [''] * len(REQ_COLS)))
+        if change(cur) is False:
+            return None
         for k in NUMERIC:
             cur[k] = _num(cur[k]) if cur[k] != '' else ''
         ws.update([[_cell(cur[c]) for c in REQ_COLS]], f'A{row}', value_input_option='RAW')
@@ -128,9 +175,29 @@ def update(req_id, **fields):
         return cur
 
 
-def close(req_id, status, **fields):
-    """Mark a request Paid or Rejected (fields: paid_date, paid_ref, paid_amount, closed_by, closed_note)."""
-    return update(req_id, status=status, **fields)
+def update(req_id, expect=None, **fields):
+    """Change fields on one request (re-reads the row so concurrent edits to other columns survive; two changes at the
+    same moment run one after the other). expect: the status it must still have, checked under the lock. Returns the
+    row, or None when it is gone or its status is not `expect` (nothing is changed)."""
+    return _change(req_id, lambda cur: False if expect and cur['status'] != expect else cur.update(fields))
+
+
+def add_approval(req_id, role, name, day, note='', once=False):
+    """Add one approval entry (fr_logic.add) to what is on the row now, so two approvals at the same moment both stay.
+    once: skip it when the row already has an entry for this role (the 'ready' mark)."""
+    def change(cur):
+        text = str(cur.get('approvals') or '')
+        if once and any(part.split('|')[0].strip() == role for part in text.split(';')):
+            return False
+        cur['approvals'] = fr_logic.add(text, role, name, day, note)
+    return _change(req_id, change)
+
+
+def close(req_id, status, expect=None, **fields):
+    """Mark a request Paid or Rejected, or Submitted again (fields: paid_date, paid_ref, paid_amount, closed_by,
+    closed_note). expect: the status it must have right now, so a double click or two people never close it twice.
+    Returns None when it was not changed."""
+    return update(req_id, expect=expect, status=status, **fields)
 
 
 def delete(req_id, who):

@@ -14,6 +14,7 @@ from datetime import date
 
 from filelock import FileLock
 
+import qbo_logic
 from storage import DATA_DIR, drive_folder, drive_upload, open_book, worksheet
 import sheet_cache as C
 
@@ -138,11 +139,19 @@ def create(rep, lines, files):
         return rid
 
 
-def update(rid, **fields):
+def update(rid, expect=None, **fields):
+    """Change fields on one report. expect: the status it must still have, checked under the lock. Returns the row, or
+    None when the row is gone from the sheet or its status is not `expect` (nothing is changed). Cells are read as
+    stored, not as shown, so an amount column formatted as Currency keeps its number."""
     with FileLock(ID_LOCK), _lock:
         ws = _ws(TAB)
-        row = ws.col_values(1).index(rid) + 1
-        cur = dict(zip(COLS, ws.row_values(row) + [''] * len(COLS)))
+        col = ws.col_values(1)
+        if rid not in col:
+            return None
+        row = col.index(rid) + 1
+        cur = dict(zip(COLS, ['' if v is None else v for v in ws.row_values(row, value_render_option='UNFORMATTED_VALUE')] + [''] * len(COLS)))
+        if expect and cur['status'] != expect:
+            return None
         cur.update(fields)
         for k in NUMERIC:
             cur[k] = _num(cur[k]) if cur[k] != '' else ''
@@ -175,13 +184,16 @@ def add_files(rid, files):
     return len(files)
 
 
-def match_deposits(reps, deposits, used=(), days=45):
+def match_deposits(reps, deposits, used=(), days=45, taken=()):
     """Reports still Received that a QuickBooks deposit took in: [(report, {'deposit_date', 'deposit_ref', 'deposit_amount'})].
 
     A report matches a deposit line, or a whole deposit (its lines added up), of exactly its total, dated on or after
-    the day it was received and within `days`. Only a single unambiguous match counts, each deposit is used once, and
-    deposits already used (for invoices) are skipped.
+    the day it was received and within `days`. Only a single unambiguous match counts and each deposit is used once:
+    deposits that reports already Deposited used (tonight or on an earlier night) are left out, as are those in
+    `taken`, (ref, date, amount) of the invoices already paid, and the deposit ids in `used`.
     """
+    deposits = qbo_logic.unused_deposits(deposits, [(r.get('deposit_ref'), r.get('deposit_date'), r.get('deposit_amount'))
+                                                    for r in reps if r['status'] == 'Deposited'] + list(taken))
     used = set(used)
     by_dep = {}
     for d in deposits:
@@ -200,5 +212,5 @@ def match_deposits(reps, deposits, used=(), days=45):
         if len(ids) == 1:
             c = cands[0]
             used.add(c['id'])
-            out.append((r, {'deposit_date': c['date'], 'deposit_ref': f"QuickBooks deposit {c['date']}", 'deposit_amount': c['amount']}))
+            out.append((r, {'deposit_date': c['date'], 'deposit_ref': qbo_logic.deposit_ref(c['id'], c['date']), 'deposit_amount': c['amount']}))
     return out

@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from '_ui.html' import tab with context %}
+{% from '_ui.html' import tab, money with context %}
 {% block body_class %}app-wp{% endblock %}
 {% block app_name %}Members{% endblock %}
 {% block nav %}
@@ -9,7 +9,7 @@
     {% if keeper %}{{ tab('members.quickbooks', 'QuickBooks') }}{{ tab('members.milestones', 'Service Awards') }}{% endif %}
 {% endblock %}
 {% macro pts(v) %}<span class="{{ 'text-danger' if v < 0 else '' }}">{{ '%+g'|format(v) }}</span>{% endmacro %}
-{% macro day(d) %}{{ d.strftime('%-m/%-d/%Y') if d else '' }}{% endmacro %}
+{% macro day(d) %}{{ d|nice_date if d else '' }}{% endmacro %}
 {% macro cheat() %}<div class="card p-3 small">
     <div class="fw-semibold mb-2">Cheat sheet</div>
     <div id="pointvalue" style="cursor: default; user-select: none">1 point = <strong>${{ point_value }}</strong></div>
@@ -54,16 +54,15 @@
     <li class="nav-item"><a class="nav-link pill-auto {{ 'active' if which == 'auto' }}" href="{{ url_for('members.auto') }}">Auto add</a></li>
 </ul>{% endif %}{% endmacro %}
 {% block style %}
-        #grid td { vertical-align: middle; }
         #memberTable tbody tr[hidden] { display: none; }
         #memberTable thead th { position: sticky; top: 0; background: var(--bs-body-bg); z-index: 1; cursor: pointer; user-select: none; white-space: nowrap; }
         #memberTable th[data-sort]::after { content: " \2195"; opacity: .3; font-size: .8em; }
         #memberTable th[aria-sort=ascending]::after { content: " \2191"; opacity: .8; }
         #memberTable th[aria-sort=descending]::after { content: " \2193"; opacity: .8; }
         .nav-pills .nav-link { color: var(--muted); }
-        .nav-pills .nav-link.pill-add { color: #1a8a5a; }
+        .nav-pills .nav-link.pill-add { color: #177a50; }   /* 5.3:1 on white */
         .nav-pills .nav-link.pill-use { color: #c2232e; }
-        .nav-pills .nav-link.pill-add.active { background: #1a8a5a; color: #fff; font-weight: 600; }
+        .nav-pills .nav-link.pill-add.active { background: #177a50; color: #fff; font-weight: 600; }
         .nav-pills .nav-link.pill-auto.active { background: #555; color: #fff; font-weight: 600; }
         .nav-pills .nav-link.pill-use.active { background: #c2232e; color: #fff; font-weight: 600; }
         @media (max-width: 767.98px) {
@@ -82,13 +81,13 @@
 {# ================================================================== Members (keeper) #}
 {% if view == 'home' %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-    <div class="page-title mb-0">Members</div>
+    <h1 class="page-title mb-0">Members</h1>
     <a class="btn btn-accent" href="{{ url_for('members.enter') }}">Add points</a>
 </div>
 <div class="row g-3 mb-3">
-    <div class="col-6 col-lg-3"><div class="card stat p-3 h-100"><div class="label">Worker points</div><div class="value">{{ '{:,.1f}'.format(total) }}</div><div class="label">${{ '{:,.2f}'.format(total * point_value) }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="card stat p-3 h-100"><div class="label">Worker points</div><div class="value">{{ '{:,.1f}'.format(total) }}</div><div class="label">{{ money(total * point_value) }}</div></div></div>
     <div class="col-6 col-lg-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('members.quickbooks') }}"><div class="label">QuickBooks</div>
-        {% if reserve and (total * point_value - reserve.amount)|abs >= 0.005 %}<div class="value text-warning">${{ '{:,.2f}'.format(total * point_value - reserve.amount) }}</div><div class="label">off: see what to book</div>
+        {% if reserve and (total * point_value - reserve.amount)|abs >= 0.005 %}<div class="value text-warning">{{ money(total * point_value - reserve.amount) }}</div><div class="label">off: see what to book</div>
         {% elif reserve %}<div class="value text-success">Ties</div><div class="label">to the reserve</div>{% else %}<div class="value">·</div><div class="label">no sync yet</div>{% endif %}</a></div>
     <div class="col-6 col-lg-3"><div class="card stat p-3 h-100"><div class="label">SCCA member list</div><div class="value">{{ day(latest_list) if latest_list else 'not loaded' }}</div>
         <div class="label"><a href="{{ url_for('members.home', load=1) }}#loadlist">load a new list</a></div></div></div>
@@ -98,16 +97,14 @@
 <form id="loadlist" method="post" action="{{ url_for('members.upload') }}" enctype="multipart/form-data" class="card card-body mb-3"{{ '' if request.args.get('load') else ' hidden' }}><input type="hidden" name="back" value="{{ url_for('members.home') }}">
     <div class="d-flex flex-wrap gap-2 align-items-center">
         <span class="small">Download the Member List from <a href="{{ scca_reports }}">my.scca.com › Region Reporting</a>, then:</span>
-        <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" required><button class="btn btn-sm btn-accent">Load list</button>
+        <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" aria-label="Member List file" required><button class="btn btn-sm btn-accent">Load list</button>
         <a class="small ms-auto" href="{{ list_url }}">past lists</a></div></form>
-
-
 
 <input id="find" class="form-control mb-2" type="search" aria-label="Find a member" placeholder="Find a member by name or SCCA number" autocomplete="off" style="max-width: 30rem">
 <div class="card"><div class="card-body p-0 table-responsive" style="max-height: 60vh; overflow-y: auto;">
     <table class="table table-hover mb-0" id="memberTable">
         <thead><tr><th class="ps-3" data-sort="name">Name</th><th class="d-none d-md-table-cell" data-sort="num" data-type="n">SCCA #</th><th class="d-none d-md-table-cell" data-sort="since">Member since</th><th data-sort="exp">Expires</th><th class="num pe-3" data-sort="pts" data-type="n">Points</th></tr></thead>
-        <tbody>{% for m in members %}<tr class="row-link" data-k="{{ (m.first ~ ' ' ~ m.last ~ ' ' ~ m.member)|lower }}" data-name="{{ (m.last ~ ' ' ~ m.first)|lower }}" data-num="{{ m.member }}" data-since="{{ m.joined.isoformat() if m.joined else '' }}" data-exp="{{ m.expires.isoformat() if m.expires else '' }}" data-pts="{{ m.points }}" onclick="location.href='{{ url_for('members.member', mid=m.member) }}'">
+        <tbody>{% for m in members %}<tr data-k="{{ (m.first ~ ' ' ~ m.last ~ ' ' ~ m.member)|lower }}" data-name="{{ (m.last ~ ' ' ~ m.first)|lower }}" data-num="{{ m.member }}" data-since="{{ m.joined.isoformat() if m.joined else '' }}" data-exp="{{ m.expires.isoformat() if m.expires else '' }}" data-pts="{{ m.points }}" data-href="{{ url_for('members.member', mid=m.member) }}">
             <td class="ps-3"><a href="{{ url_for('members.member', mid=m.member) }}">{{ m.first }} {{ m.last }}</a>{% if m.life %} <span class="badge text-bg-secondary">LIFE</span>{% endif %}{% if m.lapsed %} <span class="badge text-bg-warning">lapsed</span>{% elif m.rejoined %} <span class="badge text-bg-info" title="Rejoined {{ day(m.rejoined) }}">rejoined</span>{% endif %}</td>
             <td class="text-muted d-none d-md-table-cell">{{ m.member }}</td><td class="text-muted d-none d-md-table-cell">{{ m.joined.year if m.joined else '' }}</td>
             <td class="{{ 'text-warning' if m.expires and m.expires < today_ else 'text-muted' }}">{{ day(m.expires) }}</td>
@@ -115,12 +112,11 @@
     </table>
 </div></div>
 
-
 {% if lapsed %}
 <details id="lapsed" class="mt-3"><summary class="small"><span class="text-warning">{{ lapsed|length }} members with points are not current SCCA members</span> ({{ '{:,.1f}'.format(lapsed|sum(attribute='points')) }} points)</summary>
     <div class="card card-body mt-2">
         <div class="small">{% for m in lapsed %}<a href="{{ url_for('members.member', mid=m.member) }}">{{ m.first }} {{ m.last }}</a> <span class="text-muted">{{ 'expired ' ~ day(m.expires) if m.expires else 'not on the list' }}, {{ '%g'|format(m.points) }}</span>{% if not loop.last %} · {% endif %}{% endfor %}</div>
-        <form method="post" action="{{ url_for('members.forfeit') }}" class="mt-2" onsubmit="return confirm('Delete the points of all {{ lapsed|length }} members who are not current?')"><button class="btn btn-sm btn-danger">Delete their points</button></form>
+        <form method="post" action="{{ url_for('members.forfeit') }}" class="mt-2" onsubmit="return confirm('Delete the points of all {{ lapsed|length }} members who are not current?')"><input type="hidden" name="token" value="{{ token }}"><button class="btn btn-sm btn-danger">Delete their points</button></form>
     </div></details>
 {% endif %}
 <details class="mt-2"><summary class="small">Add someone who is not on the SCCA list</summary>
@@ -158,9 +154,9 @@
 {% elif view == 'member' %}
 <div class="crumbs"><a href="{{ url_for('members.home') }}">Members</a> / {{ m.first }} {{ m.last }}</div>
 <div class="card p-3 mb-3"><div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
-    <div><div class="page-title m-0">{{ m.first }} {{ m.last }}{% if m.life %} <span class="badge text-bg-secondary align-middle">LIFE</span>{% endif %}</div>
+    <div><h1 class="page-title m-0">{{ m.first }} {{ m.last }}{% if m.life %} <span class="badge text-bg-secondary align-middle">LIFE</span>{% endif %}</h1>
         <div class="text-muted">SCCA #{{ m.member }}{% if m.joined %} · member since {{ day(m.joined) }}{% endif %}{% if m.expires %} · expires {{ day(m.expires) }}{% endif %}{% if m.listed %} (SCCA list of {{ day(m.listed) }}){% endif %}{% if m.lapsed %}<br><span class="text-warning">Lapsed since {{ day(m.lapsed) }}</span>{% endif %}{% if m.rejoined %}<br><span class="text-info">Rejoined {{ day(m.rejoined) }}{% if m.lapsed %} (lapsed again since){% endif %}</span>{% endif %}</div></div>
-    <div class="text-end stat"><div class="value">{{ '%.1f'|format(m.points) }} pts</div><div class="label">${{ '{:,.2f}'.format(m.points * point_value) }}</div>
+    <div class="text-end stat"><div class="value">{{ '%.1f'|format(m.points) }} pts</div><div class="label">{{ money(m.points * point_value) }}</div>
         <div class="mt-1"><a class="btn btn-sm btn-accent" href="{{ url_for('members.enter', member=m.member) }}">Add points</a>
         <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('members.use', member=m.member) }}">Use points</a></div></div>
 </div></div>
@@ -172,7 +168,7 @@
 
 {# ================================================================== Enter points #}
 {% elif view == 'enter' %}
-<div class="page-title">Points</div>
+<h1 class="page-title">Points</h1>
 {{ points_switch('add') }}
 <p class="text-muted">Who worked an event, and their points. Enter them within 30 days of the event.</p>
 <div class="row g-4"><div class="col-lg-8">
@@ -181,21 +177,23 @@
         <div class="col-md-8"><label class="form-label">Event</label>
             <select name="event" class="form-select" required>
                 <option value="" disabled {% if not form.get('event') %}selected{% endif %}>Select the event…</option>
-                {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" {% if form.get('event') == c %}selected{% endif %}>{{ e.date }} · {{ c }} · {{ e.event_name }}</option>{% endfor %}
+                {% for e in events %}{% set c = e.custom_tag or e.unique_code %}<option value="{{ c }}" {% if form.get('event') == c %}selected{% endif %}>{{ (e.date or '')|nice_date }} · {{ c }} · {{ e.event_name }}</option>{% endfor %}
                 {% if keeper %}<option value="none" {% if form.get('event') == 'none' %}selected{% endif %}>No event (volunteer job, adjustment)</option>{% endif %}
             </select></div>
         <div class="col-md-4"><label class="form-label">Start date</label><input type="date" name="first" class="form-control" value="{{ form.get('first', '') }}"><div class="form-text">Blank = the event date</div></div>
         {% if keeper %}<div class="col-12"><label class="form-label">What for <span class="text-muted">(only when there is no event)</span></label><input name="what" class="form-control" placeholder="e.g. Operations chief, 2026" value="{{ form.get('what', '') }}"></div>{% endif %}
     </div>
-    <datalist id="memberlist">{% for m in members %}<option value="{{ pick_label(m) }}">{% endfor %}</datalist>
+    {# pick_label gives names only to people who are not the keeper (a number just where two members share a name). #}
+    {% set ns = namespace(seen=[]) %}
+    <datalist id="memberlist">{% for m in members %}{% set n = pick_label(m) %}{% if n not in ns.seen %}{% set _ = ns.seen.append(n) %}<option value="{{ n }}">{% endif %}{% endfor %}</datalist>
     <table class="table table-sm align-middle mb-2">
-        <thead><tr><th>Name</th><th style="width:7rem">Points</th><th style="width:2.5rem"></th></tr></thead>
+        <thead><tr><th>Name</th><th style="width:7rem">Points</th><th style="width:2.5rem"><span class="visually-hidden">Remove</span></th></tr></thead>
         <tbody id="people"></tbody>
     </table>
     <template id="persontpl"><tr>
         <td><input name="member" list="memberlist" class="form-control form-control-sm" aria-label="Type a name" placeholder="Type a name" autocomplete="off"></td>
-        <td><input name="points" type="number" min="0.5" step="0.5" class="form-control form-control-sm" placeholder="1"></td>
-        <td><button type="button" class="btn btn-sm btn-link text-muted p-1" title="Remove" onclick="this.closest('tr').remove(); tally()">✕</button></td>
+        <td><input name="points" type="number" min="0.5" step="0.5" class="form-control form-control-sm" aria-label="Points" placeholder="1"></td>
+        <td><button type="button" class="btn btn-sm btn-link text-muted p-1" title="Remove" aria-label="Remove" onclick="this.closest('tr').remove(); tally()">✕</button></td>
     </tr></template>
     <div class="d-flex flex-wrap align-items-center gap-2">
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addPeople(1)">Add a person</button>
@@ -232,7 +230,7 @@
 
 {# ================================================================== Review before saving #}
 {% elif view == 'review' %}
-<div class="page-title">Check and save</div>
+<h1 class="page-title">Check and save</h1>
 <p class="mb-1"><strong>{{ ev.event_name if ev else what }}</strong>{% if code %} · {{ code }}{% endif %} · {{ day(first) }}</p>
 {% for t in tabs %}<p class="small mb-1 {{ '' if t.ok else 'text-warning fw-semibold' }}">Tab "{{ t.tab }}"{% if t.title %} ({{ t.title|join(' · ') }}){% endif %}: {{ t.lines|length }} lines, {{ '%g'|format(t.sum) }} points.
     {% if t.total is none %}No Total on the sheet to check against.{% elif t.ok %}Matches the sheet's Total.{% else %}The sheet's Total says {{ '%g'|format(t.total) }}. Check the sheet.{% endif %}
@@ -253,7 +251,7 @@
         <tr>
             <td><input type="hidden" name="name" value="{{ r.name }}">{{ r.name or '(no name)' }}
                 {% if r.problem %}<div class="small text-warning">{{ r.problem }}</div>{% endif %}</td>
-            <td><select name="member" class="form-select form-select-sm">
+            <td><select name="member" class="form-select form-select-sm" aria-label="Member">
                 {% if r.member %}
                     {% if r.already %}<option value="">Leave out: already has {{ '%g'|format(r.already.points) }} points{% if r.already.by %} (entered by {{ r.already.by|join(', ') }}){% endif %}</option>
                     {% elif r.twice %}<option value="">Leave out: listed twice</option>
@@ -272,7 +270,7 @@
     <div class="d-flex flex-wrap align-items-center gap-2">
         <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('members.enter') }}">Start over</a>
         <span class="small text-muted ms-auto" id="rtally"></span>
-        <button class="btn btn-accent" id="savebtn">Save</button>
+        <button class="btn btn-accent" id="savebtn" data-busy="Saving…">Save</button>
     </div>
 </form>
 <script>
@@ -286,17 +284,12 @@
         document.getElementById('savebtn').textContent = n ? `Save ${n}` : 'Save';
     }
     document.querySelectorAll('#review select, #review input').forEach(x => x.addEventListener('input', rtally));
-    document.getElementById('reviewform').addEventListener('submit', e => {
-        const b = document.getElementById('savebtn');
-        if (b.disabled) { e.preventDefault(); return; }
-        b.disabled = true; b.textContent = 'Saving…';
-    });
     rtally();
 </script>
 
 {# ================================================================== Log #}
 {% elif view == 'log' %}
-<div class="page-title">Worker points log</div>
+<h1 class="page-title">Worker points log</h1>
 <p class="text-muted">Who added and who spent points in {{ year }}: {{ '{:,.3f}'.format(added).rstrip('0').rstrip('.') }} added, {{ '{:,.3f}'.format(spent).rstrip('0').rstrip('.') }} spent.</p>
 {% if rows %}
 <div class="card"><table class="table table-sm align-middle mb-0" id="pointslog">
@@ -318,11 +311,12 @@
 
 {# ================================================================== Use points #}
 {% elif view == 'use' %}
-<div class="page-title">Points</div>
+<h1 class="page-title">Points</h1>
 {{ points_switch('use') }}
 <p class="text-muted">Take points off a member's balance for a renewal, an event entry, the banquet or merchandise.</p>
 <div class="row g-4"><div class="col-lg-8">
 <form method="post" class="card p-3">
+    <input type="hidden" name="token" value="{{ token }}">
     <datalist id="memberlist">{% for m in members if m.points > 0 %}<option value="{{ pick_label(m) }}" data-points="{{ m.points }}">{{ '%g'|format(m.points) }} points</option>{% endfor %}</datalist>
     <div class="row g-2">
         <div class="col-md-8"><label class="form-label">Member</label><input id="usemember" name="member" list="memberlist" class="form-control" required placeholder="Type a name" autocomplete="off" value="{{ form.get('member', '') }}">
@@ -351,27 +345,27 @@
 
 {# ================================================================== Auto add #}
 {% elif view == 'auto' %}
-<div class="page-title">Points</div>
+<h1 class="page-title">Points</h1>
 {{ points_switch('auto') }}
 <p class="text-muted">People who get points every month for a volunteer job. Their points are added on the 1st of each month.</p>
 <div class="row g-4"><div class="col-lg-8">
 <form method="post" class="card p-3">
     <datalist id="memberlist">{% for m in members %}<option value="{{ pick_label(m) }}">{% endfor %}</datalist>
     <table class="table table-sm align-middle mb-2" id="autogrid">
-        <thead><tr><th style="width:34%">Person</th><th>Job</th><th style="width:9rem">Points a month<br><span class="fw-normal small text-muted">April–October</span></th><th style="width:9rem">Points a month<br><span class="fw-normal small text-muted">November–March</span></th><th></th></tr></thead>
+        <thead><tr><th style="width:34%">Person</th><th>Job</th><th style="width:9rem">Points a month<br><span class="fw-normal small text-muted">April–October</span></th><th style="width:9rem">Points a month<br><span class="fw-normal small text-muted">November–March</span></th><th><span class="visually-hidden">Remove</span></th></tr></thead>
         <tbody>
-        {% for r in auto %}<tr><td><input name="member" list="memberlist" class="form-control form-control-sm" value="{{ r.name }} ({{ r.member }})"></td>
-            <td><input name="role" class="form-control form-control-sm" value="{{ r.role }}"></td>
-            <td><input name="season" type="number" min="0" step="0.5" class="form-control form-control-sm" value="{{ '%g'|format(r.season) }}"></td>
-            <td><input name="offseason" type="number" min="0" step="0.5" class="form-control form-control-sm" value="{{ '%g'|format(r.offseason) }}"></td>
-            <td><button type="button" class="btn btn-sm btn-link text-muted p-1" onclick="this.closest('tr').remove()">✕</button></td></tr>{% endfor %}
+        {% for r in auto %}<tr><td><input name="member" list="memberlist" class="form-control form-control-sm" aria-label="Person" value="{{ r.name }}{% if r.member %} ({{ r.member }}){% endif %}"></td>
+            <td><input name="role" class="form-control form-control-sm" aria-label="Job" value="{{ r.role }}"></td>
+            <td><input name="season" type="number" min="0" step="0.5" class="form-control form-control-sm" aria-label="Points a month, April to October" value="{{ '%g'|format(r.season) }}"></td>
+            <td><input name="offseason" type="number" min="0" step="0.5" class="form-control form-control-sm" aria-label="Points a month, November to March" value="{{ '%g'|format(r.offseason) }}"></td>
+            <td><button type="button" class="btn btn-sm btn-link text-muted p-1" aria-label="Remove" onclick="this.closest('tr').remove()">✕</button></td></tr>{% endfor %}
         </tbody>
     </table>
     <template id="autotpl"><tr><td><input name="member" list="memberlist" class="form-control form-control-sm" aria-label="Type a name" placeholder="Type a name"></td>
-        <td><input name="role" class="form-control form-control-sm" placeholder="e.g. Operations chief"></td>
-        <td><input name="season" type="number" min="0" step="0.5" class="form-control form-control-sm" value="1"></td>
-        <td><input name="offseason" type="number" min="0" step="0.5" class="form-control form-control-sm" value="1"></td>
-        <td><button type="button" class="btn btn-sm btn-link text-muted p-1" onclick="this.closest('tr').remove()">✕</button></td></tr></template>
+        <td><input name="role" class="form-control form-control-sm" aria-label="Job" placeholder="e.g. Operations chief"></td>
+        <td><input name="season" type="number" min="0" step="0.5" class="form-control form-control-sm" aria-label="Points a month, April to October" value="1"></td>
+        <td><input name="offseason" type="number" min="0" step="0.5" class="form-control form-control-sm" aria-label="Points a month, November to March" value="1"></td>
+        <td><button type="button" class="btn btn-sm btn-link text-muted p-1" aria-label="Remove" onclick="this.closest('tr').remove()">✕</button></td></tr></template>
     <div class="d-flex gap-2"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.querySelector('#autogrid tbody').appendChild(document.getElementById('autotpl').content.firstElementChild.cloneNode(true))">Add a person</button>
         <button class="btn btn-accent ms-auto">Save</button></div>
 </form>
@@ -386,29 +380,29 @@
 
 {# ================================================================== QuickBooks #}
 {% elif view == 'quickbooks' %}
-<div class="page-title">QuickBooks</div>
-<p class="text-muted mb-3">Worker points ${{ '{:,.2f}'.format(total) }}{% if reserve %} · QuickBooks reserve ${{ '{:,.2f}'.format(reserve.amount) }} (sync of {{ reserve.as_of }}) ·
-    {% if diff|abs < 0.005 %}<span class="text-success">ties</span>{% else %}<span class="text-warning">${{ '{:,.2f}'.format(diff) }} off</span>{% endif %}{% endif %}</p>
-{% if unexplained is not none and unexplained|abs >= 0.005 %}<div class="alert alert-warning small">${{ '{:,.2f}'.format(unexplained) }} of the difference is not explained by the entries below: something was booked in QuickBooks without a points entry, or an entry was marked reconciled by mistake.</div>{% endif %}
+<h1 class="page-title">QuickBooks</h1>
+<p class="text-muted mb-3">Worker points {{ money(total) }}{% if reserve %} · QuickBooks reserve {{ money(reserve.amount) }} (sync of {{ (reserve.as_of or '')|nice_date }}) ·
+    {% if diff|abs < 0.005 %}<span class="text-success">ties</span>{% else %}<span class="text-warning">{{ money(diff) }} off</span>{% endif %}{% endif %}</p>
+{% if unexplained is not none and unexplained|abs >= 0.005 %}<div class="alert alert-warning small">{{ money(unexplained) }} of the difference is not explained by the entries below: something was booked in QuickBooks without a points entry, or an entry was marked reconciled by mistake.</div>{% endif %}
 {% if open_entries %}
-<div class="d-flex justify-content-between align-items-center mb-2"><h2 class="h6 m-0">{{ jes|length }} journal entr{{ 'y' if jes|length == 1 else 'ies' }} to book (${{ '{:,.2f}'.format(open_value) }})</h2>
+<div class="d-flex justify-content-between align-items-center mb-2"><h2 class="h6 m-0">{{ jes|length }} journal entr{{ 'y' if jes|length == 1 else 'ies' }} to book ({{ money(open_value) }})</h2>
     <form method="post" class="m-0"><input type="hidden" name="action" value="email"><button class="btn btn-sm btn-outline-secondary">Email to treasurer</button></form></div>
 {% for je in jes %}
 <div class="card mb-3"><div class="card-body">
     <div class="fw-semibold">{{ loop.index }}. {{ je.title }}</div>
     <div class="small text-muted mb-2">Date {{ day(je.last) }} · Memo: {{ je.memo }}</div>
     <table class="table table-sm mb-0"><thead><tr><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
-        <tbody><tr><td>{{ je.debit }}</td><td class="num">${{ '{:,.2f}'.format(je.amount) }}</td><td></td></tr>
-               <tr><td>{{ je.credit }}</td><td></td><td class="num">${{ '{:,.2f}'.format(je.amount) }}</td></tr></tbody></table>
+        <tbody><tr><td>{{ je.debit }}</td><td class="num">{{ money(je.amount) }}</td><td></td></tr>
+               <tr><td>{{ je.credit }}</td><td></td><td class="num">{{ money(je.amount) }}</td></tr></tbody></table>
 </div></div>
 {% endfor %}
 {% if used %}<div class="card mb-3"><div class="card-body small"><div class="fw-semibold mb-1">Points used (no journal entry: each is paid by its own check or card charge)</div>
-    {% for e in used %}<div>{{ day(e.date) }} · {{ e.name }} · {{ e.what }} · {{ '%g'|format(-e.points) }} points (${{ '{:,.2f}'.format(-e.points * point_value) }})</div>{% endfor %}</div></div>{% endif %}
+    {% for e in used %}<div>{{ day(e.date) }} · {{ e.name }} · {{ e.what }} · {{ '%g'|format(-e.points) }} points ({{ money(-e.points * point_value) }})</div>{% endfor %}</div></div>{% endif %}
 <h2 class="h6 mt-4">Entries behind these</h2>
 <form method="post" class="card"><div class="card-body p-0 table-responsive">
-    <table class="table table-sm mb-0">
-        <thead><tr><th class="ps-3"><input type="checkbox" checked onclick="document.querySelectorAll('[name=row]').forEach(c => c.checked = this.checked)"></th><th>Date</th><th>Member</th><th>What for</th><th>Kind</th><th class="num">Points</th><th class="num pe-3">$</th></tr></thead>
-        <tbody>{% for e in open_entries %}<tr><td class="ps-3"><input type="checkbox" name="row" value="{{ e.row }}" checked></td><td class="text-nowrap">{{ day(e.date) }}</td><td>{{ e.name }}</td><td class="small">{{ e.what }}{% if e.event %} <span class="text-muted">{{ e.event }}</span>{% endif %}</td><td class="small">{{ e.kind }}</td><td class="num">{{ pts(e.points) }}</td><td class="num pe-3">{{ '{:,.2f}'.format(e.points * point_value) }}</td></tr>{% endfor %}</tbody>
+    <table class="table table-sm mb-0 stack">
+        <thead><tr><th class="ps-3"><input type="checkbox" checked aria-label="Tick all" onclick="document.querySelectorAll('[name=row]').forEach(c => c.checked = this.checked)"></th><th>Date</th><th>Member</th><th>What for</th><th>Kind</th><th class="num">Points</th><th class="num pe-3">$</th></tr></thead>
+        <tbody>{% for e in open_entries %}<tr><td class="ps-3"><input type="checkbox" name="row" value="{{ e.row }}" checked aria-label="{{ e.name }}, {{ day(e.date) }}"><input type="hidden" name="key{{ e.row }}" value="{{ entry_key(e) }}"></td><td class="text-nowrap" data-label="Date">{{ day(e.date) }}</td><td data-label="Member">{{ e.name }}</td><td class="small" data-label="What for">{{ e.what }}{% if e.event %} <span class="text-muted">{{ e.event }}</span>{% endif %}</td><td class="small" data-label="Kind">{{ e.kind }}</td><td class="num" data-label="Points">{{ pts(e.points) }}</td><td class="num pe-3" data-label="$">{{ money(e.points * point_value) }}</td></tr>{% endfor %}</tbody>
     </table></div>
     <div class="card-body d-flex flex-wrap gap-2 align-items-end border-top">
         <div><label class="form-label small">Booked on</label><input type="date" name="booked" class="form-control form-control-sm"></div>
@@ -421,7 +415,7 @@
 {# ================================================================== Milestones #}
 {% elif view == 'milestones' %}
 <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
-    <div><div class="page-title mb-0">Service Awards</div>
+    <div><h1 class="page-title mb-0">Service Awards</h1>
         <div class="text-muted small">New members and membership anniversaries, from the SCCA member list{% if latest_list %} of {{ day(latest_list) }}{% endif %}.</div></div>
     <div class="btn-group" role="group" aria-label="Month">
         <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('members.milestones', month=prev_month) }}" aria-label="Previous month">‹</a>
@@ -438,7 +432,7 @@
         <li>Click <b>Review and publish</b>: the website has the month's post ready as a draft. Look it over and click Publish there.</li>
     </ol>
     <div class="d-flex flex-wrap gap-2 align-items-center">
-        <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" required><button class="btn btn-sm btn-accent">Load list</button>
+        <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" aria-label="Member List file" required><button class="btn btn-sm btn-accent">Load list</button>
         <a class="small ms-auto" href="{{ list_url }}">past lists</a></div>
 </form>
 {% macro groups(g) %}<div class="row g-3">{% for y in (g.keys()|reject('equalto', 0)|sort(reverse=true)|list) + ([0] if 0 in g else []) %}

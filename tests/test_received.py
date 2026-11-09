@@ -28,7 +28,7 @@ def test_single_count_only_for_cash():
 
 def test_matches_a_line_or_a_whole_deposit():
     one = R.match_deposits([rep()], [dep(1, '2026-10-20', 1240.0)])
-    assert one[0][1] == {'deposit_date': '2026-10-20', 'deposit_ref': 'QuickBooks deposit 2026-10-20', 'deposit_amount': 1240.0}
+    assert one[0][1] == {'deposit_date': '2026-10-20', 'deposit_ref': 'QuickBooks deposit 2026-10-20 #1', 'deposit_amount': 1240.0}
     split = R.match_deposits([rep()], [dep(2, '2026-10-20', 1040.0), dep(2, '2026-10-20', 200.0)])
     assert split and split[0][1]['deposit_amount'] == 1240.0
 

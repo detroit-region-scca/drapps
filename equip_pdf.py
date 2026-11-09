@@ -193,11 +193,9 @@ class Report(FPDF):
 def _roll(b, today):
     """An automatic charge's next date on or after today."""
     d = b['next']
-    for _ in range(240):
-        if not d or d >= today:
-            break
-        d = E.next_due({'due': d, 'repeat_months': b['every']})
-    return d or ''
+    if not d or d >= today:
+        return d or ''
+    return E.next_due({'due': d, 'repeat_months': b['every']}, after=(date.fromisoformat(today) - timedelta(days=1)).isoformat()) or ''
 
 
 def build(items, places, tasks, docs=None, today=None, region='Detroit Region SCCA'):
@@ -253,7 +251,7 @@ def build(items, places, tasks, docs=None, today=None, region='Detroit Region SC
     # 2. To do -----------------------------------------------------------------------------------------------------
     p.h1(next(n), 'To do', 'Things someone has to do. Bills that charge the card on their own are under Bills.')
     groups = [('Overdue', overdue, RED), ('Next 90 days', [t for t in todo if t['due'] and t_iso <= t['due'] <= soon], None),
-              ('Later', [t for t in todo if t['due'] and t['due'] > soon], None), ('No date yet', [t for t in todo if not t['due']], None)]
+              ('Later', [t for t in todo if t['due'] and t['due'] > soon], None), ('No date yet', [t for t in todo if not t['due'] and not (t['last_done'] and not t['repeat_months'])], None)]      # not the finished one-time ones
     for name, rows, color in groups:
         if not rows:
             continue

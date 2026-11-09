@@ -21,15 +21,17 @@ drapps.drscca.org. Keeping it running: [docs/RUNBOOK.md](docs/RUNBOOK.md).
 - **Data lives in Google Sheets** in the region's **DRSCCA Apps** Shared Drive, one spreadsheet per app, with
   receipts, budget files, documents, minutes and invoice PDFs in Drive folders beside them. The app reads and
   writes them as a Google service account. Anyone with Drive access can read the data without the app.
-- **The server keeps a little state of its own** in `data/`: the audit log, sign-in codes, programs, role
-  permissions, the officials change queue, the QuickBooks sync status, a cache of the sheets, and nightly
-  backups. The runbook lists each file.
-- **Backups** run on the server: nightly sheet copies, a daily disk snapshot, a weekly copy of the server's
-  secrets, and a weekly copy of the drscca.org website's content into the region drive (WordPress.com Premium has
-  no backups of its own). The runbook's Backups section lists each copy, where it is and how to restore from it.
+- **The server keeps a little state of its own** in `data/`: a copy of the audit log, sign-in codes, role
+  permissions, short links in emails, Records corrections, issued invoice numbers, the officials change queue,
+  the QuickBooks sync status, a cache of the sheets, and nightly backups. The runbook lists each file.
+- **Backups** run on the server: nightly sheet copies, a nightly copy of the app's own files and a weekly copy of
+  the server's secrets to an admin-only Drive folder, a daily disk snapshot, and a weekly copy of the drscca.org
+  website's content into the region drive (WordPress.com Premium has no backups of its own). The runbook's
+  Backups section lists each copy, where it is and how to restore from it.
 - **Who holds which job** is `officials.json` on the host, mounted read-only. The admin changes it in
-  Admin > Users; a host job (`tools/officials_queue.py`) applies the change and updates the drscca.org Google
-  Groups to match. Nobody can make themselves an approver from inside the app.
+  Admin > Users; a host job (`tools/officials_queue.py`) applies the change to `officials.json` and refreshes
+  its readable copy in Drive. Nobody can make themselves an approver from inside the app. The apps never change
+  the drscca.org Google Groups: group members are changed only at admin.google.com.
 - **What each role may do** is set in Admin > Roles (`data/role-access.json`). The home page grays out apps a
   role does not use. Volunteers have their own role there, by default events, entering worker points, and their
   own funds requests and invoices.
@@ -41,32 +43,37 @@ drapps.drscca.org. Keeping it running: [docs/RUNBOOK.md](docs/RUNBOOK.md).
   the balance sheet, money owed and a books check into the sheets. Its only QuickBooks write
   (`tools/qbo_write.mjs`) attaches a paid funds request's receipts to its check or card statement; amounts are
   never changed. Invoices stay in drapps only (kept simple on purpose, 2026-11-08). The Treasurer page's Sync
-  now button asks for an extra run.
+  now button asks for an extra run. If any part of a run fails, the job fails and admin@ gets an email.
 
 ## Where it runs
 
 On a small server the region owns, in its Google Cloud account (project `drscca-automation`, VM `drapps`),
 together with live timing (livetiming.drscca.org). Everything for that server is in `deploy/gcp/`: the
-compose file, the Caddyfile, the host jobs, the alert and update scripts, and `deploy.sh`, which tests and
-deploys a change in one step. **[docs/RUNBOOK.md](docs/RUNBOOK.md) is the maintainer's guide:** access,
-deploying, the automatic jobs, live timing, secrets, and what to do when something breaks.
+compose file, the Caddyfile, the host jobs, the alert, backup and update scripts, and `deploy.sh`, which tests
+and deploys a change in one step. A deploy stops at the first failure. The new version is tested inside its own
+image before it starts, and if it does not start the server goes back to the previous version by itself.
+**[docs/RUNBOOK.md](docs/RUNBOOK.md) is the maintainer's guide:** access, deploying, rollback, the automatic
+jobs, live timing, secrets, and what to do when something breaks.
 
-To run it somewhere else: a Linux server with Docker; clone this repo to `/opt/drscca/app`; copy
-`deploy/gcp/` into `/opt/drscca` and adjust it; a Google service account with a JSON key added as *Content
-manager* of the DRSCCA Apps Shared Drive (Sheets and Drive APIs on); `.env` from `.env.example`;
-`officials.json`; the old server's `data/`; email through the Gmail API as the service account
-(`MAIL_TRANSPORT=gmail_api`) from a drscca.org address; then point DNS at it. The runbook's "The server itself
-is lost" section lists the order.
+To run it somewhere else: a Linux server with Docker; clone this repo to `/opt/drscca/app`; a Google service
+account with a JSON key added as *Content manager* of the DRSCCA Apps Shared Drive (Sheets and Drive APIs on);
+the settings file (`.env.example` lists every setting; on the server it is
+`/opt/drscca/data/secrets/drapps.env`); `officials.json`; the old server's `data/`; email through the Gmail API
+as the service account (`MAIL_TRANSPORT=gmail_api`) from a drscca.org address; then point DNS at it. The
+runbook's "The server itself is lost" section lists every step in order.
 
 ## Configuration
 
-All settings are in `.env`; `.env.example` lists each one. The secrets are `FLASK_SECRET_KEY`, the SMTP
-password if used, the Google OAuth client secret, `API_KEYS`, the service account key file and
-`officials.json`. None belong in git. **This repo is public:** never commit sheet IDs, keys, member names,
-numbers or emails, including in tests.
+All settings are environment variables; `.env.example` lists each one. On your own computer they go in `.env`
+beside the code. On the server they are in `/opt/drscca/data/secrets/drapps.env`. The secrets are
+`FLASK_SECRET_KEY`, the SMTP password if used, the Google OAuth client secret, `API_KEYS`, the service account
+key file and `officials.json`. None belong in git. **This repo is public:** never commit sheet IDs, keys, member
+names, numbers or emails, including in tests.
 
-Programs (the codes in event numbers and funds requests: AX, RR, RY, RX, SS, SIM, DR, OPS) are in
-`data/programs.json` and are edited in Admin > Programs.
+Programs (the codes in event numbers and funds requests: AX, RR, RY, RX, SS, SIM, DR, OPS) are edited in
+Admin > Programs. On the server (`STORAGE_BACKEND=sheets`) they live in the Programs tab of the registry
+spreadsheet. `data/programs.json` is used only with the file backend (your own computer, the tests), or when
+Google cannot be reached.
 
 ## Development
 
@@ -76,8 +83,11 @@ OFFICIALS_HOST=/nonexistent PYTHONPATH=. venv/bin/pytest -q tests
 venv/bin/python app.py            # http://localhost:5858, reads .env
 ```
 
-Tests run on GitHub for every push (`.github/workflows/test.yml`). `docker-compose.debug.yml` runs the Flask
-dev server with the code mounted.
+Tests run on GitHub for every push (`.github/workflows/test.yml`). The tests always use the file backend and
+never a real sheet: `tests/conftest.py` turns off `.env` loading and clears the sheet and folder settings before
+anything is imported. `docker-compose.debug.yml` runs the Flask dev server with the code mounted, reachable
+only from your own computer (127.0.0.1): the debugger must never face a network. The image's own default
+command is gunicorn, the production server.
 
 ## Code map
 
@@ -91,14 +101,17 @@ dev server with the code mounted.
 - `auth.py` (sign-in, volunteers), `access.py` (roles and permissions), `officials.py`, `officer.py`,
   `csrf.py`.
 - `utils.py`: email, dates, the audit log, shared helpers. `qbo_logic.py`: matching QuickBooks to the sheets.
-- `templates/`: one Jinja template per app. `tools/`: host jobs. `deploy/gcp/`: the server setup, its systemd units and `deploy.sh`.
+- `templates/`: one Jinja template per app. `tools/`: host jobs. `backup_sheets.py`: the nightly sheet copies.
+- `deploy/gcp/`: the server setup. `deploy.sh` (run on your computer) and `on-server.sh` (its half on the
+  server), `lib.sh` (build, test, start, roll back; shared with the weekly `update.sh`), `systemd/` (the job
+  units), `alert.py` (the "a job failed" email), `secrets_backup.py` and `site_backup.py` (copies to Drive).
 
 ## API and MCP server
 
 `/api/v1` (`api.py`) is a JSON API. Send `Authorization: Bearer <key>`; keys are `API_KEYS` in `.env`
-(`email:key` pairs; the email must be an official, and the key acts as that official, with full read and write
-access). Writes go through the app's own form pages in the same process, so every rule, email and audit entry
-matches the website.
+(`email:key` pairs; the email must be an official, and the key acts as that official, with exactly the
+permissions that person's roles have on the website). Writes go through the app's own form pages in the same
+process, so every rule, email and audit entry matches the website.
 
 `mcp_server/drapps_mcp.py` wraps the API for Claude and other MCP clients: events, budgets, plans, actuals, funds
 requests with receipt files, invoices, Operations to-dos and property, members and worker points, the Board
@@ -114,8 +127,10 @@ older `DREVENT_*` names still work.
 
 ## Officials and the drscca.org groups
 
-`officials.json` is the one list of who holds which job. Admin > Users is the normal way to change it. On the
-host, `tools/handover.py` does the same from the command line. Nothing changes without `--apply`.
+`officials.json` is the one list of who holds which job. Admin > Users is the normal way to change it: the
+change is queued in `data/officials-queue.json` and a host job (`tools/officials_queue.py`) applies it within
+seconds. On the host, `tools/handover.py` does the same from the command line. Nothing changes without
+`--apply`.
 
 The apps never change the drscca.org Google Groups. Members are changed only at admin.google.com; the Email
 groups page reads them (Refresh, admins only, runs `tools/groups_pull.py` with GAM, read only).

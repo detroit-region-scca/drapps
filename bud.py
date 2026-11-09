@@ -8,6 +8,7 @@ from datetime import date
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
+import auth
 import bud_store as B
 import msr
 import fr_store as F
@@ -115,15 +116,18 @@ def _plan_line(code):
     return P.line_for(code) if P.enabled() else None
 
 
-def _status(b):
-    """'draft' (pulled back, not on the board's list), 'approved', 'changed' (edited after approval), 'budget' or None."""
-    if not b:
-        return None
-    if b.get('draft'):
-        return 'draft'
-    if b.get('approved'):
-        return 'changed' if b.get('updated', '') > b['approved'] else 'approved'
-    return 'budget'
+_status = B.status      # the one place a budget's status is worked out (also used by fr.py, plan.py and the board)
+
+
+def _who():
+    """The signed-in person's name for the audit log. Never a name from a form field."""
+    return (auth.user() or {}).get('name') or session.get('who', '') or 'Unknown'
+
+
+def _may_edit(code, b=None):
+    """Whether the signed-in person may change this budget: the Events permission (Admin > Roles), an officer, or the
+    director of its program."""
+    return 'events' in ((auth.user() or {}).get('perms') or ()) or bool(officer_current()) or _directs_budget(code, b)
 
 
 def _month_label(d):
@@ -206,16 +210,24 @@ def _received(code):
     import received_store as R
     if not R.enabled() or program_of(code):
         return []
-    return sorted((r for r in R.reports() if r['event_code'] == code), key=lambda r: r['id'], reverse=True)
+    reps = [r for r in R.reports() if r['event_code'] == code]
+    if auth.limited('funds'):       # "own only" roles see their own here too, as on the Money pages
+        from fr import _owns_report
+        reps = [r for r in reps if _owns_report(r)]
+    return sorted(reps, key=lambda r: r['id'], reverse=True)
 
 
 def _funds(code):
+    """The funds requests against this event's (or program's) budget, for its page. Someone whose role shows only
+    their own requests sees only their own here too, as on the Money pages."""
     if not F.enabled():
         return []
+    reqs = [r for r in F.requests() if r['status'] != 'Rejected']
+    if auth.limited('funds'):
+        reqs = [r for r in reqs if auth.owns_request(r)]
     if (pg := program_of(code)):
-        return [r for r in F.requests() if not r['event_code'] and r['program'] == pg[0] and r['submitted'][:4] == pg[1]
-                and r['status'] != 'Rejected']
-    return [r for r in F.requests() if r['event_code'] == code and r['status'] != 'Rejected']
+        return [r for r in reqs if not r['event_code'] and r['program'] == pg[0] and r['submitted'][:4] == pg[1]]
+    return [r for r in reqs if r['event_code'] == code]
 
 
 def plan_name(item):
@@ -310,17 +322,20 @@ def detail(code):
                                               open_lines=_open_lines(e), ballot=_ballot(code)))
 
 
-def _cancel_ballots(item, who):
-    """Cancel the board's email vote on this item, if there is one, so it can be asked again later."""
+def _cancel_ballots(item, who, undecided_only=False):
+    """Cancel the board's email vote on this item, if there is one, so it can be asked again later. Returns True when
+    one was cancelled. undecided_only: leave a vote whose result is already recorded (or that ran out) alone."""
     try:
         import ballots_store as BS
         if not BS.enabled():
-            return
+            return False
         b = BS.current(item)
-        if b and b['status'] != 'cancelled':
+        if b and b['status'] != 'cancelled' and not (undecided_only and b['status'] in ('recorded', 'expired')):
             BS.update(b['id'], status='cancelled', recorded_by=who)
+            return True
     except Exception:
         pass
+    return False
 
 
 @bp.route('/event/<path:code>/draft', methods=['POST'])
@@ -332,14 +347,19 @@ def to_draft(code):
     if (g := _guard()):
         return g
     b = B.get(code) if B.enabled() else None
-    from auth import user as _signed_in
-    who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
+    who = _who()
     if not b:
         flash('That budget has not been saved yet.', 'warning')
     elif b.get('approved') and not (officer_current() or _directs_budget(code, b)):
         flash('The board approved this budget, so only its director or the RE, ARE, secretary or treasurer can put it back into draft.', 'warning')
+    elif not _may_edit(code, b):
+        return auth.refuse("Your role can't change this budget. Ask the admin if you need it.", url_for('bud.detail', code=code))
     else:
-        B.set_draft(code, f"{date.today().isoformat()} by {who}")
+        try:
+            B.set_draft(code, f"{date.today().isoformat()} by {who}")
+        except ValueError as e:      # its row was deleted from the sheet by hand
+            flash(str(e), 'warning')
+            return redirect(url_for('bud.detail', code=code))
         _cancel_ballots(f"budget:{str(b.get('date', ''))[:4]}:{code}", who)
         log_audit_event('BUDGET_DRAFT', who, {'event_code': code, 'was_approved': b.get('approved', '')})
         flash('Back in draft. It is off the board\'s list until you mark it ready.', 'info')
@@ -352,10 +372,16 @@ def to_ready(code):
     """Take a budget out of draft so it is back on the board's list."""
     if (g := _guard()):
         return g
-    from auth import user as _signed_in
-    who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
-    if B.enabled() and B.get(code):
-        B.set_draft(code, '')
+    who = _who()
+    b = B.get(code) if B.enabled() else None
+    if b and not _may_edit(code, b):     # the same people who may edit it or pull it back
+        return auth.refuse("Your role can't change this budget. Ask the admin if you need it.", url_for('bud.detail', code=code))
+    if b:
+        try:
+            B.set_draft(code, '')
+        except ValueError as e:      # its row was deleted from the sheet by hand
+            flash(str(e), 'warning')
+            return redirect(url_for('bud.detail', code=code))
         log_audit_event('BUDGET_READY', who, {'event_code': code})
         flash('Ready for the board. It is on the board\'s list again.', 'success')
     return redirect(url_for('bud.detail', code=code))
@@ -385,11 +411,10 @@ def _open_lines(e):
 @login_required
 def cancel(code):
     """Mark the event cancelled, or not. Its #DR code, budget and money stay; it just stops asking for things."""
-    from auth import user as _signed_in
     from filelock import FileLock
     from storage import DATA_LOCK_FILE
     from utils import save_events
-    who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
+    who = _who()
     undo = request.form.get('undo') == '1'
     with FileLock(DATA_LOCK_FILE):
         events = load_events()
@@ -408,15 +433,15 @@ def cancel(code):
 @login_required
 def msr_date(code):
     """Take the date from the event's MotorsportReg page (the button beside "MotorsportReg has it on ...")."""
-    from auth import user as _signed_in
     from filelock import FileLock
     from storage import DATA_LOCK_FILE
     from utils import save_events
-    who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
+    who = _who()
     with FileLock(DATA_LOCK_FILE):
         events = load_events()
         e = next((x for x in events if _code(x) == code), None)
-        info = msr.cached((e or {}).get('msr_url'))
+        # The same link the event page shows: found by its #DR code on MotorsportReg, or the pasted one.
+        info = msr.cached(msr.link_for(e, code)[0]) if e else None
         if not e or not info or not info.get('date'):
             flash('No MotorsportReg date to use.', 'warning')
             return redirect(url_for('bud.detail', code=code))
@@ -434,8 +459,7 @@ def tie(code):
     """Tie the event to one of its program's annual plan lines."""
     e = _event(code)
     sort = request.form.get('plan_line', '')
-    from auth import user as _signed_in   # the audit log names the signed-in person, not a form field
-    who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
+    who = _who()
     if e and sort:
         if P.link(e['date'][:4], e['program_code'], float(sort), code):
             item = (P.line_for(code) or {}).get('item', '')
@@ -497,7 +521,7 @@ def budget_vote_lines(year, codes):
         link = r.get('link') or url_for('bud.detail', code=b['event_code'], _external=True)
         if link.startswith('/'):
             link = request.host_url.rstrip('/') + link
-        money = '' if r['surplus'] is None else f", expected {'profit' if r['surplus'] >= 0 else 'loss'} ${abs(r['surplus']):,.2f}"
+        money = '' if r['surplus'] is None else f", expected {'surplus' if r['surplus'] >= 0 else 'loss'} ${abs(r['surplus']):,.2f}"
         if r.get('equipment'):
             run = r['surplus'] + r['equipment']
             money = (f", income minus running costs {'+' if run >= 0 else '-'}${abs(run):,.0f}, plus ${r['equipment']:,.0f} of equipment to buy"
@@ -605,6 +629,30 @@ def delete(code):
     return redirect(url_for('bud.detail', code=code))
 
 
+def _pair_actuals(lines, acts, keys):
+    """Pair each reported amount typed on the Enter reported results page with its budget line: ([(line, text)], stale).
+
+    The page sends one amount per line, each with the line it was typed against ("Section|Description" in act_key),
+    so an amount still lands on its own line when someone edited the budget meanwhile; a line added meanwhile gets
+    text None (keep what is saved). stale: an amount was typed for a line that is gone or renamed. A page without
+    act_key is paired by position, and is stale when the number of lines no longer matches."""
+    if not keys or len(keys) != len(acts):
+        return list(zip(lines, acts)), len(acts) != len(lines)
+    left, pairs = list(zip(keys, acts)), []
+    for ln in lines:
+        hit = next((x for x in left if x[0] == f"{ln['section']}|{ln['description']}"), None)
+        if hit:
+            left.remove(hit)
+        pairs.append((ln, hit[1] if hit else None))
+    return pairs, any(act.strip() for _, act in left)
+
+
+def files_dropped(files):
+    """A browser never sends chosen files back with a page, so say so when a form comes back with errors."""
+    if any(f and f.filename for f in files):
+        flash('The files you attached were not kept. Attach them again before you save.', 'warning')
+
+
 @bp.route('/event/<path:code>/actuals', methods=['GET', 'POST'])
 @login_required
 def actuals(code):
@@ -618,28 +666,36 @@ def actuals(code):
         return redirect(url_for('bud.detail', code=code))
     if request.method == 'POST':
         f = request.form
-        lines, errors = [], []
-        for ln, act in zip(b['lines'], f.getlist('act')):
-            v = _money(act)
+        pairs, stale = _pair_actuals(b['lines'], f.getlist('act'), f.getlist('act_key'))
+        lines, errors, new_lines = [], [], []
+        for ln, act in pairs:
+            v = ln['actual'] if act is None else _money(act)
             if v == 'bad':
-                errors.append(f'"{ln["description"]}": the actual must be a number.')
-                continue
+                errors.append(f'"{ln["description"]}": "{act}" is not a number.')
+                v = None
             lines.append(dict(ln, actual=v))
         for section, key in SECTIONS:      # lines that were not budgeted
             for desc, act in zip(f.getlist(f'new_{key}_desc'), f.getlist(f'new_{key}_act')):
                 v = _money(act)
                 if not desc.strip() and v is None:
                     continue
+                new_lines.append({'key': key, 'description': desc, 'actual': act})
                 if v == 'bad':
-                    errors.append(f'"{desc or section}": the actual must be a number.')
+                    errors.append(f'"{desc or section}": "{act}" is not a number.')
                     continue
                 lines.append({'section': section, 'description': desc.strip() or section, 'last_year': None, 'budget': None, 'actual': v})
+        if stale:
+            errors.insert(0, 'The budget was changed while this page was open, so nothing was saved. Check the lines below and save again.')
         if errors:
             for m in errors:
                 flash(m, 'danger')
-            return redirect(url_for('bud.actuals', code=code))
-        who = session.get('who') or 'Unknown'
-        header = {k: b.get(k, '') for k in B.BUD_COLS if k not in ('updated', 'files_url', 'approved', 'approved_by')}
+            # Back to the form with what was typed (a line that was not a number comes back empty). new_lines: the
+            # lines added on the page, for the template to show again.
+            typed = dict(b, lines=[ln for ln in lines if ln.get('sort') is not None])
+            return render_template('bud.html', **_ctx(view='actuals', code=code, e=e, b=typed, q=B.qbo_actuals().get(code),
+                                                      new_lines=new_lines)), 400
+        who = _who()
+        header = {k: b.get(k, '') for k in B.BUD_COLS if k not in ('updated', 'files_url', 'approved', 'approved_by', 'approved_hash')}
         header['updated_by'] = b.get('updated_by', '')
         lines.sort(key=lambda ln: ln['section'] != 'Income')
         B.save(header, lines, actuals_only=True)
@@ -661,14 +717,13 @@ def edit(code):
     b = B.get(code)
     if request.method == 'POST':
         f = request.form
-        who = f.get('entered_by', '').strip() or session.get('who', '') or 'Unknown'
-        session['who'] = who
+        who = _who()     # the signed-in person; the form's entered_by field is not read
         lines, errors = [], []
         for section, key in SECTIONS:
             for desc, ly, bud, act in zip(f.getlist(f'{key}_desc'), f.getlist(f'{key}_ly'), f.getlist(f'{key}_bud'), f.getlist(f'{key}_act')):
                 vals = {'last_year': _money(ly), 'budget': _money(bud), 'actual': _money(act)}
-                if not desc.strip() and all(v is None for v in vals.values()):
-                    continue
+                if all(v is None for v in vals.values()):
+                    continue     # no amounts: an empty row, or a starter line ("Site rental") nobody filled in
                 if 'bad' in vals.values():
                     errors.append(f'"{desc or section}": amounts must be numbers.')
                     continue
@@ -676,6 +731,7 @@ def edit(code):
         if errors:
             for msg in errors:
                 flash(msg, 'danger')
+            files_dropped(request.files.getlist('files'))
             return render_template('bud.html', **_ctx(view='edit', code=code, e=e, form=f, lines=_form_lines(f), funds=_funds(code),
                                                       ly_events=_last_year_events(code, e, f.get('last_year_event', '')), pick=f.get('last_year_event', ''),
                                                       link=bool(f.get('link_last_year')),
@@ -689,6 +745,11 @@ def edit(code):
         B.save(header, lines, request.files.getlist('files'))
         log_audit_event('BUDGET_SAVED', who, {'event_code': code, 'lines': len(lines)})
         flash('Budget saved.', 'success')
+        # The board votes on numbers: if they changed while an email vote is open, that vote is about the old ones.
+        if b and B.lines_hash(b['lines']) != B.lines_hash(lines) and \
+                _cancel_ballots(f"budget:{str(b.get('date', ''))[:4]}:{code}", who, undecided_only=True):
+            log_audit_event('BALLOT_CANCELLED', who, {'event_code': code, 'why': 'budget numbers changed during the vote'})
+            flash("The numbers changed, so the board's email vote on this budget was cancelled. Ask for the vote again.", 'warning')
         return redirect(url_for('bud.detail', code=code))
     # GET: the saved budget, or a copy of another event's to start from (its budget becomes this budget, any actuals
     # typed on it become "last year actual", and its QuickBooks results are shown above), or a blank form.

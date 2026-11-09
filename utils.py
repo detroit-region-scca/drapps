@@ -255,9 +255,12 @@ def to_number(v):
 
 def local_path(target):
     """target if it is a path on this site ("/x"), else ''. Refuses "//host" and "/\\host", which browsers treat as
-    another site, so a crafted link can't bounce someone off to it after a form."""
+    another site, so a crafted link can't bounce someone off to it after a form. Also refuses any tab, line break or
+    other control character: browsers drop those from a link, which turns "/<tab>/host" into "//host"."""
     t = str(target or '')
-    return t if t.startswith('/') and not t.startswith(('//', '/\\')) and '\n' not in t and '\r' not in t else ''
+    if not t.startswith('/') or t.startswith(('//', '/\\')) or any(ord(ch) < 32 or ord(ch) == 127 for ch in t):
+        return ''
+    return t
 
 
 # ---------- QuickBooks refresh on request (the host's drscca-qbo-refresh.path runs the sync when the request file changes) ----------

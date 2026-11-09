@@ -1,9 +1,8 @@
 {% extends 'base.html' %}
-{% from '_ui.html' import tab with context %}
 {% block app_name %}Board{% endblock %}
 {% block nav %}{% include '_board_nav.html' %}{% endblock %}
 {% block content %}
-<div class="page-title">Board minutes</div>
+<h1 class="page-title">Board minutes</h1>
 <p class="text-muted">Upload the minutes as a Word document or PDF. The app names the file, makes the PDF and puts it in the right place: approved minutes go on <a href="https://drscca.org/region/minutes-of-bod-meetings/">drscca.org</a> (within the hour), drafts wait until the board approves them.</p>
 <div class="row g-4">
 <div class="col-lg-7">
@@ -33,15 +32,17 @@
 {% if drafts %}
 <h2 class="h6 mt-4">Drafts waiting for approval</h2>
 <div class="card"><div class="card-body p-0"><table class="table table-sm mb-0">
+    <thead class="visually-hidden"><tr><th>Draft</th><th>Publish or delete</th></tr></thead>
     <tbody>{% for d in drafts %}<tr><td class="ps-3"><a href="{{ d.webViewLink }}" target="_blank" rel="noopener">{{ d.name }}</a></td>
         <td class="text-end pe-3 text-nowrap"><form method="post" action="{{ url_for('minutes.publish') }}" class="m-0 d-inline-flex gap-2"><input type="hidden" name="id" value="{{ d.id }}">
-            <button class="btn btn-sm btn-accent" name="action" value="publish">Approved: publish</button>
+            <button class="btn btn-sm btn-accent" name="action" value="publish" onclick="return confirm('Publish these minutes on drscca.org?')">Approved: publish</button>
             <button class="btn btn-sm btn-outline-light" name="action" value="delete" onclick="return confirm('Delete this draft?')">Delete</button></form></td></tr>{% endfor %}</tbody>
 </table></div></div>
 {% endif %}
 
 <h2 class="h6 mt-4">On drscca.org</h2>
 <div class="card"><div class="card-body p-0"><table class="table table-sm mb-0">
+    <thead class="visually-hidden"><tr><th>Year</th><th>Meeting</th><th>File</th></tr></thead>
     <tbody>{% for p in published %}<tr><td class="ps-3">{{ p.year }}</td><td>{{ p.label }}</td><td class="pe-3"><a href="{{ p.webViewLink }}" target="_blank" rel="noopener">{{ p.name }}</a></td></tr>
     {% else %}<tr><td class="ps-3 text-muted">Nothing for this year or last yet.</td></tr>{% endfor %}</tbody>
 </table></div></div>

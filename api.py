@@ -1,11 +1,12 @@
 """JSON API (/api/v1) for scripts and the MCP server.
 
 Auth: `Authorization: Bearer <key>`. Keys come from API_KEYS in the environment, as "email:key" pairs separated by
-commas; the email must be in the officials list, and the API acts as that official. For now a key has full access,
-read and write, money actions included (the app is still being built; see the README before production).
+commas; the email must be in the officials list, and the API acts as that official with exactly the permissions
+their roles have on the website (Admin > Roles). A key never does more than its owner could do signed in.
 
-Reads are JSON views of the stores. Writes are handed to the app's own form handlers inside the same process, so
-every rule, email and audit entry is exactly what the web pages do, and emailed links use the real address.
+Reads are JSON views of the stores; someone who sees only their own funds requests or invoices on the website gets
+only those here. Writes are handed to the app's own form handlers inside the same process, so every rule, permission
+check, email and audit entry is exactly what the web pages do, and emailed links use the real address.
 """
 import base64
 import hmac
@@ -14,7 +15,7 @@ import os
 import re
 from datetime import date
 
-from flask import Blueprint, current_app, g, jsonify, request, session
+from flask import Blueprint, current_app, g, jsonify, request
 from werkzeug.datastructures import MultiDict
 
 import bud_store as B
@@ -39,30 +40,44 @@ def _keys():
 
 
 def api_user():
-    """{'email', 'name'} for a valid bearer key, else None."""
+    """The key owner as the website knows them (auth.lookup: email, name, level, roles, perms) for a valid bearer
+    key, else None. The owner must be in the officials list: a volunteer's address gets nothing."""
+    import auth
     h = request.headers.get('Authorization', '')
     if not h.startswith('Bearer '):
         return None
     given = h[7:].strip()
     for key, email in _keys().items():
         if hmac.compare_digest(given, key):
-            name = next((o['name'] for o in O.all() if (o.get('email') or '').lower() == email), '')
-            return {'email': email, 'name': name or email} if name else None
+            u = auth.lookup(email)
+            return u if u and u['level'] != 'volunteer' else None
     return None
 
 
 def signin_from_key():
-    """before_request for the whole app: a valid key signs this request in as the user and as an officer."""
+    """before_request for the whole app: a valid key signs this request in as its owner, with the owner's own
+    permissions. auth.gate then checks the request like any other."""
+    import auth
     u = api_user()
     if u:
-        g.api_user = u
-        session['authenticated'] = True
-        session['email'] = u['email']        # so role checks (Board, Members) see the key's official, as on the website
-        session['who'] = u['name']
-        session['officer'] = {'email': u['email'], 'name': u['name']}
-        import equip
-        if u['email'] in equip.editors():    # Operations edits, as for the same person signed in
-            session['equip_editor'] = {'email': u['email'], 'name': u['name']}
+        g.api_user = {'email': u['email'], 'name': u['name']}
+        g.auth_user = u                      # what auth.user() answers for this request
+        auth.set_session(u)                  # the same session keys a signed-in browser has
+
+
+def _may(perm):
+    return perm in (g.auth_user.get('perms') or ())
+
+
+def _needs(perm, what):
+    """An error answer when the key's owner lacks a permission, else None."""
+    return None if _may(perm) else _err(f"{what} is not part of this key owner's role (Admin > Roles).", 403)
+
+
+def _my_funds(rows):
+    """Funds requests the key's owner may see: all of them, or only their own (as on the website)."""
+    import auth
+    return [r for r in rows if auth.owns_request(r)] if auth.limited('funds') else list(rows)
 
 
 @bp.before_request
@@ -93,7 +108,7 @@ def programs():
 
 @bp.get('/officials')
 def officials():
-    return jsonify(O.all())
+    return jsonify(O.shown(g.auth_user.get('roles')))
 
 
 @bp.get('/events')
@@ -110,7 +125,7 @@ def event(code):
     b = B.get(code) if B.enabled() else None
     if not e and not b:
         return _err('Event not found.', 404)
-    funds = [r for r in F.requests() if r['event_code'] == code] if F.enabled() else []
+    funds = _my_funds(r for r in F.requests() if r['event_code'] == code) if F.enabled() else []
     return jsonify(event=dict(e, code=code) if e else None, budget=b, qbo=B.qbo_actuals().get(code) if B.enabled() else None,
                    plan_line=P.line_for(code) if P.enabled() else None, funds=funds)
 
@@ -156,31 +171,42 @@ def funds():
     a = fr.Approvals()
     st, year, program = request.args.get('status', ''), request.args.get('year', ''), request.args.get('program', '')
     rows = [r for r in a.reqs if (not st or r['status'] == st) and r['submitted'].startswith(year) and (not program or r['program'] == program)]
-    return jsonify([_with_review(r, a) for r in rows])
+    return jsonify([_with_review(r, a) for r in _my_funds(rows)])
 
 
 @bp.get('/funds/<req_id>')
 def fund(req_id):
     import fr
-    r = F.get(req_id)
+    r = next(iter(_my_funds(filter(None, [F.get(req_id)]))), None)
     return jsonify(_with_review(r, fr.Approvals())) if r else _err('Funds request not found.', 404)
+
+
+def _my_invoices(rows):
+    import auth
+    return [i for i in rows if auth.owns_invoice(i)] if auth.limited('invoices') else list(rows)
 
 
 @bp.get('/invoices')
 def invoices():
-    return jsonify(I.invoices())
+    return jsonify(_my_invoices(I.invoices()))
 
 
 @bp.get('/invoices/<inv_id>')
 def invoice(inv_id):
-    inv = I.get(inv_id)
+    inv = next(iter(_my_invoices(filter(None, [I.get(inv_id)]))), None)
     return jsonify(inv) if inv else _err('Invoice not found.', 404)
 
 
 @bp.get('/audit')
 def audit():
-    n = min(int(request.args.get('limit', 100) or 100), 2000)
-    return jsonify(load_audit_logs()[-n:])
+    """The newest entries first. ?limit= (100 when missing or not a number, at most 2000)."""
+    if (no := _needs('audit', 'The audit log')):
+        return no
+    try:
+        n = int(request.args.get('limit') or 100)
+    except ValueError:
+        n = 100
+    return jsonify(load_audit_logs()[:max(1, min(n, 2000))])
 
 
 # ---------- writes: handed to the app's own form handlers ----------
@@ -276,6 +302,9 @@ def approve_budget(code):
 @bp.put('/plans/<year>/<program>')
 def save_plan(year, program):
     """{"lines": [{"item", "month", "net", "note", "event_code", "account"}], "notes", "submit": bool}. Replaces the plan."""
+    import plan as plan_view
+    if not (_may('plan_all') or (_may('plan_own') and plan_view.directs(program))):     # as plan.may_write, for the key's owner
+        return _err("Writing this program's plan is not part of this key owner's role (Admin > Roles).", 403)
     d = _body()
     ls = d.get('lines', [])
     form = {'item': [ln.get('item', '') for ln in ls], 'month': [ln.get('month') or '' for ln in ls], 'net': [ln.get('net') for ln in ls],
@@ -325,19 +354,32 @@ def add_receipts(req_id):
     except ValueError as e:
         return _err(str(e))
     st, loc, fl = _forward(f'/funds/{req_id}/receipts', {}, files)
-    return jsonify(request=F.get(req_id), flashes=fl)
+    ok, errors = _result(st, loc, fl)
+    return jsonify(request=F.get(req_id), flashes=fl) if ok and not errors else _err('Not added.', errors=errors, flashes=fl)
 
 
 @bp.post('/funds/<req_id>/approve')
 def approve_funds(req_id):
-    """{"role": "chair"|"second"|"board", "meeting": "YYYY-MM-DD" (board only)}: approve as the key's user."""
+    """{"role": "chair"|"second"}: approve as the key's owner, who must be the person the website would ask: the
+    program's director for chair, the RE or ARE for second signer. Board approval is a vote, recorded with
+    /board/record."""
     import fr
     d = _body()
     role = d.get('role', 'chair')
     if role not in FL.ROLES:
         return _err(f"role must be one of {', '.join(FL.ROLES)}.")
-    token = fr._serializer().dumps({'id': req_id, 'role': role, 'name': g.api_user['name'], 'email': g.api_user['email']})
-    st, loc, fl = _forward(f'/funds/approve/{token}', {'action': 'approve', 'meeting': d.get('meeting', '')})
+    if role == 'board':
+        return _err('Board approval is a board vote: record the result with /board/record, not here.')
+    r = F.get(req_id)
+    if not r:
+        return _err('Funds request not found.', 404)
+    me = g.api_user['email']
+    if role == 'chair' and me != O.director_email(r['program']):
+        return _err(f"Only the {r['program']} program director can approve this as chair.", 403)
+    if role == 'second' and not any(o.get('role') in ('RE', 'ARE') and (o.get('email') or '').strip().lower() == me for o in O.all()):
+        return _err('Only the RE or ARE can approve as second signer.', 403)
+    token = fr._serializer().dumps({'id': req_id, 'role': role, 'name': g.api_user['name'], 'email': me})
+    st, loc, fl = _forward(f'/funds/approve/{token}', {'action': 'approve'})
     r = F.get(req_id)
     return jsonify(request=_with_review(r, fr.Approvals()) if r else None, flashes=fl)
 
@@ -439,6 +481,8 @@ def ops_add_task():
     E = _ops()
     if not E:
         return _err('Operations is not set up.', 404)
+    if (no := _needs('ops', 'Editing Operations')):
+        return no
     d = _body()
     before = {t['id'] for t in E.tasks()}
     st, loc, fl = _forward('/operations/tasks/new', {k: d[k] for k in TASK_FIELDS if k in d})
@@ -453,6 +497,8 @@ def ops_update_task(task_id):
     E = _ops()
     if not E or not any(t['id'] == task_id for t in E.tasks()):
         return _err('To-do not found.', 404)
+    if (no := _needs('ops', 'Editing Operations')):
+        return no
     d = _body()
     st, loc, fl = _forward(f'/operations/tasks/{task_id}', {k: d[k] for k in TASK_FIELDS if k in d})
     ok, errors = _result(st, loc, fl)
@@ -466,6 +512,8 @@ def ops_task_done(task_id):
     E = _ops()
     if not E or not any(t['id'] == task_id for t in E.tasks()):
         return _err('To-do not found.', 404)
+    if (no := _needs('ops', 'Editing Operations')):
+        return no
     st, loc, fl = _forward(f'/operations/tasks/{task_id}', {'action': 'done'})
     ok, errors = _result(st, loc, fl)
     t = next((t for t in E.tasks() if t['id'] == task_id), None)
@@ -594,6 +642,8 @@ def board_withdraw(mid):
 @bp.get('/volunteers')
 def volunteers_list():
     import auth
+    if (no := _needs('access', 'The volunteers list')):
+        return no
     return jsonify(sorted(auth.volunteers().values(), key=lambda v: v.get('name', '').lower()))
 
 
@@ -620,13 +670,19 @@ def received_list():
     """?status=Received|Deposited, ?year=YYYY"""
     import received_store as R
     st, year = request.args.get('status', ''), request.args.get('year', '')
-    return jsonify([r for r in R.reports() if (not st or r['status'] == st) and r['received'].startswith(year)])
+    return jsonify(_my_reports(r for r in R.reports() if (not st or r['status'] == st) and r['received'].startswith(year)))
+
+
+def _my_reports(rows):
+    import auth
+    import fr
+    return [r for r in rows if fr._owns_report(r)] if auth.limited('funds') else list(rows)
 
 
 @bp.get('/received/<rid>')
 def received_detail(rid):
     import received_store as R
-    r = R.get(rid)
+    r = next(iter(_my_reports(filter(None, [R.get(rid)]))), None)
     return jsonify(r) if r else _err('Not found.', 404)
 
 

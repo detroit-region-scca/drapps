@@ -67,7 +67,7 @@ def is_points(r):
 def review(r, budget_status=None, budget_expense=None, spent=0.0, scope='event', board_vote=None):
     """What the request still needs: [{'key', 'label', 'done', 'by'}] in order.
 
-    budget_status: 'approved', 'changed', 'budget' or None (the budget it is paid against, see bud._status)
+    budget_status: 'approved', 'changed', 'budget' or None (the budget it is paid against, see bud_store.status)
     budget_expense: the budgeted expense total; spent: QuickBooks expenses so far plus other open requests
     scope: 'event' (the event's budget), 'program' (a request not tied to an event: its program's budget for the
     year) or 'ops' (Operations, whose annual plan is its budget, and 2026 and earlier, when a program's annual plan

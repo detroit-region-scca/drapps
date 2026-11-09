@@ -13,6 +13,7 @@ import sqlite3
 from collections import defaultdict
 from datetime import date
 
+from filelock import FileLock
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 
 import records_edits as RE
@@ -91,7 +92,9 @@ def year_ranges(years):
     return ', '.join(f'{a}\u2060\u2013\u2060{b}' if b > a else str(a) for a, b in out)      # word joiners: a range never breaks at its dash
 
 
+@functools.lru_cache(maxsize=4)
 def _hall(path, mtime):
+    """The Hall of Fame lists, cached until the database file changes (the Records home page shows the top three)."""
     titles = defaultdict(list)
     for s in _q("select person_id, name, program, year, class from season_standings where place = 1 "
                 "and lower(coalesce(class, '')) != 'overall' order by year"):      # an Overall table is not a class
@@ -127,35 +130,47 @@ def _need():
     _replay()
 
 
+def _applied():
+    try:
+        return open(_side('records-edits.applied')).read().strip()
+    except FileNotFoundError:
+        return ''
+
+
+def _edits_lock():
+    """The app runs several workers: the corrections log is read, added to and written back as one step, and a rebuilt
+    database gets the log applied by one worker only."""
+    return FileLock(_side('records-edits.json') + '.lock', timeout=60)
+
+
 def _replay():
     """A rebuilt records.db arrived (its mtime changed): apply the corrections log to it once."""
-    try:
-        mark = open(_side('records-edits.applied')).read().strip()
-    except FileNotFoundError:
-        mark = ''
-    now = str(os.path.getmtime(PATH))
-    if mark == now:
+    if _applied() == str(os.path.getmtime(PATH)):
         return
-    edits = RE.load(_side('records-edits.json'))
-    if edits:
-        c = sqlite3.connect(PATH)
-        try:
-            RE.apply_all(c, edits)
-            c.commit()
-        finally:
-            c.close()
-    with open(_side('records-edits.applied'), 'w') as f:
-        f.write(str(os.path.getmtime(PATH)))
+    with _edits_lock():
+        if _applied() == str(os.path.getmtime(PATH)):      # another worker did it while this one waited
+            return
+        edits = RE.load(_side('records-edits.json'))
+        if edits:
+            c = sqlite3.connect(PATH)
+            try:
+                RE.apply_all(c, edits)
+                c.commit()
+            finally:
+                c.close()
+        with open(_side('records-edits.applied'), 'w') as f:
+            f.write(str(os.path.getmtime(PATH)))
 
 
 def can_edit(program):
-    """The program's director (Admin > Officials) and the officers may correct a program's records."""
+    """The program's director (Admin > Officials) may correct its records, and so may anyone whose role has the
+    "records" permission (Admin > Roles; the officers by default)."""
     import auth
     import officials as O
     u = auth.user()
     if not u:
         return False
-    if set(u.get('roles') or ()) & set(auth.OFFICER_ROLES):
+    if 'records' in (u.get('perms') or ()):
         return True
     code = PROGRAM_CODES.get(program)
     return bool(code) and (u.get('email') or '') == O.director_email(code)
@@ -171,16 +186,17 @@ def _record(entries, what):
     who = (auth.user() or {}).get('name') or session.get('email') or 'unknown'
     for e in entries:
         e.update(who=who, when=datetime.now().isoformat(timespec='seconds'))
-    c = sqlite3.connect(PATH)
-    try:
-        for e in entries:
-            RE.apply(c, e)
-        c.commit()
-    finally:
-        c.close()
-    RE.save(_side('records-edits.json'), RE.load(_side('records-edits.json')) + entries)
-    with open(_side('records-edits.applied'), 'w') as f:
-        f.write(str(os.path.getmtime(PATH)))
+    with _edits_lock():
+        c = sqlite3.connect(PATH)
+        try:
+            for e in entries:
+                RE.apply(c, e)
+            c.commit()
+        finally:
+            c.close()
+        RE.save(_side('records-edits.json'), RE.load(_side('records-edits.json')) + entries)
+        with open(_side('records-edits.applied'), 'w') as f:
+            f.write(str(os.path.getmtime(PATH)))
     log_audit_event('RECORDS_CORRECTED', who, {'what': what, 'changes': len(entries)})
     return len(entries)
 
@@ -280,8 +296,12 @@ def season_edit(prog, year):
     st = _q('select * from season_standings where program = ? and year = ? order by class, place, name', p, year)
     if request.method == 'POST':
         f, out = request.form, []
-        for s in st:
-            k = {'program': p, 'year': year, 'class': s['class'] or '', 'name': s['name']}
+        same = defaultdict(int)          # rows alike in class, name, place and score: the key says which one (0, 1, ...)
+        for s in sorted(st, key=lambda s: s['id']):
+            ident = (s['class'] or '', s['name'], s['place'], s['score'])
+            k = {'program': p, 'year': year, 'class': s['class'] or '', 'name': s['name'], 'place': s['place'], 'score': s['score'],
+                 'nth': same[ident]}
+            same[ident] += 1
             if f.get(f'rm{s["id"]}'):
                 out.append({'kind': 'standing', 'key': k, 'remove': True})
                 continue
@@ -290,6 +310,7 @@ def season_edit(prog, year):
             ch = {fld: v for fld, v in ch.items() if v != old[fld]}
             if ch:
                 out.append({'kind': 'standing', 'key': k, 'set': ch})
+        out.sort(key=lambda e: -e['key']['nth'])      # of rows that are alike, the later one first, so "which one" still holds for the rest
         for i in range(5):
             nm, pl = f.get(f'new_name{i}', '').strip(), f.get(f'new_place{i}', '').strip()
             if nm and pl.isdigit():
@@ -499,17 +520,29 @@ def add():
             flash(f"Results files only (PDF, spreadsheet, web page or picture): {', '.join(bad)}", 'warning')
         else:
             import json
+            import logging
             from storage import UPLOAD, sheets_client
             sess = sheets_client().http_client.session
+            saved, failed = [], []
             for f in files:
                 name = ' - '.join(x for x in (when, prog, what, f.filename) if x)[:200]
                 meta = {'name': name, 'parents': [INBOX], 'description': f'{prog}, {what}, {when or "no date"}. Added in DRSCCA Apps by {who}.'}
-                r = sess.post(UPLOAD, params={'uploadType': 'multipart', 'supportsAllDrives': 'true', 'fields': 'id'},
-                              files={'metadata': ('metadata', json.dumps(meta), 'application/json'),
-                                     'file': (name, f.stream, f.mimetype or 'application/octet-stream')})
-                r.raise_for_status()
-            log_audit_event('RESULTS_ADDED', who, {'program': prog, 'event': what, 'date': when, 'files': [f.filename for f in files]})
-            flash(f"Thanks. {len(files)} file{'s' if len(files) != 1 else ''} saved; the results show in Records after the next update.", 'success')
+                try:
+                    r = sess.post(UPLOAD, params={'uploadType': 'multipart', 'supportsAllDrives': 'true', 'fields': 'id'},
+                                  files={'metadata': ('metadata', json.dumps(meta), 'application/json'),
+                                         'file': (name, f.stream, f.mimetype or 'application/octet-stream')})
+                    r.raise_for_status()
+                    saved.append(f.filename)
+                except Exception:          # say which files made it: the ones before this one are already in Drive
+                    logging.exception(f'Results upload failed for {f.filename}')
+                    failed.append(f.filename)
+            if saved:
+                log_audit_event('RESULTS_ADDED', who, {'program': prog, 'event': what, 'date': when, 'files': saved})
+            if failed:
+                flash((f"Saved {len(saved)} of {len(files)} files ({', '.join(saved)}). " if saved else 'Google Drive did not answer, so nothing was saved. ')
+                      + f"Not saved: {', '.join(failed)}. Add {'just those' if saved else 'them'} again.", 'warning')
+            else:
+                flash(f"Thanks. {len(files)} file{'s' if len(files) != 1 else ''} saved; the results show in Records after the next update.", 'success')
             return redirect(url_for('records.add'))
     try:
         waiting = _inbox_files()

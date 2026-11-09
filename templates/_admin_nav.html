@@ -1,0 +1,6 @@
+{# The Admin app's tabs, shared with the Audit log when it is opened from Admin. #}
+{% from '_ui.html' import tab with context %}
+    {{ tab('admin.home', 'Users') }}
+    {{ tab('admin.roles', 'Roles') }}
+    {{ tab('admin.programs', 'Programs') }}
+    <li class="nav-item"><a class="nav-link{% if request.endpoint == 'audit_log' %} active{% endif %}" href="{{ url_for('audit_log', via='admin') }}">Audit log</a></li>

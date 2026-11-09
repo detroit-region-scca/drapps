@@ -6,6 +6,7 @@ addresses come only from the read-only officials directory (officials.py).
 """
 import auth
 import os
+import secrets
 from datetime import date
 
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, session, url_for
@@ -91,12 +92,6 @@ class Approvals:
         """The program director from the officials directory (read-only), never from anything editable in the app."""
         return O.director(r['program'])
 
-    def _other_spent(self, program, year):
-        if (program, year) not in self.other:
-            q = BUD.program_actuals(program, year)
-            self.other[(program, year)] = ((q or {}).get('totals') or {}).get('expense') or 0.0
-        return self.other[(program, year)]
-
     def items(self, r):
         """A request for an event is paid against the event's budget. One not tied to an event is paid against its
         program's budget for the year (Operations: its annual plan, which is its budget)."""
@@ -116,15 +111,19 @@ class Approvals:
             b, scope = self.budgets.get(BUD.program_code(program, year)), 'program'
         status, expense = None, None
         if b:
-            status = 'changed' if b.get('approved') and b.get('updated', '') > b['approved'] else 'approved' if b.get('approved') else 'budget'
+            st = B.status(b)
+            status = st if st in ('approved', 'changed') else 'budget'
             expense = (b['totals'].get('budget') or {}).get('expense')
         if code:
-            spent = (self.qbo.get(code) or {}).get('totals', {}).get('expense') or 0.0
-            spent += sum(x['net'] for x in self.reqs if x['event_code'] == code and x['status'] == 'Submitted' and x['id'] != r['id'])
+            q = self.qbo.get(code) or {}
+            same = [x for x in self.reqs if x['event_code'] == code and x['id'] != r['id']]
         else:
-            spent = self._other_spent(program, year) if b else 0.0
-            spent += sum(x['net'] for x in self.reqs if not x['event_code'] and x['program'] == program and x['submitted'][:4] == year
-                         and x['status'] == 'Submitted' and x['id'] != r['id'])
+            if b and (program, year) not in self.other:
+                self.other[(program, year)] = BUD.program_actuals(program, year) or {}
+            q = self.other[(program, year)] if b else {}
+            same = [x for x in self.reqs if not x['event_code'] and x['program'] == program and x['submitted'][:4] == year and x['id'] != r['id']]
+        spent = (q.get('totals') or {}).get('expense') or 0.0
+        spent += sum(x['net'] or 0 for x in same if x['status'] == 'Submitted')      # open requests count in full
         return FL.review(r, status, expense, round(spent, 2), scope=scope, board_vote=self.board_vote(r))
 
 
@@ -213,8 +212,7 @@ def mark_ready(rid, r=None):
     r = r or F.get(rid)
     if not r or FL.ready_on(r.get('approvals')) or not FL.ready(Approvals().items(r)):
         return False
-    F.update(rid, approvals=FL.add(r.get('approvals'), 'ready', 'DRSCCA Apps', date.today().isoformat()))
-    return True
+    return bool(F.add_approval(rid, 'ready', 'DRSCCA Apps', date.today().isoformat(), once=True))
 
 
 def announce_ready(rids):
@@ -296,7 +294,7 @@ def new():
         last = session.get('fr_submitter') or _last_submitter()
         return render_template('fr.html', **_ctx(view='new', events=events, programs=dict(load_programs(), OPS='Operations'), directors=directors(), signers=[n for n, m in O.signers()], form={'program': request.args.get('program', '')}, last=last,
                                                  pick=request.args.get('event', ''), events_js=_events_js(events, request.args.get('event', '')),
-                                                 rows=[{}] * 3))
+                                                 rows=[{}] * 3, token=secrets.token_urlsafe(16)))
     f = request.form
     errors = []
     lines = []
@@ -324,6 +322,8 @@ def new():
     if advances is None or advances < 0:
         errors.append('Advances must be a number (0 if none).')
         advances = 0
+    if lines and advances > round(sum(ln['amount'] for ln in lines), 2) + 0.005:
+        errors.append('Advances cannot be more than the total of the expenses.')
     sub = {k: f.get(f'submitter_{k}', '').strip() for k in ('name', 'email', 'phone', 'address')}
     payee = {k: f.get(f'payee_{k}', '').strip() for k in ('name', 'email', 'phone', 'address')}
     if method == 'reimburse':
@@ -338,11 +338,12 @@ def new():
     if errors:
         for e in errors:
             flash(e, 'danger')
+        BUD.files_dropped(receipts)
         rows = [{'date': d, 'description': desc, 'category': c, 'amount': a}
                 for d, desc, c, a in zip(f.getlist('line_date'), f.getlist('line_desc'), f.getlist('line_cat'), f.getlist('line_amount'))]
         return render_template('fr.html', **_ctx(view='new', events=events, programs=dict(load_programs(), OPS='Operations'), directors=directors(), signers=[n for n, m in O.signers()], form=f, last={},
                                                  events_js=_events_js(events, f.get('event_code', '')),
-                                                 rows=rows or [{}])), 400
+                                                 rows=rows or [{}], token=f.get('token') or secrets.token_urlsafe(16))), 400
     total = round(sum(ln['amount'] for ln in lines), 2)
     req = {'event_code': f.get('event_code', '') if ev else '', 'event_name': ev['event_name'] if ev else '', 'program': program,
            **{f'submitter_{k}': v for k, v in sub.items()}, **{f'payee_{k}': v for k, v in payee.items()},
@@ -354,7 +355,10 @@ def new():
     me = (session.get('email') or '').lower()
     if me and me == O.director_email(program):
         req['approvals'] = FL.add('', 'chair', O.director(program)[0] or sub['name'], date.today().isoformat(), 'filed it themselves')
-    rid = F.create(req, lines, receipts)
+    rid, again = F.create_once(req, lines, receipts, f.get('token', ''))
+    if again:      # a double click, the back button, or a retry after an error: that page already filed this request
+        flash(f'{rid} was already submitted from that page, so no second request was made.', 'info')
+        return redirect(url_for('fr.detail', req_id=rid))
     session['fr_submitter'] = sub
     n_files = sum(1 for r in receipts if r and r.filename)
     log_audit_event('FUNDS_REQUESTED', sub['name'], {'id': rid, 'payee': payee['name'], 'net': req['net'], 'event_code': req['event_code']})
@@ -381,8 +385,9 @@ def detail(req_id):
 
 def _approved(rid, role, who, note=''):
     """Record an approval; tell the treasurer once nothing else is missing."""
-    r = F.get(rid)
-    F.update(rid, approvals=FL.add(r.get('approvals'), role, who, date.today().isoformat(), note))
+    # Added under the lock to what the row holds right now, and once per role: a second click changes nothing.
+    if not F.add_approval(rid, role, who, date.today().isoformat(), note, once=True):
+        return
     log_audit_event('FUNDS_APPROVED', who, {'id': rid, 'role': role, 'note': note})
     r = F.get(rid)
     if FL.ready(Approvals().items(r)):
@@ -443,11 +448,14 @@ def approve_link(token):
             if not note:
                 flash('Say why, so the submitter knows.', 'danger')
                 return redirect(request.url)
-            F.close(r['id'], 'Rejected', closed_by=who, closed_note=f'Rejected by the {FL.ROLES[t["role"]].lower()}: {note}')
-            log_audit_event('FUNDS_REJECTED', who, {'id': r['id'], 'note': note, 'via': 'email link'})
-            send_mail(f"Funds request {r['id']} rejected by {who}", note)
-            tell_submitter(r['id'])
-            msg = "Rejected. The treasurer and the person who filed it have been told."
+            if F.close(r['id'], 'Rejected', expect='Submitted', closed_by=who,
+                       closed_note=f'Rejected by the {FL.ROLES[t["role"]].lower()}: {note}'):
+                log_audit_event('FUNDS_REJECTED', who, {'id': r['id'], 'note': note, 'via': 'email link'})
+                send_mail(f"Funds request {r['id']} rejected by {who}", note)
+                tell_submitter(r['id'])
+                msg = "Rejected. The treasurer and the person who filed it have been told."
+            else:
+                msg = f"{r['id']} was just paid, rejected or deleted by someone else, so nothing was changed."
         else:
             note = f"by email link ({t['email']})"
             _approved(r['id'], t['role'], who, note)
@@ -477,17 +485,33 @@ def close(req_id):
         return redirect(url_for('fr.home'))
     who = officer_current('pay')['name']      # signed in as themselves, with the pay permission
     action = request.form.get('action')
+    back = redirect(url_for('fr.detail', req_id=req_id))
+    # Paying and rejecting are for an open request, reopening for a closed one. Checked here and again under the lock
+    # in fr_store, so a double click or two officers never close it twice.
+    if (action in ('paid', 'reject')) != (r['status'] == 'Submitted'):
+        flash(f"{req_id} is {'open' if r['status'] == 'Submitted' else r['status'].lower()} now, so nothing was changed.", 'warning')
+        return back
+    just_changed = f'{req_id} was just changed by someone else, so nothing was changed. Look at it again.'
     if action == 'paid':
         if not FL.ready(Approvals().items(r)):
             flash('Not every approval is in yet; see the list on this page.', 'danger')
-            return redirect(url_for('fr.detail', req_id=req_id))
+            return back
         amount = _money(request.form.get('paid_amount') or r['net'])
         ref = request.form.get('paid_ref', '').strip()
         if amount is None or not ref:
             flash('Enter the check number or card used, and the amount.', 'danger')
-            return redirect(url_for('fr.detail', req_id=req_id))
-        F.close(req_id, 'Paid', paid_date=request.form.get('paid_date') or date.today().isoformat(), paid_ref=ref,
-                paid_amount=amount, closed_by=who, closed_note=request.form.get('note', '').strip())
+            return back
+        if amount < 0 or (amount == 0 and (r['net'] or 0) > 0):      # zero only when nothing is owed (advances covered it)
+            flash('The amount paid must be above zero.', 'danger')
+            return back
+        if amount > FL.SECOND_SIGNER_LIMIT and not any(a['role'] == 'second' for a in FL.parse(r.get('approvals'))):
+            flash(f'Over ${FL.SECOND_SIGNER_LIMIT:,.0f} needs the RE or ARE as second signer, and this request does not have that '
+                  f'approval. Check the amount.', 'danger')
+            return back
+        if not F.close(req_id, 'Paid', expect='Submitted', paid_date=request.form.get('paid_date') or date.today().isoformat(), paid_ref=ref,
+                       paid_amount=amount, closed_by=who, closed_note=request.form.get('note', '').strip()):
+            flash(just_changed, 'warning')
+            return back
         log_audit_event('FUNDS_PAID', who, {'id': req_id, 'ref': ref, 'amount': amount})
         tell_submitter(req_id)
         flash(f'{req_id} marked paid ({ref}).', 'success')
@@ -495,16 +519,20 @@ def close(req_id):
         note = request.form.get('note', '').strip()
         if not note:
             flash('Say why it is rejected; the submitter will ask.', 'danger')
-            return redirect(url_for('fr.detail', req_id=req_id))
-        F.close(req_id, 'Rejected', closed_by=who, closed_note=note)
+            return back
+        if not F.close(req_id, 'Rejected', expect='Submitted', closed_by=who, closed_note=note):
+            flash(just_changed, 'warning')
+            return back
         log_audit_event('FUNDS_REJECTED', who, {'id': req_id, 'note': note})
         tell_submitter(req_id)
         flash(f'{req_id} rejected.', 'warning')
     elif action == 'reopen':
-        F.close(req_id, 'Submitted', paid_date='', paid_ref='', paid_amount='', closed_by=who, closed_note='')
+        if not F.close(req_id, 'Submitted', expect=r['status'], paid_date='', paid_ref='', paid_amount='', closed_by=who, closed_note=''):
+            flash(just_changed, 'warning')
+            return back
         log_audit_event('FUNDS_REOPENED', who, {'id': req_id})
         flash(f'{req_id} is open again.', 'info')
-    return redirect(url_for('fr.detail', req_id=req_id))
+    return back
 
 
 # ---------- Money received (cash and checks taken in) ----------
@@ -589,6 +617,7 @@ def in_new():
     if errors:
         for e in errors:
             flash(e, 'danger')
+        BUD.files_dropped(request.files.getlist('files'))
         return page(f, rows or [{}], 400)
     rep = {'received': received, 'event_code': f.get('event_code', '') if ev else '', 'event_name': ev['event_name'] if ev else '',
            'program': program, 'reported_by': session.get('who', ''), 'reported_email': session.get('email', ''),
@@ -658,18 +687,24 @@ def in_deposit(rid):
     if not r:
         abort(404)
     who = officer_current('pay')['name']
+    # Each step is checked against the report's status under the lock, so a double click is recorded once.
+    same = f"{rid} is {'waiting for its deposit' if r['status'] == 'Received' else r['status'].lower()} now, so nothing was changed."
     if request.form.get('action') == 'reopen':
-        R.update(rid, status='Received', deposit_date='', deposit_ref='', deposit_amount='', closed_by=who)
+        if not R.update(rid, expect='Deposited', status='Received', deposit_date='', deposit_ref='', deposit_amount='', closed_by=who):
+            flash(same, 'warning')
+            return redirect(url_for('fr.in_detail', rid=rid))
         log_audit_event('MONEY_RECEIVED_REOPENED', who, {'id': rid})
         flash(f'{rid} is waiting for its deposit again.', 'info')
         return redirect(url_for('fr.in_detail', rid=rid))
     amount = _money(request.form.get('deposit_amount') or r['total'])
-    if amount is None:
-        flash('The deposit amount must be a number.', 'danger')
+    if amount is None or amount <= 0:
+        flash('The deposit amount must be a number above zero.', 'danger')
         return redirect(url_for('fr.in_detail', rid=rid))
     ref = request.form.get('deposit_ref', '').strip() or 'Bank deposit'
-    R.update(rid, status='Deposited', deposit_date=request.form.get('deposit_date') or date.today().isoformat(), deposit_ref=ref,
-             deposit_amount=amount, closed_by=who)
+    if not R.update(rid, expect='Received', status='Deposited', deposit_date=request.form.get('deposit_date') or date.today().isoformat(),
+                    deposit_ref=ref, deposit_amount=amount, closed_by=who):
+        flash(same, 'warning')
+        return redirect(url_for('fr.in_detail', rid=rid))
     log_audit_event('MONEY_DEPOSITED', who, {'id': rid, 'amount': amount, 'ref': ref})
     flash(f'{rid} marked deposited.' + (f' Note: ${amount:,.2f} deposited against ${r["total"]:,.2f} reported.' if abs(amount - r['total']) >= 0.005 else ''),
           'success' if abs(amount - r['total']) < 0.005 else 'warning')

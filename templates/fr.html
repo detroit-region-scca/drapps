@@ -4,17 +4,17 @@
 {% block app_name %}Money{% endblock %}
 {% block nav %}
     {% set money_in = request.endpoint.startswith('fr.in_') %}
-    {{ tab('fr.home', 'Money out', not money_in and request.endpoint != 'fr.new') }}
-    {{ tab('fr.in_list', 'Money in', money_in and request.endpoint != 'fr.in_new') }}
+    {{ tab('fr.home', 'Funds requests', not money_in and request.endpoint != 'fr.new') }}
+    {{ tab('fr.in_list', 'Money received', money_in and request.endpoint != 'fr.in_new') }}
     {{ tab('fr.new', 'New request') }}
     {{ tab('fr.in_new', 'Report money received') }}
 {% endblock %}
 {% macro in_badge(s) %}<span class="badge rounded-pill {{ 'text-bg-success' if s == 'Deposited' else 'text-bg-warning' }}">{{ 'Not deposited' if s == 'Received' else s }}</span>{% endmacro %}
 {% macro status_badge(s) %}<span class="badge rounded-pill {{ {'Submitted': 'text-bg-warning', 'Paid': 'text-bg-success', 'Rejected': 'text-bg-danger'}.get(s, 'text-bg-secondary') }}">{{ 'Open' if s == 'Submitted' else s }}</span>{% endmacro %}
 {% block style %}
-        body.app-fr { --accent: #3ecf8e; }
+        body.app-fr { --accent: #177a50; }   /* 5.3:1 on white: it marks the picked filter and payment method */
         .method-opt { border: 1px solid var(--border); border-radius: 10px; padding: .75rem 1rem; cursor: pointer; height: 100%; }
-        .method-opt:has(input:checked) { border-color: var(--accent); background: var(--surface-2); }
+        .method-opt:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--surface-2); }
         .method-opt input { margin-right: .5rem; }
         .row-remove { color: var(--muted); text-decoration: none; }
         .row-remove:hover { color: #dc3545; }
@@ -22,6 +22,7 @@
 {% endblock %}
 {% block content %}
     {% if view == 'list' %}
+    <h1 class="visually-hidden">Funds requests</h1>
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="btn-group filter" role="group">
             {% for s, label in [('Submitted', 'Open'), ('Paid', 'Paid'), ('Rejected', 'Rejected'), ('All', 'All')] %}
@@ -35,9 +36,9 @@
         <table class="table table-hover mb-0 stack">
             <thead><tr><th class="ps-3">Request</th><th>Submitted</th><th>Pay to</th><th>For</th><th>Status</th><th class="num pe-3">Amount</th></tr></thead>
             <tbody>
-            {% for r in reqs %}<tr class="row-link" onclick="location.href='{{ url_for('fr.detail', req_id=r.id) }}'">
+            {% for r in reqs %}<tr data-href="{{ url_for('fr.detail', req_id=r.id) }}">
                 <td class="ps-3 text-nowrap"><a href="{{ url_for('fr.detail', req_id=r.id) }}">{{ r.id }}</a></td>
-                <td class="text-nowrap" data-label="Submitted">{{ r.submitted }}<div class="small text-muted">{{ r.submitter_name }}</div></td>
+                <td class="text-nowrap" data-label="Submitted">{{ (r.submitted or '')|nice_date }}<div class="small text-muted">{{ r.submitter_name }}</div></td>
                 <td data-label="Pay to">{{ r.payee_name }}<div class="small text-muted">{{ r.method }}</div></td>
                 <td data-label="For">{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}{{ r.program }}{% endif %} <span class="small text-muted">{{ r.event_code }}</span></td>
                 <td data-label="Status">{% if r.status == 'Submitted' %}{% if r.waiting %}<span class="badge rounded-pill text-bg-warning">Needs approval</span><div class="small text-muted">{{ r.waiting|join(', ') }}</div>{% elif r.method == 'Region credit card' %}<span class="badge rounded-pill text-bg-info" title="Already paid on the region card">Card, ready to record</span>{% else %}<span class="badge rounded-pill text-bg-info">Ready to pay</span>{% endif %}{% else %}{{ status_badge(r.status) }}{% endif %}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
@@ -48,9 +49,10 @@
     </div></div>
 
     {% elif view == 'new' %}
-    <div class="page-title">New funds request</div>
+    <h1 class="page-title">New funds request</h1>
     <p class="text-muted">For paying a vendor or reimbursing you for region expenses. Attach the invoice or receipts if you have them.</p>
     <form method="post" enctype="multipart/form-data" id="frForm" novalidate>
+    <input type="hidden" name="token" value="{{ token }}">
         <div class="card p-3 mb-3">
             <div class="section-label">What is it for</div>
             <div class="row g-2">
@@ -85,7 +87,7 @@
             </div>
             <div class="d-flex flex-wrap align-items-center gap-3">
                 <button type="button" class="btn btn-outline-light btn-sm" onclick="addLine()">Add expense</button>
-                <div class="ms-auto d-flex align-items-center gap-2"><label class="text-muted small text-nowrap" for="advances">Less advances already paid</label>
+                <div class="ms-auto d-flex align-items-center gap-2"><label class="text-muted small text-nowrap" for="advances">Less paid in advance</label>
                     <input name="advances" id="advances" class="form-control form-control-sm text-end" style="width:7rem" inputmode="decimal" placeholder="0.00" value="{{ form.get('advances', '') }}"></div>
                 <div class="fs-5">Total <b id="total">$0.00</b></div>
             </div>
@@ -121,22 +123,22 @@
 
         <div class="card p-3 mb-3">
             <div class="section-label">Receipts and notes</div>
-            <input type="file" name="receipts" class="form-control mb-2" multiple accept="image/*,.pdf,.xls,.xlsx,.xlsm,.doc,.docx">
+            <input type="file" name="receipts" class="form-control mb-2" aria-label="Receipts" multiple accept="image/*,.pdf,.xls,.xlsx,.xlsm,.doc,.docx">
             <div class="form-text mb-3">Invoices, receipts or photos of them. PDF or pictures are best; several files are fine.</div>
             <textarea name="notes" class="form-control" rows="2" aria-label="Anything the treasurer should know" placeholder="Anything the treasurer should know (optional)">{{ form.get('notes', '') }}</textarea>
             <div class="form-check mt-3"><input class="form-check-input" type="checkbox" name="notify" value="yes" id="notify" {{ 'checked' if form.get('notify') or not form.get('submitter_name') }}>
                 <label class="form-check-label" for="notify">Email me when it is paid or rejected</label></div>
         </div>
-        <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('fr.home') }}">Cancel</a><button class="btn btn-accent px-4" id="submitBtn">Submit request</button></div>
+        <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('fr.home') }}">Cancel</a><button class="btn btn-accent px-4" id="submitBtn" data-busy="Submitting…">Submit request</button></div>
     </form>
 
     {% elif view == 'detail' %}
-    <div class="crumbs no-print"><a href="{{ url_for('fr.home') }}">Requests</a> / {{ r.id }}</div>
+    <div class="crumbs no-print"><a href="{{ url_for('fr.home') }}">Funds requests</a> / {{ r.id }}</div>
     <div class="card p-3 mb-3">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
             <div>
-                <div class="page-title m-0">{{ r.id }} {{ status_badge(r.status) }}</div>
-                <div class="text-muted">Submitted {{ r.submitted }} by {{ r.submitter_name }}</div>
+                <h1 class="page-title m-0">{{ r.id }} {{ status_badge(r.status) }}</h1>
+                <div class="text-muted">Submitted {{ (r.submitted or '')|nice_date }} by {{ r.submitter_name }}</div>
                 <div class="mt-1">{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}Program {{ r.program }}{% endif %} <span class="text-muted">{{ r.event_code }}</span></div>
             </div>
             <div class="text-end stat"><div class="value">{{ money(r.net) }}</div><div class="label">{{ r.method }}</div></div>
@@ -153,8 +155,8 @@
     <div class="card mb-3"><div class="card-body p-0 table-responsive">
         <table class="table mb-0">
             <thead><tr><th class="ps-3">Date</th><th>Description</th><th>Category</th><th class="num pe-3">Amount</th></tr></thead>
-            <tbody>{% for ln in r.lines %}<tr><td class="ps-3 text-nowrap">{{ ln.date }}</td><td>{{ ln.description }}</td><td>{{ ln.category }}</td><td class="num pe-3">{{ money(ln.amount) }}</td></tr>{% endfor %}
-            <tr><td class="ps-3" colspan="3">Total{% if r.advances %} less advances {{ money(r.advances) }}{% endif %}</td><td class="num pe-3 fw-semibold">{{ money(r.net) }}</td></tr></tbody>
+            <tbody>{% for ln in r.lines %}<tr><td class="ps-3 text-nowrap">{{ (ln.date or '')|nice_date }}</td><td>{{ ln.description }}</td><td>{{ ln.category }}</td><td class="num pe-3">{{ money(ln.amount) }}</td></tr>{% endfor %}
+            <tr><td class="ps-3" colspan="3">Total{% if r.advances %}, less {{ money(r.advances) }} paid in advance{% endif %}</td><td class="num pe-3 fw-semibold">{{ money(r.net) }}</td></tr></tbody>
         </table>
     </div></div>
     <div class="mb-3 d-flex flex-wrap align-items-center gap-2">{% if r.receipts_url %}<a class="btn btn-sm btn-outline-light" href="{{ r.receipts_url }}" target="_blank" rel="noopener">Open receipts in Drive</a>{% else %}<span class="text-muted">No receipts attached.</span>{% endif %}
@@ -162,22 +164,22 @@
             <input type="file" name="receipts" multiple class="form-control form-control-sm" accept="image/*,.pdf,.xls,.xlsx,.xlsm,.doc,.docx" aria-label="Add receipts">
             <button class="btn btn-sm btn-outline-light text-nowrap">Add</button></form>
         <button class="btn btn-sm btn-outline-secondary no-print" onclick="window.print()">Print</button>
-        {% if can_delete %}<form method="post" action="{{ url_for('fr.delete', req_id=r.id) }}" class="ms-auto no-print"><button class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete {{ r.id }}? Use this for a mistake or a duplicate. Its approval links stop working; it is kept in the audit log.')">Delete</button></form>{% endif %}</div>
+        {% if can_delete %}<form method="post" action="{{ url_for('fr.delete', req_id=r.id) }}" class="ms-auto no-print"><button class="btn btn-sm btn-outline-danger" onclick="return confirm({{ ('Delete ' ~ r.id ~ '? Use this for a mistake or a duplicate. Its approval links stop working; it is kept in the audit log.')|tojson|forceescape }})">Delete</button></form>{% endif %}</div>
     {% if r.notes %}<p><span class="text-muted">Notes:</span> {{ r.notes }}</p>{% endif %}
 
     {% if r.status == 'Submitted' %}
     {% if items %}<div class="card p-3 mb-3">
         <div class="section-label">Approvals</div>
         <ul class="list-unstyled mb-2">{% for i in items %}
-            <li class="mb-1"><span class="{{ 'text-success' if i.done else 'text-warning' }}" aria-hidden="true">{{ '✓' if i.done else '○' }}</span> {{ i.label }}{% if i.by %} <span class="small text-muted">{{ i.by }}</span>{% endif %}
+            <li class="mb-1"><span class="{{ 'text-success' if i.done else 'text-warning' }}" aria-hidden="true">{{ '✓' if i.done else '○' }}</span><span class="visually-hidden">{{ 'Approved:' if i.done else 'Waiting:' }}</span> {{ i.label }}{% if i.by %} <span class="small text-muted">{{ i.by }}</span>{% endif %}
                 {% if not i.done and i.key in approvers %}<div class="small ms-3 {{ 'text-muted' if approvers[i.key] else 'text-warning' }}">{% if approvers[i.key] %}Approval email goes to {{ approvers[i.key]|join(' or ') }}{% if i.key in ('budget', 'overrun') %}, to confirm the board approved it{% endif %}.{% else %}No one gets an approval email: this program has no director in the officials list. Ask the treasurer.{% endif %}</div>{% endif %}</li>{% endfor %}
         </ul>
-        {% if not ready %}<div class="small text-muted no-print">Approvals only come from the emailed links, sent to each official's own address, so no one can approve inside the app.
+        {% if not ready %}<div class="small text-muted no-print">Approvals come only from the emailed links.
             <form method="post" action="{{ url_for('fr.ask', req_id=r.id) }}" class="d-inline"><button class="btn btn-link btn-sm p-0 align-baseline">Email the approval links again</button></form></div>{% endif %}
     </div>{% endif %}
     {% if not officer %}
     <div class="card p-3 text-muted no-print"><div class="section-label">Pay or reject</div>
-        {% if ready %}Every approval is in.{% else %}Waiting on the approvals above.{% endif %} Marking it paid or rejecting it is for the treasurer, secretary, RE or ARE. Approvers can reject from their email link.</div>
+        {% if ready %}Every approval is in.{% else %}Waiting on the approvals above.{% endif %} The treasurer, secretary, RE or ARE marks it paid or rejects it.</div>
     {% else %}
     <div class="row g-3 no-print">
         <div class="col-lg-8">{% if not ready %}<div class="card p-3 h-100 text-muted"><div class="section-label">Mark paid</div>Waiting on the approvals above. Region policy: no payment until they are in.</div>{% else %}<form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">
@@ -190,7 +192,6 @@
                     <div class="mt-1"><button type="button" class="btn btn-link btn-sm p-0" onclick="document.getElementById('paidRef').value='Region card'">Paid on the region card</button></div></div>
                 <div class="col-sm-4"><label class="form-label small" for="paidDate">Date paid</label><input type="date" name="paid_date" id="paidDate" class="form-control" value="{{ (r.lines|map(attribute='date')|select|max) if card and r.lines else today }}"></div>
                 <div class="col-sm-3"><label class="form-label small" for="paidAmt">Amount</label><input name="paid_amount" id="paidAmt" class="form-control text-end" inputmode="decimal" value="{{ '%.2f'|format(r.net) }}"></div>
-                
                 <div class="col-sm-5 d-flex align-items-end"><button class="btn btn-accent w-100">{{ 'Record card payment' if card else 'Mark paid' }}</button></div>
             </div>
             <div class="form-text">{% if card %}Already paid on the region card: this records it, with the purchase date. {% endif %}This only records the payment here, as {{ officer.name }}. Book it in QuickBooks to the event's project yourself, as usual.</div>
@@ -200,21 +201,22 @@
             <div class="section-label">Reject</div>
             <label class="form-label small" for="rejNote">Why</label>
             <input name="note" id="rejNote" class="form-control mb-2" placeholder="Duplicate, no receipt…" required>
-            <button class="btn btn-outline-danger" onclick="return !this.form.checkValidity() || confirm('Reject {{ r.id }}?')">Reject</button>
+            <button class="btn btn-outline-danger" onclick="return !this.form.checkValidity() || confirm({{ ('Reject ' ~ r.id ~ '?')|tojson|forceescape }})">Reject</button>
         </form></div>
     </div>
     {% endif %}
     {% else %}
     <div class="card p-3">
-        {% if r.status == 'Paid' %}<div>Paid {{ r.paid_date }} · {{ r.paid_ref }} · {{ money(r.paid_amount) }} · recorded by {{ r.closed_by }}</div>
+        {% if r.status == 'Paid' %}<div>Paid {{ (r.paid_date or '')|nice_date }} · {{ r.paid_ref }} · {{ money(r.paid_amount) }} · recorded by {{ r.closed_by }}</div>
         {% else %}<div>Rejected by {{ r.closed_by }}: {{ r.closed_note }}</div>{% endif %}
         {% if r.status == 'Paid' and r.closed_note %}<div class="text-muted small">{{ r.closed_note }}</div>{% endif %}
-        {% for a in approvals %}<div class="text-muted small">{{ roles[a.role] }}: {{ a.name }}, {{ a.date }}{% if a.note %} ({{ a.note }}){% endif %}</div>{% endfor %}
-        {% if officer %}<form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Reopen {{ r.id }}?')">Reopen</button></form>{% endif %}
+        {% for a in approvals %}<div class="text-muted small">{{ roles[a.role] }}: {{ a.name }}, {{ (a.date or '')|nice_date }}{% if a.note %} ({{ a.note }}){% endif %}</div>{% endfor %}
+        {% if officer %}<form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm({{ ('Reopen ' ~ r.id ~ '?')|tojson|forceescape }})">Reopen</button></form>{% endif %}
     </div>
     {% endif %}
 
     {% elif view == 'in_list' %}
+    <h1 class="visually-hidden">Money received</h1>
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="btn-group filter" role="group">
             {% for s, label in [('Received', 'Not deposited'), ('Deposited', 'Deposited'), ('All', 'All')] %}
@@ -228,9 +230,9 @@
         <table class="table table-hover mb-0 stack">
             <thead><tr><th class="ps-3">Report</th><th>Received</th><th>From</th><th>Held by</th><th>Status</th><th class="num pe-3">Amount</th></tr></thead>
             <tbody>
-            {% for r in reps %}<tr class="row-link" onclick="location.href='{{ url_for('fr.in_detail', rid=r.id) }}'">
+            {% for r in reps %}<tr data-href="{{ url_for('fr.in_detail', rid=r.id) }}">
                 <td class="ps-3 text-nowrap"><a href="{{ url_for('fr.in_detail', rid=r.id) }}">{{ r.id }}</a></td>
-                <td class="text-nowrap" data-label="Received">{{ r.received }}<div class="small text-muted">{{ r.reported_by }}</div></td>
+                <td class="text-nowrap" data-label="Received">{{ (r.received or '')|nice_date }}<div class="small text-muted">{{ r.reported_by }}</div></td>
                 <td data-label="From">{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}{{ r.program }}{% endif %} <span class="small text-muted">{{ r.event_code }}</span></td>
                 <td data-label="Held by">{{ r.held_by }}</td>
                 <td data-label="Status">{{ in_badge(r.status) }}{% if r.single and r.status == 'Received' %}<div class="small text-warning-emphasis">Counted by one person</div>{% endif %}{% if r.deposit_ref %}<div class="small text-muted">{{ r.deposit_ref }}</div>{% endif %}</td>
@@ -241,7 +243,7 @@
     </div></div>
 
     {% elif view == 'in_new' %}
-    <div class="page-title">Report money received</div>
+    <h1 class="page-title">Report money received</h1>
     <p class="text-muted">For cash and checks you took in for the region: gate money, merchandise, sponsor checks, donations. Report it the day you get it, before it goes to the bank.</p>
     <form method="post" enctype="multipart/form-data" id="inForm" novalidate>
         <div class="card p-3 mb-3">
@@ -295,20 +297,20 @@
 
         <div class="card p-3 mb-3">
             <div class="section-label">Photos and notes</div>
-            <input type="file" name="files" class="form-control mb-2" multiple accept="image/*,.pdf">
+            <input type="file" name="files" class="form-control mb-2" aria-label="Photos" multiple accept="image/*,.pdf">
             <div class="form-text mb-3">A photo of the count sheet, or of the checks. Optional, but it helps.</div>
             <textarea name="notes" class="form-control" rows="2" aria-label="Anything the treasurer should know" placeholder="Anything the treasurer should know (optional)">{{ form.get('notes', '') }}</textarea>
         </div>
-        <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('fr.in_list') }}">Cancel</a><button class="btn btn-accent px-4" id="submitBtn">Report it</button></div>
+        <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('fr.in_list') }}">Cancel</a><button class="btn btn-accent px-4" id="submitBtn" data-busy="Saving…">Report money received</button></div>
     </form>
 
     {% elif view == 'in_detail' %}
-    <div class="crumbs no-print"><a href="{{ url_for('fr.in_list') }}">Money in</a> / {{ r.id }}</div>
+    <div class="crumbs no-print"><a href="{{ url_for('fr.in_list') }}">Money received</a> / {{ r.id }}</div>
     <div class="card p-3 mb-3">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
             <div>
-                <div class="page-title m-0">{{ r.id }} {{ in_badge(r.status) }}</div>
-                <div class="text-muted">Received {{ r.received }}, reported {{ r.reported }} by {{ r.reported_by }}</div>
+                <h1 class="page-title m-0">{{ r.id }} {{ in_badge(r.status) }}</h1>
+                <div class="text-muted">Received {{ (r.received or '')|nice_date }}, reported {{ (r.reported or '')|nice_date }} by {{ r.reported_by }}</div>
                 <div class="mt-1">{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}Program {{ r.program }}{% endif %} <span class="text-muted">{{ r.event_code }}</span></div>
             </div>
             <div class="text-end stat"><div class="value">{{ money(r.total) }}</div><div class="label">{% if r.cash %}cash {{ money(r.cash) }}{% endif %}{% if r.cash and r.checks %} · {% endif %}{% if r.checks %}checks {{ money(r.checks) }}{% endif %}</div></div>
@@ -331,7 +333,7 @@
             <input type="file" name="files" multiple class="form-control form-control-sm" accept="image/*,.pdf" aria-label="Add photos">
             <button class="btn btn-sm btn-outline-light text-nowrap">Add</button></form>
         <button class="btn btn-sm btn-outline-secondary no-print" onclick="window.print()">Print</button>
-        {% if can_delete %}<form method="post" action="{{ url_for('fr.in_delete', rid=r.id) }}" class="ms-auto no-print"><button class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete {{ r.id }}? Use this for a mistake or a duplicate. It is kept in the audit log.')">Delete</button></form>{% endif %}</div>
+        {% if can_delete %}<form method="post" action="{{ url_for('fr.in_delete', rid=r.id) }}" class="ms-auto no-print"><button class="btn btn-sm btn-outline-danger" onclick="return confirm({{ ('Delete ' ~ r.id ~ '? Use this for a mistake or a duplicate. It is kept in the audit log.')|tojson|forceescape }})">Delete</button></form>{% endif %}</div>
 
     {% if r.status == 'Received' %}
     {% if officer %}
@@ -348,17 +350,17 @@
     {% else %}<div class="card p-3 text-muted">Waiting for the deposit. The treasurer marks it deposited, or the nightly QuickBooks sync does when the deposit shows up.</div>{% endif %}
     {% else %}
     <div class="card p-3">
-        <div>Deposited {{ r.deposit_date }} · {{ r.deposit_ref }} · {{ money(r.deposit_amount) }}{% if r.closed_by %} · recorded by {{ r.closed_by }}{% endif %}</div>
+        <div>Deposited {{ (r.deposit_date or '')|nice_date }} · {{ r.deposit_ref }} · {{ money(r.deposit_amount) }}{% if r.closed_by %} · recorded by {{ r.closed_by }}{% endif %}</div>
         {% if r.deposit_amount and (r.deposit_amount - r.total)|abs >= 0.005 %}<div class="text-warning-emphasis small">{{ money(r.deposit_amount - r.total) }} different from the {{ money(r.total) }} reported.</div>{% endif %}
-        {% if officer %}<form method="post" action="{{ url_for('fr.in_deposit', rid=r.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Mark {{ r.id }} not deposited?')">Not deposited after all</button></form>{% endif %}
+        {% if officer %}<form method="post" action="{{ url_for('fr.in_deposit', rid=r.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm({{ ('Mark ' ~ r.id ~ ' not deposited?')|tojson|forceescape }})">Not deposited after all</button></form>{% endif %}
     </div>
     {% endif %}
 
     {% elif view == 'link' %}
     <div class="card p-3 mx-auto" style="max-width: 36rem">
         {% if r %}
-        <div class="page-title m-0">{{ r.id }}: {{ money(r.net) }}</div>
-        <div class="text-muted mb-2">Pay {{ r.payee_name }} ({{ r.method }}), asked by {{ r.submitter_name }} on {{ r.submitted }}</div>
+        <h1 class="page-title m-0">{{ r.id }}: {{ money(r.net) }}</h1>
+        <div class="text-muted mb-2">Pay {{ r.payee_name }} ({{ r.method }}), asked by {{ r.submitter_name }} on {{ (r.submitted or '')|nice_date }}</div>
         <div class="mb-2">{{ r.event_name or ('Program ' ~ r.program) }} <span class="text-muted">{{ r.event_code }}</span></div>
         <ul class="small mb-2">{% for ln in r.lines %}<li>{{ ln.description }}: {{ money(ln.amount) }}</li>{% endfor %}</ul>
         {% if r.receipts_url %}<div class="mb-3"><a href="{{ r.receipts_url }}" target="_blank" rel="noopener">Receipts</a></div>{% endif %}
@@ -413,7 +415,7 @@
         const keep = evSel.value || evSel.dataset.chosen;
         evSel.dataset.chosen = '';
         evSel.innerHTML = `<option value="">${document.getElementById('inForm') ? 'Not from one event' : 'Not for one event'}</option>` + allEvents.filter(e => e.p === progSel.value).map(e =>
-            `<option value="${e.c}">${e.d} · ${e.n.replace(/[<>&"]/g, ch => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'})[ch])} ${e.c}</option>`).join('');
+            `<option value="${e.c}">${niceDate(e.d)} · ${e.n.replace(/[<>&"]/g, ch => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'})[ch])} ${e.c}</option>`).join('');
         if (keep && allEvents.some(e => e.c === keep && e.p === progSel.value)) evSel.value = keep;
     }
     if (progSel) { progSel.addEventListener('change', fillEvents); fillEvents(); }
@@ -447,14 +449,12 @@
         inForm.addEventListener('input', total);
         inForm.addEventListener('change', () => { checkBoxes(); total(); });
         checkBoxes();
-        inForm.addEventListener('submit', () => { const b = document.getElementById('submitBtn'); b.disabled = true; b.textContent = 'Saving…'; });
         total();
     }
     const form = document.getElementById('frForm');
     if (form) {
         form.addEventListener('input', total);
         form.addEventListener('change', syncForm);
-        form.addEventListener('submit', () => { const b = document.getElementById('submitBtn'); b.disabled = true; b.textContent = 'Submitting…'; });
         total(); syncForm();
     }
 </script>

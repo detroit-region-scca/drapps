@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, render_template, url_for, session, flash, Response
+from flask import Flask, request, redirect, render_template, url_for, session, flash, Response, g, jsonify
 import os
 import string
 import random
@@ -27,7 +27,21 @@ logging.basicConfig(level=logging.INFO)
 
 from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
 app = Flask(__name__)
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)   # behind Caddy: links in emails use https and the public host
+# Behind Caddy, the only proxy: links in emails use https and the public host, and request.remote_addr is the
+# visitor's own address (the sign-in limits count per address).
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+# Files in static/ are kept by the browser for a year; their links carry the file's change time (?v=...), so a
+# changed file is fetched again at once.
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 365 * 24 * 3600
+
+
+@app.url_defaults
+def _static_version(endpoint, values):
+    if endpoint == 'static' and values.get('filename') and 'v' not in values:
+        try:
+            values['v'] = int(os.path.getmtime(os.path.join(app.static_folder, values['filename'])))
+        except OSError:
+            pass
 
 
 @app.template_filter('wkday')
@@ -37,6 +51,18 @@ def wkday(d):
         return datetime.strptime(d, '%Y-%m-%d').strftime('%a')
     except (TypeError, ValueError):
         return ''
+
+
+@app.template_filter('nice_date')
+def nice_date(d):
+    """'2026-11-09' (or a date, or '2026-11-09T14:03...') -> 'Nov 9, 2026'; anything else is shown as it is."""
+    if not d:           # '', None or a value the page was never given
+        return ''
+    try:
+        d = d if hasattr(d, 'strftime') else datetime.strptime(str(d)[:10], '%Y-%m-%d')
+        return f'{d.strftime("%b")} {d.day}, {d.year}'
+    except (TypeError, ValueError):
+        return d
 
 from members import bp as members_bp  # noqa: E402
 from minutes import bp as minutes_bp  # noqa: E402
@@ -119,11 +145,6 @@ def cleanup_temp_files():
 
 cleanup_temp_files()
 
-def _safe_next(target):
-    """Only same-site paths are followed after login (never an absolute or //host URL)."""
-    from utils import local_path
-    return local_path(target) or None
-
 @app.route('/login', methods=['POST'])
 def login():
     """The shared password is gone; an old login form posting here goes to the email sign-in."""
@@ -136,7 +157,7 @@ app.jinja_env.globals['google_on'] = auth.google_on
 
 def _shows(app_name):
     """Whether an app's tile is on the signed-in person's home page: set per role in Admin > Roles (Apps on the home
-    page). Tiles off the role are grayed out, not hidden."""
+    page). Tiles off the role are left out."""
     u = auth.user() or {}
     p = set(u.get('perms') or ())
     return f'show_{app_name}' in p
@@ -187,7 +208,7 @@ def treasurer():
         import bud
         buds = bud_store.budgets()
         years = {str(b.get('date', ''))[:4] for b in buds.values()} | {year, str(int(year) + 1)}
-        jobs['budgets'] = sum(1 for b in buds.values() if not b.get('approved') or b.get('updated', '') > b['approved'])
+        jobs['budgets'] = sum(1 for b in buds.values() if bud_store.status(b) in ('budget', 'changed'))
         jobs['budgets'] += sum(1 for y in years if y.isdigit() and bud.ops_budget_row(y))
     import equip
     import inv
@@ -230,8 +251,8 @@ def treasurer_report():
         for e in sorted(events, key=lambda e: e['date']):
             code = e.get('custom_tag') or e.get('unique_code')
             b = buds.get(code)
-            if b and not b.get('draft') and (not b.get('approved') or b.get('updated', '') > b['approved']):
-                board.append({'e': e, 'code': code, 'changed': bool(b.get('approved')), 'budget': (b['totals'].get('budget') or {}).get('surplus'),
+            if bud_store.status(b) in ('budget', 'changed'):
+                board.append({'e': e, 'code': code, 'changed': bud_store.status(b) == 'changed', 'budget': (b['totals'].get('budget') or {}).get('surplus'),
                               'actual': ((qbo.get(code) or {}).get('totals') or {}).get('surplus')})
             elif not b and today.isoformat() <= e['date'] <= soon:
                 missing.append({'e': e, 'code': code})
@@ -239,18 +260,21 @@ def treasurer_report():
         for pc in load_programs():
             code = bud.program_code(pc, year)
             b = buds.get(code)
-            if b and not b.get('draft') and (not b.get('approved') or b.get('updated', '') > b['approved']):
-                board.append({'e': bud._event(code), 'code': code, 'changed': bool(b.get('approved')),
+            if bud_store.status(b) in ('budget', 'changed'):
+                board.append({'e': bud._event(code), 'code': code, 'changed': bud_store.status(b) == 'changed',
                               'budget': (b['totals'].get('budget') or {}).get('surplus'),
                               'actual': ((bud.program_actuals(pc, year) or {}).get('totals') or {}).get('surplus')})
         ctx['board'], ctx['missing'] = board, missing
     if fr_store.enabled():
         a = fr.Approvals()
-        ctx['paid'] = sorted((r for r in a.reqs if r['status'] == 'Paid' and str(r['paid_date']).startswith(month)), key=lambda r: r['paid_date'])
-        ctx['open'] = [dict(r, waiting=fr_logic.waiting_on(a.items(r))) for r in a.reqs if r['status'] == 'Submitted']
+        # Someone who sees only their own funds requests (Admin > Roles) sees only their own here too.
+        reqs = [r for r in a.reqs if auth.owns_request(r)] if auth.limited('funds') else a.reqs
+        ctx['paid'] = sorted((r for r in reqs if r['status'] == 'Paid' and str(r['paid_date']).startswith(month)), key=lambda r: r['paid_date'])
+        ctx['open'] = [dict(r, waiting=fr_logic.waiting_on(a.items(r))) for r in reqs if r['status'] == 'Submitted']
     import inv_store
     if inv_store.enabled():
-        ctx['invoices_open'] = [r for r in inv_store.invoices() if r['status'] == 'Open']
+        ctx['invoices_open'] = [r for r in inv_store.invoices() if r['status'] == 'Open'
+                                and (not auth.limited('invoices') or auth.owns_invoice(r))]
     region = os.environ.get('SCCA_REGION_NAME', 'SCCA')
     return render_template('report.html', title=f"{region} Treasurer's Report {month}", region=region, **ctx)
 
@@ -273,7 +297,7 @@ def home():
         # The create-event form used to post to '/'; a page left open from before keeps working.
         return index()
     return render_template('home.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Apps",
-                           members_enabled=members_store.enabled(), minutes_enabled=__import__('minutes_store').enabled(), fr_enabled=fr_store.enabled(), bud_enabled=bud_store.enabled(), plan_enabled=plan_store.enabled(), next_url=_safe_next(request.args.get('next')) or '')
+                           members_enabled=members_store.enabled(), minutes_enabled=__import__('minutes_store').enabled(), fr_enabled=fr_store.enabled(), bud_enabled=bud_store.enabled(), plan_enabled=plan_store.enabled(), next_url=auth._safe_next(request.args.get('next')))
 
 def _signed_in_name():
     """Who is signed in, for the audit log: from the officials list, never from a form field."""
@@ -286,9 +310,40 @@ from storage import StorageUnavailable  # noqa: E402
 
 @app.errorhandler(StorageUnavailable)
 def storage_unavailable(e):
-    """Only the deliberate "storage is down" error becomes a message; any other RuntimeError is a bug and is logged."""
+    """Only the deliberate "storage is down" error becomes a message; any other RuntimeError is a bug and is logged.
+    The person goes back to the page they were on, not to a blank Add event form."""
     flash(str(e), 'danger')
-    return redirect(url_for('index'))
+    back = request.referrer or ''
+    if back.startswith(request.host_url):
+        back = '/' + back[len(request.host_url):]
+    return redirect(auth._safe_next(back) or url_for('home'))
+
+
+# Plain pages for the errors a visitor can run into, signed in or not: what happened and a way back.
+ERROR_PAGES = {
+    403: ("You can't open that page", "Your role doesn't include this page, or it belongs to someone else. "
+                                      "Ask the admin (admin@drscca.org) if you need it."),
+    404: ('Page not found', 'There is nothing at this address. The link may be old or mistyped.'),
+    413: ('That upload is too big', 'Files can add up to 40 MB at most. Go back and attach smaller files, or fewer at a time.'),
+    500: ('Something went wrong', 'That did not work, and it was not your doing. Go back and try again; '
+                                  'if it keeps happening, tell the admin (admin@drscca.org).'),
+}
+
+
+def _error_page(e):
+    code = getattr(e, 'code', 500) if getattr(e, 'code', 500) in ERROR_PAGES else 500
+    heading, msg = ERROR_PAGES[code]
+    if getattr(g, 'api_user', None) or request.path.startswith('/api/'):
+        return jsonify(error=msg), code      # scripts get JSON; any flashed reason stays for api._forward to read
+    try:
+        return render_template('error.html', title=heading, app_name='Apps', heading=heading, msg=msg), code
+    except Exception:
+        logging.exception('The error page itself failed')
+        return f'{heading}. {msg}', code
+
+
+for _code in ERROR_PAGES:
+    app.register_error_handler(_code, _error_page)
 
 
 @app.errorhandler(requests.exceptions.RequestException)
@@ -307,17 +362,6 @@ def sheets_busy(e):
     msg = ('Google Sheets is busy (too many reads this minute). Wait a minute and reload.' if busy
            else 'Google Sheets returned an error. Reload in a moment; if it keeps happening, tell the admin (admin@drscca.org).')
     return render_template('base.html', title='Busy', busy_msg=msg), 503
-
-def _budget_codes():
-    """Event codes that have a budget, for the Budget buttons on the events list; None hides the buttons."""
-    if not bud_store.enabled():
-        return None
-    try:
-        return set(bud_store.budgets())
-    except Exception as e:
-        logging.error(f"Budgets unavailable for the events list: {e}")
-        return None
-
 
 def _open_plan_lines(events):
     """{"2026|RX": [open plan lines]} for this year and next, for the "Which plan line is this?" list."""
@@ -444,7 +488,6 @@ def index():
                            program_directors_text=program_directors_text,
                            form_data=form_data,
                            tag_error=tag_error, maybe_same=same,
-                           budgets=_budget_codes(),
                            open_plan=_open_plan_lines(events))
 
 @app.route('/audit')
@@ -509,7 +552,7 @@ def delete_event(event_id):
             events = [e for e in events if e.get('id') != event_id]
             save_events(events)
             log_audit_event('EVENT_DELETED', delete_user_name, event_to_delete)
-            flash('Event deleted successfully.', 'danger')
+            flash('Event deleted.', 'success')
         else:
             flash('Event not found.', 'warning')
     return redirect(url_for('bud.home', year=((event_to_delete or {}).get('date') or '')[:4] or None))

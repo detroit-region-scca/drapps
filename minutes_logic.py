@@ -62,3 +62,9 @@ def parse(name):
     if m:
         return date(int(m.group(1)), 12, 31), 'Budgets approved by email'
     return None, name
+
+
+def month_of(name):
+    """'2026-11' for a board meeting's minutes file ("2026-11 Board Minutes.pdf", special meetings too), else None."""
+    m = re.match(r'^(\d{4})-(\d{2}) Board Minutes\b', name or '')
+    return f'{m.group(1)}-{m.group(2)}' if m else None

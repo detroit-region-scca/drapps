@@ -7,11 +7,14 @@ Apps shared drive, Operations folder. Plain tab names and column headers, so the
                                A repeating one with a cost is a recurring cost; one charged automatically (yes) is
                                counted in the costs but kept off the to-do list.
 
-Only equipment committee members signed in through an emailed link can change anything in the app (see equip.py).
+Everyone signed in can look; only people whose role has "Edit Operations" (Admin > Roles) can change anything in the
+app (see equip.py).
 """
+import calendar
 import os
+import re
 import threading
-from datetime import date
+from datetime import date, timedelta
 
 from filelock import FileLock
 
@@ -49,6 +52,7 @@ LABELS = {
                                    'Ends (last charge date; blank = keeps going)'],
     'Documents': ['ID', 'Item or place ID', 'For', 'Drive folder', 'Documents needed (comma list; file names start with these words)', 'Notes'],
 }
+DATES = {'due', 'last_done', 'ends', 'updated', 'seen'}
 NUMERIC = {'year', 'quantity', 'cost', 'life_years', 'cost_month', 'cost_year', 'repeat_months', 'replace_cost', 'replace_year'}
 CATEGORIES = ['Vehicle', 'Trailer', 'Timing', 'Safety', 'Course', 'Hospitality', 'Promotion', 'Tools', 'Other']
 STATUSES = ['In use', 'Needs repair', 'Planned', 'Retire', 'Gone']
@@ -63,11 +67,18 @@ PLAN_HELP = {
     'budget_within_years': 'Items due within this many years (1 = this year only, 2 = this year or next) are bought outright in that year\'s budget.',
     'big_from_savings': 'yes: offer paying the big items from savings. no: save monthly for everything.',
 }
-CACHE_SECONDS = 15
 LOCK = os.path.join(DATA_DIR, 'equipment.lock')
 
 _lock = threading.Lock()
 _cache = {}
+
+
+class Gone(LookupError):
+    """The row a save was for is no longer in the sheet (someone deleted it there)."""
+
+
+class Changed(Exception):
+    """The row is not as the page showed it any more (someone else, or a second click, got there first)."""
 
 
 def enabled():
@@ -90,6 +101,21 @@ def _num(v):
         return None
 
 
+def _date_text(v):
+    """A date cell as YYYY-MM-DD. The app writes dates as text; a date typed into the sheet by hand arrives as a day
+    number (46356) or, when the sheet kept it as text, the way it was typed (11/30/2026). Anything else is left alone."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and 20000 < v < 80000:
+        return (date(1899, 12, 30) + timedelta(days=int(v))).isoformat()
+    s = str(v).strip()
+    m = re.fullmatch(r'(\d{1,2})/(\d{1,2})/(\d{4})', s)
+    if m:
+        try:
+            return date(int(m.group(3)), int(m.group(1)), int(m.group(2))).isoformat()
+        except ValueError:
+            pass
+    return s
+
+
 def _snapshot():
     hit = _cache.get('snap')
     if hit and hit[0] == C.version(os.environ['OPERATIONS_SHEET_ID']):
@@ -101,7 +127,7 @@ def _snapshot():
         rows = [dict(zip(cols, list(r) + [''] * len(cols))) for r in vr.get('values', [])[1:] if r and str(r[0]).strip()]
         for r in rows:
             for k in cols:
-                r[k] = _num(r[k]) if k in NUMERIC else str(r[k])
+                r[k] = _num(r[k]) if k in NUMERIC else _date_text(r[k]) if k in DATES else str(r[k])
         snap[title] = rows
     _cache['snap'] = (C.version(os.environ['OPERATIONS_SHEET_ID']), snap)
     return snap
@@ -175,12 +201,15 @@ def _cell(v):
     return '' if v is None else v if isinstance(v, (int, float)) else str(v)
 
 
-def save(tab, row, changed=None):
-    """Add the row (no id yet) or update the row with its id. Returns the id.
+def save(tab, row, changed=None, expect=None):
+    """Add the row (no id yet) or update the row with its id. Returns the id. Raises Gone when the row was deleted
+    from the sheet since the page was loaded.
 
     changed: the fields this save means to change. With it, an existing row is re-read from the sheet first and only
     those fields are written over it, so an edit someone made straight in the sheet meanwhile survives. Without it
-    the whole row is written (only for callers that hold the full, current row)."""
+    the whole row is written (only for callers that hold the full, current row).
+    expect: {field: value} the row must still have in the sheet, checked under the lock; raises Changed when it does
+    not (a to-do already marked done by a second click or by someone else)."""
     cols = TABS[tab]
     with FileLock(LOCK), _lock:
         ws = _ws(tab)
@@ -191,12 +220,18 @@ def save(tab, row, changed=None):
             row = dict(row, id=f'{prefix}-{max(nums, default=0) + 1:03d}')
             ws.append_row([_cell(row.get(c)) for c in cols], value_input_option='RAW')
         else:
+            if row['id'] not in ids:
+                raise Gone(row['id'])
             n = ids.index(row['id']) + 1
             out = row
-            if changed is not None:
+            if changed is not None or expect:
                 end = chr(64 + len(cols)) if len(cols) <= 26 else 'Z'
                 live = (ws.get(f'A{n}:{end}{n}', value_render_option='UNFORMATTED_VALUE') or [[]])[0]
-                out = dict(zip(cols, list(live) + [''] * len(cols)))
+                live = dict(zip(cols, list(live) + [''] * len(cols)))
+                if any(norm(_date_text(live.get(k, '')) if k in DATES else live.get(k)) != norm(v) for k, v in (expect or {}).items()):
+                    raise Changed(row['id'])
+            if changed is not None:
+                out = live
                 out.update({k: row.get(k) for k in changed if k in cols and k != 'id'})
             ws.update([[_cell(out.get(c)) for c in cols]], f'A{n}', value_input_option='RAW')
         refresh()
@@ -211,20 +246,6 @@ def norm(v):
         return f'{f:g}'
     except ValueError:
         return s
-
-
-def create_tabs():
-    """Make the tabs with their plain headers if they are not there yet, and bring older headers up to date."""
-    book = open_book(os.environ['OPERATIONS_SHEET_ID'])
-    have = {w.title: w for w in book.worksheets()}
-    for title, labels in LABELS.items():
-        if title not in have:
-            book.add_worksheet(title, rows=300, cols=len(labels)).update([labels], 'A1', value_input_option='RAW')
-        elif have[title].row_values(1) != labels:
-            if have[title].col_count < len(labels):
-                have[title].add_cols(len(labels) - have[title].col_count)
-            have[title].update([labels], 'A1', value_input_option='RAW')
-    refresh()
 
 
 # What the pages show, worked out from the rows. No I/O below.
@@ -290,23 +311,30 @@ def reserve_plan(rows, today=None, cfg=None):
             'monthly_without_big': round(sum(r['monthly'] for r in later if not r['big']), 2)}
 
 
-def replacement_plan(rows, today=None, horizon=20, cfg=None):
-    """{year: [items due]} for the overview, and the monthly set-aside from reserve_plan as a yearly figure."""
-    rp = reserve_plan(rows, today, cfg)
-    plan = {}
-    for r in rp['near'] + rp['later']:
-        plan.setdefault(r['year'], []).append(r['it'])
-    return dict(sorted(plan.items())), round(rp['monthly'] * 12, 2)
-
-
-def next_due(t):
-    """After a task is done: the same day repeat_months later (or '' for a one-time task)."""
+def next_due(t, after=None):
+    """A repeating task's next date, repeat_months after its due date ('' for a one-time task). A date on the last day
+    of its month stays on the last day (Jan 31, Feb 28, Mar 31); any other day keeps its number wherever the month has it.
+    after (YYYY-MM-DD; today when a task is marked Done): step on until the date is later than that, so a long-overdue
+    task does not stay overdue. Without it: one step. A date that cannot be read is given back as it is."""
     if not t['repeat_months'] or not t['due']:
         return ''
-    y, m, d = map(int, t['due'][:10].split('-'))
-    m += int(t['repeat_months'])
-    y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
-    return f'{y}-{m:02d}-{min(d, 28):02d}'
+    try:
+        y, m, d = map(int, str(t['due'])[:10].split('-'))
+        step = int(t['repeat_months'])
+        month_end = d == calendar.monthrange(y, m)[1]
+    except (TypeError, ValueError):
+        return t['due']
+    if step < 1:
+        return ''
+    out = t['due']
+    for k in range(1, 601):          # always from the date itself, so the day of the month never drifts on the way
+        n = m + step * k
+        yy, mm = y + (n - 1) // 12, (n - 1) % 12 + 1
+        last = calendar.monthrange(yy, mm)[1]
+        out = f'{yy}-{mm:02d}-{(last if month_end else min(d, last)):02d}'
+        if not after or out > after:
+            break
+    return out
 
 
 def is_auto(t):
@@ -428,10 +456,6 @@ def budget(year, items_rows, places_rows, tasks_rows, today=None, cfg=None):
     for r in out.values():
         r['items'].sort(key=lambda x: -x[1])
     return out
-
-
-def money_word(v):
-    return f"${v:,.0f}"
 
 
 def every_label(months):

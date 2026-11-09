@@ -4,4 +4,6 @@ Description=DRSCCA apps: email admin@ that %i failed
 Type=oneshot
 EnvironmentFile=/opt/drscca/data/secrets/drapps.env
 Environment=ALERT_EMAIL=admin@drscca.org
+# drapps.env names the key's path inside the container; this is the same key on the host (as in drscca-qbo.service).
+Environment=GOOGLE_SA_KEY_HOST=/opt/drscca/data/secrets/drapps-sa.json
 ExecStart=/opt/drscca/venv/bin/python /opt/drscca/app/deploy/gcp/alert.py %i

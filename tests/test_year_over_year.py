@@ -107,7 +107,7 @@ def _detail_page(monkeypatch, perms, ballot=None):
     monkeypatch.setattr(bud, '_event', lambda code: {'event_name': 'Sno', 'date': '2027-01-09', 'program_code': 'RY'})
     monkeypatch.setattr(B, 'get', lambda code: {'event_code': '#C', 'event_name': 'Sno', 'program': 'RY', 'date': '2027-01-09',
                                                 'chair': 'Pat', 'location': '', 'notes': '', 'last_year_event': '', 'lines': [],
-                                                'totals': B.totals([])})
+                                                'updated': '2026-11-01', 'updated_by': 'Pat', 'totals': B.totals([])})
     monkeypatch.setattr(bud, '_ballot', lambda code: ballot)
     monkeypatch.setattr(B, 'enabled', lambda: True)
     monkeypatch.setattr(B, 'qbo_actuals', lambda: {})
@@ -123,7 +123,7 @@ def _detail_page(monkeypatch, perms, ballot=None):
 
 def test_unapproved_budget_never_looks_approved(monkeypatch):
     html = _detail_page(monkeypatch, {'events'}, ballot={'status': 'open', 'closes': '2026-12-05'})
-    assert 'Not approved yet.' in html and 'voting on it by email until 2026-12-05' in html
+    assert 'Not approved yet.' in html and 'voting on it by email until Dec 5, 2026' in html
     assert 'Record board approval' not in html and 'Approved on' not in html
 
 

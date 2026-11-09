@@ -216,7 +216,7 @@ def detail(year, program):
         g['drift'] = g['records'] is not None and abs((g['records'] or 0) - (g['plan'] or 0)) >= 1
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
                                                ops_budget=ops_budget is not None, pb_code=pb_code, pb=pb,
-                                               pb_status=('draft' if pb.get('draft') else ('changed' if pb.get('updated', '') > pb['approved'] else 'approved') if pb.get('approved') else 'budget') if pb else None,
+                                               pb_status=B.status(pb),
                                                can_draft=bool(p['info'].get('submitted') or p['info'].get('approved'))
                                                and (bool(officer_current()) or (not p['info'].get('approved') and may_write(program))),
                                                a=act.get(program), as_of=as_of, events=_event_actuals(program, year),
@@ -307,11 +307,8 @@ def directs(program):
 
 def may_write(program):
     """Whether the signed-in person may write this program's plan: "any program's plan", or "their own" for a program
-    one of their roles is tied to. An API key acts as an officer."""
-    from flask import g
+    one of their roles is tied to. An API key is its owner, no more."""
     from auth import user
-    if getattr(g, 'api_user', None):
-        return True
     u = user() or {}
     p = set(u.get('perms') or ())
     mine = any((o.get('email') or '').lower() == u.get('email') and o.get('program') == program for o in O.all())
@@ -322,8 +319,8 @@ def may_write(program):
 @login_required
 def edit(year, program):
     if not may_write(program):
-        flash("Your role can't write this program's plan. Ask the admin if you need it.", 'warning')
-        return redirect(url_for('plan.detail', year=year, program=program))
+        from auth import refuse
+        return refuse("Your role can't write this program's plan. Ask the admin if you need it.", url_for('plan.detail', year=year, program=program))
     if (g := _guard()):
         return g
     year, names = _year(year), dict(_programs())
@@ -332,8 +329,8 @@ def edit(year, program):
     prev = str(int(year) - 1)
     if request.method == 'POST':
         f = request.form
-        who = f.get('entered_by', '').strip() or session.get('who', '') or 'Unknown'
-        session['who'] = who
+        from auth import user as _signed_in   # the audit log names the signed-in person; the form's entered_by is not read
+        who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
         lines, errors = [], []
         reg_events = {x['code']: x['e'] for x in _event_actuals(program, year)}
         for item, month, net, note, code, account in zip(f.getlist('item'), f.getlist('month'), f.getlist('net'), f.getlist('note'), f.getlist('code'),
@@ -346,7 +343,10 @@ def edit(year, program):
             if not item and v is None and not note:
                 continue
             if v == 'bad':
-                errors.append(f'"{item or net}": the amount must be a number, like 1400 or -500.')
+                # The line stays on the form (its amount empty; net_typed is what was typed), so only it needs fixing.
+                errors.append(f'"{item or "A line"}": the amount "{net}" must be a number, like 1400 or -500.')
+                lines.append({'item': item, 'month': int(month) if month.isdigit() else '', 'net': None, 'net_typed': net, 'note': note,
+                              'event_code': code, 'account': account})
                 continue
             if code and code in [ln['event_code'] for ln in lines]:
                 errors.append(f'{code} is picked on two lines; an event goes with one plan line.')
@@ -363,8 +363,16 @@ def edit(year, program):
                                                        info=info, lines=lines, ref=_reference(program, prev),
                                                        reg=_event_actuals(program, year), accounts=_accounts(program, year))), 400
         submit = f.get('action') == 'submit'
-        was_in = bool((P.plan(year).get(program) or {}).get('info', {}).get('submitted'))
+        before = P.plan(year).get(program) or {}
+        was_in = bool(before.get('info', {}).get('submitted'))
         P.save(year, program, info, lines, submit=submit)
+        # Operations' plan is its budget: if its numbers changed while the board is voting on it by email, that vote
+        # is about the old ones.
+        if program == OPS and P.lines_hash(P.saved_lines(before.get('lines', []))) != P.lines_hash(lines):
+            from bud import _cancel_ballots
+            if _cancel_ballots(f'budget:{year}:{program}', who, undecided_only=True):
+                log_audit_event('BALLOT_CANCELLED', who, {'year': year, 'program': program, 'why': 'budget numbers changed during the vote'})
+                flash("The numbers changed, so the board's email vote on this budget was cancelled. Ask for the vote again.", 'warning')
         total = round(sum(ln['net'] or 0 for ln in lines), 2)
         log_audit_event('PLAN_SUBMITTED' if submit and not was_in else 'PLAN_SAVED', who,
                         {'year': year, 'program': program, 'lines': len(lines), 'net': total})
@@ -424,16 +432,19 @@ def checks():
     if (g := _guard()):
         return g
     if request.method == 'POST':
+        # Hiding a row from the treasurer's list is for whoever handles the money or records board decisions.
+        if not (officer_current('pay') or officer_current()):
+            from auth import refuse
+            return refuse('Hiding a Books check row is for the treasurer and the officers.', url_for('plan.checks'))
         key = request.form.get('key', '')
         e = next((x for x in P.exceptions() if x['key'] == key), None)
         if e:
             from auth import user as _signed_in   # the audit log names the signed-in person, not a form field
             who = (_signed_in() or {}).get('name') or session.get('who', '') or 'Unknown'
-            session['who'] = who
             note = request.form.get('note', '').strip()
             P.mark_reviewed(key, who, note)
             log_audit_event('PLAN_REVIEWED', who, {'key': key, 'kind': e['kind'], 'detail': e['detail'], 'note': note})
-            flash('Marked as looked at. It stays hidden unless something changes.', 'success')
+            flash('Hidden. It stays hidden unless something changes.', 'success')
         return redirect(url_for('plan.checks'))
     exc = P.exceptions()
     kinds = []

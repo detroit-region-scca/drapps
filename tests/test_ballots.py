@@ -94,14 +94,15 @@ class FakeStore:
         bs = [b for b in self.rows if b['item'] == item and b['status'] != 'cancelled']
         return dict(bs[-1]) if bs else None
 
-    def open_ballot(self, item, title, who, today):
+    def open_ballot(self, item, title, who, today, snap=''):
         for b in self.rows:
             if b['item'] == item and b['status'] in ('open', 'expired'):
                 b['status'] = 'cancelled'
         self.n += 1
         bid = f'B-2026-{self.n:03d}'
         self.rows.append({'id': bid, 'item': item, 'title': title, 'opened': today, 'opened_by': who,
-                          'closes': BL.closes(today), 'status': 'open', 'result': '', 'count': '', 'decided': '', 'recorded_by': ''})
+                          'closes': BL.closes(today), 'status': 'open', 'result': '', 'count': '', 'decided': '', 'recorded_by': '',
+                          'snap': snap})
         return bid
 
     def update(self, bid, **f):
@@ -112,7 +113,7 @@ class FakeStore:
 
 
 @pytest.fixture()
-def env(monkeypatch):
+def env(monkeypatch, tmp_path):
     import app as A
     import auth
     import board
@@ -120,6 +121,8 @@ def env(monkeypatch):
     motion = {'id': 'M-2026-009', 'title': 'Buy a trailer', 'status': 'open', 'details': '', 'link': '', 'proposed_by': 'Pat One',
               'proposed': '2026-11-01', 'asked': ''}
     monkeypatch.setattr(board, 'BS', store)
+    monkeypatch.setattr(board, 'RECORD_LOCK', str(tmp_path / 'record.lock'))
+    monkeypatch.setattr(board, 'VOTE_LOCK', str(tmp_path / 'vote.lock'))
     monkeypatch.setattr(board.O, 'all', lambda: [dict(o) for o in OFFICIALS])
     monkeypatch.setattr(board.M, 'enabled', lambda: True)
     monkeypatch.setattr(board.B, 'enabled', lambda: False)

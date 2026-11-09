@@ -51,7 +51,12 @@ def _db():
         c.execute('CREATE TABLE IF NOT EXISTS snaps (sheet_id TEXT, key TEXT, ranges TEXT, params TEXT, data TEXT, error TEXT,'
                   ' stale INTEGER DEFAULT 0, fetched REAL, PRIMARY KEY (sheet_id, key))')
         c.execute('CREATE TABLE IF NOT EXISTS sheets (sheet_id TEXT PRIMARY KEY, version INTEGER DEFAULT 0, modified TEXT DEFAULT "",'
-                  ' checked REAL DEFAULT 0)')
+                  ' checked REAL DEFAULT 0, writes INTEGER DEFAULT 0)')
+        if 'writes' not in [r[1] for r in c.execute('PRAGMA table_info(sheets)')]:      # a copy made before this column
+            try:
+                c.execute('ALTER TABLE sheets ADD COLUMN writes INTEGER DEFAULT 0')
+            except sqlite3.OperationalError:
+                pass                                                                    # another worker just added it
         _local.db = c
     return c
 
@@ -77,9 +82,17 @@ def _bump(c, sheet_id):
               (sheet_id,))
 
 
+def _writes(c, sheet_id):
+    """How many times the apps have written to this sheet (invalidate calls)."""
+    row = c.execute('SELECT writes FROM sheets WHERE sheet_id = ?', (sheet_id,)).fetchone()
+    return (row[0] or 0) if row else 0
+
+
 def _fetch(sheet_id, key, ranges, params):
-    """Read from Google and store it (or the refusal). Returns (data, error message)."""
+    """Read from Google and store it (or the refusal). Returns (data, error message). A write that lands while Google
+    is answering may not be in the answer, so the stored copy is then marked stale and the next read asks again."""
     import gspread
+    before = _writes(_db(), sheet_id)
     try:
         data, err = open_book(sheet_id).values_batch_get(ranges, params=params), None
     except gspread.exceptions.APIError as e:
@@ -89,8 +102,9 @@ def _fetch(sheet_id, key, ranges, params):
     c = _db()
     c.execute('BEGIN IMMEDIATE')
     try:
-        c.execute('INSERT OR REPLACE INTO snaps (sheet_id, key, ranges, params, data, error, stale, fetched) VALUES (?, ?, ?, ?, ?, ?, 0, ?)',
-                  (sheet_id, key, json.dumps(ranges), json.dumps(params), None if data is None else json.dumps(data), err, time.time()))
+        stale = 1 if _writes(c, sheet_id) != before else 0
+        c.execute('INSERT OR REPLACE INTO snaps (sheet_id, key, ranges, params, data, error, stale, fetched) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                  (sheet_id, key, json.dumps(ranges), json.dumps(params), None if data is None else json.dumps(data), err, stale, time.time()))
         _bump(c, sheet_id)
         c.execute('COMMIT')
     except Exception:
@@ -125,9 +139,14 @@ def invalidate(sheet_id):
         return
     c = _db()
     c.execute('BEGIN IMMEDIATE')
-    c.execute('UPDATE snaps SET stale = 1 WHERE sheet_id = ?', (sheet_id,))
-    _bump(c, sheet_id)
-    c.execute('COMMIT')
+    try:
+        c.execute('UPDATE snaps SET stale = 1 WHERE sheet_id = ?', (sheet_id,))
+        _bump(c, sheet_id)
+        c.execute('UPDATE sheets SET writes = COALESCE(writes, 0) + 1 WHERE sheet_id = ?', (sheet_id,))
+        c.execute('COMMIT')
+    except Exception:
+        c.execute('ROLLBACK')
+        raise
 
 
 def version(sheet_id):
@@ -232,12 +251,22 @@ def poll_once():
 
 def _poll_forever():
     lock = FileLock(LEADER_LOCK)
+    complained = False
     while True:
         try:
             lock.acquire(timeout=0)          # only one worker polls; the others try again later in case it died
         except Timeout:
             time.sleep(POLL_SECONDS * 4)
             continue
+        except Exception as e:
+            # The lock file can't be opened (owned by root after a job run as root, a full disk): keep trying
+            # instead of letting the thread die, or edits made straight in Sheets would never show up again.
+            if not complained:
+                log.error('sheet cache: cannot take %s (%s); edits made in Sheets will not show until this is fixed', LEADER_LOCK, e)
+                complained = True
+            time.sleep(POLL_SECONDS * 4)
+            continue
+        complained = False
         try:
             while True:
                 try:
@@ -246,7 +275,10 @@ def _poll_forever():
                     log.warning('sheet cache: poll failed: %s', e)
                 time.sleep(POLL_SECONDS)
         finally:
-            lock.release()
+            try:
+                lock.release()
+            except Exception as e:
+                log.warning('sheet cache: could not release %s: %s', LEADER_LOCK, e)
 
 
 def _start_poller():

@@ -9,13 +9,38 @@ from flask import url_for
 from markupsafe import Markup, escape
 
 # action prefix -> (app label, badge colour)
-APPS = {'EVENT': ('Events', 'primary'), 'WP': ('Worker Points', 'warning'), 'FUNDS': ('Money', 'success'), 'MONEY': ('Money', 'success'),
-        'BUDGET': ('Events', 'primary'), 'PLAN': ('Annual Plan', 'light'), 'EQUIP': ('Operations', 'warning'), 'INVOICE': ('Invoices', 'info'), 'LOGIN': ('Login', 'secondary'),
-        'SHEET': ('Sheets', 'danger'), 'BOARD': ('Board', 'primary'), 'MOTION': ('Board', 'primary')}
+APPS = {'EVENT': ('Events', 'primary'), 'FUNDS': ('Money', 'success'), 'MONEY': ('Money', 'success'),
+        'BUDGET': ('Events', 'primary'), 'PLAN': ('Annual Plan', 'light'), 'EQUIP': ('Operations', 'warning'), 'INVOICE': ('Invoices', 'info'),
+        'SHEET': ('Sheets', 'danger'), 'BOARD': ('Board', 'primary'), 'MOTION': ('Board', 'primary'), 'BALLOT': ('Board', 'primary'),
+        'MINUTES': ('Board', 'primary'),
+        'MEMBER': ('Members', 'warning'), 'MILESTONES': ('Members', 'warning'), 'POINTS': ('Members', 'warning'), 'AUTO': ('Members', 'warning'),
+        'WP': ('Members', 'warning'),          # entries from when Members was Worker Points
+        'RECORDS': ('Records', 'info'), 'RESULTS': ('Records', 'info'),
+        'LOGIN': ('Login', 'secondary'), 'SIGNIN': ('Login', 'secondary'),
+        'ACCESS': ('Admin', 'secondary'), 'ROLE': ('Admin', 'secondary'), 'USER': ('Admin', 'secondary'), 'PROGRAM': ('Admin', 'secondary')}
 
 
 def app_of(action):
-    return APPS.get(action.split('_')[0], ('Other', 'secondary'))
+    return APPS.get(str(action or '').split('_')[0], ('Other', 'secondary'))
+
+
+def _n(v, one, many=None):
+    """'1 file', '3 files' from a count or a list; the bare word when there is no number."""
+    n = len(v) if isinstance(v, (list, tuple)) else v
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return many or one + 's'
+    return f"{n} {one if n == 1 else (many or one + 's')}"
+
+
+def _vote_item(item):
+    """'budget:2027:#DRABC' -> 'the 2027 budget for #DRABC'; 'motion:MO-2026-03' -> 'motion MO-2026-03'."""
+    kind, _, rest = str(item or '').partition(':')
+    if kind == 'budget':
+        year, _, code = rest.partition(':')
+        return f'the {year} budget for {code}'
+    return f'motion {rest}' if kind == 'motion' else (str(item) if item else 'an item')
 
 
 def _money(v):
@@ -49,8 +74,17 @@ def plain(log):
 
 
 def describe(log):
-    """One line, already escaped: who did what to which record."""
-    a, d = log.get('action', ''), log.get('details') or {}
+    """One line, already escaped: who did what to which record. Never raises: an entry this can't make sense of
+    (hand-edited in the sheet, or written by an older version) gets the plain "who, action" line."""
+    try:
+        return _describe(log)
+    except Exception:
+        log = log if isinstance(log, dict) else {}
+        return Markup('<b>{}</b> {}').format(log.get('user') or 'Unknown', str(log.get('action') or 'entry').replace('_', ' ').lower())
+
+
+def _describe(log):
+    a, d = str(log.get('action') or ''), log.get('details') or {}
     who = Markup('<b>{}</b>').format(log.get('user') or 'Unknown')
     if not isinstance(d, dict):
         d = {}
@@ -83,24 +117,42 @@ def describe(log):
         diffs = [f"{k.replace('_', ' ')}: '{o.get(k)}' to '{u.get(k)}'"
                  for k in ('program_code', 'date', 'event_name', 'creator_name', 'custom_tag') if o.get(k) != u.get(k)]
         return Markup('{} changed {}: {}').format(who, u.get('event_name') or o.get('event_name', ''), '; '.join(diffs) or 'no changes')
-    if a == 'WP_EVENT_POSTED':
-        return Markup('{} posted {} for {} workers at {}').format(who, _pts(g('points')), g('workers', ''), g('event_code', ''))
-    if a == 'WP_ALLOCATIONS_POSTED':
-        return Markup('{} posted the {} monthly allocations ({})').format(who, g('month', ''), _pts(g('points')))
-    if a == 'WP_REDEMPTION_REQUESTED':
-        return Markup('{} requested {} for member {} ({})').format(who, _pts(g('points')), g('member', ''), g('id', ''))
-    if a == 'WP_REDEEMED':
-        extra = Markup(', {}').format(_link('fr.detail', g('funds_request'), req_id=g('funds_request'))) if g('funds_request') else ''
-        rid = g('id') or g('note', '')
-        return Markup('{} approved {} off member {} ({}{})').format(who, _pts(g('points')), g('member', ''), rid, extra)
-    if a == 'WP_REDEMPTION_DECLINED':
-        return Markup('{} declined {}: {}').format(who, g('id', ''), g('note', ''))
-    if a == 'WP_FORFEIT':
-        return Markup('{} forfeited {} for member {}').format(who, _pts(g('points')), g('member', ''))
-    if a == 'WP_MEMBER_ADDED':
-        return Markup('{} added member {} {}').format(who, g('member', ''), g('name', ''))
-    if a == 'WP_QBO_BALANCE':
-        return Markup('{} set the QuickBooks reserve balance to {} as of {}').format(who, g('qbo', ''), g('as_of', ''))
+    if a == 'BALLOT_VOTE':
+        return Markup('{} voted {} on {}{}').format(who, str(g('choice', '')).capitalize(), _vote_item(g('item')),
+                                                    Markup(' (by {})').format(g('via')) if g('via') else '')
+    if a == 'BALLOT_DECIDED':
+        return Markup('The board\'s email vote on {} is decided: {} {}').format(_vote_item(g('item')), g('result', ''), g('count', ''))
+    if a == 'BALLOT_REMINDED':
+        return Markup('{} sent a reminder to {} who had not voted').format(who, _n(g('to'), 'director'))
+    if a == 'MINUTES_UPLOADED':
+        return Markup('{} uploaded minutes {}: {}').format(who, 'and posted them' if g('approved') else 'as a draft', g('file', ''))
+    if a == 'MINUTES_PUBLISHED':
+        return Markup('{} posted the approved minutes {}').format(who, g('file', ''))
+    if a == 'MINUTES_DRAFT_DELETED':
+        return Markup('{} deleted the draft minutes {}').format(who, g('file', ''))
+    if a == 'MEMBER_LIST_LOADED':
+        return Markup('{} loaded the SCCA member list {}: {} on it').format(who, g('file', ''), _n(g('on_list'), 'current member'))
+    if a == 'MEMBER_ADDED':
+        return Markup('{} added member {}').format(who, _link('members.member', g('member', ''), mid=g('member', '')))
+    if a == 'MILESTONES_SAVED':
+        return Markup('{} saved the member milestones for {} ({})').format(who, g('month', ''), _n(g('names'), 'name'))
+    if a == 'POINTS_ENTERED':
+        ev = g('event') if g('event') not in (None, '', 'none') else 'a volunteer job'
+        return Markup('{} entered {} for {} at {}').format(who, _pts(g('points')), _n(g('rows'), 'member'), ev)
+    if a == 'POINTS_USED':
+        return Markup('{} used {} from member {} for {}').format(who, _pts(g('points')), _link('members.member', g('member', ''), mid=g('member', '')), g('for', ''))
+    if a == 'POINTS_FORFEITED':
+        return Markup('{} deleted {} from {} who are not current').format(who, _pts(g('points')), _n(g('members'), 'member'))
+    if a == 'POINTS_BOOKS_EMAILED':
+        return Markup('{} emailed the treasurer the worker points to enter in QuickBooks ({})').format(who, _n(g('entries'), 'entry', 'entries'))
+    if a == 'POINTS_RECONCILED':
+        return Markup('{} marked {} as entered in QuickBooks ({})').format(who, _n(g('entries'), 'points entry', 'points entries'), g('ref', ''))
+    if a == 'AUTO_ADD_SAVED':
+        return Markup('{} saved the list of people who get points added every month ({})').format(who, _n(g('people'), 'person', 'people'))
+    if a == 'RECORDS_CORRECTED':
+        return Markup('{} corrected the records: {} ({})').format(who, g('what', ''), _n(g('changes'), 'change'))
+    if a == 'RESULTS_ADDED':
+        return Markup('{} added results for {} ({} {}): {}').format(who, g('event', ''), g('program', ''), g('date', ''), _n(g('files'), 'file'))
     if a == 'FUNDS_REQUESTED':
         return Markup('{} filed {}: {} to {} {}').format(who, _link('fr.detail', g('id', ''), req_id=g('id', '')), _money(g('net')), g('payee', ''), g('event_code', ''))
     if a == 'FUNDS_PAID':
@@ -129,14 +181,20 @@ def describe(log):
         return Markup('{} saved the Operations to-do "{}" (due {})').format(who, g('task', ''), g('due', '') or 'no date')
     if a == 'EQUIP_TASK_DONE':
         return Markup('{} marked done: {}{}').format(who, g('task', ''), f" (next due {g('next')})" if g('next') else '')
-    if a == 'EQUIP_SIGNIN':
-        return Markup('{} signed in to make changes in Operations').format(who)
+    if a == 'EQUIP_DOCS_FOLDER_MADE':
+        return Markup('{} made a Drive folder for the documents of {}').format(who, g('name', ''))
+    if a == 'EQUIP_DOCS_UPLOADED':
+        return Markup('{} saved the document "{}" for {} ({})').format(who, g('doc', ''), g('for', ''), _n(g('files'), 'file'))
     if a == 'FUNDS_REOPENED':
         return Markup('{} reopened {}').format(who, _link('fr.detail', g('id', ''), req_id=g('id', '')))
     if a == 'BUDGET_SAVED':
         return Markup('{} saved the budget for {} ({} lines)').format(who, _link('bud.detail', g('event_code', ''), code=g('event_code', '')), g('lines', ''))
     if a == 'BUDGET_APPROVED':
         return Markup('{} recorded board approval of the budget for {} on {}').format(who, _link('bud.detail', g('event_code', ''), code=g('event_code', '')), g('approved', ''))
+    if a == 'BUDGET_DRAFT':
+        return Markup('{} put the budget for {} back in draft{}').format(
+            who, _link('bud.detail', g('event_code', ''), code=g('event_code', '')),
+            Markup(' (it was approved on {})').format(g('was_approved')) if g('was_approved') else '')
     if a == 'BUDGET_UNAPPROVED':
         return Markup('{} cleared the board approval of the budget for {}').format(who, _link('bud.detail', g('event_code', ''), code=g('event_code', '')))
     if a == 'PLAN_LINKED':
@@ -146,7 +204,7 @@ def describe(log):
         return Markup('{} saved the {} {} plan ({} lines, {})').format(who, g('year', ''), _link('plan.detail', g('program', ''), year=g('year', ''), program=g('program', '')),
                                                                      g('lines', ''), _money(g('net')) if (g('net') or 0) >= 0 else '-' + _money(g('net')))
     if a == 'PLAN_REVIEWED':
-        return Markup('{} marked a books check item as looked at: {}{}').format(who, g('detail', ''), Markup(' ({})').format(g('note')) if g('note') else '')
+        return Markup('{} hid a books check item: {}{}').format(who, g('detail', ''), Markup(' ({})').format(g('note')) if g('note') else '')
     if a.endswith('_IMPORTED'):
         return Markup('{} imported {}').format(who, g('summary', ''))
     if a in ('LOGIN_SUCCESS', 'LOGIN_FAILURE'):

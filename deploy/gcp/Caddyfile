@@ -2,17 +2,32 @@
 	email admin@drscca.org
 }
 
+# Sent with every answer from every site below. No Content-Security-Policy: the pages use inline scripts.
+# "-Server" removes the header that names the software (Caddy's own, and gunicorn's or nginx's behind it).
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
 livetiming.drscca.org {
+	import security_headers
 	encode gzip
 	reverse_proxy livetiming-web:80
 }
 
 drapps.drscca.org {
+	import security_headers
 	encode gzip
 	reverse_proxy drapps:5858
 }
 
 # Old name for the DRSCCA apps: keep links in old emails working.
 drevent.drscca.org {
+	import security_headers
 	redir https://drapps.drscca.org{uri} permanent
 }

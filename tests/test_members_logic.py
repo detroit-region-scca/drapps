@@ -2,14 +2,6 @@ from datetime import date, datetime
 
 import members_logic as L
 
-MEM = {'1': {'member': '1', 'first': 'Jane', 'last': 'Smith'}, '2': {'member': '2', 'first': 'PAT', 'last': 'QUINN'}}
-
-
-def test_spending_cannot_go_below_zero():
-    rows = [{'member': '1', 'points': -12}]
-    assert L.check_spending(rows, {'1': 10}) == ['1: has only 10 points']
-    assert L.check_spending(rows, {'1': 12}) == []
-
 
 def test_only_approved_entries_count():
     e = [{'member': '1', 'points': 4, 'status': 'Approved', 'event': '#A', 'date': date(2026, 9, 1), 'by': 'K'},
@@ -21,12 +13,12 @@ def test_only_approved_entries_count():
 def test_roster_merge_refreshes_dates_adds_new_and_keeps_former_members():
     rows = [('Member ID', 'First Name', 'Last Name', 'Suffix', 'Address Line 1', 'SCCA Member Expire\n', 'Region Member Expire\n', 'Region Join Date', 'Birth Date'),
             (1, 'Jane', 'Smith', None, 'x', datetime(2027, 6, 30), '05/31/2027', '03/15/2016', datetime(1980, 1, 1)),
-            (500200, 'Norris', 'Ames', None, 'x', '01/31/2027', None, '11/02/1991', None),
+            (500200, 'Robin', 'Madeup', None, 'x', '01/31/2027', None, '11/02/1991', None),
             (3, 'New', 'Person', 'Jr', 'x', '10/31/2027', None, '11/01/2026', None)]
     report = L.roster(rows)
     assert report['1'] == {'first': 'Jane', 'last': 'Smith', 'joined': date(2016, 3, 15), 'expires': date(2027, 6, 30)}
     members = [{'member': '1', 'first': 'Jane', 'last': 'Smith', 'life': False, 'points': 5.0},
-               {'member': '500200-1', 'first': 'Norris', 'last': 'Ames', 'life': False, 'points': 29.0},
+               {'member': '500200-1', 'first': 'Robin', 'last': 'Madeup', 'life': False, 'points': 29.0},
                {'member': '9', 'first': 'Gone', 'last': 'Away', 'life': False, 'points': 7.0, 'listed': date(2026, 1, 1)}]
     out = {m['member']: m for m in L.merge_roster(members, report, date(2026, 11, 2))}
     assert out['500200-1']['expires'] == date(2027, 1, 31) and out['500200-1']['listed'] == date(2026, 11, 2)
@@ -36,34 +28,18 @@ def test_roster_merge_refreshes_dates_adds_new_and_keeps_former_members():
     lapsed = L.lapsed(list(out.values()), date(2026, 11, 2))
     assert [m['member'] for m in lapsed] == ['9']
     ms = L.milestones(list(out.values()), '2026-11')
-    assert ms == {35: ['Norris Ames'], 0: ['New Person Jr']}
+    assert ms == {35: ['Robin Madeup'], 0: ['New Person Jr']}
 
 
 def test_lapsed_is_empty_until_a_list_is_loaded():
     assert L.lapsed([{'member': '1', 'first': 'a', 'last': 'b', 'life': False, 'points': 5, 'listed': None}], date(2026, 11, 2)) == []
 
 
-def test_month_books():
-    e = [{'date': date(2026, 11, 3), 'points': 4.0, 'kind': 'Earned', 'event': '#X', 'status': 'Approved', 'name': 'A', 'what': 'w'},
-         {'date': date(2026, 11, 4), 'points': 12.0, 'kind': 'Role points', 'event': '', 'status': 'Approved', 'name': 'B', 'what': 'r'},
-         {'date': date(2026, 11, 9), 'points': -10.0, 'kind': 'Used', 'event': '', 'status': 'Approved', 'name': 'C', 'what': 'renewal'},
-         {'date': date(2026, 11, 9), 'points': 99.0, 'kind': 'Earned', 'event': '#X', 'status': 'Pending', 'name': 'D', 'what': 'x'}]
-    b = L.month_books(e, {'#X': {'program_code': 'AX'}}, 2026, 11)
-    assert [(ln['debit'].split(':')[0], ln['amount']) for ln in b['lines']] == [('Club AX Autocross Expense', 20.0), ('Operations Expense', 60.0)]
-    assert [x['name'] for x in b['used']] == ['C']
-
-
-def test_standings_names_and_points_only():
-    out = L.standings([{'member': '1', 'first': 'PAT', 'last': 'QUINN', 'points': 170.6}, {'member': '2', 'first': 'A', 'last': 'Zed', 'points': 0},
-                       {'member': 'UNASSIGNED', 'first': '', 'last': 'Unassigned', 'points': 3}])
-    assert out == [{'name': 'Pat Quinn', 'points': 170.6}]
-
-
 def test_scca_number_formats_match_the_ledger():
     rows = [('Member ID', 'First Name', 'Last Name', 'SCCA Member Expire', 'Region Join Date'),
-            ('500100_0', 'Dana', 'Byers', '07/31/2027', '01/01/2001'), ('500200_1', 'Norris', 'Ames', '05/31/2027', '11/02/1991')]
-    members = [{'member': '500100', 'first': 'Dana', 'last': 'Byers', 'life': False, 'points': 13.0},
-               {'member': '500200-1', 'first': 'Norris', 'last': 'Ames', 'life': False, 'points': 29.0}]
+            ('500100_0', 'Casey', 'Placeholder', '07/31/2027', '01/01/2001'), ('500200_1', 'Robin', 'Madeup', '05/31/2027', '11/02/1991')]
+    members = [{'member': '500100', 'first': 'Casey', 'last': 'Placeholder', 'life': False, 'points': 13.0},
+               {'member': '500200-1', 'first': 'Robin', 'last': 'Madeup', 'life': False, 'points': 29.0}]
     out = L.merge_roster(members, L.roster(rows), date(2026, 11, 2))
     assert len(out) == 2 and all(m['listed'] == date(2026, 11, 2) for m in out)
 
@@ -87,31 +63,23 @@ def test_auto_add_prepares_each_month_once():
     assert L.auto_entries(rows, [], 2026, 5)[0]['points'] == 2.0
 
 
-def test_worker_point_form_rows():
-    rows, problems = L.rows_from_form(['1 Jane Smith', 'Bob Jones', '', '2 Pat Quinn'], ['', '3', '', '-1'], MEM, '#AX1',
-                                      date(2026, 9, 12), 'Registration', default_points=2)
-    assert [(r['member'], r['name'], r['points'], r['what'], r['kind']) for r in rows] == [
-        ('1', 'Jane Smith', 2, 'Registration', 'Earned'), ('', 'Bob Jones', 3.0, 'Registration', 'Earned')]
-    assert problems and 'Use points' in problems[0]
-    rows, _ = L.rows_from_form(['1'], ['12'], MEM, '', date(2026, 12, 1), L.VOLUNTEER_JOB)
-    assert rows[0]['kind'] == 'Role points'
-
-
 def test_every_members_template_view_compiles():
     import os
     from jinja2 import Environment, FileSystemLoader
     env = Environment(loader=FileSystemLoader(os.path.join(os.path.dirname(__file__), '..', 'templates')))
+    import app as real
+    env.filters.update({k: v for k, v in real.app.jinja_env.filters.items() if k not in env.filters})   # the app's own filters
     env.get_template('members.html')   # a syntax error here is a 500 on every Members page
 
 
 def test_lapsed_then_rejoined_is_tracked():
-    rows = [('Member ID', 'First Name', 'Last Name', 'SCCA Member Expire', 'Region Join Date'), ('500100_0', 'Dana', 'Byers', '07/31/2027', '01/01/2001')]
-    m = {'member': '500100', 'first': 'Dana', 'last': 'Byers', 'life': False, 'points': 5.0}
+    rows = [('Member ID', 'First Name', 'Last Name', 'SCCA Member Expire', 'Region Join Date'), ('500100_0', 'Casey', 'Placeholder', '07/31/2027', '01/01/2001')]
+    m = {'member': '500100', 'first': 'Casey', 'last': 'Placeholder', 'life': False, 'points': 5.0}
     first = L.merge_roster([m], {}, date(2026, 11, 2))[0]                 # not on the list: lapsed
     assert first['lapsed'] == date(2026, 11, 2) and first['rejoined'] is None
     back = L.merge_roster([first], L.roster(rows), date(2026, 12, 1))[0]   # back on a later list: rejoined
     assert back['lapsed'] is None and back['rejoined'] == date(2026, 12, 1)
-    exp = L.merge_roster([back], L.roster([rows[0], ('500100_0', 'Dana', 'Byers', '11/30/2026', '01/01/2001')]), date(2027, 1, 5))[0]
+    exp = L.merge_roster([back], L.roster([rows[0], ('500100_0', 'Casey', 'Placeholder', '11/30/2026', '01/01/2001')]), date(2027, 1, 5))[0]
     assert exp['lapsed'] == date(2026, 11, 30) and exp['rejoined'] == date(2026, 12, 1)   # expired on the list: lapsed again
 
 
@@ -123,11 +91,6 @@ def test_unreconciled_skips_opening_pending_and_booked():
     assert [x['points'] for x in L.unreconciled(e)] == [1]
 
 
-def test_negative_adjustment_releases_reserve():
-    b = L.books([{'status': 'Approved', 'kind': 'Adjustment', 'points': -2.0, 'event': ''}], {})
-    assert b['lines'][0]['debit'] == 'Reserve Fund - Worker Awards' and b['lines'][0]['amount'] == 10.0
-
-
 def test_every_members_page_renders():
     """Every Members tab and link resolves (a missing route is a 500 on every page)."""
     import os
@@ -137,6 +100,8 @@ def test_every_members_page_renders():
     app = Flask('t', template_folder=os.path.join(os.path.dirname(__file__), '..', 'templates'))
     app.secret_key = 'x'
     app.register_blueprint(members.bp)
+    import app as real
+    app.jinja_env.filters.update({k: v for k, v in real.app.jinja_env.filters.items() if k not in app.jinja_env.filters})   # the app's own filters
     for ep in ('home', 'logout', 'audit'):
         app.add_url_rule('/' + ep, ep, lambda: '')
     from datetime import date
@@ -178,8 +143,5 @@ def test_pick_id_accepts_name_first_old_form_and_full_name():
     assert L.pick_id('', by_id) == ''
 
 
-def test_points_refuse_junk_and_typos():
-    by_id = {'1': {'member': '1', 'first': 'Pat', 'last': 'Example'}}
-    rows, problems = L.rows_from_form(['Pat Example (1)'] * 4, ['nan', 'inf', '500', '2'], by_id, '#A', date(2026, 9, 1), 'Worker')
-    assert [r['points'] for r in rows] == [2.0] and len(problems) == 3
+def test_use_points_refuses_junk():
     assert L.use_entry({'member': '1', 'points': 5}, 'nan', 'Renewal', date(2026, 9, 1))[0] is None

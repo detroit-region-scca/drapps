@@ -6,11 +6,6 @@
     <li class="nav-item"><a class="nav-link {% if view == 'add' %}active{% endif %}" href="{{ url_for('records.add') }}">Add results</a></li>
 {% endblock %}
 {% block style %}
-.rec-bar { border-bottom: 3px solid var(--red); padding: .6rem 0; margin-bottom: 1.5rem; }
-.rec-bar .brand { font-weight: 700; color: var(--text); text-decoration: none; margin-right: 1rem; }
-.rec-bar .links { display: flex; flex-wrap: wrap; gap: .25rem 1rem; }
-.rec-bar .links a { color: var(--text); font-weight: 600; text-decoration: none; }
-.rec-bar .links a:hover, .rec-bar .links a.on { color: var(--red); }
 .rec-stats { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: .75rem 0 1.25rem; }
 .rec-stats b { display: block; font-size: 1.4rem; font-variant-numeric: tabular-nums; }
 .rec-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: .75rem; }
@@ -55,7 +50,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
        border: 1px solid var(--border); border-top: 5px solid; color: var(--text); text-decoration: none; }
 .pod:hover { box-shadow: 0 4px 14px rgba(0,0,0,.08); color: var(--text); }
 .pod b { font-size: 1.05rem; } .pod .n { font-weight: 600; }
-.pod .medal { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; margin-bottom: .25rem; }
+.pod .medal { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: #111; font-weight: 700; margin-bottom: .25rem; }   /* dark on gold, silver and bronze: 4.7:1 or better */
 .pod-1 { border-top-color: #c9a227; background: #fffaf0; } .pod-1 .medal { background: #c9a227; }
 .pod-2 { border-top-color: #9aa3ad; } .pod-2 .medal { background: #9aa3ad; }
 .pod-3 { border-top-color: #b07040; } .pod-3 .medal { background: #b07040; }
@@ -74,12 +69,12 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% endblock %}
 {% block content %}
 
-<div class="alert alert-warning small mb-3" role="status"><strong>Being rebuilt.</strong> These records were read automatically from the region's old files and many times, places and champions are wrong. Each program is being re-read and checked against the original sheets; until that is done, check the original file before relying on a result.</div>
+<div class="alert alert-warning small mb-3" role="status"><strong>Being rebuilt.</strong> Many times, places and champions are wrong. Check the original file before relying on a result.</div>
 {% if view == 'home' %}
-<div class="page-title">Detroit Region SCCA records</div>
+<h1 class="page-title">Detroit Region SCCA records</h1>
 <p class="text-muted">Results and season standings the region has posted since 1982, in one place.</p>
 <div class="rec-stats"><div><b>{{ '{:,}'.format(n.events) }}</b>events</div><div><b>{{ '{:,}'.format(n.result_rows) }}</b>results</div><div><b>{{ '{:,}'.format(n.people) }}</b>people</div></div>
-<form method="get" class="mb-3" style="max-width: 32rem;"><input class="form-control form-control-lg" name="q" value="{{ q }}" aria-label="Search a driver or event" placeholder="Search a driver or event" autofocus></form>
+<form method="get" class="mb-3" style="max-width: 32rem;"><input class="form-control form-control-lg" name="q" value="{{ q }}" aria-label="Search a driver or event" placeholder="Search a driver or event"></form>
 {% if q %}
   {% if people %}<div class="section-label">People</div><div class="list-group mb-3">{% for r in people %}
     <a class="list-group-item list-group-item-action" href="{{ url_for('records.person', pid=r.id) }}">{{ r.name }} <span class="text-muted small">{{ r.n }} event{{ 's' if r.n != 1 }}{% if r.t %}, {{ r.t }} class title{{ 's' if r.t != 1 }}{% endif %}</span></a>{% endfor %}</div>{% endif %}
@@ -104,7 +99,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 
 {% elif view == 'add' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a></div>
-<div class="page-title">Add results</div>
+<h1 class="page-title">Add results</h1>
 <p class="text-muted" style="max-width: 44rem;">Send in the final results of an event (the AXWare class, raw and pax files, or a season points sheet). They are saved in the region's Drive and added to the records in the next update.</p>
 <form method="post" enctype="multipart/form-data" class="card p-3 mb-4" style="max-width: 44rem;">
   <div class="row g-2">
@@ -122,7 +117,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% elif view == 'hall' %}
 <div class="hof-head">
   <span class="rec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5h8v5.5a4 4 0 0 1-8 0z"/><path d="M8 5.5H5.2a2.8 2.8 0 0 0 3 4M16 5.5h2.8a2.8 2.8 0 0 1-3 4"/><path d="M12 13v3.5M8.5 20.5h7M9.5 16.5h5v4h-5z"/></svg></span>
-  <div><div class="page-title mb-0">Hall of Fame</div><div class="text-muted small">All-time leaders from the results and standings the region posted.</div></div>
+  <div><h1 class="page-title mb-0">Hall of Fame</h1><div class="text-muted small">All-time leaders from the results and standings the region posted.</div></div>
 </div>
 {% if h.titles|length >= 3 %}<div class="podium">{% for r in h.titles[:3] %}
   <a class="pod pod-{{ loop.index }}" href="{{ url_for('records.person', pid=r.id) }}"><span class="medal">{{ loop.index }}</span>
@@ -147,7 +142,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 
 {% elif view == 'program' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a></div>
-<div class="page-title">{{ p }}</div>
+<h1 class="page-title">{{ p }}</h1>
 <p class="text-muted">{{ rows|length }} seasons on file{% if missing %}; nothing on file for {{ missing|join(', ') }}{% endif %}.</p>
 <div class="table-responsive"><table class="table"><thead><tr><th>Season</th><th class="num">Events</th><th class="num">Class champions</th></tr></thead><tbody>
 {% for y, ne, nc in rows %}<tr><td><a href="{{ url_for('records.season', prog=slug(p), year=y) }}">{{ y }}</a></td><td class="num">{{ ne or '' }}</td><td class="num">{{ nc or '' }}</td></tr>{% endfor %}
@@ -159,7 +154,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 
 {% elif view == 'season' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.program', prog=slug(p)) }}">{{ p }}</a></div>
-<div class="page-title">{{ year }} {{ p }}</div>
+<h1 class="page-title">{{ year }} {{ p }}</h1>
 {% if can_edit %}<p class="small mb-1"><a href="{{ url_for('records.season_edit', prog=slug(p), year=year) }}">Correct the standings</a> <span class="text-muted">(open an event to correct its results)</span></p>{% endif %}
 {% if events %}<div class="section-label mt-3">Events</div>
 <div class="table-responsive"><table class="table"><thead><tr><th>Date</th><th>Event</th><th class="num">{{ 'Crews' if p == 'Rally' else 'Drivers' }}</th></tr></thead><tbody>
@@ -178,7 +173,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 
 {% elif view == 'event' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.program', prog=slug(e.program)) }}">{{ e.program }}</a>{% if e.year %} / <a href="{{ url_for('records.season', prog=slug(e.program), year=e.year) }}">{{ e.year }}</a>{% endif %}</div>
-<div class="page-title">{{ e.name }}</div>
+<h1 class="page-title">{{ e.name }}</h1>
 <p class="text-muted mb-2">{{ nice_date(e.date) or e.year }}{% if n_people %} &middot; {{ n_people }} {{ 'crews' if e.program == 'Rally' else 'drivers' }}{% endif %}{% if can_edit %} &middot; <a href="{{ url_for('records.event_edit', eid=e.id) }}">Correct this event</a>{% endif %}</p>
 {% if files %}<details class="mb-3 small"><summary class="text-muted">Original file{{ 's' if files|length > 1 }} ({{ files|length }})</summary>
 <div class="mt-1">{% for f in files %}<a class="badge-soft" href="{{ f.drive_url }}" target="_blank" rel="noopener">{{ f.label }}</a>{% endfor %}</div></details>{% endif %}
@@ -205,9 +200,9 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 
 {% elif view == 'event_edit' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.event', eid=e.id) }}">{{ e.name }}</a> / Correct</div>
-<div class="page-title">Correct this event</div>
+<h1 class="page-title">Correct this event</h1>
 <p class="text-muted small">Change what is wrong and save. Your corrections are kept when the records are rebuilt, and each one is in the audit log.</p>
-<form method="post">
+<form method="post" onsubmit="return !this.remove_event.checked || confirm('Remove this event from Records?')">
 <div class="row g-2 mb-3" style="max-width:40rem">
   <div class="col-sm-8"><label class="form-label small">Event name</label><input class="form-control" name="name" value="{{ e.name }}"></div>
   <div class="col-sm-4"><label class="form-label small">Date</label><input class="form-control" type="date" name="date" value="{{ e.date or '' }}"></div>
@@ -215,43 +210,43 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Sheet</th><th>Place</th><th>Class</th><th>Name</th><th>{{ 'Score' if e.program == 'Rally' else 'Total' }}</th><th>Remove</th></tr></thead><tbody>
 {% for r in rows %}<tr>
   <td class="small text-muted">{{ labels.get(r.file_id, '') }}</td>
-  <td><input class="form-control form-control-sm" style="width:4.5rem" name="position{{ r.id }}" value="{{ r.position or '' }}"></td>
-  <td><input class="form-control form-control-sm" style="width:6rem" name="class{{ r.id }}" value="{{ r['class'] or '' }}"></td>
-  <td><input class="form-control form-control-sm" style="min-width:12rem" name="driver{{ r.id }}" value="{{ r.driver or '' }}"></td>
-  <td><input class="form-control form-control-sm" style="width:6rem" name="total{{ r.id }}" value="{{ r.total or '' }}"></td>
+  <td><input class="form-control form-control-sm" style="width:4.5rem" name="position{{ r.id }}" aria-label="Place" value="{{ r.position or '' }}"></td>
+  <td><input class="form-control form-control-sm" style="width:6rem" name="class{{ r.id }}" aria-label="Class" value="{{ r['class'] or '' }}"></td>
+  <td><input class="form-control form-control-sm" style="min-width:12rem" name="driver{{ r.id }}" aria-label="Name" value="{{ r.driver or '' }}"></td>
+  <td><input class="form-control form-control-sm" style="width:6rem" name="total{{ r.id }}" aria-label="{{ 'Score' if e.program == 'Rally' else 'Total' }}" value="{{ r.total or '' }}"></td>
   <td class="text-center"><input class="form-check-input" type="checkbox" name="rm{{ r.id }}" value="1" aria-label="Remove this line"></td>
 </tr>{% endfor %}
 </tbody></table></div>
 <div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="remove_event" value="1" id="rmev"><label class="form-check-label" for="rmev">This event is not a real event: remove it from Records</label></div>
-<button class="btn btn-accent">Save corrections</button> <a class="btn btn-outline-secondary" href="{{ url_for('records.event', eid=e.id) }}">Cancel</a>
+<a class="btn btn-outline-secondary" href="{{ url_for('records.event', eid=e.id) }}">Cancel</a> <button class="btn btn-accent">Save corrections</button>
 </form>
 
 {% elif view == 'season_edit' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.season', prog=slug(p), year=year) }}">{{ year }} {{ p }}</a> / Correct</div>
-<div class="page-title">Correct the {{ year }} {{ p }} standings</div>
+<h1 class="page-title">Correct the {{ year }} {{ p }} standings</h1>
 <p class="text-muted small">Place 1 in a class is its champion. Your corrections are kept when the records are rebuilt, and each one is in the audit log.</p>
 <form method="post">
 <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Class</th><th>Place</th><th>Name</th><th>Score</th><th>Remove</th></tr></thead><tbody>
 {% for s in st %}<tr>
-  <td><input class="form-control form-control-sm" style="width:9rem" name="class{{ s.id }}" value="{{ s['class'] or '' }}"></td>
-  <td><input class="form-control form-control-sm" style="width:4.5rem" name="place{{ s.id }}" value="{{ s.place }}"></td>
-  <td><input class="form-control form-control-sm" style="min-width:12rem" name="name{{ s.id }}" value="{{ s.name }}"></td>
-  <td><input class="form-control form-control-sm" style="width:6rem" name="score{{ s.id }}" value="{{ '%g'|format(s.score) if s.score is not none else '' }}"></td>
+  <td><input class="form-control form-control-sm" style="width:9rem" name="class{{ s.id }}" aria-label="Class" value="{{ s['class'] or '' }}"></td>
+  <td><input class="form-control form-control-sm" style="width:4.5rem" name="place{{ s.id }}" aria-label="Place" value="{{ s.place }}"></td>
+  <td><input class="form-control form-control-sm" style="min-width:12rem" name="name{{ s.id }}" aria-label="Name" value="{{ s.name }}"></td>
+  <td><input class="form-control form-control-sm" style="width:6rem" name="score{{ s.id }}" aria-label="Score" value="{{ '%g'|format(s.score) if s.score is not none else '' }}"></td>
   <td class="text-center"><input class="form-check-input" type="checkbox" name="rm{{ s.id }}" value="1" aria-label="Remove this row"></td>
 </tr>{% endfor %}
 {% for i in range(5) %}<tr class="table-light">
-  <td><input class="form-control form-control-sm" style="width:9rem" name="new_class{{ i }}" placeholder="Class"></td>
-  <td><input class="form-control form-control-sm" style="width:4.5rem" name="new_place{{ i }}" placeholder="Place"></td>
+  <td><input class="form-control form-control-sm" style="width:9rem" name="new_class{{ i }}" aria-label="Class" placeholder="Class"></td>
+  <td><input class="form-control form-control-sm" style="width:4.5rem" name="new_place{{ i }}" aria-label="Place" placeholder="Place"></td>
   <td><input class="form-control form-control-sm" style="min-width:12rem" name="new_name{{ i }}" aria-label="Add a missing person" placeholder="Add a missing person"></td>
-  <td><input class="form-control form-control-sm" style="width:6rem" name="new_score{{ i }}" placeholder="Score"></td><td></td>
+  <td><input class="form-control form-control-sm" style="width:6rem" name="new_score{{ i }}" aria-label="Score" placeholder="Score"></td><td></td>
 </tr>{% endfor %}
 </tbody></table></div>
-<button class="btn btn-accent">Save corrections</button> <a class="btn btn-outline-secondary" href="{{ url_for('records.season', prog=slug(p), year=year) }}">Cancel</a>
+<a class="btn btn-outline-secondary" href="{{ url_for('records.season', prog=slug(p), year=year) }}">Cancel</a> <button class="btn btn-accent">Save corrections</button>
 </form>
 
 {% elif view == 'person' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a></div>
-<div class="page-title">{{ person.name }}</div>
+<h1 class="page-title">{{ person.name }}</h1>
 <div class="rec-stats">{% if n_events %}<div><b>{{ n_events }}</b>event{{ 's' if n_events != 1 }}</div>{% endif %}{% if years %}<div><b>{{ years[0] }}&ndash;{{ years[-1] }}</b>years</div>{% endif %}{% if n_titles %}<div><b>{{ n_titles }}</b>class championship{{ 's' if n_titles != 1 }}</div>{% endif %}</div>
 <div>{% for pg in progs %}<span class="badge-soft">{{ pg }}</span>{% endfor %}</div>
 {% if standings %}<div class="section-label mt-4">Season standings</div>
@@ -267,5 +262,4 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% for r in results|reverse %}<tr><td class="text-nowrap">{{ nice_date(r.date) or r.year }}</td><td><a href="{{ url_for('records.event', eid=r.eid) }}">{{ r.event }}</a><div class="small text-muted">{{ r.program }}</div></td><td>{{ r['class'] or '' }}</td><td class="num">{{ r.position or '' }}</td>{% if has_pax %}<td class="num">{{ r.pax or '' }}</td>{% endif %}<td class="d-none d-md-table-cell">{{ r.vehicle or '' }}</td><td class="num">{{ r.time or '' }}</td></tr>{% endfor %}
 </tbody></table></div>{% endif %}
 {% endif %}
-<p class="text-muted small mt-5">From the results files the region posted, checked against the original sheets. If something looks wrong, open the original file from the event page.</p>
 {% endblock %}

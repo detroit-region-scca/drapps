@@ -185,13 +185,17 @@ def close(inv_id):
     if (action in ('paid', 'void')) != (inv['status'] == 'Open'):
         flash(f"{inv_id} is {inv['status'].lower()} now, so nothing was changed.", 'warning')
         return redirect(url_for('inv.detail', inv_id=inv_id))
+    # Checked again under the lock in inv_store, so a double click or two officers never close it twice.
+    just_changed = f'{inv_id} was just changed by someone else, so nothing was changed. Look at it again.'
     if action == 'paid':
         amount = _money(request.form.get('paid_amount') or inv['total'])
         if amount is None or amount <= 0:
             flash('The amount paid is not a number above zero.', 'danger')
             return redirect(url_for('inv.detail', inv_id=inv_id))
-        I.update(inv_id, status='Paid', paid_date=request.form.get('paid_date') or date.today().isoformat(),
-                 paid_ref=request.form.get('paid_ref', '').strip(), paid_amount=amount, closed_by=who)
+        if not I.update(inv_id, expect='Open', status='Paid', paid_date=request.form.get('paid_date') or date.today().isoformat(),
+                        paid_ref=request.form.get('paid_ref', '').strip(), paid_amount=amount, closed_by=who):
+            flash(just_changed, 'warning')
+            return redirect(url_for('inv.detail', inv_id=inv_id))
         log_audit_event('INVOICE_PAID', who, {'id': inv_id, 'amount': amount, 'ref': request.form.get('paid_ref', '').strip()})
         flash(f'{inv_id} marked paid.', 'success')
     elif action == 'void':
@@ -199,12 +203,17 @@ def close(inv_id):
         if not note:
             flash('Say why it is void.', 'danger')
             return redirect(url_for('inv.detail', inv_id=inv_id))
-        I.update(inv_id, status='Void', closed_by=who, closed_note=note)
+        if not I.update(inv_id, expect='Open', status='Void', closed_by=who, closed_note=note):
+            flash(just_changed, 'warning')
+            return redirect(url_for('inv.detail', inv_id=inv_id))
         log_audit_event('INVOICE_VOID', who, {'id': inv_id, 'note': note})
         flash(f'{inv_id} voided.', 'warning')
     elif action == 'reopen':
-        I.update(inv_id, status='Open', paid_date='', paid_ref='', paid_amount='', closed_by='', closed_note='')
+        if not I.update(inv_id, expect=inv['status'], status='Open', paid_date='', paid_ref='', paid_amount='', closed_by='', closed_note=''):
+            flash(just_changed, 'warning')
+            return redirect(url_for('inv.detail', inv_id=inv_id))
         log_audit_event('INVOICE_REOPENED', who, {'id': inv_id})
+        flash(f'{inv_id} is open again.', 'info')
     return redirect(url_for('inv.detail', inv_id=inv_id))
 
 

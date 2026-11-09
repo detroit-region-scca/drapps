@@ -105,7 +105,13 @@ def save(year, name, pdf, folder_env):
 
 
 def keep_original(year, name, data, mime):
-    return _upload(year_folder(os.environ['MINUTES_PRIVATE_FOLDER_ID'], year), name, data, mime)
+    """Keep the uploaded file beside the PDF. Uploading the same meeting's minutes again replaces the earlier original
+    (the app cannot delete from this folder, so a second copy would stay for good)."""
+    folder = year_folder(os.environ['MINUTES_PRIVATE_FOLDER_ID'], year)
+    hit = [f for f in _list(folder) if f['name'] == name]
+    if hit:
+        return _replace_content(hit[0]['id'], data, mime)
+    return _upload(folder, name, data, mime)
 
 
 def published(year):
@@ -124,6 +130,13 @@ def drafts():
     return [f for f in _listed(os.environ['MINUTES_DRAFTS_FOLDER_ID']) if f['name'].endswith('.pdf')]
 
 
+def is_draft(file_id):
+    """True when this Drive file is in the drafts folder (asked of Drive itself, not the remembered listing)."""
+    DRIVE, _ = _drive()
+    r = _s().get(f'{DRIVE}/{file_id}', params={'supportsAllDrives': 'true', 'fields': 'id,parents,trashed'})
+    return r.ok and os.environ['MINUTES_DRAFTS_FOLDER_ID'] in r.json().get('parents', []) and not r.json().get('trashed')
+
+
 def delete_draft(file_id):
     DRIVE, _ = _drive()
     f = _s().get(f'{DRIVE}/{file_id}', params={'supportsAllDrives': 'true', 'fields': 'id,name,parents'}).json()
@@ -136,13 +149,18 @@ def delete_draft(file_id):
 
 
 def publish_draft(file_id):
-    """Put a draft in the public and private Board Minutes folders under its final name, then trash the draft."""
+    """Put a draft in the public and private Board Minutes folders under its final name, then trash the draft.
+    ValueError (before anything is published) when the file is not in the drafts folder or is not named as minutes."""
     DRIVE, _ = _drive()
-    f = _s().get(f'{DRIVE}/{file_id}', params={'supportsAllDrives': 'true', 'fields': 'id,name'}).json()
+    f = _s().get(f'{DRIVE}/{file_id}', params={'supportsAllDrives': 'true', 'fields': 'id,name,parents'}).json()
+    if os.environ['MINUTES_DRAFTS_FOLDER_ID'] not in f.get('parents', []):
+        raise ValueError('Not a draft.')
+    final = L.published_name(f.get('name', ''))
+    when, _ = L.parse(final)
+    if not when:
+        raise ValueError('Not a minutes file name.')
     data = _s().get(f'{DRIVE}/{file_id}', params={'alt': 'media', 'supportsAllDrives': 'true'})
     data.raise_for_status()
-    final = L.published_name(f['name'])
-    when, _ = L.parse(final)
     out, replaced = save(when.year, final, data.content, 'MINUTES_PUBLIC_FOLDER_ID')
     save(when.year, final, data.content, 'MINUTES_PRIVATE_FOLDER_ID')
     delete_draft(file_id)

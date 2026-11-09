@@ -41,9 +41,26 @@ def test_capital_threshold():
 
 
 def test_next_due_rolls_the_year():
-    assert E.next_due({'due': '2026-11-30', 'repeat_months': 12.0}) == '2027-11-28'
-    assert E.next_due({'due': '2027-03-30', 'repeat_months': 24.0}) == '2029-03-28'
+    assert E.next_due({'due': '2026-11-30', 'repeat_months': 12.0}) == '2027-11-30'      # a month end stays a month end
+    assert E.next_due({'due': '2027-03-30', 'repeat_months': 24.0}) == '2029-03-30'
     assert E.next_due({'due': '2027-03-30', 'repeat_months': None}) == ''
+
+
+def test_next_due_keeps_month_ends_and_steps_past_today():
+    assert E.next_due({'due': '2027-01-31', 'repeat_months': 1}) == '2027-02-28'
+    assert E.next_due({'due': '2027-02-28', 'repeat_months': 1}) == '2027-03-31'
+    assert E.next_due({'due': '2028-01-30', 'repeat_months': 1}) == '2028-02-29'             # the 30th where the month has no 30th
+    assert E.next_due({'due': '2027-01-15', 'repeat_months': 1}) == '2027-02-15'
+    # marked Done long after it was due: the next date after today, not one step from the old date
+    assert E.next_due({'due': '2024-03-10', 'repeat_months': 12}, after='2026-11-09') == '2027-03-10'
+    assert E.next_due({'due': '2026-11-09', 'repeat_months': 1}, after='2026-11-09') == '2026-12-09'
+    assert E.next_due({'due': '2026-12-01', 'repeat_months': 6}, after='2026-11-09') == '2027-06-01'   # done early: one step
+    assert E.next_due({'due': 'sometime', 'repeat_months': 12}) == 'sometime'                # unreadable: left alone, no error
+
+
+def test_dates_typed_into_the_sheet_by_hand_read_as_dates():
+    assert E._date_text(46356) == '2026-11-30' and E._date_text('11/30/2026') == '2026-11-30'
+    assert E._date_text('2026-11-30') == '2026-11-30' and E._date_text('') == '' and E._date_text('soon') == 'soon'
 
 
 def test_fixed_cost_year():

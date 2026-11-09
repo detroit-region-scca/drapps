@@ -1,8 +1,10 @@
+# Development only: Flask's dev server with the debugger on and the code mounted. The debugger lets anyone who can
+# reach the port run code, so the port is bound to this computer only (127.0.0.1). Never use this on a server.
 services:
   web:
     build: .
     ports:
-      - "5858:5858"
+      - "127.0.0.1:5858:5858"
     volumes:
       - .:/app
     env_file:

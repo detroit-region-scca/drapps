@@ -316,7 +316,7 @@ def roles():
     counts = {k: sum(1 for o in own if o.get('role') == k) for k in kinds}
     counts[access.VOLUNTEER] = len(auth.volunteers())
     titles = {k: sorted({o.get('title', '') for o in own if o.get('role') == k}) for k in kinds}
-    titles[access.VOLUNTEER] = ['added one by one on Users']
+    titles[access.VOLUNTEER] = ['added one by one on App access']
     pending = _pending_roles()
     cols = [{'role': k, 'perms': access.perms(k), 'n': counts[k], 'titles': titles[k],
              'removable': _removable(k, pending),

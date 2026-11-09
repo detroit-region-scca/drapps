@@ -59,14 +59,44 @@ def is_card_statement(p):
     return p['kind'] == 'other' and (not p['payee'] or re.search(r'cardmember', p['payee'], re.I))
 
 
+CARD_REF = 'Region card'
+
+
+def card_ref(payment_id):
+    """'Region card (QuickBooks Purchase 12)': readable, and names the card statement so it is never matched twice."""
+    return f"{CARD_REF} (QuickBooks {payment_id})"
+
+
+def card_payment_id(paid_ref):
+    """The QuickBooks id in a card paid_ref ('Purchase 12'), or None (typed by hand, or matched before ids were kept)."""
+    m = re.search(r'\(QuickBooks (\w+ \w+)\)', paid_ref or '')
+    return m.group(1) if m else None
+
+
+def _card_lines_left(requests, payments):
+    """Card statement lines no paid request has used yet: [(payment, line)]. A paid card request takes the line its
+    ref names; one with no id (typed by hand, or older) takes a line of its exact amount, on its paid date if any."""
+    left = [(p, ln) for p in payments if is_card_statement(p) for ln in p['lines']]
+    paid = [r for r in requests if r['status'] == 'Paid' and 'card' in (r.get('paid_ref') or '').lower() and r.get('paid_amount')]
+    for r in sorted(paid, key=lambda r: not card_payment_id(r['paid_ref'])):     # ones that name their statement first
+        pid = card_payment_id(r['paid_ref'])
+        same = [x for x in left if abs(x[1]['amount'] - r['paid_amount']) < 0.005 and (not pid or x[0]['id'] == pid)]
+        same.sort(key=lambda x: x[0]['date'] != str(r.get('paid_date') or ''))
+        if same:
+            left = [x for x in left if x is not same[0]]
+    return left
+
+
 def match_funds(requests, payments):
     """Open requests that QuickBooks shows as paid: [(request, {'paid_date', 'paid_ref', 'paid_amount', 'note'})].
 
     A check matches on the payee's last name and the amount (within a dollar), dated no earlier than shortly
     before the request. A region card charge matches on the exact amount (with cents) on a card statement line.
-    Only unambiguous matches count, and a check already recorded on another request is never reused.
+    Only unambiguous matches count. A check or card line already recorded on a paid request (tonight or on an
+    earlier night) is never used again.
     """
     used = {check_number(r['paid_ref']) for r in requests if r['status'] == 'Paid'} - {None}
+    card_left = _card_lines_left(requests, payments)
     out, taken = [], set()
     for r in requests:
         if r['status'] != 'Submitted':
@@ -89,12 +119,11 @@ def match_funds(requests, payments):
         net = r.get('net') or 0
         if not net or round(net * 100) % 100 == 0:
             continue    # a round amount on a card statement is too likely to be something else
-        hits = [(p, ln) for p in payments if is_card_statement(p) and (_day(p['date']) or earliest) >= earliest
-                for ln in p['lines'] if abs(ln['amount'] - net) < 0.005 and (p['id'], ln['description']) not in taken]
+        hits = [x for x in card_left if (_day(x[0]['date']) or earliest) >= earliest and abs(x[1]['amount'] - net) < 0.005]
         if len(hits) == 1:
             p, ln = hits[0]
-            taken.add((p['id'], ln['description']))
-            out.append((r, {'paid_date': p['date'], 'paid_ref': 'Region card', 'paid_amount': ln['amount'],
+            card_left = [x for x in card_left if x is not hits[0]]
+            out.append((r, {'paid_date': p['date'], 'paid_ref': card_ref(p['id']), 'paid_amount': ln['amount'],
                             'note': f"Matched to the {p['date']} card statement line \"{ln['description'][:60]}\""}))
     return out
 
@@ -149,26 +178,71 @@ def exceptions(requests, payments, events, projects, today, since=None):
     return out
 
 
-def match_invoices(invoices, deposits):
+def deposit_ref(deposit_id, day):
+    """'QuickBooks deposit 2026-10-20 #123': readable, and names the deposit so it is never matched twice."""
+    return f"QuickBooks deposit {day} #{str(deposit_id).rpartition(' ')[2]}"
+
+
+def deposit_id(ref):
+    """The QuickBooks deposit a paid_ref or deposit_ref names ('Deposit 123'), or None (typed by hand, or matched
+    before ids were kept)."""
+    m = re.search(r'QuickBooks deposit \S+ #(\w+)', ref or '')
+    return f'Deposit {m.group(1)}' if m else None
+
+
+def unused_deposits(deposits, taken):
+    """The deposit lines nothing has been matched to yet.
+
+    taken: (ref, date, amount) for every invoice already Paid and every money received report already Deposited.
+    Each takes one line of its amount, or a whole deposit that adds up to it: from the deposit its ref names, or
+    for a ref with no id (typed by hand, or older) from the deposits of its date. So a deposit matched on an
+    earlier night is not matched again tonight."""
+    left = list(deposits)
+    for ref, day, amount in sorted(taken, key=lambda t: not deposit_id(t[0])):     # ones that name their deposit first
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            continue
+        did = deposit_id(ref)
+        pool = [d for d in left if (d['id'] == did if did else d['date'] == str(day or '')[:10])]
+        line = next((d for d in pool if abs(d['amount'] - amount) < 0.005), None)
+        if line:
+            left = [d for d in left if d is not line]
+            continue
+        for i in {d['id'] for d in pool}:
+            if abs(sum(d['amount'] for d in pool if d['id'] == i) - amount) < 0.005:
+                left = [d for d in left if d['id'] != i]
+                break
+    return left
+
+
+def match_invoices(invoices, deposits, taken=()):
     """Open invoices a QuickBooks deposit paid: [(invoice, {'paid_date', 'paid_ref', 'paid_amount'})].
 
     A deposit line matches on the exact total, dated on or after the invoice, and naming the payer (any word of
     three letters or more from "Bill to" in the deposit's payer or description) or the invoice number. Only
-    unambiguous matches count, and a deposit line is used once.
+    unambiguous matches count: one line for the invoice, and no other open invoice that line could pay (unless it
+    names this invoice's number). A line is used once, and never one an invoice paid on an earlier night used.
+    taken: (ref, date, amount) of money received reports already deposited, which used deposits too.
     """
-    out, used = [], set()
-    for inv in invoices:
-        if inv['status'] != 'Open' or not inv['total']:
-            continue
+    deposits = unused_deposits(deposits, [(i.get('paid_ref'), i.get('paid_date'), i.get('paid_amount'))
+                                          for i in invoices if i['status'] == 'Paid'] + list(taken))
+    text = lambda d: (d['description'] + ' ' + d['payer']).lower()  # noqa: E731
+    open_ = sorted((i for i in invoices if i['status'] == 'Open' and i['total']), key=lambda i: (i['created'], i['id']))
+    cands = {}
+    for inv in open_:
         words = {w for w in re.findall(r'[a-z]+', inv['bill_name'].lower()) if len(w) >= 3} - {'inc', 'llc', 'the', 'and', 'company', 'corp'}
-        hits = [d for d in deposits if (d['id'], d['description'], d['amount']) not in used and abs(d['amount'] - inv['total']) < 0.005
-                and d['date'] >= inv['created'][:10]
-                and (inv['id'].lower() in (d['description'] + ' ' + d['payer']).lower()
-                     or words & set(re.findall(r'[a-z]+', (d['description'] + ' ' + d['payer']).lower())))]
-        if len(hits) == 1:
-            d = hits[0]
-            used.add((d['id'], d['description'], d['amount']))
-            out.append((inv, {'paid_date': d['date'], 'paid_ref': f"QuickBooks deposit {d['date']}", 'paid_amount': d['amount']}))
+        cands[inv['id']] = [n for n, d in enumerate(deposits) if abs(d['amount'] - inv['total']) < 0.005 and d['date'] >= inv['created'][:10]
+                            and (inv['id'].lower() in text(d) or words & set(re.findall(r'[a-z]+', text(d))))]
+    out, used = [], set()
+    for inv in open_:
+        hits = [n for n in cands[inv['id']] if n not in used]
+        named = [n for n in hits if inv['id'].lower() in text(deposits[n])]
+        hits = named or hits
+        if len(hits) == 1 and (named or not any(hits[0] in c for i, c in cands.items() if i != inv['id'])):
+            d = deposits[hits[0]]
+            used.add(hits[0])
+            out.append((inv, {'paid_date': d['date'], 'paid_ref': deposit_ref(d['id'], d['date']), 'paid_amount': d['amount']}))
     return out
 
 
@@ -187,12 +261,14 @@ def attach_type(name):
 def payment_of(r, payments):
     """The QuickBooks transaction a paid request was matched to: ('Purchase', '123') or None.
 
-    A check by its number; a region card charge by the statement that has a line of that amount on the paid date."""
+    A check by its number; a region card charge by the statement its ref names, or for an older ref with no id the
+    statement that has a line of that amount on the paid date."""
     n = check_number(r.get('paid_ref'))
     if n:
         hits = [p for p in payments if p['kind'] == 'check' and p['number'] == n]
-    elif r.get('paid_ref') == 'Region card' and r.get('paid_amount'):
-        hits = [p for p in payments if is_card_statement(p) and p['date'] == str(r.get('paid_date'))
+    elif (r.get('paid_ref') or '').startswith(CARD_REF) and r.get('paid_amount'):
+        pid = card_payment_id(r['paid_ref'])
+        hits = [p for p in payments if is_card_statement(p) and (p['id'] == pid if pid else p['date'] == str(r.get('paid_date')))
                 and any(abs(ln['amount'] - r['paid_amount']) < 0.005 for ln in p['lines'])]
     else:
         return None

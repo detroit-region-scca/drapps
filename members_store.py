@@ -3,7 +3,7 @@
 Members sheet tabs (see members_logic for the columns):
   Members  one row per member; the Points column is a formula over the Points tab (Approved entries only)
   Points   every points entry, one row each
-  Auto add people who get points every month (Member # | Name | Role | Apr-Oct | Nov-Mar); the app prepares them as Pending
+  Auto add people who get points every month (Member # | Name | Role | Apr-Oct | Nov-Mar); the app adds them on the 1st, Approved
 The sheet stays usable by hand if the apps are gone. The public sheet holds what drscca.org shows:
   Member Milestones  Month | Name | Years | Note | Points through | Published
 """
@@ -12,12 +12,23 @@ import os
 import threading
 from datetime import date
 
+from filelock import FileLock
+
 from storage import worksheet
 import members_logic as L
 import sheet_cache as C
 
 _lock = threading.Lock()
 log = logging.getLogger(__name__)
+SAVES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'points-saves.json')
+# The app runs several workers, so a thread lock alone protects nothing: every read-check-write of the Members sheet
+# takes this file lock (beside SAVES_FILE). Never take it twice in one call (add_entries is called with it held and
+# must not take it).
+
+
+def _file_lock():
+    os.makedirs(os.path.dirname(SAVES_FILE), exist_ok=True)
+    return FileLock(SAVES_FILE + '.lock', timeout=60)
 
 
 def enabled():
@@ -69,7 +80,7 @@ def entries():
 
 
 def add_entries(rows, status, who):
-    """Append entries (dicts from members_logic.rows_from_grid, or the same keys). Returns how many."""
+    """Append entries ({'date', 'member', 'name', 'points', 'what', 'event', 'kind'} dicts). Returns how many."""
     values = [[(e['date'] or date.today()).isoformat(), _text(e['member']), _text(e['name']), float(e['points']), _text(e['what']),
                _text(e.get('event', '')), e.get('kind') or ('Used' if e['points'] < 0 else 'Earned'), status, _text(who)] for e in rows]
     if not values:
@@ -80,18 +91,14 @@ def add_entries(rows, status, who):
     return len(values)
 
 
-SAVES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'points-saves.json')
-
-
 def save_checked(build, who, token=''):
     """Add points with the check and the write under one lock shared by every server process: read the Points tab
     fresh, build(entries) -> (rows, problems), append only when there are no problems. token: the review page's one-time
-    token; a page already saved (a double click, the back button, a second tab) is refused. Returns (count, problems)."""
+    token; a page already saved (a double click, the back button, a second tab) is refused. Returns (count, problems).
+    Using and forfeiting points come through here too, so a balance is always checked on a fresh read."""
     import json
     import time
-    from filelock import FileLock
-    os.makedirs(os.path.dirname(SAVES_FILE), exist_ok=True)
-    with FileLock(SAVES_FILE + '.lock', timeout=60):
+    with _file_lock():
         try:
             used = json.load(open(SAVES_FILE))
         except (OSError, ValueError):
@@ -119,16 +126,10 @@ def save_checked(build, who, token=''):
         return n, []
 
 
-def delete_rows(row_numbers):
-    with _lock:
-        ws = worksheet(_sid(), 'Points')
-        for n in sorted(row_numbers, reverse=True):
-            ws.delete_rows(n)
-        refresh()
-
-
 def write_members(rows):
-    """Rewrite the Members tab (rows = member dicts), keeping the Points formula on every row."""
+    """Rewrite the Members tab (rows = member dicts), keeping the Points formula on every row. The new rows are written
+    over the old ones first and only then is anything left below them cleared, so a failure part way never leaves the
+    tab empty."""
     def d(v):
         return v.isoformat() if v else ''
     values = [L.MEMBER_COLS]
@@ -138,22 +139,40 @@ def write_members(rows):
                        d(m.get('lapsed')), d(m.get('rejoined'))])
     with _lock:
         ws = worksheet(_sid(), 'Members')
-        ws.batch_clear(['A:J'])
         if ws.col_count < 10:
             ws.add_cols(10 - ws.col_count)
         if ws.row_count < len(values) + 10:
             ws.add_rows(len(values) + 50 - ws.row_count)
         ws.update(values, 'A1', value_input_option='USER_ENTERED')
+        ws.batch_clear([f'A{len(values) + 1}:J'])
         refresh()
+
+
+def update_members(merge):
+    """Read the Members tab fresh, merge(rows) -> the new rows, and write them, as one step across workers: a member
+    added while a list is loading, or two loads at once, cannot undo each other. Returns (rows before, rows after)."""
+    with _file_lock():
+        refresh()
+        before = members()
+        after = merge(before)
+        write_members(after)
+    return before, after
 
 
 def add_member(mid, first, last, life=False):
-    with _lock:
+    """Add a member row. If the member is already there (SCCA's 500100_0 and the ledger's 500100 are one member),
+    nothing is added and the number already on the tab is returned; else None."""
+    with _file_lock(), _lock:
         ws = worksheet(_sid(), 'Members')
-        i = len(ws.col_values(1)) + 1
+        col = ws.col_values(1)
+        same = next((str(v).strip() for v in col[1:] if str(v).strip() and L.canon(v) == L.canon(mid)), None)
+        if same:
+            return same
+        i = len(col) + 1
         ws.update([["'" + mid, _text(first), _text(last), 'LIFE' if life else '', '', '', '',
                     f'=SUMIFS(Points!D:D,Points!B:B,A{i},Points!H:H,"{L.APPROVED}")']], f'A{i}', value_input_option='USER_ENTERED')
         refresh()
+    return None
 
 
 # ---------- the public drscca.org sheet ----------
@@ -170,15 +189,18 @@ def milestone_rows(fresh=False):
 
 
 def save_milestones(month, new_rows):
-    """Replace one month on the public Member Milestones tab (newest month first)."""
-    with _lock:
+    """Replace one month on the public Member Milestones tab (newest month first). Written over the old rows first,
+    then what is left below is cleared, so a failure part way never leaves the public list empty."""
+    with _file_lock(), _lock:
         ws = worksheet(_pub(), 'Member Milestones')
         keep = [list(r) for r in milestone_rows(fresh=True) if str((list(r) + [''])[0]).strip() != month]
         out = sorted(keep + [list(r) for r in new_rows], key=lambda r: str(r[0]), reverse=True)
-        ws.batch_clear(['A2:D'])
+        if ws.row_count < len(out) + 2:
+            ws.add_rows(len(out) + 20 - ws.row_count)
         if out:
             ws.update([[int(c) if i == 2 and str(c).strip().isdigit() else str(c) for i, c in enumerate((list(r) + [''] * 4)[:4])] for r in out],
                       'A2', value_input_option='RAW')
+        ws.batch_clear([f'A{len(out) + 2}:D'])
         C.invalidate(_pub())
     return len(new_rows)
 
@@ -242,25 +264,47 @@ def auto_rows(fresh=False):
 
 
 def save_auto_rows(rows):
-    ws = _auto_ws()
-    ws.batch_clear(['A2:E'])
-    if rows:
-        ws.update([["'" + r['member'], _text(r['name']), _text(r['role']), r['season'], r['offseason']] for r in rows], 'A2',
-                  value_input_option='USER_ENTERED')
-    C.invalidate(_sid())
+    """Replace the Auto add list: the new rows first, then clear what is left below them."""
+    with _file_lock():
+        ws = _auto_ws()
+        if ws.row_count < len(rows) + 2:
+            ws.add_rows(len(rows) + 20 - ws.row_count)
+        if rows:
+            ws.update([["'" + r['member'], _text(r['name']), _text(r['role']), r['season'], r['offseason']] for r in rows], 'A2',
+                      value_input_option='USER_ENTERED')
+        ws.batch_clear([f'A{len(rows) + 2}:E'])
+        C.invalidate(_sid())
 
 
 def prepare_auto(year, month, who='Auto add (monthly)'):
-    """Add this month's auto-add points (once). They count right away: the user asked for these to be automatic."""
-    rows = L.auto_entries(auto_rows(fresh=True), entries(), year, month)
-    return add_entries(rows, L.APPROVED, who) if rows else 0
+    """Add this month's auto-add points (once). They count right away: the user asked for these to be automatic.
+    Checked and added under the lock on a fresh read, so the button and the 1st-of-month job cannot both add them."""
+    auto = auto_rows(fresh=True)
+    return save_checked(lambda fresh: (L.auto_entries(auto, fresh, year, month), []), who)[0]
 
 
-def mark_reconciled(row_numbers, label):
-    """Fill the Reconciled column (e.g. "2026-12-01 JE 2041") for these Points rows."""
-    with _lock:
-        ws = worksheet(_sid(), 'Points')
-        if ws.col_count < 10:
-            ws.add_cols(10 - ws.col_count)
-        ws.batch_update([{'range': f'J{n}', 'values': [[_text(label)]]} for n in row_numbers], value_input_option='RAW')
+def mark_reconciled(row_numbers, label, keys=None):
+    """Fill the Reconciled column (e.g. "2026-12-01 JE 2041") for these Points rows. Row numbers move when someone
+    sorts or deletes rows in the sheet, so this reads the tab fresh under the lock and marks a row only if it is still
+    an entry waiting to be booked. keys: {row: members_logic.entry_key(entry)} as the page showed them; a row that is
+    no longer that entry is looked up by its key instead, and left alone when it cannot be found.
+    Returns (rows marked, how many were left alone)."""
+    keys = keys or {}
+    with _file_lock():
         refresh()
+        waiting = {e['row']: L.entry_key(e) for e in L.unreconciled(entries())}
+        marked = [n for n in dict.fromkeys(row_numbers) if n in waiting and (not keys.get(n) or waiting[n] == keys[n])]
+        for n in row_numbers:          # the rest moved (or are gone): find each by its key
+            if not keys.get(n) or waiting.get(n) == keys[n]:
+                continue
+            same = [r for r, wk in waiting.items() if wk == keys[n] and r not in marked]
+            if len(same) == 1:
+                marked.append(same[0])
+        if marked:
+            with _lock:
+                ws = worksheet(_sid(), 'Points')
+                if ws.col_count < 10:
+                    ws.add_cols(10 - ws.col_count)
+                ws.batch_update([{'range': f'J{n}', 'values': [[_text(label)]]} for n in marked], value_input_option='RAW')
+                refresh()
+    return marked, len(set(row_numbers)) - len(marked)

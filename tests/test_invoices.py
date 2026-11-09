@@ -92,7 +92,7 @@ def site(monkeypatch, sheet):
     monkeypatch.setattr(auth, 'group_address', lambda e: 'director@example.org')
     monkeypatch.setattr(I, 'enabled', lambda: True)
     monkeypatch.setattr(I, 'save_pdf', lambda inv, data: 'https://drive.example/d/x/view')
-    monkeypatch.setattr(I, 'update', lambda iid, **f: None)
+    monkeypatch.setattr(I, 'update', lambda iid, **f: f)
     monkeypatch.setattr(inv, 'load_events', lambda: [{'unique_code': '#E1', 'event_name': 'Test Event', 'date': '2026-05-14', 'program_code': 'AX'}])
     monkeypatch.setattr(inv, 'load_programs', lambda: {'AX': 'Autocross', 'RX': 'RallyCross'})
     monkeypatch.setattr(inv, 'send_mail', lambda subject, body, to=None, **k: store['mail'].append((subject, to)))

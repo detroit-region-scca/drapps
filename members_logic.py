@@ -74,36 +74,8 @@ def full_name(m):
     return f"{nice(m.get('first'))} {nice(m.get('last'))}".strip()
 
 
-# ---------- the entry grid ----------
-
-SPECIALTIES = ['Event chair / assistant chair', 'Registration', 'Tech / scrutineering', 'Timing and scoring', 'Flagging and communications',
-               'Grid / pit out', 'Course / course workers', 'Safety / emergency', 'Special event', 'Other']
-VOLUNTEER_JOB = 'Volunteer job (role points)'
-
-
 MAX_POINTS_PER_LINE = 50   # a typo guard: a 3-day event chair earns 12; a year's role points stay under 50
 
-
-def rows_from_form(names, points, members_by_id, event_code, when, specialty, default_points=None):
-    # specialty: what the points are for (the event, or a volunteer job)
-    """Steve's worker point form: a specialty for the sheet, then Worker's Name | Points pairs. Names picked from the
-    list carry the member #; typed names are kept for the keeper to match. Blank points use default_points (1 a day)."""
-    out, problems = [], []
-    kind = 'Role points' if specialty == VOLUNTEER_JOB else 'Earned'
-    for raw, pts_raw in zip(names, points):
-        raw = (raw or '').strip()
-        if not raw:
-            continue
-        mid = pick_id(raw, members_by_id)
-        m = members_by_id.get(mid)
-        pts = num(pts_raw) if str(pts_raw or '').strip() else (default_points or 0)
-        if pts <= 0:
-            problems.append(f'{raw}: points must be more than zero (to spend points, switch to Use points)'); continue
-        if pts > MAX_POINTS_PER_LINE:
-            problems.append(f'{raw}: {pts:g} points is more than {MAX_POINTS_PER_LINE} for one entry; check it, or split it'); continue
-        out.append({'date': when, 'member': mid if m else '', 'name': full_name(m) if m else raw, 'points': pts,
-                    'what': specialty or 'Worker', 'event': event_code or '', 'kind': kind})
-    return out, problems
 
 # ---------- the worker points sheet (upload) and the review step ----------
 
@@ -284,15 +256,6 @@ def save_check(members_by_id, entries, event_code, chosen, allow_duplicates=Fals
     return problems
 
 
-def check_spending(entries, balances):
-    """Problems if any member would go below zero."""
-    use = defaultdict(float)
-    for e in entries:
-        if e['points'] < 0 and e['member']:
-            use[e['member']] += e['points']
-    return [f"{mid}: has only {balances.get(mid, 0):g} points" for mid, p in use.items() if balances.get(mid, 0) + p < -0.004]
-
-
 # ---------- balances, lapsed ----------
 
 def balances(entries):
@@ -425,12 +388,6 @@ def milestones(members, month):
     return {k: sorted(v, key=lambda n: (n.split()[-1].lower(), n.lower())) for k, v in sorted(out.items(), reverse=True)}
 
 
-def standings(members):
-    """Public worker points list: names and points only, A-Z by last name."""
-    rows = [{'name': full_name(m), 'points': round(m['points'], 1)} for m in members if m['points'] >= 0.05 and m['member'] != 'UNASSIGNED']
-    return sorted(rows, key=lambda r: (r['name'].split()[-1].lower() if r['name'] else '', r['name'].lower()))
-
-
 # ---------- QuickBooks ----------
 
 def program_for(code, events_by_code):
@@ -440,36 +397,11 @@ def program_for(code, events_by_code):
     return ev['program_code'] if ev else 'OPS'
 
 
-def books(entries, events_by_code):
-    """Journal entry lines for these entries: points earned (by program), role points and adjustments are an expense to
-    the program and an increase in the reserve; forfeits release reserve to Operations. Points used are paid by their
-    own check or card charge (listed, no journal line)."""
-    earned = defaultdict(float)
-    forfeits = 0.0
-    used = []
-    for e in entries:
-        if e['status'] != APPROVED:
-            continue
-        if e['kind'] in ('Earned', 'Adjustment') and e['points'] > 0:
-            earned[program_for(e['event'], events_by_code)] += e['points']
-        elif e['kind'] == 'Adjustment':           # a negative adjustment releases reserve like a forfeit
-            forfeits += e['points']
-        elif e['kind'] == 'Role points':
-            earned['OPS'] += e['points']
-        elif e['kind'] == 'Forfeit':
-            forfeits += e['points']
-        elif e['kind'] == 'Used':
-            used.append(e)
-    lines = [{'debit': PROGRAM_ACCOUNT.get(p, PROGRAM_ACCOUNT['OPS']), 'credit': RESERVE, 'points': v,
-              'amount': round(v * POINT_VALUE, 2), 'what': f'{p} points earned'} for p, v in sorted(earned.items()) if abs(v) > 0.004]
-    if abs(forfeits) > 0.004:
-        lines.append({'debit': RESERVE, 'credit': PROGRAM_ACCOUNT['OPS'], 'points': -forfeits,
-                      'amount': round(-forfeits * POINT_VALUE, 2), 'what': 'points forfeited or written off'})
-    return {'lines': lines, 'used': used}
-
-
-def month_books(entries, events_by_code, year, month):
-    return books([e for e in entries if isinstance(e['date'], date) and (e['date'].year, e['date'].month) == (year, month)], events_by_code)
+def entry_key(e):
+    """What one Points entry is, whatever row it sits on: its date, member, points and what for. The QuickBooks page
+    sends it with each ticked row, so a row that moved in the sheet is not marked by mistake."""
+    d = e.get('date')
+    return '|'.join([d.isoformat() if d else '', str(e.get('member', '')), f"{e.get('points') or 0:g}", str(e.get('what', '')), str(e.get('event', ''))])
 
 
 def unreconciled(entries):

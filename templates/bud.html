@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
-{% from '_ui.html' import tab, money with context %}
+{% from '_ui.html' import money, approval_fields with context %}
 {% block app_name %}Events{% endblock %}
 {% block nav %}{% include '_events_nav.html' %}{% endblock %}
 {% macro amt(v) %}{{ '' if v is none or v == '' else (v if v is string else '%.2f'|format(v)) }}{% endmacro %}
 {% block style %}
-        .warn-sign { color: #b26a00; cursor: help; }
+        .warn-sign { color: #8a5a00; cursor: help; }
         tr.cancelled a.fw-semibold { text-decoration: line-through; color: var(--bs-secondary-color); }
         @media (max-width: 575.98px) {
             .bud-actions { display: grid !important; grid-template-columns: 1fr 1fr; width: 100%; }
@@ -18,7 +18,6 @@
         .sched tr.planned td { font-style: italic; }
         .sched a { text-decoration: none; }
         .sched a:hover { text-decoration: underline; }
-        .prog-row td { background: var(--surface-2); font-weight: 600; border-top: 2px solid var(--border); }
         .row-remove { color: var(--muted); text-decoration: none; }
         .row-remove:hover { color: #dc3545; }
         .bline .form-control { font-variant-numeric: tabular-nums; }
@@ -26,7 +25,9 @@
         @media (max-width: 767.98px) { .bline { border-bottom: 1px solid var(--border); } }
 {% endblock %}
 {% block content %}
+    {% set section_name = {'Income': 'Income', 'Expense': 'Expenses'} %}
     {% if view == 'list' %}
+    <h1 class="visually-hidden">Events {{ year }}</h1>
     {% macro when(r) -%}
         {%- if r.days == 0 %}Today{% elif r.days == 1 %}Tomorrow{% elif r.days is not none and 0 < r.days <= 30 %}In {{ r.days }} days{% endif -%}
     {%- endmacro %}
@@ -34,7 +35,7 @@
     <div class="row g-3 mb-4">
         <div class="col-12 col-md-6"><div class="card stat p-3 h-100"><div class="label">Next up</div>
             {% if nx %}<div class="value"><a href="{{ url_for('bud.detail', code=nx.code) }}" class="text-reset text-decoration-none">{{ nx.name }}</a></div>
-            <div class="small text-muted">{{ names.get(nx.program, nx.program) }} · {{ nx.e.date }}{% if when(nx) %} · <span class="text-success fw-semibold">{{ when(nx) }}</span>{% endif %}</div>
+            <div class="small text-muted">{{ names.get(nx.program, nx.program) }} · {{ (nx.e.date or '')|nice_date }}{% if when(nx) %} · <span class="text-success fw-semibold">{{ when(nx) }}</span>{% endif %}</div>
             {% else %}<div class="value text-muted">Nothing scheduled</div>{% endif %}</div></div>
         <div class="col-4 col-md-2"><div class="card stat p-3 h-100"><div class="label">Coming up</div><div class="value">{{ s.upcoming }}</div></div></div>
         <div class="col-4 col-md-2"><div class="card stat p-3 h-100"><div class="label">Run so far</div><div class="value">{{ s.done }}</div></div></div>
@@ -54,10 +55,10 @@
             <tbody>
                 <tr class="month-row"><td class="ps-3" colspan="3">{{ m.label }} {{ m.key[:4] }}</td></tr>
                 {% for r in m.rows %}{% set href = url_for('bud.detail', code=r.code) if r.e else r.register %}
-                <tr class="row-link{{ ' past' if r.past }}{{ ' planned' if not r.e }}{{ ' cancelled' if r.cancelled }}" onclick="location.href='{{ href }}'">
-                    <td class="ps-3 text-nowrap day">{% if r.e %}<div class="fw-semibold">{{ r.date[8:10]|int }}</div><div class="small text-muted">{{ r.e.date|wkday }}</div>{% else %}<span class="small text-muted">TBD</span>{% endif %}</td>
+                <tr class="{{ 'past' if r.past }}{{ ' planned' if not r.e }}{{ ' cancelled' if r.cancelled }}" data-href="{{ href }}">
+                    <td class="ps-3 text-nowrap day">{% if r.e %}<div class="fw-semibold">{{ r.date[8:10]|int }}</div><div class="small text-muted">{{ r.e.date|wkday }}</div>{% else %}<span class="small text-muted">No date</span>{% endif %}</td>
                     <td>{% if r.e %}<a href="{{ href }}" class="fw-semibold">{{ r.name }}</a>{% if r.cancelled %} <span class="badge rounded-pill text-bg-secondary">Cancelled</span>{% endif %}{% if r.warnings %} <span class="warn-sign" title="{{ r.warnings|map('first')|join('. ') }}" aria-label="Needs attention: {{ r.warnings|map('first')|join('. ') }}">⚠</span>{% endif %} <span class="small text-muted">{{ r.code }}</span>
-                        <button type="button" class="btn btn-sm btn-outline-light py-0 px-2 ms-1 no-print" data-copy="{{ r.qbo_name }}" title="Copy the QuickBooks project name: {{ r.qbo_name }}" onclick="event.stopPropagation(); copyText(this)">Copy name</button>{% elif r.missed %}{{ r.name }} <span class="small warn-sign">not registered</span>{% else %}{{ r.name }} <span class="small text-muted">planned</span>{% endif %}
+                        <button type="button" class="btn btn-sm btn-outline-light py-0 px-2 ms-1 no-print" data-copy="{{ r.qbo_name }}" title="Copy the QuickBooks project name: {{ r.qbo_name }}" onclick="copyText(this)">Copy name</button>{% elif r.missed %}{{ r.name }} <span class="small warn-sign">not registered</span>{% else %}{{ r.name }} <span class="small text-muted">planned</span>{% endif %}
                         <div class="small text-muted">{{ names.get(r.program, r.program) }}{% if when(r) %} · <span class="text-success">{{ when(r) }}</span>{% endif %}</div></td>
                     <td class="text-end pe-3 align-middle">{% if not r.e %}<a class="btn btn-sm btn-outline-light py-0 px-2" href="{{ r.register }}">Register</a>{% endif %}</td>
                 </tr>{% endfor %}
@@ -87,16 +88,16 @@
     <div class="card p-3 mb-3">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
             <div>
-                <div class="page-title m-0">{{ e.event_name or (b and b.event_name) }}{% if e.cancelled %} <span class="badge rounded-pill text-bg-secondary align-middle fs-6">Cancelled</span>{% endif %}</div>
-                <div class="text-muted">{{ e.date[:4] if e.program_budget else e.date }} · {{ programs.get(e.program_code, e.program_code) }} · {{ code }}{% if e.creator_name %} · registered by {{ e.creator_name }}{% endif %}</div>
-                {% if msr_link and msr_link[0] %}<div class="small"><a href="{{ msr_link[0] }}" target="_blank" rel="noopener">MotorsportReg</a>{% if msr_info and msr_info.date %} · {{ msr_info.date }}{% if msr_info.cancelled %}, cancelled there{% endif %}{% endif %}</div>
+                <h1 class="page-title m-0">{{ e.event_name or (b and b.event_name) }}{% if e.cancelled %} <span class="badge rounded-pill text-bg-secondary align-middle fs-6">Cancelled</span>{% endif %}</h1>
+                <div class="text-muted">{{ e.date[:4] if e.program_budget else (e.date or '')|nice_date }} · {{ programs.get(e.program_code, e.program_code) }} · {{ code }}{% if e.creator_name %} · registered by {{ e.creator_name }}{% endif %}</div>
+                {% if msr_link and msr_link[0] %}<div class="small"><a href="{{ msr_link[0] }}" target="_blank" rel="noopener">MotorsportReg</a>{% if msr_info and msr_info.date %} · {{ (msr_info.date or '')|nice_date }}{% if msr_info.cancelled %}, cancelled there{% endif %}{% endif %}</div>
                 {% elif e.id and not e.program_budget and not e.cancelled %}{% set msr_name = (e.event_name ~ ' ' ~ code)|trim %}<div class="small text-muted">Not on MotorsportReg yet: name it there with {{ code }}, for example "{{ msr_name }}".
                     <button type="button" class="btn btn-sm btn-outline-light py-0 px-2 no-print" data-copy="{{ msr_name }}" onclick="copyText(this)">Copy name</button></div>{% endif %}
                 {% if b %}<div class="small mt-1">{% if b.chair %}Chair: {{ b.chair }}{% endif %}{% if b.location %} · {{ b.location }}{% endif %}</div>
-                <div class="small text-muted">Budget updated {{ b.updated }} by {{ b.updated_by }}</div>{% endif %}
+                <div class="small text-muted">Budget updated {{ (b.updated or '')|nice_date }} by {{ b.updated_by }}</div>{% endif %}
                 <div class="small mt-2">{% if status == 'draft' %}<span class="badge rounded-pill text-bg-secondary">Budget in draft</span> not on the board's list yet
-                    {% elif status == 'approved' %}<span class="badge rounded-pill text-bg-success">Budget board approved {{ b.approved }}</span>
-                    {% elif status == 'changed' %}<span class="badge rounded-pill text-bg-info">Budget changed</span> since the board approved it on {{ b.approved }}
+                    {% elif status == 'approved' %}<span class="badge rounded-pill text-bg-success">Budget board approved {{ (b.approved or '')|nice_date }}</span>
+                    {% elif status == 'changed' %}<span class="badge rounded-pill text-bg-warning">Budget changed since approved {{ (b.approved or '')|nice_date }}</span>
                     {% elif b %}<a href="{{ url_for('bud.approve_many', year=(b.date or '')[:4]) }}" class="badge rounded-pill text-bg-primary text-decoration-none">Budget not board approved yet</a>
                     {% endif %}</div>
                 {% if e.program_budget %}<div class="small mt-1 text-muted">The program's spending and income that is not one event. Funds requests not tied to an event are paid against this budget once the board approves it.</div>{% endif %}
@@ -114,10 +115,10 @@
                 {% if e.id or e.program_budget %}<div class="dropdown">
                     <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Money</button>
                     <ul class="dropdown-menu">
-                        {% if e.id %}<li><a class="dropdown-item" href="{{ url_for('fr.new', event=code) }}">Request funds</a></li>
+                        {% if e.id %}<li><a class="dropdown-item" href="{{ url_for('fr.new', event=code) }}">New funds request</a></li>
                         <li><a class="dropdown-item" href="{{ url_for('fr.in_new', event=code) }}">Report money received</a></li>
                         <li><a class="dropdown-item" href="{{ url_for('inv.new', event=code) }}">Create invoice</a></li>
-                        {% else %}<li><a class="dropdown-item" href="{{ url_for('fr.new', program=e.program_code) }}">Request funds</a></li>{% endif %}
+                        {% else %}<li><a class="dropdown-item" href="{{ url_for('fr.new', program=e.program_code) }}">New funds request</a></li>{% endif %}
                     </ul></div>{% endif %}
                 <div class="dropdown">
                     <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">More</button>
@@ -137,8 +138,8 @@
             <form method="post" action="{{ url_for('edit_event', event_id=e.id) }}" class="row g-2">
                 <div class="col-md-6"><label class="form-label small">Event name</label><input name="event_name" class="form-control" value="{{ e.event_name }}" required></div>
                 <div class="col-6 col-md-3"><label class="form-label small">Date</label><input type="date" name="date" class="form-control" value="{{ e.date }}" required onclick="this.showPicker && this.showPicker()"></div>
-                <div class="col-6 col-md-3"><label class="form-label small">Program</label><select name="program" class="form-select">{% for pc in programs %}<option value="{{ pc }}" {{ 'selected' if pc == e.program_code }}>{{ pc }}</option>{% endfor %}</select></div>
-                <div class="col-6 col-md-3"><label class="form-label small">Custom tag (optional)</label><input name="custom_tag" class="form-control" value="{{ e.custom_tag or '' }}"></div>
+                <div class="col-6 col-md-3"><label class="form-label small">Program</label><select name="program" class="form-select">{% for pc in programs %}<option value="{{ pc }}" {{ 'selected' if pc == e.program_code }}>{{ programs[pc] }}</option>{% endfor %}</select></div>
+                <div class="col-6 col-md-3"><label class="form-label small">Tag (optional)</label><input name="custom_tag" class="form-control" value="{{ e.custom_tag or '' }}"></div>
                 <div class="col-6 col-md-3"><label class="form-label small">Registered by</label><input name="your_name" class="form-control" value="{{ e.creator_name }}" required></div>
                 <div class="col-md-6"><label class="form-label small">MotorsportReg link (only if its name cannot carry {{ code }})</label><input name="msr_url" class="form-control" value="{{ e.msr_url or '' }}" placeholder="https://www.motorsportreg.com/events/..."></div>
                 <div class="col-md-6 d-flex align-items-end gap-2"><button class="btn btn-accent">Save event</button>
@@ -147,26 +148,26 @@
             <form method="post" action="{{ url_for('delete_event', event_id=e.id) }}" class="collapse mt-3" id="deleteEvent">
                 <div class="small mb-1">Type <b>{{ e.event_name }}</b> to delete this event. Its budget and plan line stay.</div>
                 <div class="d-flex flex-wrap gap-2"><input type="hidden" name="delete_user_name" value="{{ session.get('who', '') }}">
-                    <input class="form-control w-auto" id="delInput" autocomplete="off" placeholder="Event name" data-name="{{ e.event_name }}" oninput="document.getElementById('delBtn').disabled = this.value !== this.dataset.name">
+                    <input class="form-control w-auto" id="delInput" autocomplete="off" aria-label="Event name" placeholder="Event name" data-name="{{ e.event_name }}" oninput="document.getElementById('delBtn').disabled = this.value !== this.dataset.name">
                     <button class="btn btn-danger" id="delBtn" disabled>Delete</button></div>
             </form>
         </div>
         {% endif %}
         {% if b %}<div class="collapse no-print" id="deleteBudget"><hr>
             <form method="post" action="{{ url_for('bud.delete', code=code) }}" class="d-flex flex-wrap gap-2 align-items-center">
-                <span class="small">Delete this budget{% if b.approved %} (board approved {{ b.approved }}; officers only){% endif %}? Its lines go; its files stay in Drive. This is logged.</span>
+                <span class="small">Delete this budget{% if b.approved %} (board approved {{ (b.approved or '')|nice_date }}; officers only){% endif %}? Its lines go; its files stay in Drive. This is logged.</span>
                 <button class="btn btn-sm btn-danger ms-auto">Delete budget</button></form></div>{% endif %}
     </div>
     {% if b or q %}
-    <h2 class="h6 text-muted">Budget vs QuickBooks{% if q %} (as of {{ q.as_of }}){% endif %}</h2>
+    <h2 class="h6 text-muted">Budget vs QuickBooks{% if q %} (as of {{ (q.as_of or '')|nice_date }}){% endif %}</h2>
     <div class="card mb-3"><div class="card-body p-0 table-responsive">
         <table class="table mb-0">
-            <thead><tr><th class="ps-3"></th><th class="num d-none d-sm-table-cell">Annual plan</th><th class="num">Budget</th><th class="num">QuickBooks</th><th class="num pe-3">Difference</th></tr></thead>
-            <tbody>{% for k, label in [('income', 'Income'), ('expense', 'Expense'), ('surplus', 'Surplus (loss)')] %}
+            <thead><tr><th class="ps-3"><span class="visually-hidden">Line</span></th><th class="num d-none d-sm-table-cell">Annual plan</th><th class="num">Budget</th><th class="num">QuickBooks</th><th class="num pe-3">Difference</th></tr></thead>
+            <tbody>{% for k, label in [('income', 'Income'), ('expense', 'Expenses'), ('surplus', 'Surplus (loss)')] %}
                 {% set bv = b.totals.budget[k] if b and b.totals.budget else none %}{% set av = q.totals[k] if q else none %}
                 <tr class="{{ 'fw-semibold' if k == 'surplus' }}"><td class="ps-3">{{ label }}</td><td class="num d-none d-sm-table-cell">{{ money(plan.net if plan and k == 'surplus' else none) }}</td><td class="num">{{ money(bv) }}</td><td class="num">{{ money(av) }}</td>
                 <td class="num pe-3">{% if av is not none and bv is not none %}{% set d = av - bv %}{% set good = (d < 0) if k == 'expense' else (d > 0) %}
-                    {% if d|abs < 0.005 %}<span class="text-muted">on budget</span>{% else %}<span class="{{ 'text-success' if good else 'text-danger' }}">${{ '{:,.2f}'.format(d|abs) }} <span class="d-block d-sm-inline small">{{ 'over' if d > 0 else 'under' }}</span></span>{% endif %}
+                    {% if d|abs < 0.005 %}<span class="text-muted">on budget</span>{% else %}<span class="{{ 'text-success' if good else 'text-danger' }}">{{ money(d|abs) }} <span class="d-block d-sm-inline small">{{ 'over' if d > 0 else 'under' }}</span></span>{% endif %}
                     {% else %}{{ money(none) }}{% endif %}</td></tr>
             {% endfor %}</tbody>
         </table>
@@ -177,6 +178,7 @@
     {% if q %}
     <details class="mb-3"><summary class="text-muted small">QuickBooks accounts for {{ q.project }}</summary>
     <div class="card mt-2"><div class="card-body p-0 table-responsive"><table class="table table-sm mb-0">
+        <thead class="visually-hidden"><tr><th>Kind</th><th>Account</th><th>Amount</th></tr></thead>
         <tbody>{% for ln in q.lines %}<tr><td class="ps-3 small text-muted">{{ ln.section }}</td><td>{{ ln.account }}</td><td class="num pe-3">{{ money(ln.amount) }}</td></tr>{% endfor %}</tbody>
     </table></div></div></details>
     {% elif e.program_budget %}<p class="text-muted small">No QuickBooks money on the program's accounts outside event projects for {{ e.date[:4] }} yet.</p>
@@ -187,12 +189,12 @@
     {% set cols = ['last_year', 'budget'] + (['actual'] if b.totals.actual else []) %}
     <div class="card mb-3"><div class="card-body p-0 table-responsive">
         <table class="table mb-0">
-            <thead><tr><th class="ps-3"></th><th class="num">Last year reported</th><th class="num{{ ' pe-3' if cols|length == 2 }}">This year budget</th>{% if cols|length == 3 %}<th class="num pe-3">This year reported</th>{% endif %}</tr></thead>
+            <thead><tr><th class="ps-3"><span class="visually-hidden">Line</span></th><th class="num">Last year reported</th><th class="num{{ ' pe-3' if cols|length == 2 }}">This year budget</th>{% if cols|length == 3 %}<th class="num pe-3">This year reported</th>{% endif %}</tr></thead>
             <tbody>
             {% for section in ['Income', 'Expense'] %}
-                <tr><td class="ps-3 fw-semibold" colspan="{{ cols|length + 1 }}">{{ section }}</td></tr>
+                <tr><td class="ps-3 fw-semibold" colspan="{{ cols|length + 1 }}">{{ section_name[section] }}</td></tr>
                 {% for ln in b.lines if ln.section == section %}<tr><td class="ps-4">{{ ln.description }}</td>{% for k in cols %}<td class="num{{ ' pe-3' if loop.last }}">{{ money(ln[k]) }}</td>{% endfor %}</tr>{% endfor %}
-                <tr><td class="ps-3 text-muted">Total {{ section|lower }}</td>{% for k in cols %}<td class="num{{ ' pe-3' if loop.last }}">{{ money(b.totals[k][section|lower] if b.totals[k] else none) }}</td>{% endfor %}</tr>
+                <tr><td class="ps-3 text-muted">Total {{ section_name[section]|lower }}</td>{% for k in cols %}<td class="num{{ ' pe-3' if loop.last }}">{{ money(b.totals[k][section|lower] if b.totals[k] else none) }}</td>{% endfor %}</tr>
             {% endfor %}
             <tr><td class="ps-3 fw-semibold">Surplus (loss)</td>{% for k in cols %}<td class="num fw-semibold{{ ' pe-3' if loop.last }}">{{ money(b.totals[k].surplus if b.totals[k] else none) }}</td>{% endfor %}</tr>
             </tbody>
@@ -205,28 +207,30 @@
     {% if yoy %}
     <h2 class="h6 text-muted">Year over year</h2>
     <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <thead><tr><th class="ps-3">Year</th><th>Event</th><th class="num">Budgeted net</th><th class="num">Income</th><th class="num">Expenses</th><th class="num pe-3">Net</th></tr></thead>
+        <thead><tr><th class="ps-3">Year</th><th>Event</th><th class="num">Budgeted surplus</th><th class="num">Income</th><th class="num">Expenses</th><th class="num pe-3">Surplus (loss)</th></tr></thead>
         <tbody>{% for r in yoy %}<tr{% if loop.first %} class="fw-semibold"{% endif %}><td class="ps-3">{{ r.date[:4] }}</td>
             <td>{% if loop.first %}{{ r.name }}{% else %}<a href="{{ url_for('bud.detail', code=r.code) }}">{{ r.name }}</a>{% endif %} <span class="small text-muted">{{ r.code }}</span></td>
             <td class="num">{{ money(r.budget) }}</td>
             <td class="num">{{ money(r.qbo.income if r.qbo else none) }}</td><td class="num">{{ money(r.qbo.expense if r.qbo else none) }}</td>
             <td class="num pe-3">{{ money(r.qbo.surplus if r.qbo else none) }}</td></tr>{% endfor %}</tbody>
     </table></div></div>
-    <p class="form-text">Income, expenses and net are from QuickBooks. Each year comes from the budget's "Last year's event"; change it with Edit budget.</p>
+    <p class="form-text">Income, expenses and surplus are from QuickBooks. Each year comes from the budget's "Last year's event"; change it with Edit budget.</p>
     {% endif %}
     {% if funds %}
     <h2 class="h6 text-muted">Funds requests {{ 'not tied to an event' if e.program_budget else 'for this event' }}</h2>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <tbody>{% for r in funds %}<tr><td class="ps-3"><a href="{{ url_for('fr.detail', req_id=r.id) }}">{{ r.id }}</a></td><td>{{ r.payee_name }}</td><td>{{ r.status if r.status != 'Submitted' else 'Waiting' }}</td><td class="num pe-3">${{ '{:,.2f}'.format(r.net) }}</td></tr>{% endfor %}
-        <tr><td class="ps-3 text-muted" colspan="3">Total requested</td><td class="num pe-3">${{ '{:,.2f}'.format(funds|sum(attribute='net')) }}</td></tr></tbody>
+        <thead class="visually-hidden"><tr><th>Request</th><th>Pay to</th><th>Status</th><th>Amount</th></tr></thead>
+        <tbody>{% for r in funds %}<tr><td class="ps-3"><a href="{{ url_for('fr.detail', req_id=r.id) }}">{{ r.id }}</a></td><td>{{ r.payee_name }}</td><td>{{ r.status if r.status != 'Submitted' else 'Open' }}</td><td class="num pe-3">{{ money(r.net) }}</td></tr>{% endfor %}
+        <tr><td class="ps-3 text-muted" colspan="3">Total requested</td><td class="num pe-3">{{ money(funds|sum(attribute='net')) }}</td></tr></tbody>
     </table></div></div>
     <p class="form-text">Card charges and MSR fees are not funds requests, so spending in QuickBooks can be higher than this.</p>
     {% endif %}
     {% if received %}
     <h2 class="h6 text-muted mt-3">Money received at this event</h2>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <tbody>{% for r in received %}<tr><td class="ps-3"><a href="{{ url_for('fr.in_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ r.received }}</td><td>{{ 'Deposited' if r.status == 'Deposited' else 'Not deposited' }}</td><td class="num pe-3">${{ '{:,.2f}'.format(r.total) }}</td></tr>{% endfor %}
-        <tr><td class="ps-3 text-muted" colspan="3">Total received</td><td class="num pe-3">${{ '{:,.2f}'.format(received|sum(attribute='total')) }}</td></tr></tbody>
+        <thead class="visually-hidden"><tr><th>Report</th><th>Received</th><th>Status</th><th>Amount</th></tr></thead>
+        <tbody>{% for r in received %}<tr><td class="ps-3"><a href="{{ url_for('fr.in_detail', rid=r.id) }}">{{ r.id }}</a></td><td>{{ (r.received or '')|nice_date }}</td><td>{{ 'Deposited' if r.status == 'Deposited' else 'Not deposited' }}</td><td class="num pe-3">{{ money(r.total) }}</td></tr>{% endfor %}
+        <tr><td class="ps-3 text-muted" colspan="3">Total received</td><td class="num pe-3">{{ money(received|sum(attribute='total')) }}</td></tr></tbody>
     </table></div></div>
     <p class="form-text">Cash and checks reported here. Registration paid through MotorsportReg is not included.</p>
     {% endif %}
@@ -235,30 +239,28 @@
         <div class="section-label">Board approval</div>
         {% if status == 'draft' %}
         <form method="post" action="{{ url_for('bud.to_ready', code=code) }}" class="d-flex flex-wrap gap-2 align-items-center">
-            <span><b>Draft</b> (put back {{ b.draft }}). It is not on the board's list until it is ready.</span>
+            <span><b>Draft</b> (put back {{ (b.draft or '')[:10]|nice_date }}{{ (b.draft or '')[10:] }}). It is not on the board's list until it is ready.</span>
             <button class="btn btn-sm btn-accent ms-auto">Ready for the board</button>
         </form>
         {% elif b.approved %}
         <form method="post" action="{{ url_for('bud.approve', code=code) }}" class="d-flex flex-wrap gap-2 align-items-center">
-            <span>Approved {{ b.approved }}{% if b.approved_by %}, recorded by {{ b.approved_by }}{% endif %}.</span>
+            <span>Approved {{ (b.approved or '')|nice_date }}{% if b.approved_by %}, recorded by {{ b.approved_by }}{% endif %}.</span>
             <input type="hidden" name="approved" value=""><input type="hidden" name="who" value="{{ who }}">
             <button class="btn btn-sm btn-outline-secondary ms-auto" onclick="return confirm('Clear the board approval?')">Clear approval</button>
         </form>
         {% else %}
-        <p class="mb-2"><b>Not approved yet.</b>{% if ballot and ballot.status == 'open' %} The board is voting on it by email until {{ ballot.closes }}. <a href="{{ url_for('board.home') }}">See the vote</a>{% endif %}</p>
+        <p class="mb-2"><b>Not approved yet.</b>{% if ballot and ballot.status == 'open' %} The board is voting on it by email until {{ (ballot.closes or '')|nice_date }}. <a href="{{ url_for('board.home') }}">See the vote</a>{% endif %}</p>
         {% if officer %}
         <div class="small text-muted mb-1">After the board approves it, record the decision here.</div>
         <form method="post" action="{{ url_for('bud.approve', code=code) }}" class="row g-2 align-items-end">
-            <div class="col-6 col-md-3"><label class="form-label small">Approved on</label><input type="date" name="approved" class="form-control form-control-sm" required></div>
-            <div class="col-6 col-md-3"><label class="form-label small">How</label><select name="how" class="form-select form-select-sm"><option value="meeting">Board meeting</option><option value="email">Email vote</option></select></div>
-            <div class="col-6 col-md-2"><label class="form-label small">Vote</label><input name="vote" class="form-control form-control-sm" placeholder="7-0"></div>
+            {{ approval_fields() }}
             <input type="hidden" name="who" value="{{ session.get('who', '') }}">
             <div class="col-12 col-md-4"><button class="btn btn-sm btn-accent w-100">Record board approval</button></div>
         </form>
         {% else %}<div class="small text-muted">After the board approves this budget, the RE, ARE, secretary or treasurer records it here.</div>{% endif %}
         {% endif %}
         {% if status != 'draft' and (officer or not b.approved or directs_budget(code, b)) %}
-        <form method="post" action="{{ url_for('bud.to_draft', code=code) }}" class="mt-2" onsubmit="return confirm('Put this budget back into draft?{% if b.approved %} This clears the board approval of {{ b.approved }}.{% endif %} Any open board vote on it is cancelled.')">
+        <form method="post" action="{{ url_for('bud.to_draft', code=code) }}" class="mt-2" onsubmit="return confirm({{ ('Put this budget back into draft?' ~ (' This clears the board approval of ' ~ (b.approved or '')|nice_date ~ '.' if b.approved else '') ~ ' Any open board vote on it is cancelled.')|tojson|forceescape }})">
             <button class="btn btn-sm btn-link p-0">Back to draft</button> <span class="small text-muted">to rework it before the board looks at it</span>
         </form>{% endif %}
     </div>
@@ -266,23 +268,24 @@
 
     {% elif view == 'actuals' %}
     <div class="crumbs"><a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Events</a> / <a href="{{ url_for('bud.detail', code=code) }}">{{ code }}</a> / Reported results</div>
-    <div class="page-title">{{ e.event_name }} <span class="text-muted fs-6">{{ e.date }} · {{ e.program_code }} · {{ code }}</span></div>
-    <p class="text-muted">What the event took in and spent, line by line, as the chair reports it. Enter it whenever you have it and come back to add more. QuickBooks keeps the official books; its totals are shown to check against. This does not change the budget the board approved.</p>
+    <h1 class="page-title">{{ e.event_name }} <span class="text-muted fs-6">{{ (e.date or '')|nice_date }} · {{ e.program_code }} · {{ code }}</span></h1>
+    <p class="text-muted">What the event took in and spent, as the chair reports it. The approved budget does not change.</p>
     <form method="post" id="actForm">
         {% for section, key in [('Income', 'inc'), ('Expense', 'exp')] %}
         {% set qt = (q.totals.income if section == 'Income' else q.totals.expense) if q else none %}
         <div class="card p-3 mb-3">
-            <div class="section-label">{{ section }}{% if section == 'Expense' %} <span class="text-muted text-lowercase fw-normal" style="letter-spacing:0">(costs, as positive amounts)</span>{% endif %}</div>
+            <div class="section-label">{{ section_name[section] }}{% if section == 'Expense' %} <span class="text-muted text-lowercase fw-normal" style="letter-spacing:0">(as positive amounts)</span>{% endif %}</div>
             <div class="row g-2 text-muted small mb-1"><div class="col-6 col-md-7">Line</div><div class="col-3 col-md-2 text-end">Budget</div><div class="col-3 col-md-3 text-end">Reported</div></div>
             {% for ln in b.lines %}{% if ln.section == section %}
             <div class="row g-2 align-items-center mb-2"><div class="col-6 col-md-7">{{ ln.description }}</div>
                 <div class="col-3 col-md-2 text-end text-muted">{{ money(ln.budget) }}</div>
-                <div class="col-3 col-md-3"><input name="act" data-sec="{{ key }}" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0.00" value="{{ '%.2f'|format(ln.actual) if ln.actual is not none else '' }}" aria-label="Reported for {{ ln.description }}"></div></div>
+                <div class="col-3 col-md-3"><input type="hidden" name="act_key" value="{{ ln.section }}|{{ ln.description }}"><input name="act" data-sec="{{ key }}" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0.00" value="{{ '%.2f'|format(ln.actual) if ln.actual is not none else '' }}" aria-label="Reported for {{ ln.description }}"></div></div>
             {% endif %}{% endfor %}
-            <div class="new-lines" data-key="{{ key }}"></div>
+            <div class="new-lines" data-key="{{ key }}">{% for n in new_lines|default([]) if n.key == key %}<div class="row g-2 mb-2"><div class="col-9 col-md-9"><input name="new_{{ key }}_desc" class="form-control form-control-sm" aria-label="What it was" placeholder="What it was" value="{{ n.description }}"></div>
+                <div class="col-3 col-md-3"><input name="new_{{ key }}_act" class="form-control form-control-sm text-end" inputmode="decimal" aria-label="Reported" placeholder="0.00" value="{{ n.actual }}"></div></div>{% endfor %}</div>
             <div class="d-flex flex-wrap align-items-center gap-3 mt-1">
                 <button type="button" class="btn btn-outline-light btn-sm" onclick="addActual('{{ key }}')">Add a line not budgeted</button>
-                <div class="ms-auto small">Reported {{ section|lower }} <b data-tot="{{ key }}">$0.00</b>{% if qt is not none %} <span class="text-muted">· QuickBooks {{ money(qt) }}</span>{% endif %}</div>
+                <div class="ms-auto small">Reported {{ section_name[section]|lower }} <b data-tot="{{ key }}">$0.00</b>{% if qt is not none %} <span class="text-muted">· QuickBooks {{ money(qt) }}</span>{% endif %}</div>
             </div>
         </div>
         {% endfor %}
@@ -292,7 +295,7 @@
 
     {% elif view == 'edit' %}
     <div class="crumbs">{% if e.program_budget %}<a href="{{ url_for('plan.detail', year=e.date[:4], program=e.program_code) }}">Annual Plan</a>{% else %}<a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Events</a>{% endif %} / <a href="{{ url_for('bud.detail', code=code) }}">{{ code }}</a> / Edit</div>
-    <div class="page-title">{{ e.event_name }} <span class="text-muted fs-6">{{ e.date[:4] if e.program_budget else e.date }} · {{ e.program_code }} · {{ code }}</span></div>
+    <h1 class="page-title">{{ e.event_name }} <span class="text-muted fs-6">{{ e.date[:4] if e.program_budget else (e.date or '')|nice_date }} · {{ e.program_code }} · {{ code }}</span></h1>
     <form method="post" enctype="multipart/form-data" id="budForm" class="mt-3">
         {% if ly_events %}{% set chosen = ly_events|selectattr('code', 'equalto', pick)|first %}<div class="card p-3 mb-3" id="lyBox"
                  data-copy-url="{{ url_for('bud.edit', code=code) }}" data-has-lines="{{ '1' if lines else '' }}">
@@ -309,28 +312,29 @@
                 </div>
                 <div class="form-text">Starting this year's budget? Pick last year's event here and press Copy its budget. Leave Link ticked: it builds this event's year over year history on its page.</div></div>{% endif %}
     {% if copied %}<div class="alert alert-info py-2">Copied from {{ src.event_name|trim }}: its budget is your starting budget{% if src_q %}, and its QuickBooks results are below{% endif %}. Change anything, then save.</div>
-    {% if src_q %}<details class="mb-3" open><summary class="small text-muted">{{ src.event_name|trim }} in QuickBooks: income {{ money(src_q.totals.income) }}, costs {{ money(src_q.totals.expense) }}, surplus {{ money(src_q.totals.surplus) }}</summary>
-    <div class="card mt-2"><div class="card-body p-0"><table class="table table-sm mb-0"><tbody>
+    {% if src_q %}<details class="mb-3" open><summary class="small text-muted">{{ src.event_name|trim }} in QuickBooks: income {{ money(src_q.totals.income) }}, expenses {{ money(src_q.totals.expense) }}, surplus {{ money(src_q.totals.surplus) }}</summary>
+    <div class="card mt-2"><div class="card-body p-0"><table class="table table-sm mb-0">
+        <thead class="visually-hidden"><tr><th>Kind</th><th>Account</th><th>Amount</th></tr></thead><tbody>
         {% for ln in src_q.lines %}<tr><td class="ps-3 small text-muted">{{ ln.section }}</td><td>{{ ln.label }}</td><td class="num pe-3">{{ money(ln.amount) }}</td></tr>{% endfor %}
     </tbody></table></div></div></details>{% endif %}{% endif %}
         <div class="card p-3 mb-3"><div class="row g-2">
             <div class="col-md-4"><label class="form-label">Event chair</label><input name="chair" class="form-control" value="{{ form.get('chair', '') }}"></div>
             <div class="col-md-4"><label class="form-label">Location</label><input name="location" class="form-control" value="{{ form.get('location', '') }}"></div>
-            <input type="hidden" name="entered_by" value="{{ session.get('who', '') }}">
         </div></div>
+        {# A new budget shows the usual lines as greyed hints, not as lines: only what is typed is saved. #}
         {% set starter = {'Income': ['Entry fees', 'Weekend memberships'], 'Expense': ['Site rental', 'SCCA insurance and sanction fees', 'Worker points', 'Trophies', 'Supplies']} %}
         {% for section, key in [('Income', 'inc'), ('Expense', 'exp')] %}
         <div class="card p-3 mb-3">
-            <div class="section-label">{{ section }}{% if section == 'Expense' %} <span class="text-muted text-lowercase fw-normal" style="letter-spacing:0">(costs, as positive amounts)</span>{% endif %}</div>
+            <div class="section-label">{{ section_name[section] }}{% if section == 'Expense' %} <span class="text-muted text-lowercase fw-normal" style="letter-spacing:0">(as positive amounts)</span>{% endif %}</div>
             <div class="row g-2 d-none d-md-flex text-muted small mb-1"><div class="col-md-6">Description</div><div class="col-md-2 text-end">Last year reported</div><div class="col-md-3 text-end">This year budget</div></div>
             <div class="row g-2 d-md-none text-muted small mb-1"><div class="col-5 text-end">Last yr</div><div class="col-6 text-end">Budget</div></div>
             <div class="lines" data-key="{{ key }}">
             {% set rows = lines|selectattr('section', 'equalto', section)|list or starter[section]|map('string')|list %}
             {% for ln in rows %}{% set is_obj = ln is mapping %}
                 <div class="row g-2 bline mb-2 pb-2">
-                    <div class="col-12 col-md-6"><input name="{{ key }}_desc" class="form-control form-control-sm" aria-label="Description" placeholder="Description" value="{{ ln.description if is_obj else ln }}"></div>
-                    <div class="col-5 col-md-2"><input name="{{ key }}_ly" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="Last yr" value="{{ amt(ln.last_year) if is_obj else '' }}"></div>
-                    <div class="col-6 col-md-3"><input name="{{ key }}_bud" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="Budget" value="{{ amt(ln.budget) if is_obj else '' }}"></div>
+                    <div class="col-12 col-md-6"><input name="{{ key }}_desc" class="form-control form-control-sm" aria-label="Description" placeholder="{{ 'Description' if is_obj else 'e.g. ' ~ ln }}" value="{{ ln.description if is_obj else '' }}"></div>
+                    <div class="col-5 col-md-2"><input name="{{ key }}_ly" class="form-control form-control-sm text-end" inputmode="decimal" aria-label="Last year reported" placeholder="Last yr" value="{{ amt(ln.last_year) if is_obj else '' }}"></div>
+                    <div class="col-6 col-md-3"><input name="{{ key }}_bud" class="form-control form-control-sm text-end" inputmode="decimal" aria-label="This year budget" placeholder="Budget" value="{{ amt(ln.budget) if is_obj else '' }}"></div>
                     <input type="hidden" name="{{ key }}_act" value="{{ amt(ln.actual) if is_obj else '' }}">
                     <div class="col-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)" aria-label="Remove line">✕</button></div>
                 </div>
@@ -350,7 +354,7 @@
             <label class="form-label">Attach files <span class="text-muted">(the original budget spreadsheet or PDF, optional)</span></label>
             <input type="file" name="files" class="form-control" multiple>
         </div>
-        {% if funds %}<p class="form-text">Funds requests {{ 'not tied to an event' if e.program_budget else 'for this event' }} so far: ${{ '{:,.2f}'.format(funds|sum(attribute='net')) }} ({{ funds|length }}). Card charges and MSR fees are not included there.</p>{% endif %}
+        {% if funds %}<p class="form-text">Funds requests {{ 'not tied to an event' if e.program_budget else 'for this event' }} so far: {{ money(funds|sum(attribute='net')) }} ({{ funds|length }}). Card charges and MSR fees are not included there.</p>{% endif %}
         <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('bud.detail', code=code) }}">Cancel</a><button class="btn btn-accent px-4">Save budget</button></div>
     </form>
     {% endif %}
@@ -371,7 +375,7 @@
         const row = document.createElement('div');
         row.className = 'row g-2 align-items-center mb-2';
         row.innerHTML = `<div class="col-9 col-md-9"><input name="new_${key}_desc" class="form-control form-control-sm" aria-label="What it was" placeholder="What it was"></div>
-            <div class="col-3 col-md-3"><input name="new_${key}_act" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0.00"></div>`;
+            <div class="col-3 col-md-3"><input name="new_${key}_act" class="form-control form-control-sm text-end" inputmode="decimal" aria-label="Reported" placeholder="0.00"></div>`;
         actForm.querySelector(`.new-lines[data-key=${key}]`).appendChild(row);
         row.querySelector('input').focus();
     }
@@ -381,7 +385,7 @@
     function lastYearChanged(fromLoad) {
         const sel = document.getElementById('lyCode');
         if (!sel) return;
-        const opt = sel.selectedOptions[0], box = document.getElementById('lyBox');
+        const opt = sel.selectedOptions[0];
         document.getElementById('lyLinkBox').classList.toggle('d-none', !sel.value);
         if (!fromLoad) document.getElementById('lyLink').checked = !!sel.value;
         document.getElementById('lyCopy').classList.toggle('d-none', !(sel.value && opt.dataset.budget));
@@ -394,7 +398,6 @@
         location.href = box.dataset.copyUrl + '?copy=' + encodeURIComponent(code) + '&link=' + (document.getElementById('lyLink').checked ? '1' : '0');
     }
 </script>
-{% include '_rollup.html' %}
 <script>
     // "Copy QuickBooks name". navigator.clipboard only exists in a secure context (not plain http on the LAN),
     // so fall back to selecting a hidden textarea.
@@ -443,6 +446,7 @@
         const box = btn.closest('.card').querySelector('.lines');
         const row = box.querySelector('.bline').cloneNode(true);
         row.querySelectorAll('input').forEach(i => i.value = '');
+        row.querySelector('[name$=_desc]').placeholder = 'Description';
         box.appendChild(row);
         row.querySelector('input').focus();
     }

@@ -32,6 +32,7 @@ EXTRA = {
     'minutes': 'Upload and publish board minutes',
     'points': 'Manage worker points (milestones, auto add, books)',
     'ops': 'Edit Operations (equipment, storage, bills)',
+    'records': 'Correct any program\'s Records (results and standings)',
     'access': 'Manage app access (add and remove volunteers)',
     'audit': 'See the audit log',
     'admin': 'Run the Admin app (users, roles, programs)',

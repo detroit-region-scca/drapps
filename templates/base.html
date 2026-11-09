@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title }}</title>
+    <title>{% if page_title is defined and page_title %}{{ page_title }} · {% endif %}{{ title }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         /* Same look as drscca.org: white page, black text, Detroit red and link blue, the site's system font. */
@@ -50,10 +50,9 @@
         .card { background: var(--surface); border-color: var(--border); border-radius: 8px; color: var(--text); }
         .stat .label { color: var(--muted); font-size: .85rem; }
         .stat .value { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-        .form-control, .form-select { background-color: var(--surface-2); color: var(--text); border-color: var(--border); }
-        .form-control, .form-select { background-color: #fff; }
+        .form-control, .form-select { background-color: #fff; color: var(--text); border-color: var(--border); }
         .form-control:focus, .form-select:focus { background-color: #fff; color: var(--text); border-color: var(--link); box-shadow: 0 0 0 .15rem rgba(29,63,184,.15); }
-        .form-control::placeholder { color: #8a919c; }
+        .form-control::placeholder { color: #6b7280; }   /* 4.8:1 on white */
         .btn-accent { background: var(--red); border-color: var(--red); color: #fff; font-weight: 600; }
         .btn-accent:hover, .btn-accent:focus { background: #111; border-color: #111; color: #fff; }
         /* The apps were built dark: their light outline buttons become the site's plain grey ones. */
@@ -64,11 +63,12 @@
         .table > :not(caption) > * > * { border-color: var(--border); }
         .table thead th { color: var(--muted); font-weight: 500; font-size: .85rem; }
         .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .page-title { font-size: 1.35rem; font-weight: 600; margin-bottom: .25rem; }
+        .page-title { font-size: 1.35rem; font-weight: 600; line-height: 1.5; margin-bottom: .25rem; }
         .crumbs { font-size: .85rem; color: var(--muted); margin-bottom: .5rem; }
         .crumbs a { color: var(--muted); }
         .section-label { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: .5rem; }
-        .row-link { cursor: pointer; }
+        tr[data-href] { cursor: pointer; }
+        tr[data-href]:focus-visible { outline: 2px solid var(--link); outline-offset: -2px; }
         .list-group-item { background: var(--surface); color: var(--text); border-color: var(--border); }
         .list-group-item-action:hover, .list-group-item-action:focus { background: var(--surface-2); color: var(--text); }
         .site-footer { background: #111; color: #ddd; border-top: 3px solid var(--red); margin-top: 3rem; padding: 1.5rem 0; font-size: .9rem; }
@@ -110,7 +110,6 @@
             .site-brand .site-name { font-size: 1rem; }
             .site-brand .app-line { white-space: normal; }
         }
-        .modal-content { background-color: var(--surface); border-color: var(--border); }
         .site-top { font-size: .8rem; padding: .3rem 0 0; background: var(--bg, #fff); }
         .site-top a { color: var(--muted, #555); text-decoration: none; }
         .site-top a:hover { color: #d2232a; }
@@ -122,7 +121,7 @@
 <div class="site-top no-print"><div class="container" style="max-width: {{ self.width() }};"><a href="https://drscca.org">‹ drscca.org</a></div></div>
 <nav class="navbar navbar-expand-xl app-bar sticky-top mb-4">
     <div class="container" style="max-width: {% block width %}1200px{% endblock %};">
-        <div class="site-brand"><a href="{{ url_for('home') }}" class="brand-logo"><img src="{{ url_for('static', filename='drscca-logo.png') }}" alt=""></a>
+        <div class="site-brand"><a href="{{ url_for('home') }}" class="brand-logo" aria-label="All apps"><img src="{{ url_for('static', filename='drscca-logo.png') }}" alt=""></a>
             <div><a href="{{ url_for('home') }}" class="site-name">Detroit Region SCCA</a>
                 <div class="app-line"><span class="app-name">{% block app_name %}{{ app_name or title }}{% endblock %}</span>
                 </div></div></div>
@@ -167,7 +166,7 @@
       <div class="alert alert-{{ cat }} alert-dismissible fade show py-2" role="alert">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>
       {% endfor %}
     {% endwith %}
-    {% if busy_msg %}<div class="card p-4 text-center mx-auto mt-4" style="max-width: 32rem;"><div class="page-title">Try again in a minute</div><p class="text-muted mb-3">{{ busy_msg }}</p><button class="btn btn-accent mx-auto" onclick="location.reload()">Reload</button></div>{% endif %}
+    {% if busy_msg %}<div class="card p-4 text-center mx-auto mt-4" style="max-width: 32rem;"><h1 class="page-title">Try again in a minute</h1><p class="text-muted mb-3">{{ busy_msg }}</p><button class="btn btn-accent mx-auto" onclick="location.reload()">Reload</button></div>{% endif %}
     {% block content %}{% endblock %}
 </main>
 <footer class="site-footer no-print"><div class="container d-flex flex-wrap justify-content-between gap-2" style="max-width: {{ self.width() }};">
@@ -236,6 +235,37 @@ document.querySelectorAll('label:not([for])').forEach((l, i) => {
     const f = l.nextElementSibling;
     if (f && f.matches('input:not([type=hidden]), select, textarea')) { if (!f.id) f.id = 'fld-' + i; l.htmlFor = f.id; }
 });
+</script>
+<script>
+// Rows marked data-href open that page on a click anywhere but a link, button or field. A row with no link of its
+// own can be reached with Tab and opened with Enter.
+(function () {
+    function go(row) { const u = new URL(row.dataset.href, location.href); if (u.origin === location.origin) location.href = u.href; }
+    document.addEventListener('click', e => {
+        const row = e.target.closest && e.target.closest('tr[data-href]');
+        if (row && !e.target.closest('a, button, input, select, textarea, label')) go(row);
+    });
+    document.querySelectorAll('tr[data-href]').forEach(row => { if (!row.querySelector('a[href]')) { row.tabIndex = 0; row.setAttribute('role', 'link'); } });
+    document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches && e.target.matches('tr[data-href]')) go(e.target); });
+})();
+// A submit button with data-busy="Saving…" shows that text and switches off once its form is sent, so a second
+// click sends nothing. Coming back with the Back button switches it on again.
+document.addEventListener('submit', e => {
+    const f = e.target, b = f.querySelector('[data-busy]');
+    if (!b || e.defaultPrevented) return;
+    if (f.dataset.sent) { e.preventDefault(); return; }
+    f.dataset.sent = '1';
+    setTimeout(() => { b.dataset.label = b.textContent; b.textContent = b.dataset.busy; b.disabled = true; });
+});
+window.addEventListener('pageshow', () => document.querySelectorAll('[data-busy]').forEach(b => {
+    b.disabled = false; delete b.form?.dataset.sent;
+    if (b.dataset.label) { b.textContent = b.dataset.label; delete b.dataset.label; }
+}));
+// '2026-11-09' -> 'Nov 9, 2026', the same as the nice_date filter, for lists built in the browser.
+function niceDate(s) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || '');
+    return m ? `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m[2] - 1]} ${+m[3]}, ${m[1]}` : (s || '');
+}
 </script>
 {% block scripts %}{% endblock %}
 </body>

@@ -1,7 +1,8 @@
 """Board: everything the board decides, in one place.
 
-- Waiting for the board: budgets not approved yet (or changed since) and open motions. Anyone signed in (not
-  volunteers) can see them and send them to the board for a vote; the RE, ARE, secretary or treasurer records the result.
+- Waiting for the board: budgets not approved yet (or changed since) and open motions. Every official (not volunteers)
+  can see them; roles with "Send items to the board" (Admin > Roles) can ask for a vote, and roles with "Record board
+  decisions" (by default the RE, ARE, secretary and treasurer) record the result.
 - Motions: decisions that are not a budget (money set aside, a big purchase, a policy). Proposed here, voted at a
   meeting or by email, the result recorded with the count.
 - Decisions: every recorded vote by date, budgets and motions together, with that meeting's minutes when they are
@@ -15,6 +16,7 @@
 import os
 from datetime import date
 
+from filelock import FileLock
 from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
@@ -26,9 +28,14 @@ import officials as O
 import plan_store as P
 import shortlinks
 from officer import current as officer_current
+from storage import DATA_DIR
 from utils import load_programs, local_path, log_audit_event, login_required, send_mail
 
 bp = Blueprint('board', __name__, url_prefix='/board')
+# The app runs several workers: recording a decision, and marking a vote decided, are each checked and written as one
+# step, so two clicks (or two last votes) at the same moment are recorded, and emailed, once.
+RECORD_LOCK = os.path.join(DATA_DIR, 'board_record.lock')
+VOTE_LOCK = os.path.join(DATA_DIR, 'board_vote.lock')
 
 
 def board_email():
@@ -124,20 +131,50 @@ def _ballot_views(people=None, me=''):
 
 
 def _decide_if_done(bid):
-    """After a vote: if 7 votes now decide it, mark the ballot decided and tell the board. Returns the result or None."""
-    b = BS.get(bid)
-    if not b or b['status'] != 'open':
-        return None
-    t = BL.tally(BS.votes(bid), _people())
-    res = BL.outcome(t)
-    if res:
-        today = date.today().isoformat()
-        BS.update(bid, status=res, result=res, count=BL.count_text(t), decided=today)
-        log_audit_event('BALLOT_DECIDED', 'email vote', {'ballot': bid, 'item': b['item'], 'result': res, 'count': BL.count_text(t)})
-        send_mail(f"Board vote {res}: {b['title']}",
-                  f"{b['title']}: {res} {BL.count_text(t)} by email vote.\n\nThe RE, ARE, secretary or treasurer records it on the Board page:\n"
-                  + url_for('board.home', _external=True), board_email(), reply_to=board_email())
+    """After a vote: if 7 votes now decide it, mark the ballot decided and tell the board. Returns the result or None.
+    Only the vote that marks it decided sends the email (two last votes can arrive at the same moment)."""
+    with FileLock(VOTE_LOCK, timeout=60):
+        b = BS.get(bid)
+        if not b or b['status'] != 'open':
+            return None
+        t = BL.tally(BS.votes(bid), _people())
+        res = BL.outcome(t)
+        if not res:
+            return None
+        BS.update(bid, status=res, result=res, count=BL.count_text(t), decided=date.today().isoformat())
+    log_audit_event('BALLOT_DECIDED', 'email vote', {'ballot': bid, 'item': b['item'], 'result': res, 'count': BL.count_text(t)})
+    send_mail(f"Board vote {res}: {b['title']}",
+              f"{b['title']}: {res} {BL.count_text(t)} by email vote.\n\nThe RE, ARE, secretary or treasurer records it on the Board page:\n"
+              + url_for('board.home', _external=True), board_email(), reply_to=board_email())
     return res
+
+
+def _snap(item):
+    """A fingerprint of a budget's numbers as they are now, kept on its ballot when an email vote opens: if it differs
+    when the result is recorded, the budget was changed during the vote. '' for a motion or a budget that is gone."""
+    if not item.startswith('budget:') or item.count(':') < 2:
+        return ''
+    _, y, code = item.split(':', 2)
+    if code == 'OPS':
+        p = P.plan(y).get('OPS') if P.enabled() else None
+        return P.lines_hash(P.saved_lines(p['lines'])) if p else ''
+    # The same fingerprint "changed since approved" uses: only the budget numbers count, so entering results or
+    # re-ordering lines during the vote does not void it.
+    b = B.get(code) if B.enabled() else None
+    return B.lines_hash(b['lines']) if b else ''
+
+
+def _still_waiting(bcodes):
+    """Of these budgets ({year: [codes]}), the ones still waiting for the board (not approved or put back in draft
+    since the page was loaded)."""
+    import bud
+    out = {}
+    for y, codes in bcodes.items():
+        waiting = {r['b']['event_code'] for r in bud._pending_rows(y)}
+        keep = [c for c in codes if c in waiting]
+        if keep:
+            out[y] = keep
+    return out
 
 
 def _record(bcodes, ms, decided, result, how, vote, off):
@@ -217,7 +254,7 @@ def home():
             first = items[0][1].split(': ', 1)[-1] if n == 1 else f'{n} items'
             urgent = f.get('urgent') == 'yes'
             people = _people() if BS.enabled() else []
-            bids = [BS.open_ballot(key, title, who, today) for key, title, _ in items] if people else []
+            bids = [BS.open_ballot(key, title, who, today, snap=_snap(key)) for key, title, _ in items] if people else []
             board_url = url_for('board.home', _external=True)
             u = 'URGENT ' if urgent else ''
             listed = '\n\n'.join(i[2] for i in items)
@@ -261,7 +298,13 @@ def home():
         if result not in ('passed', 'failed'):
             flash('Choose passed or failed.', 'warning')
             return redirect(url_for('board.home'))
-        said = _record(bcodes, ms, decided, result, f.get('how', ''), bud._how_vote({'vote': f.get('vote', '')}), off)
+        with FileLock(RECORD_LOCK, timeout=60):      # check again and record as one step: a double click records once
+            bcodes = _still_waiting(bcodes) if B.enabled() else {}
+            ms = [m for m in M.motions() if m['id'] in mids and m['status'] == 'open']
+            if not bcodes and not ms:
+                flash('Those items are already recorded. Nothing was changed.', 'warning')
+                return redirect(url_for('board.home'))
+            said = _record(bcodes, ms, decided, result, f.get('how', ''), bud._how_vote({'vote': f.get('vote', '')}), off)
         flash(f"Recorded for {decided}: " + '; '.join(said) + '.', 'success')
         return redirect(url_for('board.home'))
     rows = [dict(r, year=y) for y in bud.pending_years() for r in bud._pending_rows(y)] if B.enabled() else []
@@ -393,7 +436,9 @@ def _vote_page(b, p, via, back):
             t = BL.tally(BS.votes(b['id']), _people())
             st = BL.state(b, t)
     mine = next((r['choice'] for r in t['rows'] if r['email'] == p['email']), '')
-    return render_template('board.html', **_ctx(view='vote', b=b, t=t, state=st, summary=BL.summary(b, t), me=p, mine=mine,
+    # The page says "Voting as <me.name>". Someone signed in keeps their own permissions under that name, so the menu
+    # (Minutes, Audit log) stays as it was; an emailed link with nobody signed in has only the voter.
+    return render_template('board.html', **_ctx(view='vote', b=b, t=t, state=st, summary=BL.summary(b, t), me=dict(_me(), **p), mine=mine,
                                                   msg=msg, link=_item_link(b['item']), BL=BL))
 
 
@@ -404,20 +449,34 @@ def record_ballot(bid):
     if (g := _guard()):
         return g
     off = officer_current()
-    b = BS.get(bid)
-    if not off or not b:
+    if not off or not BS.get(bid):
         flash('Recording a board decision is for the RE, ARE, secretary or treasurer.', 'warning')
         return redirect(url_for('board.home'))
-    t = BL.tally(BS.votes(bid), _people())
-    st = BL.state(b, t)
-    if st not in ('passed', 'failed'):
-        flash('That vote is not decided yet.', 'warning')
-        return redirect(url_for('board.home'))
-    if b['status'] == 'open':      # decided by the last vote but not marked yet
-        BS.update(bid, status=st, result=st, count=BL.count_text(t), decided=date.today().isoformat())
+    with FileLock(RECORD_LOCK, timeout=60):      # check again and record as one step: a double click records once
         b = BS.get(bid)
-    kind, bc, ms = _item_parts(b['item'])
-    said = _record(bc, ms, b['decided'] or date.today().isoformat(), st, 'email', b['count'] or BL.count_text(t), off)
+        t = BL.tally(BS.votes(bid), _people())
+        st = BL.state(b, t)
+        if st in ('recorded', 'cancelled'):
+            flash('That vote is already recorded. Nothing was changed.', 'warning')
+            return redirect(url_for('board.home'))
+        if st not in ('passed', 'failed'):
+            flash('That vote is not decided yet.', 'warning')
+            return redirect(url_for('board.home'))
+        kind, bc, ms = _item_parts(b['item'])
+        ms = [m for m in ms if m['status'] == 'open']
+        if kind == 'budget':
+            bc = _still_waiting(bc) if B.enabled() else {}
+        if not bc and not ms:
+            flash(f"{b['title']} is no longer waiting for the board (already recorded, withdrawn or back in draft). Nothing was changed.", 'warning')
+            return redirect(url_for('board.home'))
+        if kind == 'budget' and st == 'passed' and b.get('snap') and _snap(b['item']) != b['snap']:      # older ballots have no snap
+            flash(f"{b['title']} was changed after this vote opened, so the vote can't approve it as it is now. "
+                  "Request a new email vote on the budget, or take it to a meeting.", 'danger')
+            return redirect(url_for('board.home'))
+        if b['status'] == 'open':      # decided by the last vote but not marked yet
+            BS.update(bid, status=st, result=st, count=BL.count_text(t), decided=date.today().isoformat())
+            b = BS.get(bid)
+        said = _record(bc, ms, b['decided'] or date.today().isoformat(), st, 'email', b['count'] or BL.count_text(t), off)
     flash(f"Recorded {b['title']}: {st} {b['count']} by email vote ({'; '.join(said)}).", 'success')
     return redirect(url_for('board.home'))
 
@@ -478,11 +537,14 @@ def decisions(year):
                 views[b['item'].split(':')[-1]] = BL.tally([v for v in allv if v['ballot_id'] == b['id']], people)
         for it in items:
             it['rollcall'] = (views.get(it['id']) or {}).get('rows')
-    mins = _minutes_by_date(year)
+    mins = _minutes_by_month(year)
     out = {}
     for it in items:
         out.setdefault(it['date'], []).append(it)
-    return [{'date': d, 'items': sorted(v, key=lambda x: (x['kind'], x['what'])), 'minutes': mins.get(d)} for d, v in sorted(out.items(), reverse=True)]
+    # Minutes are filed by month ("2026-11 Board Minutes.pdf"): they go with that month's meeting date, which is any
+    # date with a decision that was not an email vote.
+    return [{'date': d, 'items': sorted(v, key=lambda x: (x['kind'], x['what'])),
+             'minutes': mins.get(d[:7]) if any(i['how'] != 'email vote' for i in v) else None} for d, v in sorted(out.items(), reverse=True)]
 
 
 def _how_of(approved_by):
@@ -496,17 +558,19 @@ def _vote_of(approved_by):
     return inside.split(', ', 1)[1] if ', ' in inside else ''
 
 
-def _minutes_by_date(year):
+def _minutes_by_month(year):
+    """{'YYYY-MM': the published minutes file of that month's board meeting} (a special meeting's only when the month
+    has no regular minutes)."""
     try:
         import minutes_logic as ML
         import minutes_store as MS
         if not MS.enabled():
             return {}
         out = {}
-        for fl in MS.published(int(year)):
-            d, label = ML.parse(fl['name'])
-            if d:
-                out.setdefault(d.isoformat(), fl)
+        for fl in sorted(MS.published(int(year)), key=lambda fl: len(fl['name'])):      # the plain name before "(special meeting)"
+            month = ML.month_of(fl['name'])
+            if month:
+                out.setdefault(month, fl)
         return out
     except Exception:
         return {}
@@ -517,7 +581,9 @@ def _minutes_by_date(year):
 def decisions_page():
     if (g := _guard()):
         return g
-    year = request.args.get('year') or str(date.today().year)
+    year = request.args.get('year') or ''
+    if not (year.isascii() and year.isdigit() and len(year) == 4):      # anything else in the address: this year
+        year = str(date.today().year)
     days = decisions(year)
     # Email votes after the last board meeting: the next meeting notes them in its minutes.
     meetings = [d['date'] for d in days if any(i['how'] == 'board meeting' for i in d['items']) or d['minutes']]

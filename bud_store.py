@@ -7,6 +7,7 @@ directors send go in a per-event folder under BUDGETS_FILES_FOLDER_ID.
 The 'QBO Actuals' tab holds each event project's profit and loss by account, copied from QuickBooks by
 tools/qbo_nightly.py on the machine with the QuickBooks connection. The app only reads it.
 """
+import hashlib
 import os
 import threading
 from datetime import date
@@ -18,10 +19,11 @@ from storage import DATA_DIR, drive_folder, drive_upload, worksheet
 import sheet_cache as C
 
 BUD_COLS = ['event_code', 'event_name', 'program', 'date', 'chair', 'location', 'updated', 'updated_by', 'notes', 'files_url',
-            'approved', 'approved_by', 'last_year_event', 'draft']
+            'approved', 'approved_by', 'last_year_event', 'draft', 'approved_hash']
+# approved_hash (added last, 2026-11): a fingerprint of the budget lines the board approved (lines_hash). A row
+# approved before it existed has none, and status() falls back to comparing the days.
 LINE_COLS = ['event_code', 'section', 'description', 'last_year', 'budget', 'actual', 'sort']
 AMOUNTS = ('last_year', 'budget', 'actual')
-CACHE_SECONDS = 15
 # The Lines tab is rewritten whole on every save, so saves must not overlap across gunicorn workers.
 SAVE_LOCK = os.path.join(DATA_DIR, 'budgets_save.lock')
 
@@ -69,11 +71,12 @@ def _snapshot():
     hit = _cache.get('snap')
     if hit and hit[0] == C.version(os.environ['BUDGETS_SHEET_ID']):
         return hit[1]
+    # The whole Budgets tab, not A:O: a tab that does not have the newest column yet still reads.
     try:
-        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:N', 'Lines!A:G', 'QBO Actuals!A:F'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ["'Budgets'", 'Lines!A:G', 'QBO Actuals!A:F'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     except gspread.exceptions.APIError:
         # No QBO Actuals tab until the first sync has run.
-        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ['Budgets!A:N', 'Lines!A:G'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
+        res = C.batch_get(os.environ['BUDGETS_SHEET_ID'], ["'Budgets'", 'Lines!A:G'], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], [], []]
     buds = [dict(zip(BUD_COLS, [_read_cell(c, v) for c, v in zip(BUD_COLS, r)] + [''] * len(BUD_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
     lines = []
@@ -135,6 +138,36 @@ def get(code):
     return budgets().get(code)
 
 
+def lines_hash(lines, text=('section', 'description'), amount='budget'):
+    """A short fingerprint of the numbers the board approves: each budget line's section, description and budget
+    amount (the Operations plan: text=('item', 'account'), amount='net'). Order does not matter, and lines with no
+    amount (reported results added later) are left out, so entering results never changes it."""
+    rows = sorted('|'.join([str(ln.get(k) or '').strip() for k in text] + [f'{float(ln[amount]):.2f}'])
+                  for ln in lines if ln.get(amount) not in (None, ''))
+    return hashlib.sha1('\n'.join(rows).encode()).hexdigest()[:12]
+
+
+def changed_since_approved(row, now_hash):
+    """Whether an approved budget (or the Operations plan) is no longer what the board approved. With the fingerprint
+    taken at approval, any change to the numbers counts, even one the same day; a row approved before fingerprints
+    were kept is compared by day, as it always was, so it stays approved until someone edits it."""
+    if row.get('approved_hash'):
+        return row['approved_hash'] != now_hash
+    return str(row.get('updated', '')) > str(row['approved'])
+
+
+def status(b):
+    """The one answer to where a budget stands: 'draft' (pulled back, not on the board's list), 'approved', 'changed'
+    (its numbers were edited after the board approved it), 'budget' (saved, waiting for the board) or None."""
+    if not b:
+        return None
+    if b.get('draft'):
+        return 'draft'
+    if b.get('approved'):
+        return 'changed' if changed_since_approved(b, lines_hash(b.get('lines') or [])) else 'approved'
+    return 'budget'
+
+
 def _cell(v):
     if v is None:
         return ''
@@ -186,7 +219,12 @@ def save(header, lines, files=(), actuals_only=False):
         same = old and not files and (actuals_only or _same_budget(old, header, [ln for ln in all_lines if ln['event_code'] == code], lines))
         header = dict(header, updated=old['updated'] if same else date.today().isoformat(), files_url=(old or {}).get('files_url', ''),
                       approved=(old or {}).get('approved', ''), approved_by=(old or {}).get('approved_by', ''),
-                      draft=header['draft'] if 'draft' in header else (old or {}).get('draft', ''))
+                      draft=header['draft'] if 'draft' in header else (old or {}).get('draft', ''),
+                      approved_hash=(old or {}).get('approved_hash', ''))
+        if old and old.get('approved') and not old.get('approved_hash') and not changed_since_approved(old, ''):
+            # Approved before fingerprints were kept and not edited since: what is saved now is what the board
+            # approved, so fingerprint that. From here on a change shows as "changed" even on the approval day.
+            header['approved_hash'] = lines_hash([ln for ln in all_lines if ln['event_code'] == code])
         if files:
             if not header['files_url']:
                 header['files_url'] = drive_folder(f"{code} {header['event_name']}"[:120], os.environ['BUDGETS_FILES_FOLDER_ID'])['webViewLink']
@@ -196,9 +234,9 @@ def save(header, lines, files=(), actuals_only=False):
         ws = _ws('Budgets')
         _heading(ws)
         row = [_cell(header.get(c, '')) for c in BUD_COLS]
-        if old:
-            n = ws.col_values(1).index(code) + 1
-            ws.update([row], f'A{n}', value_input_option='RAW')
+        col = ws.col_values(1)
+        if code in col:
+            ws.update([row], f'A{col.index(code) + 1}', value_input_option='RAW')
         else:
             ws.append_row(row, value_input_option='RAW')
         keep = [ln for ln in all_lines if ln['event_code'] != code]
@@ -230,19 +268,34 @@ def delete(code):
         if lw.row_count > len(rows) + 1:
             lw.batch_clear([f'A{len(rows) + 2}:G{lw.row_count}'])
         ws = _ws('Budgets')
-        ws.delete_rows(ws.col_values(1).index(code) + 1)
+        col = ws.col_values(1)
+        if code in col:
+            ws.delete_rows(col.index(code) + 1)
         refresh()
         return True
 
 
 def set_approved(codes, approved, who):
-    """Record (or with approved='' clear) the date the board approved these events' budgets."""
+    """Record (or with approved='' clear) the date the board approved these events' budgets, with the fingerprint of
+    the lines as they are right now (lines_hash): that is what "changed since approved" is judged against. A budget
+    edited after the meeting date being recorded gets no fingerprint, so it shows as changed (the day comparison)."""
     codes = [codes] if isinstance(codes, str) else list(codes)
     with FileLock(SAVE_LOCK), _lock:
+        refresh()
+        buds, lines, _ = _snapshot()
+        edited = {b['event_code']: str(b.get('updated', '')) for b in buds}
         ws = _ws('Budgets')
+        _heading(ws)
         col = ws.col_values(1)
-        ws.batch_update([{'range': f'K{col.index(c) + 1}', 'values': [[approved, who if approved else '']]} for c in codes if c in col],
-                        value_input_option='RAW')
+        upd = []
+        for c in codes:
+            if c in col:
+                n = col.index(c) + 1
+                upd += [{'range': f'K{n}', 'values': [[approved, who if approved else '']]},
+                        {'range': f'O{n}', 'values': [[lines_hash([ln for ln in lines if ln['event_code'] == c])
+                                                        if approved and edited.get(c, '') <= str(approved) else '']]}]
+        if upd:
+            ws.batch_update(upd, value_input_option='RAW')
         refresh()
 
 
@@ -258,6 +311,6 @@ def set_draft(code, draft):
         n = col.index(code) + 1
         upd = [{'range': f'N{n}', 'values': [[draft]]}]
         if draft:
-            upd.append({'range': f'K{n}:L{n}', 'values': [['', '']]})
+            upd += [{'range': f'K{n}:L{n}', 'values': [['', '']]}, {'range': f'O{n}', 'values': [['']]}]
         ws.batch_update(upd, value_input_option='RAW')
         refresh()

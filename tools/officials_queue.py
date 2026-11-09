@@ -163,9 +163,17 @@ def main():
         # The readable copy in the shared drive. Written from inside the app's container: that is where the Drive
         # key is, and it reads the file just changed.
         import subprocess
-        r = subprocess.run(['docker', 'exec', os.environ.get('APP_CONTAINER', 'event-drscca'), 'python', '-c',
-                            'import officials; print(officials.mirror_to_sheet())'], capture_output=True, text=True, timeout=120)
-        print(f'Drive copy: {r.stdout.strip()} officials' if r.returncode == 0 else f'Drive copy failed: {r.stderr.strip()[-300:]}')
+        container = os.environ.get('APP_CONTAINER') or 'drapps'
+        try:
+            r = subprocess.run(['docker', 'exec', container, 'python', '-c',
+                                'import officials; print(officials.mirror_to_sheet())'], capture_output=True, text=True, timeout=120)
+            failed = '' if r.returncode == 0 else r.stderr.strip()[-300:] or f'exit {r.returncode}'
+        except (OSError, subprocess.SubprocessError) as e:
+            failed = f'{type(e).__name__}: {e}'
+        if failed:
+            # officials.json itself is saved. Exit non-zero so the job's alert email goes out (drscca-alert@).
+            sys.exit(f'Drive copy failed (container "{container}"): {failed}')
+        print(f'Drive copy: {r.stdout.strip()} officials')
 
 
 if __name__ == '__main__':

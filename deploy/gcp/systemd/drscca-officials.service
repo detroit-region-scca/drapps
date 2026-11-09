@@ -7,4 +7,6 @@ WorkingDirectory=/opt/drscca/app
 EnvironmentFile=/opt/drscca/data/secrets/drapps.env
 Environment=OFFICIALS_HOST=/opt/drscca/data/secrets/officials.json
 Environment=GOOGLE_SA_KEY_HOST=/opt/drscca/data/secrets/drapps-sa.json
+# The app's container, for the readable copy in Drive (a value in drapps.env wins over this one).
+Environment=APP_CONTAINER=drapps
 ExecStart=/opt/drscca/venv/bin/python tools/officials_queue.py

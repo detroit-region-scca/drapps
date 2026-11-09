@@ -25,7 +25,14 @@ services:
       - ./data/caddy-config:/config
 
   drapps:
-    build: ./app
+    # The deploy and the weekly update build "drapps:candidate", test it, then tag it "drapps:latest" and start it;
+    # the image that was running stays as "drapps:previous" for a rollback (deploy/gcp/lib.sh). The build section is
+    # for a first start by hand on a new server.
+    image: drapps:latest
+    build:
+      context: ./app
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
     container_name: drapps
     logging: *logging
     restart: unless-stopped
@@ -39,7 +46,9 @@ services:
       - ./app/data:/app/data
       - ./data/secrets/drapps-sa.json:/run/secrets/google-sa.json:ro
       - ./data/secrets/officials.json:/run/secrets/officials.json:ro
-    command: gunicorn -w 2 -b 0.0.0.0:5858 app:app
+    # A request stuck for 120 s is given up on (gunicorn's default is 30 s, too short for a large receipt on a slow
+    # phone). One request per worker at a time on purpose: the app's code has not been checked for threads.
+    command: gunicorn -w 2 --timeout 120 -b 0.0.0.0:5858 app:app
 
   livetiming-sftp:
     image: atmoz/sftp:alpine

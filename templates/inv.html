@@ -1,6 +1,5 @@
 {% extends 'base.html' %}
 {% from '_ui.html' import tab, money with context %}
-{% block body_class %}app-inv{% endblock %}
 {% block app_name %}Invoices{% endblock %}
 {% block nav %}
     {{ tab('inv.home', 'Invoices', request.endpoint != 'inv.new') }}
@@ -12,26 +11,24 @@
     {% elif r.due < today %}<span class="badge rounded-pill text-bg-danger">Overdue</span>
     {% else %}<span class="badge rounded-pill text-bg-warning">Open</span>{% endif %}
 {%- endmacro %}
-{% block style %}
-        body.app-inv { --accent: #6ea8ff; }
-{% endblock %}
 {% block content %}
     {% if view == 'list' %}
+    <h1 class="visually-hidden">Invoices</h1>
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="text-muted">{% if open_total %}{{ money(open_total) }} waiting to be paid{% if overdue %}, {{ overdue|length }} overdue{% endif %}.{% else %}Nothing waiting to be paid.{% endif %}</div>
         <a class="btn btn-sm btn-accent" href="{{ url_for('inv.new') }}">New invoice</a>
     </div>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table table-hover mb-0 stack">
         <thead><tr><th class="ps-3">Invoice</th><th>To</th><th>For</th><th>Due</th><th>Status</th><th class="num pe-3">Total</th></tr></thead>
-        <tbody>{% for r in rows %}<tr class="row-link" onclick="location.href='{{ url_for('inv.detail', inv_id=r.id) }}'">
-            <td class="ps-3 text-nowrap"><a href="{{ url_for('inv.detail', inv_id=r.id) }}">{{ r.id }}</a><div class="small text-muted">{{ r.created }}</div></td>
+        <tbody>{% for r in rows %}<tr data-href="{{ url_for('inv.detail', inv_id=r.id) }}">
+            <td class="ps-3 text-nowrap"><a href="{{ url_for('inv.detail', inv_id=r.id) }}">{{ r.id }}</a><div class="small text-muted">{{ (r.created or '')|nice_date }}</div></td>
             <td data-label="To">{{ r.bill_name }}</td><td class="small" data-label="For">{{ r.event_name or programs.get(r.program, r.program) }} <span class="text-muted">{{ r.event_code }}</span></td>
-            <td class="text-nowrap" data-label="Due">{{ r.due }}</td><td data-label="Status">{{ status_badge(r) }}</td><td class="num pe-3" data-label="Total">{{ money(r.total) }}</td></tr>
+            <td class="text-nowrap" data-label="Due">{{ (r.due or '')|nice_date }}</td><td data-label="Status">{{ status_badge(r) }}</td><td class="num pe-3" data-label="Total">{{ money(r.total) }}</td></tr>
         {% else %}<tr><td colspan="6" class="ps-3 text-muted fw-normal">No invoices for {{ year }} yet.</td></tr>{% endfor %}</tbody>
     </table></div></div>
 
     {% elif view == 'new' %}
-    <div class="page-title">New invoice</div>
+    <h1 class="page-title">New invoice</h1>
     <p class="text-muted">For sponsorships, event services, series fees and anything else the region bills. You'll get a PDF to send to the customer from your own email.</p>
     <form method="post" id="invForm" novalidate><input type="hidden" name="token" value="{{ token }}">
         <div class="card p-3 mb-3"><div class="section-label">What it's for</div><div class="row g-2">
@@ -42,7 +39,7 @@
         </div></div>
         <div class="card p-3 mb-3"><div class="section-label">Bill to</div><div class="row g-2">
             <div class="col-md-6"><input name="bill_name" class="form-control mb-2" aria-label="Company or person" placeholder="Company or person" required value="{{ form.get('bill_name', '') }}">
-                <input name="bill_contact" class="form-control mb-2" placeholder="Attention (optional)" value="{{ form.get('bill_contact', '') }}">
+                <input name="bill_contact" class="form-control mb-2" aria-label="Attention" placeholder="Attention (optional)" value="{{ form.get('bill_contact', '') }}">
                 <input name="bill_email" type="email" class="form-control" aria-label="Their email" placeholder="Their email (optional)" value="{{ form.get('bill_email', '') }}"></div>
             <div class="col-md-6"><textarea name="bill_address" class="form-control h-100" rows="4" aria-label="Mailing address" placeholder="Mailing address (optional)">{{ form.get('bill_address', '') }}</textarea></div>
         </div></div>
@@ -62,15 +59,15 @@
             {% if copy_to %}<div class="col-12 form-text">A copy of the PDF goes to {{ copy_to }}.</div>
             {% else %}<div class="col-md-6"><label class="form-label">Email me the PDF (optional)</label><input name="my_email" type="email" class="form-control" placeholder="you@example.com" value="{{ form.get('my_email', '') }}"></div>{% endif %}
         </div></div>
-        <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('inv.home') }}">Cancel</a><button class="btn btn-accent px-4" id="invSave">Create invoice</button></div>
+        <div class="d-flex justify-content-end gap-2"><a class="btn btn-outline-secondary" href="{{ url_for('inv.home') }}">Cancel</a><button class="btn btn-accent px-4" id="invSave" data-busy="Creating…">Create invoice</button></div>
     </form>
 
     {% elif view == 'detail' %}
     <div class="crumbs no-print"><a href="{{ url_for('inv.home') }}">Invoices</a> / {{ inv.id }}</div>
     <div class="card p-3 mb-3">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
-            <div><div class="page-title m-0">{{ inv.id }} {{ status_badge(inv) }}</div>
-                <div class="text-muted">To {{ inv.bill_name }} · {{ inv.created }} · due {{ inv.due }}</div>
+            <div><h1 class="page-title m-0">{{ inv.id }} {{ status_badge(inv) }}</h1>
+                <div class="text-muted">To {{ inv.bill_name }} · {{ (inv.created or '')|nice_date }} · due {{ (inv.due or '')|nice_date }}</div>
                 <div class="small mt-1">{{ inv.event_name or inv.program_name }} <span class="text-muted">{{ inv.event_code }}</span> · created by {{ inv.created_by }}</div></div>
             <div class="text-end"><div class="stat"><div class="value">{{ money(inv.total) }}</div></div>
                 <div class="d-flex gap-2 mt-2 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('inv.pdf', inv_id=inv.id) }}" target="_blank">{{ 'Download PDF' if inv.status == 'Open' else 'PDF (' ~ inv.status|lower ~ ')' }}</a>
@@ -93,16 +90,16 @@
             <div class="col-sm-3"><button class="btn btn-accent w-100">Mark paid</button></div></div>
             <div class="form-text">Deposit it in QuickBooks to the program's revenue account (and the event project when there is one).</div></form></div>
         <div class="col-lg-4"><form method="post" action="{{ url_for('inv.close', inv_id=inv.id) }}" class="card p-3 h-100"><input type="hidden" name="action" value="void">
-            <div class="section-label">Void</div><input name="note" class="form-control mb-2" aria-label="Why" placeholder="Why" required><button class="btn btn-outline-danger" onclick="return !this.form.checkValidity() || confirm('Void {{ inv.id }}?')">Void</button></form></div>
+            <div class="section-label">Void</div><input name="note" class="form-control mb-2" aria-label="Why" placeholder="Why" required><button class="btn btn-outline-danger" onclick="return !this.form.checkValidity() || confirm({{ ('Void ' ~ inv.id ~ '?')|tojson|forceescape }})">Void</button></form></div>
     </div>{% endif %}
     {% else %}
-    <div class="card p-3">{% if inv.status == 'Paid' %}Paid {{ inv.paid_date }}{% if inv.paid_ref %} · {{ inv.paid_ref }}{% endif %} · {{ money(inv.paid_amount) }} · recorded by {{ inv.closed_by }}{% else %}Void: {{ inv.closed_note }} ({{ inv.closed_by }}){% endif %}
-        {% if officer %}<form method="post" action="{{ url_for('inv.close', inv_id=inv.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Reopen {{ inv.id }}?')">Reopen</button></form>{% endif %}</div>
+    <div class="card p-3">{% if inv.status == 'Paid' %}Paid {{ (inv.paid_date or '')|nice_date }}{% if inv.paid_ref %} · {{ inv.paid_ref }}{% endif %} · {{ money(inv.paid_amount) }} · recorded by {{ inv.closed_by }}{% else %}Void: {{ inv.closed_note }} ({{ inv.closed_by }}){% endif %}
+        {% if officer %}<form method="post" action="{{ url_for('inv.close', inv_id=inv.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm({{ ('Reopen ' ~ inv.id ~ '?')|tojson|forceescape }})">Reopen</button></form>{% endif %}</div>
     {% endif %}
     {% if inv.status != 'Paid' %}
     <details class="mt-3 no-print"><summary class="small text-muted">Delete this invoice</summary>
         <form method="post" action="{{ url_for('inv.delete_request', inv_id=inv.id) }}" class="d-flex flex-wrap gap-2 mt-2" style="max-width: 36rem">
-            <input name="note" class="form-control form-control-sm" style="flex: 1 1 14rem" placeholder="Why (made by mistake, a test, a duplicate…)" required>
+            <input name="note" class="form-control form-control-sm" style="flex: 1 1 14rem" aria-label="Why" placeholder="Why (made by mistake, a test, a duplicate…)" required>
             <button class="btn btn-sm btn-outline-danger">Ask to delete</button></form>
         <div class="form-text">The treasurer gets an email to confirm; nothing is deleted until then. To cancel an invoice that was sent, void it instead.</div>
     </details>
@@ -110,12 +107,12 @@
     {% endif %}
     {% if view == 'delete' %}
     <div class="card p-3 mx-auto" style="max-width: 34rem">
-        <div class="page-title">Delete an invoice</div>
-        {% if inv %}<div class="mb-2"><b>{{ inv.id }}</b>: {{ inv.bill_name }}, {{ money(inv.total) }}, {{ inv.status|lower }}, created {{ inv.created }}</div>
+        <h1 class="page-title">Delete an invoice</h1>
+        {% if inv %}<div class="mb-2"><b>{{ inv.id }}</b>: {{ inv.bill_name }}, {{ money(inv.total) }}, {{ inv.status|lower }}, created {{ (inv.created or '')|nice_date }}</div>
         <div class="small text-muted mb-3">Asked by {{ t.by }}: {{ t.why }}</div>{% endif %}
         {% if msg %}<div class="alert alert-info mb-0">{{ msg }}</div>
-        {% else %}<form method="post"><button class="btn btn-danger">Delete {{ inv.id }}</button>
-            <a class="btn btn-outline-secondary ms-2" href="{{ url_for('inv.detail', inv_id=inv.id) }}">Keep it</a></form>{% endif %}
+        {% else %}<form method="post"><a class="btn btn-outline-secondary me-2" href="{{ url_for('inv.detail', inv_id=inv.id) }}">Cancel</a>
+            <button class="btn btn-danger">Delete {{ inv.id }}</button></form>{% endif %}
     </div>
     {% endif %}
 {% endblock %}
@@ -128,7 +125,7 @@
         function fillEvents() {
             const keep = evSel.value || evSel.dataset.chosen; evSel.dataset.chosen = '';
             evSel.innerHTML = '<option value="">Not for one event</option>' + allEvents.filter(e => e.p === progSel.value).map(e =>
-                `<option value="${e.c}">${e.d} · ${e.n.replace(/[<>&"]/g, ch => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'})[ch])} ${e.c}</option>`).join('');
+                `<option value="${e.c}">${niceDate(e.d)} · ${e.n.replace(/[<>&"]/g, ch => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'})[ch])} ${e.c}</option>`).join('');
             if (keep && allEvents.some(e => e.c === keep && e.p === progSel.value)) evSel.value = keep;
         }
         // Coming from an event page: pick its program first.
@@ -144,7 +141,6 @@
         window.dropLine = a => { const r = a.closest('.line');
             if (form.querySelectorAll('.line').length > 1) r.remove(); else r.querySelectorAll('input').forEach(i => i.value = '');
             total(); };
-        form.addEventListener('submit', () => { const b = document.getElementById('invSave'); setTimeout(() => { b.disabled = true; b.textContent = 'Creating…'; }); });
         window.addLine = () => { const box = document.getElementById('lines'); const r = box.querySelector('.line').cloneNode(true);
             r.querySelectorAll('input').forEach(i => i.value = ''); box.appendChild(r); r.querySelector('[name=desc]').focus(); };
         form.addEventListener('input', total); total();

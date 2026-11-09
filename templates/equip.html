@@ -1,29 +1,31 @@
 {% extends 'base.html' %}
 {% from '_ui.html' import tab, money with context %}
-{% block body_class %}app-equip{% endblock %}
 {% block app_name %}Operations{% endblock %}
 {% block nav %}
+    {# A vehicle or trailer's own page belongs to the Vehicles tab, everything else to Gear. #}
+    {% set veh = request.endpoint == 'equip.item' and it is defined and it and it.category in ('Vehicle', 'Trailer') %}
     {{ tab('equip.home', 'Overview') }}
     {{ tab('equip.tasks', 'To do', request.endpoint == 'equip.tasks' or (request.endpoint == 'equip.task' and not bill)) }}
     {{ tab('equip.costs', 'Bills', request.endpoint == 'equip.costs' or (request.endpoint == 'equip.task' and bill)) }}
-    {{ tab('equip.vehicles', 'Vehicles') }}
+    {{ tab('equip.vehicles', 'Vehicles', request.endpoint == 'equip.vehicles' or veh) }}
     {{ tab('equip.documents', 'Documents') }}
-    {{ tab('equip.items', 'Gear', request.endpoint in ('equip.items', 'equip.item', 'equip.places', 'equip.place')) }}
+    {{ tab('equip.items', 'Gear', request.endpoint in ('equip.items', 'equip.item', 'equip.places', 'equip.place') and not veh) }}
     {{ tab('equip.plan', 'Replacement') }}
 {% endblock %}
 {% macro due_badge(t) -%}
-    {% if not t.due %}<span class="badge rounded-pill text-bg-secondary">No date</span>
+    {% if not t.due and t.last_done %}<span class="badge rounded-pill text-bg-secondary">Done {{ t.last_done|nice_date }}</span>
+    {% elif not t.due %}<span class="badge rounded-pill text-bg-secondary">No date</span>
     {% elif t.due < today %}<span class="badge rounded-pill text-bg-danger">Overdue</span>
-    {% else %}<span class="badge rounded-pill text-bg-light">{{ t.due }}</span>{% endif %}
+    {% else %}<span class="badge rounded-pill text-bg-light">{{ (t.due or '')|nice_date }}</span>{% endif %}
 {%- endmacro %}
 {% macro done_button(t) -%}
-    {% if editor and t.due %}<form method="post" action="{{ url_for('equip.task', task_id=t.id) }}" class="d-inline"><input type="hidden" name="action" value="done"><input type="hidden" name="back" value="{{ request.full_path.rstrip('?') }}"><button class="btn btn-sm btn-outline-light py-0">Done</button></form>{% endif %}
+    {% if editor and t.due %}<form method="post" action="{{ url_for('equip.task', task_id=t.id) }}" class="d-inline"><input type="hidden" name="action" value="done"><input type="hidden" name="was_due" value="{{ t.due }}"><input type="hidden" name="back" value="{{ request.full_path.rstrip('?') }}"><button class="btn btn-sm btn-outline-light py-0">Done</button></form>{% endif %}
 {%- endmacro %}
 {% macro todo_rows(rows, short=false) -%}
     {% for t in rows %}<tr id="{{ t.id }}">
         <td class="ps-3">{% if editor %}<a href="{{ url_for('equip.task', task_id=t.id, back=request.full_path.rstrip('?')) }}">{{ t.task }}</a>{% else %}{{ t.task }}{% endif %}
             <div class="small text-muted task-meta"{% if t.notes and not short %} title="{{ t.notes }}"{% endif %}>{{ t.about }}{% if t.owner %} · {{ t.owner }}{% endif %}{% if t.repeat_months %} · {{ every_label(t.repeat_months)|lower }}{% endif %}{% if t.cost %} · {{ money(t.cost, 0) }}{% endif %}{% if t.notes and not short %} · {{ t.notes }}{% endif %}</div>
-            {% if t.last_done %}<div class="small text-muted">Last done {{ t.last_done }} by {{ t.done_by }}</div>{% endif %}</td>
+            {% if t.last_done %}<div class="small text-muted">Last done {{ (t.last_done or '')|nice_date }} by {{ t.done_by }}</div>{% endif %}</td>
         <td class="text-nowrap">{{ due_badge(t) }}</td>
         <td class="pe-3 text-end text-nowrap no-print">{{ done_button(t) }}</td></tr>
     {% endfor %}
@@ -34,13 +36,14 @@
 {% macro item_line(e) -%}
     <li><a href="{{ url_for('equip.item', item_id=e.it.id) }}">{{ e.it.name }}</a>{% if e.it.quantity and e.it.quantity > 1 %} <span class="text-muted">× {{ '%g'|format(e.it.quantity) }}</span>{% endif %}
         {% if e.it.status not in ('In use',) %}<span class="small text-muted">· {{ e.it.status|lower }}</span>{% endif %}
-        {% if e.it.seen %}<span class="small text-muted">· confirmed {{ e.it.seen }}</span>{% endif %}
+        {% if e.it.seen %}<span class="small text-muted">· confirmed {{ (e.it.seen or '')|nice_date }}</span>{% endif %}
         {% if e.inside %}<ul class="where-inside">{% for k in e.inside %}{{ item_line(k) }}{% endfor %}</ul>{% endif %}</li>
 {%- endmacro %}
 {% macro where_list(entries) -%}
     <ul class="where mb-0">{% for e in entries %}{{ item_line(e) }}{% endfor %}</ul>
 {%- endmacro %}
 {% macro add_doc_form(d) -%}
+    {% set yr = today[:4] if today is defined and today else 'year' %}
     {% if editor %}<form method="post" action="{{ url_for('equip.add_document') }}" enctype="multipart/form-data" class="add-doc row g-2 align-items-end no-print">
         <input type="hidden" name="row_id" value="{{ d.id }}"><input type="hidden" name="for_id" value="{{ d.for_id }}">
         <input type="hidden" name="back" value="{{ request.full_path.rstrip('?') }}">
@@ -48,12 +51,12 @@
             <select name="doc" class="form-select form-select-sm" onchange="this.form.querySelector('.add-doc-other').hidden = this.value !== '_other'">
                 {% for k in d.kinds %}<option value="{{ k }}">{{ k }}{% if k in d.missing %} (missing){% endif %}</option>{% endfor %}
                 <option value="_other">Something else…</option></select>
-            <input name="other" class="form-control form-control-sm mt-1 add-doc-other" placeholder="What it is, e.g. Repair invoice" hidden></div>
-        <div class="col-6 col-md-2"><label class="form-label small mb-1">Year or note</label><input name="note" class="form-control form-control-sm" placeholder="2026"></div>
+            <input name="other" class="form-control form-control-sm mt-1 add-doc-other" aria-label="What it is" placeholder="What it is, e.g. Repair invoice" hidden></div>
+        <div class="col-6 col-md-2"><label class="form-label small mb-1">Year or note</label><input name="note" class="form-control form-control-sm" placeholder="{{ yr }}"></div>
         <div class="col-12 col-md-4"><label class="form-label small mb-1">File or photo</label>
             <input type="file" name="files" multiple required class="form-control form-control-sm" accept="image/*,.pdf,.heic,.doc,.docx"></div>
         <div class="col-6 col-md-2"><button class="btn btn-sm btn-accent w-100">Upload</button></div>
-        <div class="col-12 small text-muted">Saved in {% if d.folder %}its Drive folder{% else %}a new Drive folder for it{% endif %} as "{{ d.kinds[0] if d.kinds else 'Title' }} - {{ d.for_name or 'name' }} - 2026.pdf", so it counts.</div>
+        <div class="col-12 small text-muted">Saved in {% if d.folder %}its Drive folder{% else %}a new Drive folder for it{% endif %} as "{{ d.kinds[0] if d.kinds else 'Title' }} - {{ d.for_name or 'name' }} - {{ yr }}.pdf", so it counts.</div>
     </form>{% endif %}
 {%- endmacro %}
 {% macro docs_box(d) -%}
@@ -77,7 +80,6 @@
     </div>
 {%- endmacro %}
 {% block style %}
-        body.app-equip { --accent: #ff9f6b; }
         a.card.stat { color: var(--text); }
         ul.where { list-style: none; padding-left: 0; }
         ul.where > li { padding: .45rem 1rem; border-top: 1px solid var(--border, rgba(255,255,255,.08)); }
@@ -98,15 +100,6 @@
             table.repl td[data-label] { display: flex; align-items: center; }
             table.repl td.repl-save { margin-left: auto; }
         }
-        /* phones: each vehicle is a card (name, then labelled lines) instead of a six-column table */
-        @media (max-width: 767.98px) {
-            table.veh-cards thead { display: none; }
-            table.veh-cards tr { display: block; padding: .6rem .9rem; border-bottom: 1px solid var(--bs-border-color); }
-            table.veh-cards td { display: block; border: 0; padding: .1rem 0 !important; text-align: left !important; }
-            table.veh-cards td[data-label]:empty { display: none; }
-            table.veh-cards td[data-label]::before { content: attr(data-label) ": "; color: var(--bs-secondary-color); font-size: .85rem; }
-            table.veh-cards td:first-child a { font-weight: 600; }
-        }
         ul.where-inside li { padding: .1rem 0 .1rem .5rem; font-size: .92rem; }
 {% endblock %}
 {% macro repl_row(r, later) -%}
@@ -121,12 +114,13 @@
     </tr>
 {%- endmacro %}
 {% macro repl_head(later) -%}
-    <thead><tr><th class="ps-3" style="width: 1%">Year</th><th>Item</th><th class="num">Estimated cost</th>{% if later %}<th class="num {{ 'pe-3' if not editor }}">Set aside a month</th>{% endif %}{% if editor %}<th class="no-print"></th>{% endif %}</tr></thead>
+    <thead><tr><th class="ps-3" style="width: 1%">Year</th><th>Item</th><th class="num">Estimated cost</th>{% if later %}<th class="num {{ 'pe-3' if not editor }}">Set aside a month</th>{% endif %}{% if editor %}<th class="no-print"><span class="visually-hidden">Save</span></th>{% endif %}</tr></thead>
 {%- endmacro %}
 {% block content %}
     {% if not editor %}<div class="small text-muted mb-2 no-print">Changes are made by the Operations committee and the club officers.</div>{% endif %}
 
     {% if view == 'home' %}
+    <h1 class="visually-hidden">Operations</h1>
     <p class="text-muted mb-3">What the region pays for and looks after between events: bills, chores, vehicles, trailers and gear.
         <a class="no-print" href="{{ url_for('equip.report_pdf') }}" target="_blank">Operations report (PDF)</a></p>
     <div class="row g-3 mb-4">
@@ -167,9 +161,9 @@
         <div class="small no-print">{% if editor %}<a href="{{ url_for('equip.task', back=request.path) }}">Add a to-do</a> · {% endif %}<a href="{{ url_for('equip.tasks') }}">All to-dos</a></div>
     </div>
     <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <thead><tr><th class="ps-3">Date</th><th>What</th><th class="num pe-3"></th></tr></thead>
+        <thead><tr><th class="ps-3">Date</th><th>What</th><th class="num pe-3"><span class="visually-hidden">Amount or Done</span></th></tr></thead>
         <tbody>{% for r in coming %}<tr>
-            <td class="ps-3 text-nowrap">{{ r.date }}</td>
+            <td class="ps-3 text-nowrap">{{ (r.date or '')|nice_date }}</td>
             <td>{% if r.kind == 'todo' %}{% if editor %}<a href="{{ url_for('equip.task', task_id=r.t.id, back=request.path) }}">{{ r.what }}</a>{% else %}{{ r.what }}{% endif %}
                 <div class="small text-muted">To do{% if r.about %} · {{ r.about }}{% endif %}{% if r.t.owner %} · {{ r.t.owner }}{% endif %}</div>
                 {% else %}{% if editor %}<a href="{{ url_for('equip.task', task_id=r.b.id, back=request.path) }}">{{ r.what }}</a>{% else %}{{ r.what }}{% endif %}
@@ -179,14 +173,15 @@
     </table></div></div>
 
     {% elif view == 'vehicles' %}
+    <h1 class="visually-hidden">Vehicles</h1>
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="text-muted small">The region's vehicles and trailers: where each is kept, its condition, value left and the year to replace it. Planned purchases are on <a href="{{ url_for('equip.plan') }}">Replacement</a>, everything else on <a href="{{ url_for('equip.items') }}">Gear</a>.</div>
         {% if editor %}<a class="btn btn-sm btn-accent no-print" href="{{ url_for('equip.item') }}">Add a vehicle or trailer</a>{% endif %}</div>
     {% for cat in ('Vehicle', 'Trailer') %}{% set rows = big|selectattr('category', 'equalto', cat)|list %}
     <h2 class="h6 text-muted">{{ cat }}s</h2>
-    <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0 veh-cards">
+    <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0 stack">
         <thead><tr><th class="ps-3">Name</th><th>Kept at</th><th>Condition</th><th>Documents</th><th class="num">Value left</th><th class="num pe-3">Replace in</th></tr></thead>
-        <tbody>{% for i in rows %}<tr class="row-link" onclick="location.href='{{ url_for('equip.item', item_id=i.id) }}'">
+        <tbody>{% for i in rows %}<tr data-href="{{ url_for('equip.item', item_id=i.id) }}">
             <td class="ps-3"><a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}</a> <span class="small text-muted">{{ i.program }}</span></td>
             <td data-label="Kept at">{{ i.place }}</td><td class="small" data-label="Condition">{{ i.condition or i.status }}</td>
             <td class="small" data-label="Documents"><a href="{{ url_for('equip.item', item_id=i.id) }}#documents" class="{{ 'text-warning' if i.docs.missing else 'text-success' }}">{% if i.docs.error %}?{% elif i.docs.missing %}Missing {{ i.docs.missing|join(', ')|lower }}{% else %}✓ all on file{% endif %}</a></td>
@@ -197,7 +192,7 @@
 
     {% elif view == 'costs' %}
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-        <div><div class="page-title m-0">{{ money(total, 0) }} a year <span class="h6 text-muted">about {{ money(total / 12, 0) }} a month</span></div>
+        <div><h1 class="page-title m-0">{{ money(total, 0) }} a year <span class="h6 text-muted">about {{ money(total / 12, 0) }} a month</span></h1>
             <div class="text-muted small">Everything the region pays on a schedule, whether or not it's used. The last column says what QuickBooks shows for each one.
                 These bills make up the <a href="{{ url_for('plan.detail', year=budget_year, program='OPS') }}">{{ budget_year }} Operations budget</a>, by QuickBooks account.</div></div>
         {{ editbar(none, url_for('equip.task', bill=1, back=request.path), 'Add a bill') }}
@@ -209,7 +204,7 @@
         <tbody>{% for r in rows %}<tr>
             <td class="ps-3">{% if editor %}<a href="{{ url_for('equip.place', place_id=r.id, edit=1, back=request.path) if r.kind == 'place' else url_for('equip.task', task_id=r.id, back=request.path) }}">{{ r.what }}</a>{% else %}{{ r.what }}{% endif %}
                 <div class="small text-muted">{{ r.paid_how }}{% if r.account %} · {{ r.account }}{% endif %}</div></td>
-            <td class="small text-nowrap" data-label="How often">{{ r.how_often }}{% if r.next %}<div class="text-muted">next {{ r.next }}</div>{% endif %}{% if r.ends %}<div class="text-warning">ends {{ r.ends }}</div>{% endif %}</td>
+            <td class="small text-nowrap" data-label="How often">{{ r.how_often }}{% if r.next %}<div class="text-muted">next {{ (r.next or '')|nice_date }}</div>{% endif %}{% if r.ends %}<div class="text-warning">ends {{ (r.ends or '')|nice_date }}</div>{% endif %}</td>
             <td class="num" data-label="Each time">{{ money(r.each, 2) }}</td>
             <td class="num" data-label="A year">{{ money(r.per_year, 0) }}</td>
             <td class="small pe-3" data-label="QuickBooks">{{ qbo(r.qbo) }}</td></tr>{% endfor %}</tbody>
@@ -217,6 +212,7 @@
     {% endfor %}
 
     {% elif view == 'where' %}
+    <h1 class="visually-hidden">Gear</h1>
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="text-muted small">Where all {{ n_live }} things are (planned purchases are on Replacement): each storage place, what's in each trailer and motorhome, and who has the rest. <a href="{{ url_for('equip.items', by='category') }}">List by category</a></div>
         {% if editor %}<div class="d-flex flex-wrap gap-2 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item') }}">Add an item</a><a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.place') }}">Add a storage place</a></div>{% endif %}
@@ -239,9 +235,8 @@
 
     {% elif view == 'documents' %}
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-        <div><div class="page-title m-0">{% if n_missing %}{{ n_missing }} documents missing{% else %}Every document is in Drive{% endif %}</div>
-            <div class="text-muted small">Each vehicle, trailer and storage place has a folder in Drive (Operations › Fleet Titles &amp; Registrations, or Storage Locations). Found one? Open the vehicle, trailer or place (or use "Add a document" below its row), say what it is and upload the file or take a photo; it is named and filed for you.
-                Files put straight into the Drive folder count too when the name starts with what it is, for example "Title - front.jpg".</div></div>
+        <div><h1 class="page-title m-0">{% if n_missing %}{{ n_missing }} documents missing{% else %}Every document is in Drive{% endif %}</h1>
+            <div class="text-muted small">Found one? Use "Add a document" under its row.</div></div>
         <div class="d-flex gap-2 no-print">{% if root %}<a class="btn btn-sm btn-outline-light" href="{{ root }}" target="_blank" rel="noopener">Open Operations in Drive</a>{% endif %}
             <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('equip.documents', fresh=1) }}">Check again</a></div>
     </div>
@@ -263,15 +258,17 @@
     {% endfor %}
 
     {% elif view == 'items' %}
+    <h1 class="visually-hidden">Gear by category</h1>
     <div class="small mb-3"><a href="{{ url_for('equip.items') }}">‹ Back to where things are</a></div>
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-        <h2 class="h6 text-muted m-0">Property by category <span class="small">· <a href="{{ url_for('equip.items', gone=none if show_gone else '1') }}">{{ 'hide' if show_gone else 'show' }} items that are gone</a></span></h2>
+        <h2 class="h6 text-muted m-0">Property by category <span class="small">· <a href="{{ url_for('equip.items', by='category', gone=none if show_gone else '1') }}">{{ 'hide' if show_gone else 'show' }} items that are gone</a></span></h2>
         {% if editor %}<div class="d-flex flex-wrap gap-2 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item') }}">Add an item</a><a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.place') }}">Add a storage place</a></div>{% endif %}
     </div>
     {% for cat, rows in groups %}
     <h2 class="h6 text-muted mt-3">{{ cat }} ({{ rows|length }})</h2>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table table-hover mb-0">
-        <tbody>{% for i in rows %}<tr class="row-link" onclick="location.href='{{ url_for('equip.item', item_id=i.id) }}'">
+        <thead class="visually-hidden"><tr><th>Item</th><th>Kept at</th><th>Year bought</th><th>Cost</th></tr></thead>
+        <tbody>{% for i in rows %}<tr data-href="{{ url_for('equip.item', item_id=i.id) }}">
             <td class="ps-3"><a href="{{ url_for('equip.item', item_id=i.id) }}">{{ i.name }}</a>{% if i.quantity and i.quantity > 1 %} <span class="text-muted">× {{ '%g'|format(i.quantity) }}</span>{% endif %}
                 <div class="small text-muted">{{ i.program }}{% if i.status != 'In use' %} · {{ i.status }}{% endif %}</div></td>
             <td class="small">{{ i.place }}</td><td class="num">{{ '%d'|format(i.year) if i.year else '' }}</td>
@@ -280,8 +277,9 @@
     {% endfor %}
 
     {% elif view == 'item' %}
-    <div class="crumbs"><a href="{{ url_for('equip.items') }}">Gear</a> / {{ it.name or 'New item' }}</div>
+    <div class="crumbs">{% if it.category in ('Vehicle', 'Trailer') %}<a href="{{ url_for('equip.vehicles') }}">Vehicles</a>{% else %}<a href="{{ url_for('equip.items') }}">Gear</a>{% endif %} / {{ it.name or 'New item' }}</div>
     {% if edit %}
+    <h1 class="visually-hidden">{{ it.name or 'New item' }}</h1>
     <form method="post" class="card p-3"><input type="hidden" name="_base" value='{{ (it or {})|tojson }}'>
         <div class="row g-2">
             <div class="col-md-8"><label class="form-label small">Name</label><input name="name" class="form-control" value="{{ it.name or '' }}" required></div>
@@ -310,12 +308,12 @@
     {% else %}
     <div class="card p-3 mb-3">
         <div class="d-flex flex-wrap justify-content-between gap-2">
-            <div><div class="page-title m-0">{{ it.name }}</div>
+            <div><h1 class="page-title m-0">{{ it.name }}</h1>
                 <div class="text-muted">{{ it.category }}{% if it.program %} · {{ it.program }}{% endif %} · {{ it.status }}{% if it.condition %} · {{ it.condition }}{% endif %}</div></div>
             {% if editor %}<div class="d-flex flex-wrap gap-2 align-items-start no-print">
                 <a class="btn btn-sm btn-accent" href="{{ url_for('equip.item', item_id=it.id, edit=1) }}">Edit</a>
                 <form method="post" class="m-0">{% if it.status == 'Gone' %}<button name="action" value="restore" class="btn btn-sm btn-outline-light">Put back in use</button>
-                    {% else %}<button name="action" value="remove" class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove {{ it.name|e }}? It stays on record as Gone.')">Remove</button>{% endif %}</form></div>{% endif %}
+                    {% else %}<button name="action" value="remove" class="btn btn-sm btn-outline-danger" onclick="return confirm({{ ('Remove ' ~ it.name ~ '? It stays on record as Gone.')|tojson|forceescape }})">Remove</button>{% endif %}</form></div>{% endif %}
         </div>
         <dl class="row mt-3 mb-0 small">
             <dt class="col-sm-3">Kept at</dt><dd class="col-sm-9">{{ it.place or '·' }}</dd>
@@ -326,25 +324,26 @@
             <dt class="col-sm-3">Lifecycle</dt><dd class="col-sm-9">{% if lc and lc.per_year %}{{ money(lc.per_year, 0) }} a year over {{ '%g'|format(it.life_years) }} years; about {{ money(lc.left, 0) }} of value left. {% endif %}{% if lc %}{{ 'Buy' if it.status == 'Planned' else 'Replace' }} in {{ lc.replace }}{% if it.replace_cost %}, estimated {{ money(it.replace_cost, 0) }}{% endif %}.{% else %}<span class="text-muted">Add the year bought, cost and useful life, or a replacement year, to see it.</span>{% endif %}</dd>
             {% if it.nickname %}<dt class="col-sm-3">Also called</dt><dd class="col-sm-9">{{ it.nickname }}</dd>{% endif %}
             {% if it.notes %}<dt class="col-sm-3">Notes</dt><dd class="col-sm-9" style="white-space: pre-wrap">{{ it.notes }}</dd>{% endif %}
-            {% if it.updated %}<dt class="col-sm-3">Updated</dt><dd class="col-sm-9 text-muted">{{ it.updated }} by {{ it.updated_by }}</dd>{% endif %}
+            {% if it.updated %}<dt class="col-sm-3">Updated</dt><dd class="col-sm-9 text-muted">{{ (it.updated or '')|nice_date }} by {{ it.updated_by }}</dd>{% endif %}
         </dl>
     </div>
     <div class="card p-3 mb-3">
         <h2 class="h6 m-0">Where is it now?</h2>
-        <div class="small mt-1">{{ it.place or 'Not recorded' }}{% if it.seen %} <span class="text-muted">· last confirmed {{ it.seen }}</span>{% else %} <span class="text-muted">· never confirmed</span>{% endif %}</div>
+        <div class="small mt-1">{{ it.place or 'Not recorded' }}{% if it.seen %} <span class="text-muted">· last confirmed {{ (it.seen or '')|nice_date }}</span>{% else %} <span class="text-muted">· never confirmed</span>{% endif %}</div>
         {% if editor %}<form method="post" class="d-flex flex-wrap gap-2 mt-2 no-print"><input type="hidden" name="action" value="located">
-            <input name="place" class="form-control form-control-sm" style="max-width: 22rem" list="whereNames" value="{{ it.place or '' }}" placeholder="Wixom storage unit, Race Trailer, With a person">
+            <input name="place" class="form-control form-control-sm" style="max-width: 22rem" list="whereNames" value="{{ it.place or '' }}" aria-label="Where it is now" placeholder="Wixom storage unit, Race Trailer, With a person">
             <datalist id="whereNames">{% for n in locations %}<option value="{{ n }}">{% endfor %}</datalist>
             <button class="btn btn-sm btn-accent">Confirm or move</button></form>
         {% else %}<div class="small text-muted mt-1 no-print">Moved it? Ask the Operations committee to record where it is.</div>{% endif %}
     </div>
     {{ docs_box(docs) }}
-    {% if tasks %}<h2 class="h6 text-muted">To do for this</h2><ul>{% for t in tasks %}<li>{{ t.task }}: {{ t.due or 'no date' }}</li>{% endfor %}</ul>{% endif %}
+    {% if tasks %}<h2 class="h6 text-muted">To do for this</h2><ul>{% for t in tasks %}<li>{{ t.task }}: {{ (t.due or '')|nice_date or 'no date' }}</li>{% endfor %}</ul>{% endif %}
     {% endif %}
 
     {% elif view == 'place' %}
     <div class="crumbs"><a href="{{ url_for('equip.items') }}">Gear</a> / {{ p.name or 'New place' }}</div>
     {% if edit %}
+    <h1 class="visually-hidden">{{ p.name or 'New place' }}</h1>
     <form method="post" class="card p-3"><input type="hidden" name="back" value="{{ back }}"><input type="hidden" name="_base" value='{{ (p or {})|tojson }}'><div class="row g-2">
         <div class="col-md-6"><label class="form-label small">Name</label><input name="name" class="form-control" value="{{ p.name or '' }}" required></div>
         <div class="col-md-6"><label class="form-label small">Address</label><input name="address" class="form-control" value="{{ p.address or '' }}"></div>
@@ -357,12 +356,12 @@
     </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ back or url_for('equip.items') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
     {% else %}
     <div class="card p-3 mb-3">
-        <div class="d-flex flex-wrap justify-content-between gap-2"><div><div class="page-title m-0">{{ p.name }}{% if p.status == 'Closed' %} <span class="badge rounded-pill text-bg-secondary align-middle">Closed</span>{% endif %}</div><div class="text-muted">{{ p.address }}</div></div>
+        <div class="d-flex flex-wrap justify-content-between gap-2"><div><h1 class="page-title m-0">{{ p.name }}{% if p.status == 'Closed' %} <span class="badge rounded-pill text-bg-secondary align-middle">Closed</span>{% endif %}</h1><div class="text-muted">{{ p.address }}</div></div>
             {% if editor %}<div class="d-flex flex-wrap gap-2 align-items-start no-print">
                 <a class="btn btn-sm btn-accent" href="{{ url_for('equip.place', place_id=p.id, edit=1) }}">Edit</a>
                 <a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.item', place=p.name) }}">Add item here</a>
                 <form method="post" class="m-0">{% if p.status == 'Closed' %}<button name="action" value="reopen" class="btn btn-sm btn-outline-light">Reopen</button>
-                    {% else %}<button name="action" value="close" class="btn btn-sm btn-outline-danger" onclick="return confirm('Close {{ p.name|e }}? Its bill stops counting; it stays on record.')">Close this place</button>{% endif %}</form></div>{% endif %}</div>
+                    {% else %}<button name="action" value="close" class="btn btn-sm btn-outline-danger" onclick="return confirm({{ ('Close ' ~ p.name ~ '? Its bill stops counting; it stays on record.')|tojson|forceescape }})">Close this place</button>{% endif %}</form></div>{% endif %}</div>
         <dl class="row mt-3 mb-0 small">
             <dt class="col-sm-3">Cost</dt><dd class="col-sm-9">{% if p.cost_month %}{{ money(p.cost_month) }} a month{% elif p.cost_year %}{{ money(p.cost_year) }} a year{% else %}free{% endif %}</dd>
             <dt class="col-sm-3">Account</dt><dd class="col-sm-9">{{ p.account_holder or '·' }}</dd>
@@ -377,15 +376,17 @@
     {% endif %}
 
     {% elif view == 'tasks' %}
+    <h1 class="visually-hidden">To do</h1>
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="text-muted small">Things someone has to do. Bills that charge the card on their own are on Bills, not here.</div>
         {{ editbar(none, url_for('equip.task', back=request.path), 'Add a to-do') }}</div>
     {% for name, rows in groups %}
     <h2 class="h6 mt-3 {{ 'text-danger' if name == 'Overdue' else 'text-muted' }}">{{ name }} ({{ rows|length }})</h2>
-    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><thead><tr><th class="ps-3">To do</th><th>Due</th><th class="no-print"></th></tr></thead><tbody>{{ todo_rows(rows) }}</tbody></table></div></div>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0"><thead><tr><th class="ps-3">To do</th><th>Due</th><th class="no-print"><span class="visually-hidden">Done</span></th></tr></thead><tbody>{{ todo_rows(rows) }}</tbody></table></div></div>
     {% else %}<p class="text-muted">Nothing to do.</p>{% endfor %}
 
     {% elif view == 'task' %}
+    <h1 class="visually-hidden">{{ t.task or ('New bill' if bill else 'New to-do') }}</h1>
     <div class="crumbs"><a href="{{ back or url_for('equip.costs' if bill else 'equip.tasks') }}">{{ 'Bills' if bill else 'To do' }}</a> / {{ t.task or ('New bill' if bill else 'New to-do') }}</div>
     <form method="post" class="card p-3"><input type="hidden" name="back" value="{{ back }}"><input type="hidden" name="_base" value='{{ (t or {})|tojson }}'><div class="row g-2">
         <div class="col-md-8"><label class="form-label small">{{ 'What the bill is for' if bill else 'What has to be done' }}</label><input name="task" class="form-control" value="{{ t.task or '' }}" required></div>
@@ -408,6 +409,7 @@
     </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ back or url_for('equip.costs' if bill else 'equip.tasks') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
 
     {% elif view == 'plan' %}
+    <h1 class="visually-hidden">Replacement plan</h1>
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
         <p class="text-muted m-0">Replacements and planned purchases at estimated cost when bought. For planning only; the region gets no tax benefit from depreciation.</p>
         <a class="btn btn-sm btn-outline-light no-print" href="{{ url_for('plan.detail', year=budget_year, program='OPS') }}">{{ budget_year }} Operations budget ›</a></div>
@@ -418,7 +420,7 @@
             {% else %}set aside {{ money(rp.monthly, 0) }} a month from {{ rp.start_label }}.{% endif %}
             The money stays in savings (the money market) until each item is replaced, so it is not in the budget.</p>
         <p class="mb-0 small">{% if motion %}Board motion <a href="{{ url_for('board.home') }}#{{ motion.id }}">{{ motion.id }}</a>:
-            {% if motion.status == 'passed' %}approved {{ motion.decided }}{% elif motion.status == 'failed' %}not approved {{ motion.decided }}{% else %}waiting for the board{% endif %}.
+            {% if motion.status == 'passed' %}approved {{ (motion.decided or '')|nice_date }}{% elif motion.status == 'failed' %}not approved {{ (motion.decided or '')|nice_date }}{% else %}waiting for the board{% endif %}.
             {% else %}The board decides this as a motion: <a href="{{ url_for('board.home') }}#propose">propose it</a>.{% endif %}</p>{% endif %}
     </div>
     {% set c = rp.cfg %}

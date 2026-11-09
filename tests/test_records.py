@@ -168,9 +168,11 @@ def test_unlinked_names_show_as_text(tmp_path, monkeypatch):
 
 
 def _signed_in(monkeypatch, roles=(), email='pat@example.org'):
+    import access
     import auth
     from app import app
-    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Pat Director', 'level': 'official', 'roles': list(roles), 'perms': set()} if e else None)
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Pat Director', 'level': 'official', 'roles': list(roles),
+                                              'perms': set().union(*(access.perms(r) for r in roles))} if e else None)
     app.config['TESTING'] = True
     c = app.test_client()
     with c.session_transaction() as s:

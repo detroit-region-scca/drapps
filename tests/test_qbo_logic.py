@@ -61,7 +61,7 @@ def test_check_wrong_person_or_too_early_does_not_match():
 def test_card_line_exact_cents_only():
     r = req('FR-1', 'Sam', 175.23)
     m = Q.match_funds([r], [card('2026-06-26', [('Sam - cones', 175.23), ('ionos', 15.62)])])
-    assert m[0][1]['paid_ref'] == 'Region card'
+    assert m[0][1]['paid_ref'] == 'Region card (QuickBooks Purchase c2026-06-26)'
     assert not Q.match_funds([req('FR-2', 'Sam', 175)], [card('2026-06-26', [('constant contact', 175)])])
 
 

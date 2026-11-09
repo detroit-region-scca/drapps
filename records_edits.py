@@ -12,8 +12,11 @@ Entries (dicts):
   {"kind": "event", "key": {...}, "remove": true}
   {"kind": "row", "key": {"url": ..., "line": <line_no>, "driver": <name as shown>}, "set": {"driver", "class", "position", "total"}}
   {"kind": "row", "key": {...}, "remove": true}
-  {"kind": "standing", "key": {"program", "year", "class", "name"}, "set": {"class", "place", "name", "score"}}
+  {"kind": "standing", "key": {"program", "year", "class", "name", "place", "score", "nth"}, "set": {"class", "place", "name", "score"}}
   {"kind": "standing", "key": {...}, "remove": true}
+    A name can be in a class twice (a sheet read twice, two drivers of one name), so the key also carries the row's
+    place and score, and "nth" (0, 1, ...) when rows are the same in all of those: one correction changes one row.
+    Older entries have only program, year, class and name, and still change every row that matches.
   {"kind": "add_standing", "set": {"program", "year", "class", "place", "name", "score"}}
 Every entry also carries "who" and "when".
 """
@@ -95,8 +98,11 @@ def apply(c, e):
                     c.execute(f'update result_rows set "{f}" = ? where id = ?', ((s[f] or '').strip() or None, rid))
         return len(ids)
     if kind == 'standing':
-        ids = [r[0] for r in c.execute('select id from season_standings where program = ? and year = ? and coalesce(class, \'\') = ? and name = ?',
-                                       (k.get('program'), k.get('year'), k.get('class') or '', k.get('name')))]
+        ids = [r[0] for r in c.execute('select id, place, score from season_standings where program = ? and year = ? and coalesce(class, \'\') = ? '
+                                       'and name = ? order by id', (k.get('program'), k.get('year'), k.get('class') or '', k.get('name')))
+               if ('place' not in k or str(r[1]) == str(k['place'])) and ('score' not in k or _num(r[2]) == _num(k['score']))]
+        if 'nth' in k:
+            ids = ids[k['nth']:k['nth'] + 1] if isinstance(k['nth'], int) and k['nth'] >= 0 else []
         for sid in ids:
             if e.get('remove'):
                 c.execute('delete from season_standings where id = ?', (sid,))

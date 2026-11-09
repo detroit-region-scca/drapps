@@ -2,7 +2,8 @@
 Drive access can read the roll call without the app.
 
 - 'Ballots': one row per item put to an email vote (a budget or a motion): when it opened and closes, its status, and
-  the result once decided.
+  the result once decided. 'snap' is a fingerprint of a budget's numbers when its vote opened (blank for a motion and
+  for votes opened before it was kept), so a budget changed during the vote is not approved by it.
 - 'Ballot votes': one row per vote cast (a director may change their vote while it is open; the last one counts).
 Nothing is deleted: a vote that is no longer wanted is cancelled, one that ran out of time is expired.
 """
@@ -18,7 +19,7 @@ import sheet_cache as C
 from storage import DATA_DIR, open_book, worksheet
 
 TAB, VOTES_TAB = 'Ballots', 'Ballot votes'
-COLS = ['id', 'item', 'title', 'opened', 'opened_by', 'closes', 'status', 'result', 'count', 'decided', 'recorded_by']
+COLS = ['id', 'item', 'title', 'opened', 'opened_by', 'closes', 'status', 'result', 'count', 'decided', 'recorded_by', 'snap']
 VOTE_COLS = ['ballot_id', 'email', 'name', 'choice', 'at', 'via']
 SAVE_LOCK = os.path.join(DATA_DIR, 'ballots_save.lock')
 _lock = threading.Lock()
@@ -43,7 +44,9 @@ def _ws(title, cols):
 
 def _rows(title, cols):
     try:
-        res = C.batch_get(_sheet(), [f"'{title}'!A:{chr(64 + len(cols))}"], params={'valueRenderOption': 'FORMATTED_VALUE'})
+        # The whole tab, not A:L: a tab that does not have the newest column yet still reads (asking past a tab's last
+        # column is refused, which would hide every ballot).
+        res = C.batch_get(_sheet(), [f"'{title}'"], params={'valueRenderOption': 'FORMATTED_VALUE'})
     except gspread.exceptions.APIError:
         return []      # the tab is made by the first email vote
     vals = (res.get('valueRanges') or [{}])[0].get('values', [])
@@ -74,19 +77,23 @@ def _next_id(ids, year):
     return f'B-{year}-{n + 1:03d}'
 
 
-def open_ballot(item, title, who, today):
+def open_ballot(item, title, who, today, snap=''):
     """Open an email vote on an item and return its id. An earlier ballot on the same item that is still open or
-    expired is cancelled, so only one counts."""
+    expired is cancelled, so only one counts. snap: the budget's fingerprint as it is put to the vote."""
     with FileLock(SAVE_LOCK), _lock:
         ws = _ws(TAB, COLS)
         _ws(VOTES_TAB, VOTE_COLS)
+        if ws.col_count < len(COLS):          # a tab made before a column was added: widen it first, or the write is refused
+            ws.add_cols(len(COLS) - ws.col_count)
         rows = ws.get_all_values()
+        if rows and len(rows[0]) < len(COLS):
+            ws.update([COLS[len(rows[0]):]], f'{chr(65 + len(rows[0]))}1', value_input_option='RAW')
         for i, r in enumerate(rows[1:], start=2):
             r = r + [''] * len(COLS)
             if r[1] == item and r[6] in ('open', '', 'expired'):
                 ws.update([['cancelled']], f'G{i}', value_input_option='RAW')
         bid = _next_id([r[0] for r in rows[1:] if r], int(today[:4]))
-        ws.append_row([bid, item, title, today, who, BL.closes(today), 'open', '', '', '', ''],
+        ws.append_row([bid, item, title, today, who, BL.closes(today), 'open', '', '', '', '', snap],
                       value_input_option='RAW', table_range='A1')
         C.invalidate(_sheet())
         return bid

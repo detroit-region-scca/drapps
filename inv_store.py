@@ -28,7 +28,6 @@ NUMERIC = {'total', 'paid_amount', 'quantity', 'unit_price', 'amount'}
 STATUSES = ['Open', 'Paid', 'Void']
 TERMS_DAYS = 30
 REMIT = {'payee': 'Detroit Region SCCA', 'lines': ['PO Box 401018', 'Redford, MI 48240-9018'], 'email': 'treasurer@drscca.org', 'web': 'drscca.org'}
-CACHE_SECONDS = 15
 LOCK = os.path.join(DATA_DIR, 'invoices.lock')
 # Numbers already issued and the New invoice pages already used: a number is never given out twice (not even after the
 # newest invoice is deleted), and a double click or the back button never makes a second invoice.
@@ -138,17 +137,26 @@ def create(inv, lines, token=''):
         return dict(row, lines=rows), False
 
 
-def update(inv_id, **fields):
+def update(inv_id, expect=None, **fields):
+    """Change fields on one invoice. expect: the status it must still have, checked under the lock. Returns the row, or
+    None when the row is gone from the sheet or its status is not `expect` (nothing is changed). Cells are read as
+    stored, not as shown, so an amount column formatted as Currency keeps its number."""
     # The file lock too: the app runs several worker processes, and a create or delete in another one shifts rows.
     with FileLock(LOCK), _lock:
         ws = _ws('Invoices')
-        n = ws.col_values(1).index(inv_id) + 1
-        cur = dict(zip(INV_COLS, ws.row_values(n) + [''] * len(INV_COLS)))
+        col = ws.col_values(1)
+        if inv_id not in col:
+            return None
+        n = col.index(inv_id) + 1
+        cur = dict(zip(INV_COLS, ['' if v is None else v for v in ws.row_values(n, value_render_option='UNFORMATTED_VALUE')] + [''] * len(INV_COLS)))
+        if expect and cur['status'] != expect:
+            return None
         cur.update(fields)
         for k in NUMERIC & set(INV_COLS):
             cur[k] = _num(cur[k])
         ws.update([[_cell(cur[c]) for c in INV_COLS]], f'A{n}', value_input_option='RAW')
         refresh()
+        return cur
 
 
 def delete(inv_id):
@@ -159,7 +167,9 @@ def delete(inv_id):
     with FileLock(LOCK), _lock:
         inv = get(inv_id)
         ws = _ws('Invoices')
-        ws.delete_rows(ws.col_values(1).index(inv_id) + 1)
+        col = ws.col_values(1)
+        if inv_id in col:       # already gone when someone deleted the row by hand
+            ws.delete_rows(col.index(inv_id) + 1)
         lw = _ws('Lines')
         for n in sorted((i + 1 for i, v in enumerate(lw.col_values(1)) if v == inv_id), reverse=True):
             lw.delete_rows(n)

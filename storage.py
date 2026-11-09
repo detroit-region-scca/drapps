@@ -144,7 +144,7 @@ def drive_upload(f, parent):
     files = {'metadata': ('metadata', json.dumps({'name': f.filename, 'parents': [parent]}), 'application/json'),
              'file': (f.filename, f.stream, f.mimetype or 'application/octet-stream')}
     r = sheets_client().http_client.session.post(UPLOAD, params={'uploadType': 'multipart', 'supportsAllDrives': 'true',
-                                                                  'fields': 'id,webViewLink'}, files=files)
+                                                                  'fields': 'id,webViewLink'}, files=files, timeout=110)
     r.raise_for_status()
     return r.json()
 
@@ -165,7 +165,7 @@ def drive_files(folder_id):
 
 def drive_download(file_id, path):
     """Save one Drive file's bytes to path."""
-    r = sheets_client().http_client.session.get(f'{DRIVE}/{file_id}', params={'alt': 'media', 'supportsAllDrives': 'true'}, stream=True)
+    r = sheets_client().http_client.session.get(f'{DRIVE}/{file_id}', params={'alt': 'media', 'supportsAllDrives': 'true'}, stream=True, timeout=110)
     r.raise_for_status()
     with open(path, 'wb') as f:
         for chunk in r.iter_content(1 << 16):
@@ -189,11 +189,14 @@ class SheetStore:
 
     def _cached(self, key, loader):
         import sheet_cache
+        # The version is read before loading: a write that lands while loading moves it on, so the next call
+        # loads again instead of keeping the older answer.
+        version = sheet_cache.version(self.sheet_id)
         hit = self._cache.get(key)
-        if hit and hit[0] == sheet_cache.version(self.sheet_id):
+        if hit and hit[0] == version:
             return hit[1]
         val = loader()
-        self._cache[key] = (sheet_cache.version(self.sheet_id), val)
+        self._cache[key] = (version, val)
         return val
 
     def _records(self, rng, fresh=False):

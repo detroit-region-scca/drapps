@@ -132,7 +132,9 @@ def test_upload_shows_a_review_and_saves_nothing_until_save(site):
     page = c.post('/members/enter', data={'event': '#E1', 'first': '', 'sheet': (io.BytesIO(xlsx(form_rows())), 'points.xlsx')},
                   content_type='multipart/form-data').get_data(as_text=True)
     assert store['entries'] == [] and 'Check and save' in page and 'Matches the sheet' in page
-    assert 'Leave out: not on the member list' in page and 'Rob Tester III (300)' in page
+    assert 'Leave out: not on the member list' in page and 'Rob Tester III' in page
+    # someone who only enters points sees names, not SCCA numbers, except where two members share a name
+    assert 'Rob Tester III (300)' not in page and 'Kim Doe (400)' in page and 'Kim Doe (401)' in page
     # Save what the page offers: Pat, Lee, Kim (picked: 401), Robert (picked: 300); Nobody left out
     token = re.search(r'name="token" value="([^"]+)"', page).group(1)
     form = MultiDict([('step', 'save'), ('event', '#E1'), ('first', '2026-05-14'), ('what', ''), ('seen', '{}'), ('sheet_name', 'points.xlsx'),

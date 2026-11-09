@@ -1,18 +1,18 @@
 {% extends 'base.html' %}
-{% from '_ui.html' import tab, money with context %}
+{% from '_ui.html' import nice_month with context %}
 {% block app_name %}Events{% endblock %}
 {% block nav %}{% include '_events_nav.html' %}{% endblock %}
 {% block content %}
         <div class="crumbs"><a href="{{ url_for('bud.home') }}">Events</a> / Add event</div>
-        <div class="page-title">Add event</div>
-        <p class="text-muted">Registers the event and gives it its #DR code. Name the QuickBooks project with that code.</p>
+        <h1 class="page-title">Add event</h1>
+        <p class="text-muted">Registers the event and gives it a code. Use that code in its QuickBooks project name.</p>
 
         {% if maybe_same %}
         <div class="alert alert-warning">
             <div class="fw-semibold mb-2">Is this the same event?</div>
             {% for m in maybe_same %}
             <form action="{{ url_for('edit_event', event_id=m.id) }}" method="POST" class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                <span>{{ m.name }} · {{ m.date }} · {{ m.code }}</span>
+                <span>{{ m.name }} · {{ (m.date or '')|nice_date }} · {{ m.code }}</span>
                 <input type="hidden" name="program" value="{{ form_data.program }}">
                 <input type="hidden" name="date" value="{{ form_data.date }}">
                 <input type="hidden" name="event_name" value="{{ form_data.event_name }}">
@@ -21,10 +21,9 @@
                 <button class="btn btn-sm btn-outline-dark py-0">Yes, update it</button>
             </form>
             {% endfor %}
-            <div class="small">Yes keeps its {{ 'code' if maybe_same|length == 1 else 'codes' }} and annual plan line, with the name and date you entered. If it is a different event, press Add event again.</div>
+            <div class="small">If it is a different event, press Add event again.</div>
         </div>
         {% endif %}
-        <!-- Form Card -->
         <div class="card mb-4">
             <div class="card-body">
                 <form action="{{ url_for('index') }}" method="POST" id="createEventForm">
@@ -42,8 +41,8 @@
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Date</label>
-                            {% set ym = form_data.get('month', '') if form_data else '' %}<input type="date" class="form-control" name="date" value="{{ form_data.get('date', '') if form_data else '' }}" required onkeydown="return false" onclick="this.showPicker()"{% if ym %} min="{{ ym }}-01" max="{{ form_data.month_end }}"{% endif %}>
-                            {% if ym %}<div class="form-text">Planned for {{ ym }}; pick the day.</div>{% endif %}
+                            {% set ym = form_data.get('month', '') if form_data else '' %}<input type="date" class="form-control" name="date" value="{{ form_data.get('date', '') if form_data else '' }}" required onclick="this.showPicker &amp;&amp; this.showPicker()"{% if ym %} min="{{ ym }}-01" max="{{ form_data.month_end }}"{% endif %}>
+                            {% if ym %}<div class="form-text">Planned for {{ nice_month(ym) }}; pick the day.</div>{% endif %}
                         </div>
                         <div class="col-md-8">
                             <label class="form-label">Event name</label>
@@ -83,7 +82,6 @@
 
 {% endblock %}
 {% block scripts %}
-{% include '_rollup.html' %}
     <script>
         // "Which annual plan line is this?": the program's open plan lines for the event's year, best guess selected.
         (() => {
@@ -121,6 +119,5 @@
             ['program', 'date', 'event_name'].forEach(n => form[n].addEventListener(n === 'event_name' ? 'input' : 'change', update));
             update();
         })();
-
     </script>
 {% endblock %}

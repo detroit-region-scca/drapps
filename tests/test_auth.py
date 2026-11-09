@@ -18,6 +18,7 @@ def app_(monkeypatch, tmp_path):
     mail = []
     monkeypatch.setattr(auth, 'send_mail', lambda subject, body, to=None, **kw: mail.append((subject, body, to)))
     monkeypatch.setattr(auth, 'log_audit_event', lambda *a, **kw: None)
+    monkeypatch.setattr(auth, '_later', lambda fn: fn())      # the code email is sent off the request; here, at once
     from app import app
     app.config['TESTING'] = True
     app.mail = mail

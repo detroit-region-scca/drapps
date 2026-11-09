@@ -1,6 +1,6 @@
 """The region's officials (RE, ARE, treasurer, program directors, directors at large) and their emails.
 
-Read-only on purpose: the file is mounted read-only into the container (OFFICIALS_FILE, see docker-compose.prod.yml)
+Read-only on purpose: the file is mounted read-only into the container (OFFICIALS_FILE, see deploy/gcp/docker-compose.yml)
 and nothing in the app writes it. Approval emails go only to these addresses, so nobody using the app can make
 themselves an approver. Change it on the server.
 """

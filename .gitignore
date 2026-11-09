@@ -25,8 +25,9 @@ cookies.txt
 data/backups/
 data/*.lock
 data/sheet_cache.sqlite*
-# Runtime data (sign-in codes hold email addresses): never commit; programs.json is the one tracked file
-data/*.json
+# Runtime data (sign-in codes hold email addresses, the audit log holds names): never commit anything in data/.
+# programs.json (program codes and names, nothing private) is the one file that may be.
+data/*
 !data/programs.json
 data/qbo-refresh.json
 data/qbo-last-run.json
@@ -34,5 +35,9 @@ data/*.tmp
 data/officials-queue.json
 data/officials-done.json
 data/role-access.json
-# Public records database, built off the server (see records.py)
+# Public records database, built off the server (see records.py), and the private build data beside it
+# (tools/records): everything read, including worker points sheets.
 data/records.db
+data/scca.db
+data/text/
+data/work/

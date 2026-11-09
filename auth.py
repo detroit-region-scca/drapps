@@ -4,14 +4,13 @@ A person types their email address, gets a 6-digit code (and a one-tap link) by 
 device for 30 days. There is no shared password. What they can do follows from who they are, looked up again on
 every request, so removing someone from a list takes effect at once:
 
-  officer    RE, ARE, Secretary or Treasurer in the read-only officials list: everything, including board decisions.
-  official   anyone else in the officials list with an email (directors, directors at large, committee chairs):
-             the whole app, as with the old shared password; Operations changes only for the Equipment role.
-  volunteer  an address on the Volunteers tab of the Registry sheet (kept by officers on the Access page):
-             sees the event schedule, files funds requests and invoices, and sees only their own.
+  official   anyone in the officials list with an email. What they may do is the permissions of the roles they hold,
+             set in Admin > Roles (access.py). Their level is 'officer' when a role lets them record board decisions.
+  volunteer  an address on the Volunteers tab of the Registry sheet (kept on the App access page): the Volunteer
+             role's permissions, and only the pages in VOLUNTEER_ENDPOINTS.
 
-Anyone else gets the same "if that address can use the apps, a code is on its way" answer and no code, so the page
-never reveals who is on a list.
+Anyone else gets the same page and no code, so the page never reveals who is on a list. A request signed in with an
+API key (api.py) is the key's owner and goes through the same checks.
 """
 import hashlib
 import hmac
@@ -19,22 +18,28 @@ import json
 import logging
 import os
 import secrets
+import threading
 import time
 from datetime import date
 
 from filelock import FileLock
 from flask import (Blueprint, abort, current_app, flash, g, redirect, render_template, request, session, url_for)
 
+import access as AC          # (the name access is the App access page, below)
 import officials as O
 from storage import DATA_DIR, store
 from utils import log_audit_event, send_mail
 
 bp = Blueprint('auth', __name__)
 
-OFFICER_ROLES = ('RE', 'ARE', 'Secretary', 'Treasurer', 'Admin')   # bylaws Art. IV 4.2, plus the region's admin account
 CODE_MINUTES = 15
 MAX_TRIES = 5            # wrong codes before that code is dead
 MAX_SENDS_PER_HOUR = 5   # codes per address per hour
+MAX_SENDS_PER_DAY = 12   # and per day
+MAX_WRONG_PER_HOUR = 10  # wrong codes per address per hour, however many new codes were sent in between
+MAX_WRONG_PER_DAY = 20   # and per day
+IP_SENDS_PER_HOUR = 30   # codes asked for from one network address per hour (a whole paddock can share one)
+IP_WRONG_PER_HOUR = 20   # wrong codes typed from one network address per hour, whatever the email address
 CODES_FILE = os.path.join(DATA_DIR, 'auth_codes.json')
 VOL_TAB = 'Volunteers'
 VOL_COLS = ['email', 'name', 'note', 'added', 'added_by']
@@ -55,21 +60,39 @@ PUBLIC_ENDPOINTS = {'home', 'static', 'logout', 'fr.approve_link', 'board.vote_l
 
 # ---------- who is who ----------
 
+_vols = {'good': None, 'failed': False}    # the last list that was read, and whether the latest read failed
+
+
 def volunteers():
-    """{email: {email, name, note, added, added_by}} from the Volunteers tab; {} without Sheets."""
+    """{email: {email, name, note, added, added_by}} from the Volunteers tab; {} without Sheets. When the sheet can't
+    be read the last good list is used and the failure is not remembered, so the next request asks again."""
     if not hasattr(store, '_records'):
         return {}
     def load():
+        import gspread
         try:
             return {r['email'].strip().lower(): r for r in store._records(f'{VOL_TAB}!A:E') if r.get('email', '').strip()}
-        except Exception as e:
-            logging.error(f"Volunteers list unavailable: {e}")
-            return {}
-    return store._cached('volunteers', load)
+        except gspread.exceptions.APIError as e:
+            if 'Unable to parse range' in str(e):      # no Volunteers tab yet (it is made when the first one is added)
+                return {}
+            raise
+    try:
+        _vols['good'] = store._cached('volunteers', load)
+        _vols['failed'] = False
+    except Exception as e:
+        logging.error(f"Volunteers list unavailable, using the last one read: {e}")
+        _vols['failed'] = True
+    return _vols['good'] or {}
+
+
+def volunteers_unknown():
+    """True when the Volunteers tab could not be read and there is no earlier list to fall back on, so "not on the
+    list" can't be told from "the sheet is down"."""
+    return _vols['failed'] and _vols['good'] is None
 
 
 def lookup(email):
-    """{'email', 'name', 'level', 'roles'} for an address, or None if it may not sign in."""
+    """{'email', 'name', 'level', 'roles', 'perms'} for an address, or None if it may not sign in."""
     email = (email or '').strip().lower()
     if not email:
         return None
@@ -79,15 +102,13 @@ def lookup(email):
         # not a role of its own, so it adds no permissions (the same roles the Users page shows).
         alltitles = {o.get('title', '') for o in O.all()}
         roles = sorted({o.get('role', '') for o in mine if not O.follows(o.get('title', ''), alltitles)})
-        import access
-        perms = access.perms_for(roles)
+        perms = AC.perms_for(roles)
         level = 'officer' if 'board' in perms else 'official'
         return {'email': email, 'name': mine[0]['name'], 'level': level, 'roles': roles, 'perms': sorted(perms)}
     v = volunteers().get(email)
     if v:
-        import access
-        return {'email': email, 'name': v.get('name') or email, 'level': 'volunteer', 'roles': [access.VOLUNTEER],
-                'perms': sorted(access.perms(access.VOLUNTEER))}
+        return {'email': email, 'name': v.get('name') or email, 'level': 'volunteer', 'roles': [AC.VOLUNTEER],
+                'perms': sorted(AC.perms(AC.VOLUNTEER))}
     return None
 
 
@@ -140,27 +161,11 @@ def owns_invoice(inv):
 
 # ---------- every request ----------
 
-def gate():
-    """before_request: keep the old session keys in step with the signed-in person, and keep volunteers in their lane."""
-    if getattr(g, 'api_user', None) or request.endpoint is None:
-        return None
-    ep = request.endpoint
-    if ep.startswith(('auth.', 'api.')) or ep == 'static':   # the API checks its own key
-        return None
-    if session.get('authenticated') and not session.get('email'):
-        # Signed in with the old shared password: that is gone, sign in again by email.
-        session.clear()
-    u = user()
-    if session.get('email') and not u:
-        # Removed from the lists since signing in.
-        session.clear()
-        flash('Your address no longer has access to the apps. Ask the admin (admin@drscca.org) if that is a mistake.', 'warning')
-        return redirect(url_for('home'))
-    if not u:
-        session.pop('authenticated', None)
-        return None if ep in PUBLIC_ENDPOINTS else redirect(url_for('home', next=request.full_path.rstrip('?')))
-    # The rest of the app reads these: who signs each change, and the officer and Operations-editor checks.
+def set_session(u):
+    """The rest of the app reads these session keys: who signs each change, and the officer and Operations-editor
+    checks. Set from the person's roles on every request, so nothing left in a cookie counts."""
     session['authenticated'] = True
+    session['email'] = u['email']
     session['who'] = u['name']
     if u['level'] == 'officer':
         session['officer'] = {'email': u['email'], 'name': u['name']}
@@ -170,17 +175,56 @@ def gate():
         session['equip_editor'] = {'email': u['email'], 'name': u['name']}
     else:
         session.pop('equip_editor', None)
-    if u['level'] == 'volunteer' and ep not in VOLUNTEER_ENDPOINTS:
-        flash('That part of the apps is for region officials.', 'warning')
+
+
+def refuse(msg, back=None):
+    """Say no to the signed-in person: back to a page with the message, or a plain 403 for a request signed in with
+    an API key (the API hands the message to its caller)."""
+    flash(msg, 'warning')
+    if getattr(g, 'api_user', None):
+        abort(403)
+    return redirect(back or url_for('home'))
+
+
+def gate():
+    """before_request: keep the old session keys in step with the signed-in person, and keep everyone in their lane.
+    A request signed in with an API key is checked the same way, as the key's owner."""
+    if request.endpoint is None:
+        return None
+    ep = request.endpoint
+    if ep.startswith(('auth.', 'api.')) or ep == 'static':   # the API checks its own key
+        return None
+    if session.get('authenticated') and not session.get('email'):
+        # Signed in with the old shared password: that is gone, sign in again by email.
+        session.clear()
+    u = user()
+    if session.get('email') and not u:
+        if volunteers_unknown():
+            # The volunteers list can't be read right now: nobody is signed out over that.
+            return render_template('base.html', title='Busy', busy_msg='Google Sheets did not answer. Wait a minute and reload.'), 503
+        # Removed from the lists since signing in.
+        session.clear()
+        flash('Your address no longer has access to the apps. Ask the admin (admin@drscca.org) if that is a mistake.', 'warning')
         return redirect(url_for('home'))
+    if not u:
+        session.pop('authenticated', None)
+        return None if ep in PUBLIC_ENDPOINTS else redirect(url_for('home', next=request.full_path.rstrip('?')))
+    set_session(u)
+    if u['level'] == 'volunteer' and ep not in VOLUNTEER_ENDPOINTS:
+        return refuse('That part of the apps is for region officials.')
     need = ENDPOINT_PERMS.get(ep)
     if need and (request.method == 'POST' or ep in ('index', 'fr.new', 'fr.in_new', 'inv.new', 'members.enter', 'bud.edit')) \
             and need not in (u.get('perms') or ()):
-        flash("Your role doesn't include that. Ask the admin if you need it.", 'warning')
-        return redirect(request.referrer if (request.referrer or '').startswith(request.host_url) else url_for('home'))
+        return refuse("Your role doesn't include that. Ask the admin if you need it.",
+                      request.referrer if (request.referrer or '').startswith(request.host_url) else None)
     if ep in ('fr.detail', 'fr.ask', 'fr.receipts') and limited('funds'):
         import fr_store
         if not owns_request(fr_store.get(request.view_args.get('req_id'))):
+            abort(403)
+    if ep == 'fr.in_files' and limited('funds'):
+        import fr
+        import received_store
+        if not fr._owns_report(received_store.get(request.view_args.get('rid'))):
             abort(403)
     if ep in ('inv.detail', 'inv.pdf', 'inv.delete_request') and limited('invoices'):
         import inv_store
@@ -195,8 +239,13 @@ def _hash(email, code):
     return hmac.new(current_app.secret_key.encode(), f'{email}|{code}'.encode(), hashlib.sha256).hexdigest()
 
 
+def _recent(times, now, seconds=3600):
+    return [t for t in times or [] if t > now - seconds]
+
+
 def _codes(fn):
-    """Run fn(codes dict) under the file lock and save what it leaves."""
+    """Run fn(codes dict, now) under the file lock and save what it leaves. Keys are email addresses, and
+    "ip:<address>" for the per-network counts."""
     with FileLock(CODES_FILE + '.lock'):
         try:
             with open(CODES_FILE) as f:
@@ -204,7 +253,8 @@ def _codes(fn):
         except (OSError, ValueError):
             codes = {}
         now = time.time()
-        codes = {k: v for k, v in codes.items() if v.get('exp', 0) > now or any(t > now - 3600 for t in v.get('sent', []))}
+        codes = {k: v for k, v in codes.items()
+                 if v.get('exp', 0) > now or _recent(v.get('sent'), now, 86400) or _recent(v.get('bad'), now, 86400)}
         out = fn(codes, now)
         tmp = CODES_FILE + '.tmp'
         with open(tmp, 'w') as f:
@@ -213,37 +263,72 @@ def _codes(fn):
         return out
 
 
+def _ip_send_ok(ip):
+    """Count one more code asked for from this network address; False once it has asked for too many this hour."""
+    def put(codes, now):
+        c = codes.setdefault(f'ip:{ip}', {})
+        c['sent'] = _recent(c.get('sent'), now)
+        if len(c['sent']) >= IP_SENDS_PER_HOUR:
+            return False
+        c['sent'].append(now)
+        return True
+    return _codes(put)
+
+
+def _ip_blocked(ip):
+    """True when too many wrong codes were typed from this network address this hour."""
+    return _codes(lambda codes, now: len(_recent(codes.get(f'ip:{ip}', {}).get('bad'), now)) >= IP_WRONG_PER_HOUR)
+
+
 def _issue(email):
-    """A new code for the address, or None when it has had too many this hour."""
+    """A new code for the address, or None when it has had too many this hour or today. Wrong guesses made so far
+    stay counted: asking for a new code does not buy more guesses."""
     code = f'{secrets.randbelow(10 ** 6):06d}'
     def put(codes, now):
         c = codes.get(email, {})
-        sent = [t for t in c.get('sent', []) if t > now - 3600]
-        if len(sent) >= MAX_SENDS_PER_HOUR:
+        sent = _recent(c.get('sent'), now, 86400)
+        if len(_recent(sent, now)) >= MAX_SENDS_PER_HOUR or len(sent) >= MAX_SENDS_PER_DAY:
             return None
-        codes[email] = {'h': _hash(email, code), 'exp': now + CODE_MINUTES * 60, 'tries': 0, 'sent': sent + [now]}
+        codes[email] = {'h': _hash(email, code), 'exp': now + CODE_MINUTES * 60, 'tries': 0, 'sent': sent + [now],
+                        'bad': _recent(c.get('bad'), now, 86400)}
         return code
     return _codes(put)
 
 
-def _check(email, code):
-    """True once for the right, unexpired code; the code is then used up. Wrong guesses count toward MAX_TRIES."""
+def _check(email, code, ip=''):
+    """True once for the right, unexpired code; the code is then used up. A code dies after MAX_TRIES wrong guesses,
+    and an address gets only so many wrong guesses an hour and a day across all its codes. Every wrong guess also
+    counts against the network address it came from."""
     code = ''.join(ch for ch in (code or '') if ch.isdigit())
     def take(codes, now):
-        c = codes.get(email)
-        if not c or c.get('exp', 0) < now or c.get('tries', 0) >= MAX_TRIES:
+        def wrong():
+            if ip:
+                c_ip = codes.setdefault(f'ip:{ip}', {})
+                c_ip['bad'] = _recent(c_ip.get('bad'), now) + [now]
             return False
+        c = codes.get(email)
+        if not c or c.get('exp', 0) < now:
+            return wrong()
+        bad = _recent(c.get('bad'), now, 86400)
+        if c.get('tries', 0) >= MAX_TRIES or len(_recent(bad, now)) >= MAX_WRONG_PER_HOUR or len(bad) >= MAX_WRONG_PER_DAY:
+            return wrong()
         if hmac.compare_digest(c['h'], _hash(email, code)):
-            c['exp'] = 0
+            c['exp'], c['bad'] = 0, []
             return True
-        c['tries'] = c.get('tries', 0) + 1
-        return False
+        c['tries'], c['bad'] = c.get('tries', 0) + 1, bad + [now]
+        return wrong()
     return _codes(take)
 
 
 def _safe_next(target):
+    """Only a path on this site is followed after signing in (never an absolute or //host URL); '' otherwise."""
     from utils import local_path
-    return local_path(target) or ''
+    return local_path(target)
+
+
+def _later(fn):
+    """Run fn off the request thread (tests run it at once)."""
+    threading.Thread(target=fn, daemon=True).start()
 
 
 @bp.route('/signin', methods=['POST'])
@@ -253,18 +338,31 @@ def send_code():
     if '@' not in email or len(email) > 200:
         flash('Enter your email address.', 'warning')
         return redirect(url_for('home', next=nxt or None))
-    u = lookup(email)
-    if u:
-        code = _issue(email)
-        if code:
-            link = f"{request.url_root.rstrip('/')}{url_for('auth.verify', e=email, c=code, next=nxt or None)}"
-            region = os.environ.get('SCCA_REGION_NAME', 'SCCA')
-            send_mail(f'{code} is your {region} apps code',
-                      f"Your sign-in code is {code}\n\nOr tap this link on the device you are signing in on:\n{link}\n\n"
-                      f"It works once, for {CODE_MINUTES} minutes. If you did not ask for it, ignore this email.", email)
-            log_audit_event('SIGNIN_CODE_SENT', u['name'], {'email': email})
-        else:
-            logging.warning(f"Sign-in codes rate limited for {email}")
+    if not _ip_send_ok(request.remote_addr or ''):
+        flash('Too many sign-in emails were asked for from this network. Wait an hour and try again.', 'warning')
+        return redirect(url_for('home', next=nxt or None))
+    # Looking the address up, making the code, the email and the audit entry all happen off this request, so the
+    # page comes back just as fast for an address that is on a list as for one that is not.
+    app = current_app._get_current_object()
+    link = f"{request.url_root.rstrip('/')}{url_for('auth.verify', e=email, c='CODE', next=nxt or None)}"
+
+    def work():
+        with app.app_context():
+            try:
+                u = lookup(email)
+                code = u and _issue(email)
+                if code:
+                    region = os.environ.get('SCCA_REGION_NAME', 'SCCA')
+                    send_mail(f'{code} is your {region} apps code',
+                              f"Your sign-in code is {code}\n\nOr tap this link on the device you are signing in on:\n"
+                              f"{link.replace('c=CODE', f'c={code}')}\n\n"
+                              f"It works once, for {CODE_MINUTES} minutes. If you did not ask for it, ignore this email.", email)
+                    log_audit_event('SIGNIN_CODE_SENT', u['name'], {'email': email})
+                elif u:
+                    logging.warning(f"Sign-in codes rate limited for {email}")
+            except Exception:
+                logging.exception('Sending a sign-in code failed')
+    _later(work)
     session['signin_email'] = email
     return redirect(url_for('auth.verify', next=nxt or None))
 
@@ -274,8 +372,13 @@ def verify():
     nxt = _safe_next(request.values.get('next'))
     if request.method == 'POST':
         email = (request.form.get('email') or session.get('signin_email') or '').strip().lower()
+        ip = request.remote_addr or ''
+        if _ip_blocked(ip):
+            flash('Too many wrong codes were typed from this network. Wait an hour and try again.', 'danger')
+            return redirect(url_for('auth.verify', next=nxt or None))
+        ok = _check(email, request.form.get('code'), ip)     # checked whether or not the address is on a list
         u = lookup(email)
-        if u and _check(email, request.form.get('code')):
+        if u and ok:
             session.clear()
             session.permanent = True
             session['email'] = email

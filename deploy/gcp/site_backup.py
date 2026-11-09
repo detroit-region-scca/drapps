@@ -22,8 +22,10 @@ from google.auth.transport.requests import AuthorizedSession
 from google.oauth2 import service_account
 
 SITE = 'https://drscca.org'
-SA = os.environ.get('WORKSPACE_SA', '/opt/drscca/data/secrets/workspace-sa.json')
-REGION_DRIVE = '0AOGLnEtgl5aCUk9PVA'
+SA = os.environ.get('WORKSPACE_SA') or '/opt/drscca/data/secrets/workspace-sa.json'
+# The DRSCCA Region shared drive. Set REGION_DRIVE_ID in drapps.env; this default keeps a server whose drapps.env
+# does not have it yet working.
+REGION_DRIVE = os.environ.get('REGION_DRIVE_ID') or '0AOGLnEtgl5aCUk9PVA'
 PARENT = 'Website Archive'
 FOLDER = 'Weekly site backups'
 KEEP = 8

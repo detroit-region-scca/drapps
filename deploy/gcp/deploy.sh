@@ -1,44 +1,76 @@
 #!/bin/sh
 # Deploy drapps to the Google Cloud VM (run on bodhi, from the repo, after committing):
 #   deploy/gcp/deploy.sh
-# Tests, pushes, then on the VM: pulls the code, copies the compose file, Caddyfile, nginx config, job units and
-# scripts into place, rebuilds and restarts drapps, reloads Caddy, and checks the live site.
-set -e
+#
+# 1. Refuses uncommitted changes, runs the tests here, pushes. A failing test stops everything.
+# 2. On the VM: brings /opt/drscca/app to exactly this commit, then runs deploy/gcp/on-server.sh, which builds the
+#    new image, runs the tests inside it, starts it, checks it answers, and goes back to the previous image by
+#    itself if it does not. Then it installs the Caddyfile, job units and host libraries.
+# 3. Confirms the server reported this commit as running, and that the public site answers.
+# Any failure stops the deploy with a non-zero exit and the error on screen. See docs/RUNBOOK.md, "Changing the app".
+#
+# POSIX sh on purpose: the drapps-deploy wrapper runs this with "sh".
+set -eu
 cd "$(dirname "$0")/../.."
 VM="gcloud compute ssh drapps --project drscca-automation --zone us-central1-a --tunnel-through-iap --quiet --command"
+SITE=https://drapps.drscca.org
+
+fail() {
+	echo ""
+	echo "######################################################################"
+	echo "##  DEPLOY FAILED: $1"
+	echo "######################################################################"
+	exit 1
+}
 
 echo "== tests"
-OFFICIALS_HOST=/nonexistent PYTHONPATH=. venv/bin/pytest -q tests | tail -1
+if [ -n "$(git status --porcelain)" ]; then
+	fail "uncommitted changes. Commit first. Nothing was pushed or deployed."
+fi
+# No pipe here: a pipe would hide pytest's exit code.
+if ! OFFICIALS_HOST=/nonexistent PYTHONPATH=. venv/bin/python -m pytest -q tests; then
+	fail "the tests failed. Nothing was pushed or deployed."
+fi
 
 echo "== push"
-if [ -n "$(git status --porcelain)" ]; then echo "Uncommitted changes: commit first."; exit 1; fi
-git push -q origin HEAD
-
+SHA=$(git rev-parse HEAD)
+git push -q origin HEAD || fail "git push failed. Nothing was deployed."
 
 echo "== deploy on the VM ($(git log -1 --format='%h %s'))"
-$VM 'set -e; cd /opt/drscca/app && sudo git pull -q --ff-only
-cd /opt/drscca
-for f in docker-compose.yml Caddyfile livetiming-nginx.conf; do sudo cp app/deploy/gcp/$f $f; done
-sudo install -m 755 app/deploy/gcp/qbo-mcp.sh /opt/drscca/qbo-mcp.sh
-# QuickBooks swaps its token on use and saves the new one with a temp file + rename, so the token needs a folder
-# drapps can write (the secrets folder belongs to root): a token it cannot save goes stale and QuickBooks refuses it.
-sudo install -d -o drapps -g drapps -m 700 data/secrets/qbo
-[ -f data/secrets/qbo.env ] && [ ! -f data/secrets/qbo/qbo.env ] && sudo mv data/secrets/qbo.env data/secrets/qbo/qbo.env
-sudo install -m 644 app/deploy/gcp/livetiming-www/*.html data/livetiming/www/
-sudo cp app/deploy/gcp/systemd/* /etc/systemd/system/ && sudo systemctl daemon-reload
-sudo systemctl restart drscca-officials.path     # picks up new watched files
-sudo systemctl enable --now drscca-update.timer drscca-secrets-backup.timer drscca-site-backup.timer drscca-groups.path >/dev/null 2>&1
-command -v fail2ban-client >/dev/null || sudo apt-get install -y -qq fail2ban >/dev/null 2>&1
-sudo install -m 644 app/deploy/gcp/fail2ban/livetiming-sftp.local /etc/fail2ban/jail.d/livetiming-sftp.local && sudo systemctl reload-or-restart fail2ban
-sudo install -m 644 app/deploy/gcp/apt/52drscca-upgrades /etc/apt/apt.conf.d/52drscca-upgrades
-[ "$(timedatectl show -p Timezone --value)" = America/Detroit ] || sudo timedatectl set-timezone America/Detroit
-sudo docker compose up -d --build 2>&1 | tail -1
-sudo docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null || true
-sudo docker image prune -f >/dev/null' 2>&1 | grep -v -i -e numpy -e "tunnel" -e "^WARNING" -e "please see" -e "^$"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+echo 1 > "$TMP/rc"
+# The server moves to exactly the commit tested above (not "whatever the branch is now"), then runs its half.
+REMOTE="set -e; cd /opt/drscca/app; before=\$(sudo git rev-parse HEAD); sudo git fetch -q origin; sudo git merge -q --ff-only $SHA; exec sudo bash deploy/gcp/on-server.sh $SHA \$before"
+# The filter drops gcloud's chatter. The remote exit code is saved to a file first, because a pipe reports only the
+# last command's exit code (the filter's).
+{
+	rc=0
+	$VM "$REMOTE" 2>&1 || rc=$?
+	echo "$rc" > "$TMP/rc"
+} | tee "$TMP/log" | grep --line-buffered -v -i -e numpy -e "tunnel" -e "^WARNING" -e "please see" -e "^$" || true
+rc=$(cat "$TMP/rc")
+if [ "$rc" != 0 ]; then
+	fail "the server's half of the deploy ended with exit code $rc. Read the lines above."
+fi
+if ! grep -q "drapps deploy ok: $SHA" "$TMP/log"; then
+	fail "the server did not report commit $SHA as deployed. Read the lines above."
+fi
 
 echo "== check"
+c=000
 for i in 1 2 3 4 5 6 7 8 9 10; do
-  c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://drapps.drscca.org/) && [ "$c" = 200 ] && break; sleep 3
+	c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$SITE/") || true
+	if [ "$c" = 200 ]; then
+		break
+	fi
+	sleep 3
 done
-echo "drapps.drscca.org: $c"
-[ "$c" = 200 ]
+echo "$SITE: $c"
+if [ "$c" != 200 ]; then
+	fail "the server runs the new version, but $SITE answered $c from here. Check Caddy: sudo docker logs --tail 50 caddy"
+fi
+if ! curl -s -o /dev/null -D - --max-time 10 "$SITE/" | grep -qi '^strict-transport-security:'; then
+	echo "Warning: $SITE did not send the security headers from deploy/gcp/Caddyfile. Check that Caddy reloaded."
+fi
+echo "Deployed $SHA."

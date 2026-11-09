@@ -1,0 +1,8 @@
+[Unit]
+Description=DRSCCA apps: nightly copy of the app's own files (audit log, corrections, links, roles) to the admin-only Account Recovery folder
+OnFailure=drscca-alert@%n.service
+[Service]
+Type=oneshot
+# ACCOUNT_RECOVERY_FOLDER_ID and BACKUP_READERS, when set in drapps.env.
+EnvironmentFile=-/opt/drscca/data/secrets/drapps.env
+ExecStart=/opt/drscca/venv/bin/python /opt/drscca/app/deploy/gcp/secrets_backup.py --state
