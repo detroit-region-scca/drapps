@@ -405,7 +405,8 @@ def index():
             log_audit_event('EVENT_CREATED', _signed_in_name(), new_event)
             send_new_event_email(new_event)
         _link_plan_line(new_event, request.form.get('plan_line', ''), creator_name)
-        flash(f"Registered {new_event['custom_tag'] or new_event['unique_code']}.", 'success')
+        flash(f"Registered {new_event['custom_tag'] or new_event['unique_code']}. Next, set it up on MotorsportReg with "
+              f"{new_event['custom_tag'] or new_event['unique_code']} in its name, so the two link up.", 'success')
         return redirect(url_for('bud.detail', code=new_event['custom_tag'] or new_event['unique_code']))
 
     # GET request
