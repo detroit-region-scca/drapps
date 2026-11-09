@@ -265,7 +265,7 @@
     {% endif %}
 
     {% elif view == 'actuals' %}
-    <div class="crumbs"><a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Budgets</a> / <a href="{{ url_for('bud.detail', code=code) }}">{{ code }}</a> / Reported results</div>
+    <div class="crumbs"><a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Events</a> / <a href="{{ url_for('bud.detail', code=code) }}">{{ code }}</a> / Reported results</div>
     <div class="page-title">{{ e.event_name }} <span class="text-muted fs-6">{{ e.date }} · {{ e.program_code }} · {{ code }}</span></div>
     <p class="text-muted">What the event took in and spent, line by line, as the chair reports it. Enter it whenever you have it and come back to add more. QuickBooks keeps the official books; its totals are shown to check against. This does not change the budget the board approved.</p>
     <form method="post" id="actForm">
@@ -291,7 +291,7 @@
     </form>
 
     {% elif view == 'edit' %}
-    <div class="crumbs">{% if e.program_budget %}<a href="{{ url_for('plan.detail', year=e.date[:4], program=e.program_code) }}">Annual Plan</a>{% else %}<a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Budgets</a>{% endif %} / <a href="{{ url_for('bud.detail', code=code) }}">{{ code }}</a> / Edit</div>
+    <div class="crumbs">{% if e.program_budget %}<a href="{{ url_for('plan.detail', year=e.date[:4], program=e.program_code) }}">Annual Plan</a>{% else %}<a href="{{ url_for('bud.home', year=(e.date or '')[:4]) }}">Events</a>{% endif %} / <a href="{{ url_for('bud.detail', code=code) }}">{{ code }}</a> / Edit</div>
     <div class="page-title">{{ e.event_name }} <span class="text-muted fs-6">{{ e.date[:4] if e.program_budget else e.date }} · {{ e.program_code }} · {{ code }}</span></div>
     <form method="post" enctype="multipart/form-data" id="budForm" class="mt-3">
         {% if ly_events %}{% set chosen = ly_events|selectattr('code', 'equalto', pick)|first %}<div class="card p-3 mb-3" id="lyBox"

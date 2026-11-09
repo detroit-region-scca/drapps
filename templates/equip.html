@@ -164,7 +164,7 @@
 
     <div class="d-flex justify-content-between align-items-baseline mb-2">
         <h2 class="h6 text-muted m-0">Next 30 days</h2>
-        <div class="small no-print">{% if editor %}<a href="{{ url_for('equip.task', back=request.path) }}">+ Add a to-do</a> · {% endif %}<a href="{{ url_for('equip.tasks') }}">All to-dos</a></div>
+        <div class="small no-print">{% if editor %}<a href="{{ url_for('equip.task', back=request.path) }}">Add a to-do</a> · {% endif %}<a href="{{ url_for('equip.tasks') }}">All to-dos</a></div>
     </div>
     <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0">
         <thead><tr><th class="ps-3">Date</th><th>What</th><th class="num pe-3"></th></tr></thead>
@@ -181,7 +181,7 @@
     {% elif view == 'vehicles' %}
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="text-muted small">The region's vehicles and trailers: where each is kept, its condition, value left and the year to replace it. Planned purchases are on <a href="{{ url_for('equip.plan') }}">Replacement</a>, everything else on <a href="{{ url_for('equip.items') }}">Gear</a>.</div>
-        {% if editor %}<a class="btn btn-sm btn-accent no-print" href="{{ url_for('equip.item') }}">+ Add a vehicle or trailer</a>{% endif %}</div>
+        {% if editor %}<a class="btn btn-sm btn-accent no-print" href="{{ url_for('equip.item') }}">Add a vehicle or trailer</a>{% endif %}</div>
     {% for cat in ('Vehicle', 'Trailer') %}{% set rows = big|selectattr('category', 'equalto', cat)|list %}
     <h2 class="h6 text-muted">{{ cat }}s</h2>
     <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0 veh-cards">
@@ -219,7 +219,7 @@
     {% elif view == 'where' %}
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div class="text-muted small">Where all {{ n_live }} things are (planned purchases are on Replacement): each storage place, what's in each trailer and motorhome, and who has the rest. <a href="{{ url_for('equip.items', by='category') }}">List by category</a></div>
-        {% if editor %}<div class="d-flex flex-wrap gap-2 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item') }}">+ Add an item</a><a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.place') }}">+ Add a storage place</a></div>{% endif %}
+        {% if editor %}<div class="d-flex flex-wrap gap-2 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item') }}">Add an item</a><a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.place') }}">Add a storage place</a></div>{% endif %}
     </div>
     {% for p, entries in where %}
     <div class="card mb-3">
@@ -266,7 +266,7 @@
     <div class="small mb-3"><a href="{{ url_for('equip.items') }}">‹ Back to where things are</a></div>
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
         <h2 class="h6 text-muted m-0">Property by category <span class="small">· <a href="{{ url_for('equip.items', gone=none if show_gone else '1') }}">{{ 'hide' if show_gone else 'show' }} items that are gone</a></span></h2>
-        {% if editor %}<div class="d-flex flex-wrap gap-2 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item') }}">+ Add an item</a><a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.place') }}">+ Add a storage place</a></div>{% endif %}
+        {% if editor %}<div class="d-flex flex-wrap gap-2 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item') }}">Add an item</a><a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.place') }}">Add a storage place</a></div>{% endif %}
     </div>
     {% for cat, rows in groups %}
     <h2 class="h6 text-muted mt-3">{{ cat }} ({{ rows|length }})</h2>
@@ -280,7 +280,7 @@
     {% endfor %}
 
     {% elif view == 'item' %}
-    <div class="crumbs"><a href="{{ url_for('equip.items') }}">Where things are</a> / {{ it.name or 'New item' }}</div>
+    <div class="crumbs"><a href="{{ url_for('equip.items') }}">Gear</a> / {{ it.name or 'New item' }}</div>
     {% if edit %}
     <form method="post" class="card p-3"><input type="hidden" name="_base" value='{{ (it or {})|tojson }}'>
         <div class="row g-2">
@@ -343,7 +343,7 @@
     {% endif %}
 
     {% elif view == 'place' %}
-    <div class="crumbs"><a href="{{ url_for('equip.items') }}">Where things are</a> / {{ p.name or 'New place' }}</div>
+    <div class="crumbs"><a href="{{ url_for('equip.items') }}">Gear</a> / {{ p.name or 'New place' }}</div>
     {% if edit %}
     <form method="post" class="card p-3"><input type="hidden" name="back" value="{{ back }}"><input type="hidden" name="_base" value='{{ (p or {})|tojson }}'><div class="row g-2">
         <div class="col-md-6"><label class="form-label small">Name</label><input name="name" class="form-control" value="{{ p.name or '' }}" required></div>
@@ -360,7 +360,7 @@
         <div class="d-flex flex-wrap justify-content-between gap-2"><div><div class="page-title m-0">{{ p.name }}{% if p.status == 'Closed' %} <span class="badge rounded-pill text-bg-secondary align-middle">Closed</span>{% endif %}</div><div class="text-muted">{{ p.address }}</div></div>
             {% if editor %}<div class="d-flex flex-wrap gap-2 align-items-start no-print">
                 <a class="btn btn-sm btn-accent" href="{{ url_for('equip.place', place_id=p.id, edit=1) }}">Edit</a>
-                <a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.item', place=p.name) }}">+ Add item here</a>
+                <a class="btn btn-sm btn-outline-light" href="{{ url_for('equip.item', place=p.name) }}">Add item here</a>
                 <form method="post" class="m-0">{% if p.status == 'Closed' %}<button name="action" value="reopen" class="btn btn-sm btn-outline-light">Reopen</button>
                     {% else %}<button name="action" value="close" class="btn btn-sm btn-outline-danger" onclick="return confirm('Close {{ p.name|e }}? Its bill stops counting; it stays on record.')">Close this place</button>{% endif %}</form></div>{% endif %}</div>
         <dl class="row mt-3 mb-0 small">
@@ -432,7 +432,7 @@
             <div class="col-12 d-flex justify-content-end"><button class="btn btn-sm btn-accent">Save settings</button></div>
         </form>{% endif %}
     </details>
-    {% if editor %}<div class="d-flex flex-wrap gap-2 mb-3 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item', status='Planned') }}">+ Add a planned purchase</a>
+    {% if editor %}<div class="d-flex flex-wrap gap-2 mb-3 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item', status='Planned') }}">Add a planned purchase</a>
         <span class="small text-muted align-self-center">Change a year or cost right in the lists below; open an item for anything else.</span></div>{% endif %}
     <h2 class="h6 text-muted">Buy soon <span class="fw-normal">(due by {{ rp.near_until }})</span></h2>
     <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0 align-middle repl">

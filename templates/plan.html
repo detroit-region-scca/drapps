@@ -94,7 +94,7 @@
                     {% if st == 'approved' %}<br><span class="badge rounded-pill text-bg-success">Board approved {{ p.info.approved }}</span> recorded by {{ p.info.approved_by }}
                     {% elif st == 'changed' %}<br><span class="badge rounded-pill text-bg-warning">Changed since the board approved it on {{ p.info.approved }}</span>
                     {% elif p.info.submitted %}<br><span class="badge rounded-pill text-bg-primary">Turned in {{ p.info.submitted }}</span> by {{ p.info.submitted_by }}{% if program == 'OPS' %}, not board approved yet{% endif %}
-                    {% elif p.info.updated %}<br><span class="badge rounded-pill text-bg-info">Draft</span> not turned in yet{% endif %}
+                    {% elif p.info.updated %}<br><span class="badge rounded-pill text-bg-secondary">Draft</span> not turned in yet{% endif %}
                     {% if p.info.updated %}<br>Updated {{ p.info.updated }} by {{ p.info.updated_by }}{% endif %}</div>
                 {% if pb_code and budgets_on %}<div class="small mt-2">Program budget (spending not in an event):
                     {% if pb_status == 'approved' %}<span class="badge rounded-pill text-bg-success">Board approved {{ pb.approved }}</span>

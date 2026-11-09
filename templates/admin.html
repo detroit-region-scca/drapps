@@ -26,7 +26,7 @@
     <p class="text-muted small">Everyone who can sign in. Tick a person's roles; each role's permissions are set on <a href="{{ url_for('admin.roles') }}">Roles</a>. Untick everything to take away their access. New roles are added on Roles.</p>
     {% if changes.pending %}<div class="alert alert-info py-2 small">Being saved: {% for c in changes.pending %}{{ c.name }} ({{ c.title }}){{ ', ' if not loop.last }}{% endfor %}. Reload in a minute.</div>{% endif %}
     {% for c in changes.done if not c.ok %}<div class="alert alert-warning py-2 small">Not saved: {{ c.name }} ({{ c.title }}), {{ c.applied[:16] }}: {{ c.message }}</div>{% endfor %}
-    <details class="mb-3" id="add"><summary class="btn btn-sm btn-accent">+ Add a user</summary>
+    <details class="mb-3" id="add"><summary class="btn btn-sm btn-accent">Add a user</summary>
         <form method="post" class="card p-3 mt-2">{{ user_form(none, roles) }}</form></details>
     <div class="list-group">
         {% for u in users %}<div class="list-group-item py-2">
@@ -100,7 +100,7 @@
         <span class="small text-muted">Only roles you changed are saved. "Their own program's plan" covers the programs a person directs. Volunteers can only reach events, worker points and their own requests and invoices.</span></div>
     </form>
     {% for c in cols %}{% if c.removable %}<form id="rm-{{ loop.index }}" method="post" class="d-none"><input type="hidden" name="action" value="remove_role"><input type="hidden" name="role" value="{{ c.role }}"></form>{% endif %}{% endfor %}
-    <details class="mt-3"><summary class="btn btn-sm btn-outline-light">+ Add a role</summary>
+    <details class="mt-3"><summary class="btn btn-sm btn-outline-light">Add a role</summary>
     <form method="post" class="card p-3 mt-2"><input type="hidden" name="action" value="add_role"><div class="row g-2 align-items-end">
         <div class="col-12 col-md-5"><label class="form-label small">Name</label><input name="role" class="form-control form-control-sm" maxlength="40" required placeholder="e.g. Trophy Committee"></div>
         <div class="col-12 col-md-5"><label class="form-label small">Start with the permissions of</label><select name="like" class="form-select form-select-sm"><option value="">Everyday only</option>{% for c in cols %}<option value="{{ c.role }}">{{ c.role }}</option>{% endfor %}</select></div>
