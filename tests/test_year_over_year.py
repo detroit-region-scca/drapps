@@ -80,7 +80,9 @@ def test_event_warnings(monkeypatch):
     assert bud._warnings(ev('2026-05-01'), None, today) == [('No budget', 'budget')]
     assert bud._warnings(ev('2026-05-01'), {'lines': lines}, today)[0][1] == 'results'
     assert bud._warnings(ev('2026-05-01'), {'lines': [{'actual': 950.0}]}, today) == []
-    assert bud._warnings(ev('2027-01-09'), {'lines': lines}, today) == []
+    assert bud._warnings(ev('2027-01-09'), {'lines': lines}, today) == [('Budget not approved yet', 'approval')]
+    assert bud._warnings(ev('2027-01-09'), {'lines': lines, 'draft': 'yes'}, today) == [('Budget is still a draft', 'approval')]
+    assert bud._warnings(ev('2027-01-09'), {'lines': lines, 'approved': '2026-11-01'}, today) == []
     assert bud._warnings(dict(ev('2026-05-01'), program_budget=True), None, today) == []
 
 

@@ -146,6 +146,8 @@ def _warnings(e, b, today=None):
         return [('No budget' if past else 'No budget yet', 'budget')]
     if past and not any(ln.get('actual') is not None for ln in b.get('lines', [])):
         return [('The event is over: enter its reported results', 'results')]
+    if not past and not b.get('approved'):   # spending on it goes to the board as a motion until then
+        return [('Budget is still a draft' if b.get('draft') else 'Budget not approved yet', 'approval')]
     return []
 
 
