@@ -239,7 +239,10 @@ def test_saving_the_operations_plan_unchanged_keeps_it_approved(monkeypatch, tmp
     assert tabs['Programs'].col_count == 12 and info()['approved_hash'] == P.lines_hash(PLAN_LINES)
     P.save('2027', 'OPS', {'notes': '', 'updated_by': 'Sam'}, [dict(PLAN_LINES[0], net=-1500.0)])
     assert P.plan_status(info()) == 'changed' and info()['updated_by'] == 'Sam'
-    P.set_approved('2027', 'OPS', '2026-11-09', 'Pat')
+    from datetime import date
+    P.set_approved('2027', 'OPS', '2020-01-01', 'Pat')        # a meeting before today's edit: not what the board saw
+    assert P.plan_status(info()) == 'changed'
+    P.set_approved('2027', 'OPS', date.today().isoformat(), 'Pat')
     assert P.plan_status(info()) == 'approved' and info()['approved_hash'] == P.lines_hash([dict(PLAN_LINES[0], net=-1500.0)])
     P.set_draft('2027', 'OPS')
     assert info()['approved'] == '' and info()['approved_hash'] == '' and P.plan_status(info()) == 'draft'
