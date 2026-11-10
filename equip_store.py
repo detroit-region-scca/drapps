@@ -57,15 +57,13 @@ NUMERIC = {'year', 'quantity', 'cost', 'life_years', 'cost_month', 'cost_year', 
 CATEGORIES = ['Vehicle', 'Trailer', 'Timing', 'Safety', 'Course', 'Hospitality', 'Promotion', 'Tools', 'Other']
 STATUSES = ['In use', 'Needs repair', 'Planned', 'Retire', 'Gone']
 CAPITAL = 2500.0        # the tax preparer's suggested threshold for a long-lived asset (May 2026)
-# The replacement plan's rules, kept on their own 'Plan settings' tab so Operations can change them in the app (or the sheet).
+# The replacement plan's 'Plan settings' tab: the committee's note (and the old board amount rows).
 PLAN_TAB = 'Plan settings'
 PLAN_LABELS = ['Setting', 'Value', 'What it means', 'Last updated', 'Updated by']
-# One rule. Older rows on the tab (big_cost, big_within_years, big_from_savings) are no longer read; they are left where they are.
-PLAN_DEFAULTS = {'budget_within_years': 2}
-PLAN_HELP = {
-    'budget_within_years': 'Items due within this many years (1 = this year only, 2 = this year or next) are bought out of that year\'s Operations budget. Later ones go through the reserve fund.',
-}
-# What the board decided to put in the reserve fund each month, on the same tab. No rows = not decided yet.
+# The plan has no settings: this year's purchases are in the Operations budget, later ones go through the reserve fund.
+# Older rows on the tab (budget_within_years, big_cost, big_within_years, big_from_savings) are not read; they are left where they are.
+PLAN_DEFAULTS = {}
+# A monthly amount recorded for the board, on the same tab. No page shows it any more; the rows are still read and written as they are.
 BOARD_KEYS = ('board_monthly', 'board_date', 'board_by')
 BOARD_HELP = {
     'board_monthly': 'What the board decided to put in the reserve fund each month for replacements. Recorded in the app by an officer.',
@@ -159,22 +157,6 @@ def documents():
     return _snapshot()['Documents']
 
 
-def _plan_cfg(rows):
-    """The plan settings from the tab's rows ([key, value, ...]), anything missing or unreadable left at its default."""
-    cfg = dict(PLAN_DEFAULTS)
-    for r in rows:
-        if not r or len(r) < 2:
-            continue
-        k, v = str(r[0]).strip(), str(r[1]).strip()
-        if k not in PLAN_DEFAULTS or v == '':
-            continue
-        n = _num(v.replace('$', '').replace(',', ''))
-        if n is not None and n >= 0:
-            cfg[k] = int(n) if k.endswith('_years') else float(n)
-    cfg['budget_within_years'] = max(1, cfg['budget_within_years'])
-    return cfg
-
-
 def _plan_rows():
     """The 'Plan settings' tab's rows below the header ([key, value, ...]); none when the tab is not there yet."""
     sid = os.environ['OPERATIONS_SHEET_ID']
@@ -191,8 +173,8 @@ def _plan_rows():
 
 
 def plan_settings():
-    """The replacement plan's rules (PLAN_DEFAULTS until someone saves them)."""
-    return _plan_cfg(_plan_rows())
+    """The replacement plan has no settings any more. Kept for old callers: always {}."""
+    return dict(PLAN_DEFAULTS)
 
 
 def _note_text(rows):
@@ -228,37 +210,23 @@ def _plan_ws():
     return have.get(PLAN_TAB) or book.add_worksheet(PLAN_TAB, rows=20, cols=len(PLAN_LABELS))
 
 
-def _plan_sheet_rows(live, cfg=None, note=None, who='', when='', board=None):
-    """The whole 'Plan settings' tab as it should be written: the header, the rule, the board's amount, the committee's
-    note, then every other row (anything added by hand, the old big-item rules). live: the tab as it is now. cfg: the
-    new rule, else the rule row stays as it is (and is not written at all when the tab has none yet). note: new note
-    text, else the note row stays. board: {'monthly', 'date', 'by'} to record, else the board rows stay."""
+def _plan_sheet_rows(live, note=None, who='', when='', board=None):
+    """The whole 'Plan settings' tab as it should be written: the header, the board's amount, the committee's note,
+    then every other row exactly as it is (anything added by hand, the old rules). live: the tab as it is now. note:
+    new note text, else the note row stays. board: {'monthly', 'date', 'by'} to record, else the board rows stay."""
     width = len(PLAN_LABELS)
     body = [list(r) + [''] * (width - len(r)) for r in live[1:] if r and str(r[0]).strip()]
     key = lambda r: str(r[0]).strip()
-    rules = [r for r in body if key(r) in PLAN_DEFAULTS]
     board_rows = [r for r in body if key(r) in BOARD_KEYS]
-    rest = [r for r in body if key(r) not in PLAN_DEFAULTS and key(r) not in BOARD_KEYS and key(r).lower() != NOTE_KEY]
+    rest = [r for r in body if key(r) not in BOARD_KEYS and key(r).lower() != NOTE_KEY]
     note_row = next((r for r in body if key(r).lower() == NOTE_KEY), None)
-    if cfg is not None:
-        rules = [[k, cfg[k], PLAN_HELP[k], when, who] for k in PLAN_DEFAULTS]
     if board is not None:
         vals = {'board_monthly': board['monthly'], 'board_date': board['date'], 'board_by': board['by']}
         board_rows = [[k, vals[k], BOARD_HELP[k], when, who] for k in BOARD_KEYS]
     if note is not None:
         note_row = [NOTE_KEY, note, NOTE_HELP, when, who]
-    rows = [PLAN_LABELS] + rules + board_rows + ([note_row] if note_row else []) + rest
+    rows = [PLAN_LABELS] + board_rows + ([note_row] if note_row else []) + rest
     return rows + [[''] * width] * max(0, len(live) - len(rows))      # blank what is left of a longer tab
-
-
-def save_plan_settings(cfg, who, when):
-    """Write the rule to the 'Plan settings' tab (made the first time), with who and when. The board's amount, the
-    committee's note and any other row on the tab are kept."""
-    with FileLock(LOCK), _lock:
-        ws = _plan_ws()
-        live = ws.get('A1:E60', value_render_option='UNFORMATTED_VALUE') or []
-        ws.update(_plan_sheet_rows(live, cfg=cfg, who=who, when=when), 'A1', value_input_option='RAW')
-        refresh()
 
 
 def save_plan_note(text, who, when):
@@ -394,25 +362,21 @@ def replace_cost(it):
     return it.get('replace_cost') or it['cost'] or 0
 
 
-def reserve_plan(rows, today=None, cfg=None, balance=0.0):
-    """How to pay for replacements and planned purchases. A living estimate: it is worked out again from the rows
-    every time.
+def reserve_plan(rows, today=None, balance=0.0):
+    """How to pay for replacements and planned purchases. It is worked out again from the rows every time.
 
-    near:  the Operations budget items: due within budget_within_years (this year or next), too close to save for, so
-           each is bought out of that year's Operations budget.
-    later: the reserve fund items: due after that, saved for month by month, item by item, so each is paid for by July
-           of its year (what is still to save / months left). 'monthly' is their sum: what the plan calls for. It is
-           front-loaded when costly items come due soon, as it should be.
+    year:  the plan year: this year, or next year from October on (plans are for next year by then).
+    near:  the purchases not from the reserve fund: due in the plan year, so each is bought out of that year's Operations budget.
+    later: the reserve fund items: due in a later year, saved for month by month, item by item, from the start month
+           through December of the year each is due (what is still to save / months left). 'monthly' is their sum:
+           what the plan calls for. It is front-loaded when costly items come due soon, as it should be.
     balance: what is in the reserve fund now. It counts toward the items due first ('saved' on each row), so the
            monthly amount is only for what is still to save.
-    steps: how the monthly amount steps down as items are bought: [(year, monthly until July of that year)].
+    steps: how the monthly amount steps down as items are bought: [(year, monthly through that year)].
     schedule: the same steps with what each one pays for: [{'year', 'monthly', 'items': [later rows]}]. A row due in
            an earlier year than its step (the reserve fund already covers it) or a later one (too small to make a step)
            sits in the nearest step, so every later row is in exactly one.
-    cfg:   the rule (plan_settings(); PLAN_DEFAULTS when not given): budget_within_years. Other keys are ignored.
     """
-    cfg = dict(PLAN_DEFAULTS, **{k: v for k, v in (cfg or {}).items() if k in PLAN_DEFAULTS})
-    near_years = cfg['budget_within_years']
     today = today or date.today()
     # From October on, plans are for next year: start saving next January.
     start = date(today.year + 1, 1, 1) if today.month >= 10 else date(today.year, today.month, 1)
@@ -421,18 +385,14 @@ def reserve_plan(rows, today=None, cfg=None, balance=0.0):
         lc = lifecycle(it, today)
         if it['status'] == 'Gone' or not lc or lc['replace'] < start.year or not replace_cost(it):
             continue
-        row = {'it': it, 'year': lc['replace'], 'cost': replace_cost(it)}
-        if lc['replace'] < start.year + near_years:
-            near.append(row)
-        else:
-            later.append(row)
-    near.sort(key=lambda r: (r['year'], -r['cost']))
+        (near if lc['replace'] == start.year else later).append({'it': it, 'year': lc['replace'], 'cost': replace_cost(it)})
+    near.sort(key=lambda r: -r['cost'])
     later.sort(key=lambda r: (r['year'], -r['cost']))
     left = max(float(balance or 0), 0.0)
     for row in later:      # the reserve fund counts toward what is due first
         row['saved'] = round(min(row['cost'], left), 2)
         left -= row['saved']
-        row['monthly'] = round((row['cost'] - row['saved']) / max(_months_to_july(start.isoformat()[:7], row['year']), 1), 2)
+        row['monthly'] = round((row['cost'] - row['saved']) / _months_through_year(start.isoformat()[:7], row['year']), 2)
     monthly = round(sum(r['monthly'] for r in later), 2)
     steps = [(y, round(sum(r['monthly'] for r in later if r['year'] >= y), 2)) for y in sorted({r['year'] for r in later})]
     # One step per change: where the amount stays the same past a year (that item is already paid for), the later year stands.
@@ -441,14 +401,14 @@ def reserve_plan(rows, today=None, cfg=None, balance=0.0):
     for row in later:
         if schedule:
             next((s for s in schedule if s['year'] >= row['year']), schedule[-1])['items'].append(row)
-    return {'start': start.isoformat()[:7], 'start_label': start.strftime('%B %Y'), 'near': near, 'later': later, 'monthly': monthly,
-            'steps': steps, 'schedule': schedule, 'saved': round(sum(r['saved'] for r in later), 2),
-            'cfg': cfg, 'near_until': start.year + near_years - 1, 'near_total': round(sum(r['cost'] for r in near), 2)}
+    return {'start': start.isoformat()[:7], 'start_label': start.strftime('%B %Y'), 'year': start.year, 'near': near, 'later': later,
+            'monthly': monthly, 'steps': steps, 'schedule': schedule, 'saved': round(sum(r['saved'] for r in later), 2),
+            'near_total': round(sum(r['cost'] for r in near), 2)}
 
 
-def _months_to_july(start, year):
-    """Whole months of saving from the start month ('YYYY-MM') through June of the year: what is in hand that July."""
-    return (int(year) - int(start[:4])) * 12 + 6 - (int(start[5:7]) - 1)
+def _months_through_year(start, year):
+    """Whole months of saving from the start month ('YYYY-MM') through December of the year, at least 1."""
+    return max((int(year) - int(start[:4])) * 12 + 12 - (int(start[5:7]) - 1), 1)
 
 
 def reserve_balance(sheet_rows):
@@ -462,53 +422,8 @@ def reserve_balance(sheet_rows):
     return {'amount': amount, 'found': bool(hit) and amount != 0, 'as_of': next((str(r['as_of']) for r in sheet_rows if r.get('as_of')), '')}
 
 
-def reserve_projection(later, start, monthly, balance=0.0):
-    """Whether the board's monthly amount pays for the plan. Starting from the reserve fund now (balance), the monthly
-    amount is added every month from the start month ('YYYY-MM'), and each reserve fund row's cost (reserve_plan's
-    later: {'it', 'year', 'cost', 'monthly'}) comes out in July of its year.
-
-    {'state', 'monthly', 'suggested', 'balance', 'short_by', 'item', 'year'} where state is
-      'empty'   nothing to save for
-      'none'    the board has not picked an amount (monthly is None): only the plan's own amount is known
-      'covers'  the reserve fund never runs short
-      'short'   it first runs short by short_by when item (its name) is due in year
-    A shortfall under a dollar is rounding, not a shortfall."""
-    out = {'state': 'covers', 'monthly': monthly, 'suggested': round(sum(r.get('monthly') or 0 for r in later), 2),
-           'balance': round(balance or 0, 2), 'short_by': 0.0, 'item': '', 'year': None}
-    if not later:
-        return dict(out, state='empty')
-    if monthly is None:
-        return dict(out, state='none')
-    spent = 0.0
-    for r in sorted(later, key=lambda r: (r['year'], -r['cost'])):
-        have = out['balance'] + monthly * max(_months_to_july(start, r['year']), 0) - spent
-        if r['cost'] - have >= 1:
-            return dict(out, state='short', short_by=round(r['cost'] - have, 2), item=r['it']['name'], year=r['year'])
-        spent += r['cost']
-    return out
-
-
 def _usd(v):
     return ('-' if v < 0 else '') + f'${abs(v):,.0f}'
-
-
-def _and(parts):
-    """'a', 'a and b', 'a, b and c'."""
-    parts = [str(p) for p in parts]
-    return ' and '.join(filter(None, [', '.join(parts[:-1]), parts[-1]])) if parts else ''
-
-
-def near_text(rp):
-    """What the Operations budget buys, by year: '$35,021 in 2027 and $16,900 in 2028' ('' when nothing)."""
-    by_year = {}
-    for r in rp['near']:
-        by_year[r['year']] = by_year.get(r['year'], 0) + r['cost']
-    return _and(f'{_usd(c)} in {y}' for y, c in sorted(by_year.items()))
-
-
-def near_years(rp):
-    """The years the Operations budget buys something in: '2027 and 2028' ('' when nothing)."""
-    return _and(sorted({r['year'] for r in rp['near']}))
 
 
 def paid_for_text(step):
@@ -523,34 +438,6 @@ def reserve_now_text(reserve):
     if not reserve['found']:
         return f"{_usd(reserve['amount'])}, nothing booked yet", ''
     return _usd(reserve['amount']), f"(QuickBooks account {RESERVE_ACCOUNT}" + (f", as of {nice_date(reserve['as_of'])}" if reserve['as_of'] else '') + ')'
-
-
-def board_text(board):
-    """The board's monthly amount as one sentence ('' when it has not picked one)."""
-    if not board:
-        return ''
-    return f"The board puts in {_usd(board['monthly'])} a month" + (f" (decided {nice_date(board['date'])})" if board.get('date') else '') + '.'
-
-
-def projection_text(pr):
-    """reserve_projection's answer as the one sentence the pages and the report show, right after board_text()."""
-    if pr['state'] == 'empty':
-        return 'Nothing is due later, so there is nothing to save for.'
-    if pr['state'] == 'none':
-        return 'The board has not picked a monthly amount yet.'
-    if pr['state'] == 'short':
-        return f"That falls short by about {_usd(pr['short_by'])} when {pr['item']} is due in {pr['year']}."
-    return 'That covers everything on the plan.'
-
-
-def plan_changed(rp):
-    """Who last changed an item on the plan and when, from the items' own updated / updated_by: {'date', 'by', 'name'},
-    or None when no plan item has a date."""
-    its = [r['it'] for r in rp['near'] + rp['later'] if re.fullmatch(r'\d{4}-\d{2}-\d{2}', str(r['it'].get('updated') or ''))]
-    if not its:
-        return None
-    it = max(its, key=lambda i: i['updated'])
-    return {'date': it['updated'], 'by': it.get('updated_by') or '', 'name': it['name']}
 
 
 def next_due(t, after=None):
@@ -675,10 +562,10 @@ def year_cost(c, year):
     return c['per_year']
 
 
-def budget(year, items_rows, places_rows, tasks_rows, today=None, cfg=None):
+def budget(year, items_rows, places_rows, tasks_rows, today=None):
     """What the Operations records say a year costs, by QuickBooks account, for the Budget column of the Operations
     annual plan (the way an event budget fills it for a program): every bill on an Operations account for a full year,
-    and equipment the replacement list buys that year on its Capital Equipment account. {account: {'amount': cost as a negative number, 'items': [(what, amount)]}}."""
+    and the replacement plan's items due that year on their Capital Equipment account. {account: {'amount': cost as a negative number, 'items': [(what, amount)]}}."""
     out = {}
 
     def add(acc, what, amount):
@@ -689,12 +576,11 @@ def budget(year, items_rows, places_rows, tasks_rows, today=None, cfg=None):
         if c['account'] in ACCOUNTS and (amount := year_cost(c, year)):
             add(c['account'], c['what'], amount)
     live = [i for i in items_rows if i['status'] != 'Gone']
-    rp = reserve_plan(live, today, cfg)
-    for r in rp['near']:
+    rp = reserve_plan(live, today)
+    for r in rp['near'] + rp['later']:
         if str(r['year']) == str(year):
             add(r['it'].get('account') or 'Capital Equipment (no account set)', r['it']['name'], r['cost'])
-    # Money for the reserve fund (later replacements) is not in the budget: it stays the region's money (the Equipment
-    # Replacement Reserve), at the monthly amount the board recorded on the replacement plan page.
+    # Money put in the reserve fund is not in the budget: it stays the region's money (the Equipment Replacement Reserve).
     for r in out.values():
         r['items'].sort(key=lambda x: -x[1])
     return out

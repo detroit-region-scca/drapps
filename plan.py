@@ -205,12 +205,10 @@ def detail(year, program):
     if by_account and program == OPS and int(year) >= 2027:      # 2027 was the first budget built from the records
         import equip_store as E
         if E.enabled():
-            ops_budget = E.budget(year, E.items(), E.places(), E.tasks(), cfg=E.plan_settings())
-            # Money for the reserve fund (later replacements) is not in the budget; it is shown under the total: the
-            # board's monthly amount once an officer has recorded it, else what the replacement plan calls for.
-            board = E.board_amount()
-            set_aside = {'monthly': board['monthly'], 'date': board['date']} if board else \
-                {'monthly': E.reserve_plan([i for i in E.items() if i['status'] != 'Gone'], cfg=E.plan_settings(), balance=E.reserve_now()['amount'])['monthly'], 'suggested': True}
+            ops_budget = E.budget(year, E.items(), E.places(), E.tasks())
+            # Money for the reserve fund (later replacements) is not in the budget; what the replacement plan calls
+            # for a month is shown under the total.
+            set_aside = {'monthly': E.reserve_plan([i for i in E.items() if i['status'] != 'Gone'], balance=E.reserve_now()['amount'])['monthly']}
             have = {r['account'] for r in accts}
             accts += [{'account': acc, 'plan': None, 'actual': None, 'items': [], 'last': None} for acc in ops_budget if acc not in have]
     groups = _account_groups(p['lines'], accts) if by_account else []

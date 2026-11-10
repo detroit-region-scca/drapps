@@ -1,6 +1,6 @@
 """Operations as four tabs (Overview, To do, Gear, Money): old addresses still land, Gear is one list with filters, an
-item's page holds its documents, to-dos and replacement fields, each replacement rule is changed where it is shown,
-the committee's note is kept beside the rules without touching them, and people who cannot edit see no controls.
+item's page holds its documents, to-dos and replacement fields, the replacement plan has no rule to change,
+the committee's note is saved without touching anything else, and people who cannot edit see no controls.
 Made-up names only."""
 import re
 from datetime import date, timedelta
@@ -58,7 +58,7 @@ def ops(monkeypatch):
                  {'id': 'DC-002', 'for_id': 'PL-001', 'for_name': 'North barn', 'folder': 'https://drive.google.com/drive/folders/f2', 'needed': 'Agreement', 'notes': ''},
                  {'id': 'DC-003', 'for_id': '', 'for_name': 'Region insurance', 'folder': 'https://drive.google.com/drive/folders/f3', 'needed': 'Policy', 'notes': ''}],
         'files': {'f1': [{'name': 'Title - Blue tow truck.pdf', 'webViewLink': 'https://example.org/1'}]},
-        'cfg': dict(E.PLAN_DEFAULTS), 'note': '', 'saves': [], 'audit': [], 'uploads': [], 'board': None, 'sheet': []}
+        'note': '', 'saves': [], 'audit': [], 'uploads': [], 'board': None, 'sheet': []}
 
     # Three people: Kim is an officer (records board decisions, edits Operations), Ed edits Operations only, Lou only looks.
     people = {'kim@example.org': ('Kim Officer', 'Treasurer', {'board', 'ops'}), 'ed@example.org': ('Ed Gear', 'Equipment', {'ops'}),
@@ -73,7 +73,6 @@ def ops(monkeypatch):
     monkeypatch.setattr(equip.E, 'places', lambda closed=False: [dict(p) for p in state['places'] if closed or p['status'] != 'Closed'])
     monkeypatch.setattr(equip.E, 'tasks', lambda: sorted([dict(t) for t in state['tasks']], key=lambda t: t['due'] or '9999'))
     monkeypatch.setattr(equip.E, 'documents', lambda: [dict(d) for d in state['docs']])
-    monkeypatch.setattr(equip.E, 'plan_settings', lambda: dict(state['cfg']))
     monkeypatch.setattr(equip.E, 'plan_note', lambda: state['note'])
     monkeypatch.setattr(equip.E, 'board_amount', lambda: dict(state['board']) if state['board'] else None)
     monkeypatch.setattr(equip.E, 'reserve_now', lambda: E.reserve_balance(state['sheet']))
@@ -83,7 +82,6 @@ def ops(monkeypatch):
         state['saves'].append((tab, dict(row), changed))
         return row.get('id') or 'EQ-099'
     monkeypatch.setattr(equip.E, 'save', save)
-    monkeypatch.setattr(equip.E, 'save_plan_settings', lambda cfg, who, when: state.update(cfg=dict(cfg)))
     monkeypatch.setattr(equip.E, 'save_plan_note', lambda text, who, when: state.update(note=text))
     monkeypatch.setattr(equip, 'log_audit_event', lambda action, who, details: state['audit'].append((action, details)))
     monkeypatch.setattr(D, '_files', lambda ids: {i: state['files'].get(i, []) for i in ids})
@@ -226,45 +224,34 @@ def test_money_has_bills_replacement_and_the_region_documents(ops):
     assert 'Region insurance' in seen and not re.search(r'<(form|input|button|select|textarea)\b', seen)
 
 
-def test_the_one_rule_sits_in_its_sentence_and_saves_alone(ops):
+def test_the_plan_has_no_rule_and_the_old_form_address_saves_nothing(ops):
     ed, lou, state = ops
+    y = E.reserve_plan([])['year']
+    state['items'][0]['replace_year'] = state['items'][5]['replace_year'] = float(y)
     plan = _main(_page(ed, f'{O}/money/replacement'))
     text = _text(plan)
-    assert "so bought out of that year's Operations budget: $51,000 in %d." % (T.year + 1) in text and 'Due by %d,' % (T.year + 2) in text
-    for gone in ('Big items', 'big item', 'from savings', 'come from savings', 'for the rest', 'motion', 'propose it'):
+    assert f'Planned purchases for {y}: $51,000. Paid from the {y} Operations budget, not the reserve fund.' in text
+    for gone in ('Big items', 'big item', 'from savings', 'come from savings', 'for the rest', 'motion', 'propose it', 'Due by', 'due within', 'this many years'):
         assert gone not in text, gone
-    forms = dict(re.findall(r'<form id="(rule-\w+)" method="post" action="/operations/plan/settings"[^>]*hidden>(.*?)</form>', plan, re.S))
-    names = {k: set(re.findall(r'name="(\w+)"', v)) - {'_csrf'} for k, v in forms.items()}
-    assert names == {'rule-soon': {'budget_within_years'}}
-    assert plan.count('data-reveal="rule-soon" aria-expanded="false"') == 1 and 'rule-big' not in plan
-    # the totals are worked out, never typed: the only fields are the rule, the note, and each row's year and cost
-    # (Ed edits Operations but does not record board decisions, so the board's amount is text for him)
-    assert set(re.findall(r'<(?:input|select|textarea)[^>]* name="(\w+)"', plan)) - {'_csrf', 'action'} == \
-        {'budget_within_years', 'note', 'replace_year', 'replace_cost'}
-
-    r = ed.post(f'{O}/plan/settings', data={'budget_within_years': '1'})
-    assert r.headers['Location'] == f'{O}/money/replacement' and state['cfg'] == {'budget_within_years': 1}
-    assert state['audit'][-1] == ('EQUIP_PLAN_SETTINGS', {'before': {'budget_within_years': 2}, 'after': {'budget_within_years': 1}})
-    assert 'Due by %d,' % (T.year + 1) in _text(_main(_page(ed, f'{O}/money/replacement')))
-    # an old form's big-item fields are ignored: nothing is saved for them
-    n = len(state['audit'])
-    _flashes(ed)
-    ed.post(f'{O}/plan/settings', data={'big_cost': '$50,000', 'big_within_years': '4', 'big_from_savings': 'yes'})
-    assert state['cfg'] == {'budget_within_years': 1} and len(state['audit']) == n and 'Nothing changed.' in _flashes(ed)
-    for bad in ({'budget_within_years': '6'}, {'budget_within_years': '-1'}, {'budget_within_years': 'soon'}):
-        ed.post(f'{O}/plan/settings', data=bad)
-        assert state['cfg'] == {'budget_within_years': 1} and _flashes(ed), bad
-    lou.post(f'{O}/plan/settings', data={'budget_within_years': '3'})
-    assert state['cfg'] == {'budget_within_years': 1}
+    assert 'plan/settings' not in plan and 'rule-soon' not in plan and 'budget_within_years' not in plan
+    # the totals are worked out, never typed: the only fields are the note and each row's year and cost
+    # (Ed edits Operations but does not record board decisions, so the board's amount is nothing he can type)
+    assert set(re.findall(r'<(?:input|select|textarea)[^>]* name="(\w+)"', plan)) - {'_csrf', 'action'} == {'note', 'replace_year', 'replace_cost'}
+    # a page left open from before may still post the old rule: nothing is saved, nothing is said, back to the page
+    for c in (ed, lou):
+        _flashes(c)
+        for data in ({'budget_within_years': '0'}, {'budget_within_years': 'soon'}, {'big_cost': '$50,000', 'big_from_savings': 'yes'}, {}):
+            r = c.post(f'{O}/plan/settings', data=data)
+            assert r.status_code == 302 and r.headers['Location'] == f'{O}/money/replacement' and not _flashes(c), data
+    assert not state['audit'] and not state['saves']
+    assert _text(_main(_page(ed, f'{O}/money/replacement'))) == text
 
 
-def test_the_committee_note_is_saved_and_cleared_without_touching_the_rules(ops):
+def test_the_committee_note_is_saved_and_cleared(ops):
     ed, lou, state = ops
-    state['cfg'] = dict(E.PLAN_DEFAULTS, budget_within_years=3)
     assert 'Note from the committee:' not in _page(lou, f'{O}/money/replacement')
     r = ed.post(f'{O}/plan/note', data={'note': '  Radios first.\nThe <b>trailer</b> can wait.  '})
     assert r.headers['Location'] == f'{O}/money/replacement' and state['note'] == 'Radios first. The <b>trailer</b> can wait.'
-    assert state['cfg'] == dict(E.PLAN_DEFAULTS, budget_within_years=3)
     assert state['audit'][-1] == ('EQUIP_PLAN_NOTE', {'before': '', 'after': 'Radios first. The <b>trailer</b> can wait.'})
     seen = _main(_page(lou, f'{O}/money/replacement'))
     assert '<b>Note from the committee:</b> Radios first. The &lt;b&gt;trailer&lt;/b&gt; can wait.' in seen and 'data-reveal' not in seen
@@ -274,7 +261,7 @@ def test_the_committee_note_is_saved_and_cleared_without_touching_the_rules(ops)
     lou.post(f'{O}/plan/note', data={'note': 'mine'})
     assert state['note'].startswith('Radios')
     ed.post(f'{O}/plan/note', data={'note': ' '})
-    assert state['note'] == '' and 'Note removed.' in _flashes(ed) and state['cfg'] == dict(E.PLAN_DEFAULTS, budget_within_years=3)
+    assert state['note'] == '' and 'Note removed.' in _flashes(ed)
     assert 'Add a note from the committee' in _page(ed, f'{O}/money/replacement')
 
 
@@ -296,9 +283,9 @@ class Tab:
 def test_the_note_is_one_more_row_on_the_plan_settings_tab(monkeypatch, tmp_path):
     monkeypatch.setattr(E, 'LOCK', str(tmp_path / 'equipment.lock'))
     monkeypatch.setattr(E, 'refresh', lambda: None)
-    # the tab as it was left by the old rules: the big-item rows stay where they are, unread
-    tab = Tab([E.PLAN_LABELS, ['big_cost', 25000, 'help', '2026-01-01', 'Pat Example'], ['big_within_years', 3], ['budget_within_years', 2],
-               ['big_from_savings', 'no']])
+    # the tab as it was left by the old rules: those rows stay where they are, unread
+    tab = Tab([E.PLAN_LABELS, ['big_cost', 25000, 'help', '2026-01-01', 'Pat Example'], ['big_within_years', 3], ['budget_within_years', 0],
+               ['big_from_savings', 'no'], ['typed by hand', 'x']])
     monkeypatch.setattr(E, '_plan_ws', lambda: tab)
     old = {r[0]: list(r) for r in tab.rows[1:]}
     kept = lambda: {r[0]: r[:len(old[r[0]])] for r in tab.rows if r and r[0] in old}  # noqa: E731
@@ -307,18 +294,12 @@ def test_the_note_is_one_more_row_on_the_plan_settings_tab(monkeypatch, tmp_path
     assert kept() == old                                                            # every row exactly as it was
     note = next(r for r in tab.rows if r[0] == 'note')
     assert note[:2] == ['note', 'Radios first.'] and note[3:] == ['2026-11-09', 'Ed Gear']
-    assert E._note_text(tab.rows[1:]) == 'Radios first.' and E._plan_cfg(tab.rows[1:]) == {'budget_within_years': 2}
-    E.save_plan_settings({'budget_within_years': 3}, 'Ed Gear', '2026-11-10')
-    assert [r[0] for r in tab.rows[1:]] == ['budget_within_years', 'note', 'big_cost', 'big_within_years', 'big_from_savings']
-    assert E._plan_cfg(tab.rows[1:]) == {'budget_within_years': 3} and E._note_text(tab.rows[1:]) == 'Radios first.'
-    assert {k: v for k, v in kept().items() if k.startswith('big_')} == {k: v for k, v in old.items() if k.startswith('big_')}
+    assert E._note_text(tab.rows[1:]) == 'Radios first.'
+    E.save_plan_note('Trailer first.', 'Ed Gear', '2026-11-10')
+    assert [r[0] for r in tab.rows[1:]] == ['note', 'big_cost', 'big_within_years', 'budget_within_years', 'big_from_savings', 'typed by hand']
+    assert E._note_text(tab.rows[1:]) == 'Trailer first.' and kept() == old
     E.save_plan_note('', 'Ed Gear', '2026-11-11')
-    assert E._note_text(tab.rows[1:]) == '' and E._plan_cfg(tab.rows[1:]) == {'budget_within_years': 3}
-    # a tab with only a note (no rule saved yet) keeps reading the default rules, and a note typed above the rules survives a rules save
-    tab.rows = [E.PLAN_LABELS, ['note', 'Typed in the sheet']]
-    assert E._plan_cfg(tab.rows[1:]) == E.PLAN_DEFAULTS
-    E.save_plan_settings(dict(E.PLAN_DEFAULTS), 'Ed Gear', '2026-11-12')
-    assert E._note_text(tab.rows[1:]) == 'Typed in the sheet' and len([r for r in tab.rows if r and r[0] == 'note']) == 1
+    assert E._note_text(tab.rows[1:]) == '' and kept() == old and len([r for r in tab.rows if r and r[0] == 'note']) == 1
 
 
 def test_replacement_rows_save_and_come_off_the_plan(ops):

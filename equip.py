@@ -181,8 +181,8 @@ def home():
                     + [{'date': _roll(b, t_iso), 'what': b['what'], 'about': b['paid_how'], 'kind': 'bill', 'amount': b['each'], 'b': b}
                        for b in bills if b['id'] in auto and (b['every'] or 0) > 1 and t_iso <= _roll(b, t_iso) <= month and not (b.get('ends') and _roll(b, t_iso) > b['ends'])],
                     key=lambda r: r['date'])
-    board, reserve = E.board_amount(), E.reserve_now()
-    rp = E.reserve_plan(items, today, E.plan_settings(), balance=reserve['amount'])
+    reserve = E.reserve_now()
+    rp = E.reserve_plan(items, today, balance=reserve['amount'])
     big = [i for i in items if i['category'] in BIG and i['status'] != 'Planned']
     for i in big:
         i['lc'] = E.lifecycle(i, today)
@@ -194,7 +194,7 @@ def home():
     return render_template('equip.html', **_ctx(view='home', today=t_iso, overdue=overdue, coming=coming,
                                                 n_due=sum(1 for t in todo if t['due'] and t['due'] <= soon), undated=[t for t in todo if not t['due'] and not t['last_done']],
                                                 doc_gaps=gaps, docs_error=docs_error, root=os.environ.get('OPERATIONS_DOCS_FOLDER_URL', ''),
-                                                bills_year=sum(b['per_year'] for b in bills), n_bills=len(bills), rp=rp, near_years=E.near_years(rp), board=board, reserve=reserve,
+                                                bills_year=sum(b['per_year'] for b in bills), n_bills=len(bills), rp=rp, reserve=reserve,
                                                 n_vehicles=sum(1 for i in big if i['category'] == 'Vehicle'), n_trailers=sum(1 for i in big if i['category'] == 'Trailer'),
                                                 replace_soon=replace_soon))
 
@@ -692,18 +692,16 @@ def old_costs():
 @login_required
 def replacement():
     """Money, second part: when each long-lived item reaches the end of its life. Two lists: what the Operations
-    budget buys, and the reserve fund (what to put in each month, what the board puts in, what is in it now)."""
+    budget buys this plan year, and the reserve fund for every later year (what is in it now, what to put in each month)."""
     if (g := _guard()):
         return g
     rows = [i for i in E.items() if i['status'] != 'Gone']
-    board, reserve = E.board_amount(), E.reserve_now()
-    rp = E.reserve_plan(rows, cfg=E.plan_settings(), balance=reserve['amount'])
+    reserve = E.reserve_now()
+    rp = E.reserve_plan(rows, balance=reserve['amount'])
     missing = [i for i in rows if E.is_capital(i) and not E.lifecycle(i) and i['status'] != 'Retire']
-    proj = E.reserve_projection(rp['later'], rp['start'], board['monthly'] if board else None, reserve['amount'])
-    return render_template('equip.html', **_ctx(view='money', part='replacement', page_title=PAGE_TITLES['plan'], rp=rp, near_text=E.near_text(rp), missing=missing,
-                                                note=E.plan_note(), note_max=E.NOTE_MAX, board=board, reserve=reserve,
-                                                projection=E.projection_text(proj), board_text=E.board_text(board), reserve_now=E.reserve_now_text(reserve),
-                                                paid_for=E.paid_for_text, changed=E.plan_changed(rp), officer=bool(officer_current()),
+    return render_template('equip.html', **_ctx(view='money', part='replacement', page_title=PAGE_TITLES['plan'], rp=rp, missing=missing,
+                                                note=E.plan_note(), note_max=E.NOTE_MAX, reserve=reserve, reserve_now=E.reserve_now_text(reserve),
+                                                paid_for=E.paid_for_text, officer=bool(officer_current()),
                                                 reserve_account=E.RESERVE_ACCOUNT, today=date.today().isoformat()))
 
 
@@ -716,38 +714,17 @@ def plan():
 
 @bp.route('/plan/settings', methods=['POST'])
 @login_required
-@editor_required
 def plan_settings():
-    """Save the replacement plan's one rule: how soon a purchase has to be due to go in that year's Operations budget. Anything
-    else a form sends (the old big-item fields) is ignored."""
-    if (g := _guard()):
-        return g
-    f, old = request.form, E.plan_settings()
-    back = url_for('equip.replacement')
-    new = dict(old)
-    try:
-        if 'budget_within_years' in f:
-            new['budget_within_years'] = int(float(E.norm(f['budget_within_years'])))
-    except ValueError:
-        flash('Enter a number of years.', 'danger')
-        return redirect(back)
-    if not 0 <= new['budget_within_years'] <= 5:
-        flash('Enter 0 to 5 years.', 'danger')
-        return redirect(back)
-    if new == old:
-        flash('Nothing changed.', 'info')
-        return redirect(back)
-    E.save_plan_settings(new, _who(), date.today().isoformat())
-    log_audit_event('EQUIP_PLAN_SETTINGS', _who(), {'before': old, 'after': new})
-    flash('Saved. The numbers below use the new rule.', 'success')
-    return redirect(back)
+    """The plan has no settings any more. A page left open from before may still post here: nothing is saved."""
+    return redirect(url_for('equip.replacement'))
 
 
 @bp.route('/plan/board', methods=['POST'])
 @login_required
 def plan_board():
-    """Record what the board puts in the reserve fund each month, and the date it decided. Only for people whose
-    role may record board decisions (the officers). Nothing else on the plan is touched, and nothing goes to QuickBooks."""
+    """Record what the board puts in the reserve fund each month, and the date it decided. No page shows the amount or
+    links here any more; the address still works for people whose role may record board decisions (the officers).
+    Nothing else on the plan is touched, and nothing goes to QuickBooks."""
     back = url_for('equip.replacement')
     me = officer_current()
     if not me:

@@ -26,8 +26,8 @@ def test_reserve_plan_near_term_budgeted_later_saved_for():
     assert rp['start'] == '2027-01'
     assert [r['cost'] for r in rp['near']] == [6000.0]                   # 2027: buy it outright
     assert [r['year'] for r in rp['later']] == [2029, 2044]
-    assert rp['later'][0]['monthly'] == round(40000 / 30, 2)              # Jan 2027 to Jul 2029
-    assert rp['later'][1]['monthly'] == round(25000 / (17 * 12 + 6), 2)
+    assert rp['later'][0]['monthly'] == round(40000 / 36, 2)              # Jan 2027 through Dec 2029
+    assert rp['later'][1]['monthly'] == round(25000 / (18 * 12), 2)
     assert rp['monthly'] == round(rp['later'][0]['monthly'] + rp['later'][1]['monthly'], 2) and rp['near_total'] == 6000.0
     assert 'big_total' not in rp and not any('big' in r for r in rp['later'])       # no item is carved out as "big"
 
@@ -104,22 +104,38 @@ def test_budget_leaves_out_ended_and_not_yet_due_bills():
     assert 'New domains' in dict(E.budget('2028', [], [], tasks)['Operations Professional Services']['items'])
 
 
-def test_plan_settings_change_the_plan():
+def test_only_the_plan_year_is_bought_from_the_budget():
     rows = [dict(item(cost=23475.0, life=None, year=2012.0), replace_year=2029.0, replace_cost=40000.0),
-            dict(item(cost=None, life=None, year=None, status='Planned'), replace_year=2028.0, replace_cost=15000.0)]
+            dict(item(cost=None, life=None, year=None, status='Planned'), replace_year=2028.0, replace_cost=15000.0),
+            dict(item(cost=None, life=None, year=None, status='Planned'), replace_year=2027.0, replace_cost=6000.0)]
+    rp = E.reserve_plan(rows, date(2026, 11, 15))                         # from October on the plan year is next year
+    assert rp['year'] == 2027 and [r['year'] for r in rp['near']] == [2027] and [r['year'] for r in rp['later']] == [2028, 2029]
+    assert rp['monthly'] == round(round(15000 / 24, 2) + round(40000 / 36, 2), 2) and 'cfg' not in rp and 'near_until' not in rp
+    rp = E.reserve_plan(rows, date(2027, 5, 10))                          # mid-year: this year, saving from this month
+    assert (rp['year'], rp['start']) == (2027, '2027-05') and [r['year'] for r in rp['near']] == [2027]
+    assert rp['later'][0]['monthly'] == round(15000 / 20, 2)              # May 2027 through Dec 2028
+    rp = E.reserve_plan(rows, date(2028, 2, 1))                           # a year on: the 2028 item is this year's purchase
+    assert [r['year'] for r in rp['near']] == [2028] and [r['year'] for r in rp['later']] == [2029]
+
+
+def test_months_are_counted_through_december_of_the_year_due():
+    assert E._months_through_year('2027-01', 2027) == 12 and E._months_through_year('2027-01', 2029) == 36
+    assert E._months_through_year('2027-05', 2028) == 20 and E._months_through_year('2027-12', 2027) == 1
+    assert E._months_through_year('2027-05', 2026) == 1                   # never less than one
+    assert not hasattr(E, '_months_to_july')
+
+
+def test_the_budget_for_a_year_is_the_plan_items_due_that_year():
+    rows = [dict(item(cost=None, life=None, year=None, status='Planned'), name=n, replace_year=y, replace_cost=c)
+            for n, y, c in (('Radios', 2027.0, 6000.0), ('Tent', 2028.0, 15000.0), ('Truck', 2029.0, 40000.0))]
     day = date(2026, 11, 15)
-    rp = E.reserve_plan(rows, day)                                        # default: buy soon = this year or next
-    assert rp['near_until'] == 2028 and [r['year'] for r in rp['near']] == [2028] and [r['year'] for r in rp['later']] == [2029]
-    rp = E.reserve_plan(rows, day, {'budget_within_years': 1})
-    assert [r['year'] for r in rp['later']] == [2028, 2029] and rp['monthly'] == round(round(15000 / 18, 2) + round(40000 / 30, 2), 2)
-    # the old big-item rules change nothing, whatever they say
-    old = E.reserve_plan(rows, day, {'budget_within_years': 1, 'big_cost': 10000.0, 'big_within_years': 5, 'big_from_savings': True})
-    assert old['monthly'] == rp['monthly'] and old['cfg'] == {'budget_within_years': 1}
+    equipment = lambda y: E.budget(y, rows, [], [], day).get('Capital Equipment (no account set)', {}).get('items', [])  # noqa: E731
+    assert equipment('2027') == [('Radios', 6000.0)] and equipment(2028) == [('Tent', 15000.0)] and equipment('2029') == [('Truck', 40000.0)]
+    assert equipment('2030') == []
+    rp = E.reserve_plan(rows, day)
+    assert [r['it']['name'] for r in rp['near']] == ['Radios'] and [r['it']['name'] for r in rp['later']] == ['Tent', 'Truck']
 
 
-def test_plan_settings_read_from_the_tab():
-    cfg = E._plan_cfg([['big_cost', '$25,000'], ['big_within_years', 3], ['budget_within_years', 0],
-                       ['big_from_savings', 'No'], ['unknown', 5], ['big_cost']])
-    assert cfg == {'budget_within_years': 1}                              # old big_* rows are ignored
-    assert E._plan_cfg([['big_cost', 1], ['budget_within_years', '3']]) == {'budget_within_years': 3}
-    assert E._plan_cfg([]) == E.PLAN_DEFAULTS == {'budget_within_years': 2}
+def test_the_plan_has_no_settings():
+    assert E.plan_settings() == E.PLAN_DEFAULTS == {}
+    assert not hasattr(E, 'save_plan_settings') and not hasattr(E, '_plan_cfg')

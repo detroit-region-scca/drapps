@@ -164,8 +164,8 @@
             <div class="small {{ 'text-warning' if replace_soon else 'text-muted' }}">{% if replace_soon %}{{ replace_soon|length }} due for replacement by {{ today[:4]|int + 1 }}{% else %}none due for replacement soon{% endif %}</div></a></div>
         <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.replacement') }}"><div class="label">Replacements</div>
             <div class="value">{{ money(rp.near_total, 0) }}</div>
-            <div class="small text-muted">in the Operations budget{% if near_years %} ({{ near_years }}){% endif %}</div>
-            <div class="small text-muted">Reserve fund: {{ money(board.monthly if board else rp.monthly, 0) }} a month, {{ money(reserve.amount, 0) }} in it now</div></a></div>
+            <div class="small text-muted">of purchases planned for {{ rp.year }}</div>
+            <div class="small text-muted">Reserve fund: {{ money(rp.monthly, 0) }} a month, {{ money(reserve.amount, 0) }} in it now</div></a></div>
     </div>
 
     {% if overdue or replace_soon %}
@@ -475,9 +475,7 @@
     {% endif %}
 
     {% else %}
-    {% set cfg = rp.cfg %}
-    <p class="text-muted small mb-2">A living estimate. Change a year or cost whenever you learn something.
-        {% if changed %}Last changed {{ changed.date|nice_date }}{% if changed.by %} by {{ changed.by }}{% endif %} ({{ changed.name }}).{% endif %}</p>
+    <p class="text-muted small mb-2">What we expect to replace or buy, and when. Change it any time.</p>
     {% if note %}<p class="mb-3" id="note"><b>Note from the committee:</b> {{ note }} {% if editor %}{{ reveal('note-form', 'Edit') }}{% endif %}</p>
     {% elif editor %}<p class="mb-3 small no-print" id="note">{{ reveal('note-form', 'Add a note from the committee') }}</p>{% endif %}
     {% if editor %}<form id="note-form" method="post" action="{{ url_for('equip.plan_note') }}" class="rule-form no-print" hidden>
@@ -487,50 +485,32 @@
     </form>
     <div class="mb-4 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item', status='Planned') }}">Add a planned purchase</a></div>{% endif %}
 
-    <h2 class="h6 text-muted" id="operations-budget">Operations budget</h2>
-    <p class="mb-2">{% if not cfg.budget_within_years %}Nothing is bought straight from the Operations budget. Everything goes through the reserve fund.
-        {% else %}Due by {{ rp.near_until }}, so bought out of that year's Operations budget{% if near_text %}: {{ near_text }}{% else %}. Nothing is due that soon{% endif %}.
-        <a class="small text-nowrap" href="{{ url_for('plan.detail', year=budget_year, program='OPS') }}">{{ budget_year }} Operations budget (officers edit it)</a>{% endif %}
-        {% if editor %}{{ reveal('rule-soon') }}{% endif %}</p>
-    {% if editor %}<form id="rule-soon" method="post" action="{{ url_for('equip.plan_settings') }}" class="rule-form no-print" hidden>
-        <div class="d-flex flex-wrap gap-2 align-items-end">
-            <div><label class="form-label small mb-1" for="rule-soon-years">In the Operations budget if due within this many years (0 = nothing, everything goes through the reserve fund)</label>
-                <input id="rule-soon-years" name="budget_within_years" type="number" min="0" max="5" required class="form-control form-control-sm" style="width: 6rem" value="{{ cfg.budget_within_years }}"></div>
-            <button type="button" class="btn btn-sm btn-outline-secondary" data-reveal="rule-soon">Cancel</button><button class="btn btn-sm btn-accent" data-busy="Saving…">Save</button></div>
-    </form>{% endif %}
+    <h2 class="h6 text-muted" id="operations-budget">{{ rp.year }} purchases (not from the reserve fund)</h2>
     {% if rp.near %}
-    <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0 align-middle repl" aria-label="Operations budget items">
+    <p class="mb-2">Planned purchases for {{ rp.year }}: {{ money(rp.near_total, 0) }}. Paid from the {{ rp.year }} Operations budget, not the reserve fund.
+        <a class="small text-nowrap" href="{{ url_for('plan.detail', year=rp.year, program='OPS') }}">{{ rp.year }} Operations budget (officers edit it)</a></p>
+    <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0 align-middle repl" aria-label="Purchases not from the reserve fund">
         {{ repl_head(false) }}
         <tbody>{% for r in rp.near %}{{ repl_row(r, false) }}{% endfor %}
         {% if rp.near|length > 1 %}<tr class="fw-semibold"><td class="ps-3" colspan="2">Total</td><td class="num {{ 'pe-3' if not editor }}">{{ money(rp.near|sum(attribute='cost'), 0) }}</td>{% if editor %}<td class="no-print"></td>{% endif %}</tr>{% endif %}</tbody>
     </table></div></div>
-    {% else %}<div class="mb-4"></div>{% endif %}
+    {% else %}<p class="mb-4">No planned purchases for {{ rp.year }}.</p>{% endif %}
 
     <h2 class="h6 text-muted" id="reserve-fund">Reserve fund</h2>
-    <p class="mb-2">For everything due later. Saved for month by month, so the money is there by July of the year each item is due.</p>
+    <p class="mb-2">For everything due after {{ rp.year }}. Saved for month by month through the year each item is due.</p>
     <p class="mb-3" id="reserve-now"><b>In the reserve fund now:</b> {{ reserve_now[0] }}{% if reserve_now[1] %} <span class="small text-muted">{{ reserve_now[1] }}</span>{% endif %}</p>
     {% if rp.schedule %}
     <h3 class="h6 mb-2">What to put in each month, from {{ rp.start_label }}</h3>
     <div class="card mb-2"><div class="card-body p-0 table-responsive"><table class="table mb-0 stack" id="schedule">
-        <thead><tr><th class="ps-3 text-nowrap">Until</th><th class="num text-nowrap">A month</th><th class="pe-3">Then paid for</th></tr></thead>
+        <thead><tr><th class="ps-3 text-nowrap">Through</th><th class="num text-nowrap">A month</th><th class="pe-3">Paid for that year</th></tr></thead>
         <tbody>{% for s in rp.schedule %}<tr>
-            <td class="ps-3 text-nowrap" data-label="Until">July {{ s.year }}</td>
+            <td class="ps-3 text-nowrap" data-label="Through">{{ s.year }}</td>
             <td class="num text-nowrap" data-label="A month">{{ money(s.monthly, 0) }}</td>
-            <td class="pe-3" data-label="Then paid for">{{ paid_for(s) }}</td></tr>{% endfor %}</tbody>
+            <td class="pe-3" data-label="Paid for that year">{{ paid_for(s) }}</td></tr>{% endfor %}</tbody>
     </table></div></div>
     {% if rp.saved %}<p class="small text-muted mb-3">The {{ money(rp.saved, 0) }} in the reserve fund counts toward the items due first.</p>{% else %}<div class="mb-3"></div>{% endif %}
     {% elif rp.later %}<p class="mb-3">Nothing more to put in: the reserve fund already covers everything due later.</p>
     {% endif %}
-    {% if board %}<p class="mb-2" id="board">{{ board_text }} <span id="projection">{{ projection }}</span> {% if officer %}{{ reveal('rule-board') }}{% endif %}</p>
-    {% elif officer %}<p class="mb-2 no-print" id="board">The board has not picked a monthly amount yet. {{ reveal('rule-board', 'Record it') }}</p>{% endif %}
-    {% if officer %}<form id="rule-board" method="post" action="{{ url_for('equip.plan_board') }}" class="rule-form no-print" hidden>
-        <div class="d-flex flex-wrap gap-2 align-items-end">
-            <div><label class="form-label small mb-1" for="rule-board-monthly">The board puts in, a month</label>
-                <input id="rule-board-monthly" name="board_monthly" class="form-control form-control-sm" style="width: 8rem" inputmode="decimal" required value="{{ '${:,.0f}'.format(board.monthly) if board }}"></div>
-            <div><label class="form-label small mb-1" for="rule-board-date">Date the board decided</label>
-                <input id="rule-board-date" name="board_date" type="date" max="{{ today }}" class="form-control form-control-sm" required value="{{ board.date if board and board.date else today }}"></div>
-            <button type="button" class="btn btn-sm btn-outline-secondary" data-reveal="rule-board">Cancel</button><button class="btn btn-sm btn-accent" data-busy="Saving…">Save</button></div>
-    </form>{% endif %}
     {% if rp.later %}
     <div class="card mt-3"><div class="card-body p-0 table-responsive"><table class="table mb-0 align-middle repl" aria-label="Reserve fund items">
         {{ repl_head(true) }}
@@ -541,9 +521,9 @@
     {% if officer %}<details class="small mt-3" id="entries"><summary>Entries for QuickBooks</summary>
         <p class="mt-2 mb-1">The reserve fund is a label on savings in QuickBooks (account {{ reserve_account }}). The cash stays in the bank. The treasurer makes these two journal entries by hand. The app does not write them to QuickBooks.</p>
         <p class="mb-1"><b>Once a year, when the budget is approved.</b>
-            {% if board %}Twelve months at {{ money(board.monthly, 0) }}: debit Retained Earnings {{ money(board.monthly * 12, 0) }}, credit {{ reserve_account }} {{ money(board.monthly * 12, 0) }}.
-            {% else %}Twelve months of the board's amount: debit Retained Earnings, credit {{ reserve_account }}.{% endif %}</p>
-        <p class="mb-0"><b>When a reserve fund item is bought.</b> Take what was saved for it back out: debit {{ reserve_account }}, credit Retained Earnings, for its cost (or for what is in the reserve fund, if that is less). Operations budget items need no entry.</p>
+            {% if rp.schedule %}Twelve months at {{ money(rp.monthly, 0) }} (what the schedule calls for in {{ rp.year }}): debit Retained Earnings {{ money(rp.monthly * 12, 0) }}, credit {{ reserve_account }} {{ money(rp.monthly * 12, 0) }}.
+            {% else %}Nothing to put in for {{ rp.year }}, so no entry.{% endif %}</p>
+        <p class="mb-0"><b>When a reserve fund item is bought.</b> Take what was saved for it back out: debit {{ reserve_account }}, credit Retained Earnings, for its cost (or for what is in the reserve fund, if that is less). Purchases not from the reserve fund need no entry.</p>
     </details>{% endif %}
     {% if missing %}<p class="small mt-3" id="no-year"><b>Over $2,500 with no replacement year</b>, so not in the plan: {% set mnames = missing|map(attribute='name')|list %}{% for i in missing %}<a href="{{ url_for('equip.item', item_id=i.id) }}#replacement">{{ i.name }}{% if mnames.count(i.name) > 1 and i.place %} ({{ i.place }}){% endif %}</a>{{ ', ' if not loop.last }}{% endfor %}.{% if editor %} Open one to give it a year and a cost.{% endif %}</p>{% endif %}
     {% endif %}

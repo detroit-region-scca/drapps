@@ -198,10 +198,9 @@ def _roll(b, today):
     return E.next_due({'due': d, 'repeat_months': b['every']}, after=(date.fromisoformat(today) - timedelta(days=1)).isoformat()) or ''
 
 
-def build(items, places, tasks, docs=None, today=None, region='Detroit Region SCCA', board=None, reserve=None):
+def build(items, places, tasks, docs=None, today=None, region='Detroit Region SCCA', reserve=None):
     """docs: the Documents rows with what Drive holds (equip_docs.status), or None to leave that section out.
-    board, reserve: what the board puts in the reserve fund a month (E.board_amount()) and what is in it (E.reserve_now());
-    read from the records when not given."""
+    reserve: what is in the reserve fund (E.reserve_now()); read from the records when not given."""
     today = today or date.today()
     t_iso = today.isoformat()
     soon, month = (today + timedelta(days=SOON_DAYS)).isoformat(), (today + timedelta(days=NEXT_DAYS)).isoformat()
@@ -215,10 +214,9 @@ def build(items, places, tasks, docs=None, today=None, region='Detroit Region SC
     bills = E.recurring_costs(places, tasks)
     auto = {t['id'] for t in tasks if E.is_auto(t)}
     if E.enabled():
-        board, reserve = board or E.board_amount(), reserve or E.reserve_now()
+        reserve = reserve or E.reserve_now()
     reserve = reserve or E.reserve_balance([])
-    rp = E.reserve_plan(live, today, E.plan_settings() if E.enabled() else None, balance=reserve['amount'])
-    proj = E.reserve_projection(rp['later'], rp['start'], board['monthly'] if board else None, reserve['amount'])
+    rp = E.reserve_plan(live, today, balance=reserve['amount'])
     replace_soon = [i for i in big if lcs[i['id']] and lcs[i['id']].get('replace') and lcs[i['id']]['replace'] <= today.year + 1]
     docs_missing = sum(len(r['missing']) for r in docs or [])
     docs_total = sum(len(r['have']) + len(r['missing']) for r in docs or [])
@@ -240,7 +238,7 @@ def build(items, places, tasks, docs=None, today=None, region='Detroit Region SC
         ('Vehicles', str(sum(1 for i in big if i['category'] == 'Vehicle')), f"and {sum(1 for i in big if i['category'] == 'Trailer')} trailers",
          f'{len(replace_soon)} due for replacement by {today.year + 1}' if replace_soon else 'none due for replacement soon', AMBER if replace_soon else None),
         ('Replacements', money(rp['near_total']), '',
-         f"in the Operations budget\nReserve fund: {money(board['monthly'] if board else rp['monthly'])} a month, {money(reserve['amount'])} in it now", None)])
+         f"of purchases planned for {rp['year']}\nReserve fund: {money(rp['monthly'])} a month, {money(reserve['amount'])} in it now", None)])
     attention = [[E.nice_date(t['due']), t['task'], 'Overdue to-do' + (f": {t['about']}" if t['about'] else '')] for t in overdue]
     attention += [[str(lcs[i['id']]['replace']), i['name'], 'Due for replacement'] for i in replace_soon]
     if docs_missing:
@@ -313,29 +311,26 @@ def build(items, places, tasks, docs=None, today=None, region='Detroit Region SC
            (15, 20, 9, 14, 6, 36), ['LEFT', 'LEFT', 'RIGHT', 'LEFT', 'RIGHT', 'LEFT'], size=8.5)
 
     # 7. Replacement plan ------------------------------------------------------------------------------------------
-    p.h1(next(n), 'Replacement plan', 'A living estimate. Change a year or cost whenever you learn something.')
-    p.h2('Operations budget')
-    if not rp['cfg']['budget_within_years']:
-        p.note('Nothing is bought straight from the Operations budget. Everything goes through the reserve fund.')
+    p.h1(next(n), 'Replacement plan', 'What we expect to replace or buy, and when.')
+    p.h2(f"{rp['year']} purchases (not from the reserve fund)")
+    if rp['near']:
+        p.note(f"Planned purchases for {rp['year']}: {money(rp['near_total'])}. Paid from the {rp['year']} Operations budget, not the reserve fund.")
+        p.grid(['Item', 'Program', 'Cost'], [[r['it']['name'], r['it']['program'], money(r['cost'])] for r in rp['near']],
+               (65, 20, 15), ['LEFT', 'LEFT', 'RIGHT'])
     else:
-        p.note(f"Due by {rp['near_until']}, so bought out of that year's Operations budget" + (f": {E.near_text(rp)}." if rp['near'] else '. Nothing is due that soon.'))
-        if rp['near']:
-            p.grid(['Year', 'Item', 'Program', 'Cost'], [[str(r['year']), r['it']['name'], r['it']['program'], money(r['cost'])] for r in rp['near']],
-                   (10, 55, 20, 15), ['LEFT', 'LEFT', 'LEFT', 'RIGHT'])
+        p.note(f"No planned purchases for {rp['year']}.")
     p.h2('Reserve fund')
     now, source = E.reserve_now_text(reserve)
-    p.note('For everything due later. Saved for month by month, so the money is there by July of the year each item is due. '
+    p.note(f"For everything due after {rp['year']}. Saved for month by month through the year each item is due. "
            f"In the reserve fund now: {now}" + (f' {source}' if source else '') + '.')
     if rp['schedule']:
         p.note(f"What to put in each month, from {rp['start_label']}:")
-        p.grid(['Until', 'A month', 'Then paid for'], [[f"July {s['year']}", money(s['monthly']), E.paid_for_text(s)] for s in rp['schedule']],
+        p.grid(['Through', 'A month', 'Paid for that year'], [[str(s['year']), money(s['monthly']), E.paid_for_text(s)] for s in rp['schedule']],
                (15, 15, 70), ['LEFT', 'RIGHT', 'LEFT'])
         if rp['saved']:
             p.note(f"The {money(rp['saved'])} in the reserve fund counts toward the items due first.")
     elif rp['later']:
         p.note('Nothing more to put in: the reserve fund already covers everything due later.')
-    if board:
-        p.note(f'{E.board_text(board)} {E.projection_text(proj)}')
     if rp['later']:
         p.grid(['Year', 'Item', 'Cost', 'A month'],
                [[str(r['year']), r['it']['name'], money(r['cost']), money(r['monthly'])] for r in rp['later']],

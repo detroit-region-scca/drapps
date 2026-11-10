@@ -136,8 +136,7 @@
                 <tr class="total-row"><td class="ps-3">{{ 'Total' if ops_budget else 'Program total' }}{% if p.savings %} <span class="small fw-normal text-muted">(not counting {{ money(p.savings) }} for the reserve fund)</span>{% endif %}</td><td class="num">{{ money(p.net) }}</td><td class="num pe-3">{{ money(a.net if a and not future else (last_net if future else none)) }}</td></tr>
                 </tbody></table></div>
                 {% if set_aside %}<div class="small text-muted px-3 py-2 border-top" id="set-aside"><a href="{{ url_for('equip.replacement') }}#reserve-fund">Reserve fund</a>:
-                    {% if set_aside.suggested %}the plan calls for {{ money(set_aside.monthly) }} a month ({{ money(set_aside.monthly * 12) }} for the year). The board has not picked an amount.
-                    {% else %}{{ money(set_aside.monthly) }} a month ({{ money(set_aside.monthly * 12) }} for the year), decided by the board{% if set_aside.date %} on {{ set_aside.date|nice_date }}{% endif %}.{% endif %}
+                    the plan calls for {{ money(set_aside.monthly) }} a month ({{ money(set_aside.monthly * 12) }} for the year).
                     Not in the total.</div>{% endif %}
             </div>
             {% if ops_budget %}<p class="small text-muted mb-1">Operations has one budget: running costs and the equipment bought that year. Under each account are the <a href="{{ url_for('equip.costs') }}">bills</a> and <a href="{{ url_for('equip.plan') }}">equipment</a> from the Operations records that make it up.</p>{% endif %}
