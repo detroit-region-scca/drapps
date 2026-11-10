@@ -366,12 +366,15 @@ def reserve_plan(rows, today=None, balance=0.0):
     """How to pay for replacements and planned purchases. It is worked out again from the rows every time.
 
     year:  the plan year: this year, or next year from October on (plans are for next year by then).
-    near:  the purchases not from the reserve fund: due in the plan year, so each is bought out of that year's Operations budget.
+    near:  the plan year's purchases, biggest first. Each is in that year's Operations budget (the board approves all
+           spending there), but the reserve fund pays for it first, up to what the fund holds: 'from_reserve' and
+           'from_budget' on each row (cents, adding up to its cost). near_total, near_from_reserve, near_from_budget: the sums.
     later: the reserve fund items: due in a later year, saved for month by month, item by item, from the start month
            through December of the year each is due (what is still to save / months left). 'monthly' is their sum:
            what the plan calls for. It is front-loaded when costly items come due soon, as it should be.
-    balance: what is in the reserve fund now. It counts toward the items due first ('saved' on each row), so the
-           monthly amount is only for what is still to save.
+    balance: what is in the reserve fund now. It goes to the plan year's purchases first (biggest first), then what is
+           left counts toward the later items due first ('saved' on each row), so the monthly amount is only for what is
+           still to save. 'saved' is the sum of the later rows' 'saved'.
     steps: how the monthly amount steps down as items are bought: [(year, monthly through that year)].
     schedule: the same steps with what each one pays for: [{'year', 'monthly', 'items': [later rows]}]. A row due in
            an earlier year than its step (the reserve fund already covers it) or a later one (too small to make a step)
@@ -389,7 +392,11 @@ def reserve_plan(rows, today=None, balance=0.0):
     near.sort(key=lambda r: -r['cost'])
     later.sort(key=lambda r: (r['year'], -r['cost']))
     left = max(float(balance or 0), 0.0)
-    for row in later:      # the reserve fund counts toward what is due first
+    for row in near:       # the plan year's purchases first: the reserve fund pays, the year's budget pays the rest
+        row['from_reserve'] = round(min(row['cost'], left), 2)
+        row['from_budget'] = round(row['cost'] - row['from_reserve'], 2)
+        left = max(round(left - row['from_reserve'], 2), 0.0)
+    for row in later:      # what is left counts toward what is due first
         row['saved'] = round(min(row['cost'], left), 2)
         left -= row['saved']
         row['monthly'] = round((row['cost'] - row['saved']) / _months_through_year(start.isoformat()[:7], row['year']), 2)
@@ -403,7 +410,8 @@ def reserve_plan(rows, today=None, balance=0.0):
             next((s for s in schedule if s['year'] >= row['year']), schedule[-1])['items'].append(row)
     return {'start': start.isoformat()[:7], 'start_label': start.strftime('%B %Y'), 'year': start.year, 'near': near, 'later': later,
             'monthly': monthly, 'steps': steps, 'schedule': schedule, 'saved': round(sum(r['saved'] for r in later), 2),
-            'near_total': round(sum(r['cost'] for r in near), 2)}
+            'near_total': round(sum(r['cost'] for r in near), 2), 'near_from_reserve': round(sum(r['from_reserve'] for r in near), 2),
+            'near_from_budget': round(sum(r['from_budget'] for r in near), 2)}
 
 
 def _months_through_year(start, year):
@@ -430,6 +438,18 @@ def paid_for_text(step):
     """What one step of reserve_plan's schedule pays for: 'Race trailer $40,000, Tent $5,000 (2041)'. The year is
     given only when it is not the step's own."""
     return ', '.join(f"{r['it']['name']} {_usd(r['cost'])}" + ('' if r['year'] == step['year'] else f" ({r['year']})") for r in step['items'])
+
+
+def purchases_text(rp):
+    """The Budgeted purchases summary in one sentence, as the page says it: who pays for the plan year's purchases."""
+    y, total = rp['year'], _usd(rp['near_total'])
+    if not rp['near']:
+        return f'No planned purchases for {y}.'
+    if not rp['near_from_reserve']:
+        return f'{total} planned for {y}. Paid from the {y} Operations budget.'
+    if not rp['near_from_budget']:
+        return f'{total} planned for {y}, all from the reserve fund.'
+    return f"{total} planned for {y}: {_usd(rp['near_from_reserve'])} from the reserve fund, {_usd(rp['near_from_budget'])} from the {y} Operations budget."
 
 
 def reserve_now_text(reserve):
@@ -562,27 +582,33 @@ def year_cost(c, year):
     return c['per_year']
 
 
-def budget(year, items_rows, places_rows, tasks_rows, today=None):
+def budget(year, items_rows, places_rows, tasks_rows, today=None, balance=0.0):
     """What the Operations records say a year costs, by QuickBooks account, for the Budget column of the Operations
     annual plan (the way an event budget fills it for a program): every bill on an Operations account for a full year,
-    and the replacement plan's items due that year on their Capital Equipment account. {account: {'amount': cost as a negative number, 'items': [(what, amount)]}}."""
+    and the replacement plan's items due that year on their Capital Equipment account, at their full cost (the board
+    approves all of it). balance: what is in the reserve fund now; it pays for the plan year's purchases first (reserve_plan).
+    {account: {'amount': cost as a negative number, 'items': [(what, amount)], 'item_reserve': [what the reserve fund pays
+    for each item, in the same order], 'from_reserve': their sum}}."""
     out = {}
 
-    def add(acc, what, amount):
-        r = out.setdefault(acc, {'amount': 0.0, 'items': []})
+    def add(acc, what, amount, from_reserve=0.0):
+        r = out.setdefault(acc, {'amount': 0.0, 'items': [], 'from_reserve': 0.0})
         r['amount'] = round(r['amount'] - amount, 2)
-        r['items'].append((what, round(amount, 2)))
+        r['from_reserve'] = round(r['from_reserve'] + from_reserve, 2)
+        r['items'].append((what, round(amount, 2), round(from_reserve, 2)))
     for c in recurring_costs(places_rows, tasks_rows):
         if c['account'] in ACCOUNTS and (amount := year_cost(c, year)):
             add(c['account'], c['what'], amount)
     live = [i for i in items_rows if i['status'] != 'Gone']
-    rp = reserve_plan(live, today)
+    rp = reserve_plan(live, today, balance)
     for r in rp['near'] + rp['later']:
         if str(r['year']) == str(year):
-            add(r['it'].get('account') or 'Capital Equipment (no account set)', r['it']['name'], r['cost'])
+            add(r['it'].get('account') or 'Capital Equipment (no account set)', r['it']['name'], r['cost'], r.get('from_reserve', 0.0))
     # Money put in the reserve fund is not in the budget: it stays the region's money (the Equipment Replacement Reserve).
     for r in out.values():
         r['items'].sort(key=lambda x: -x[1])
+        r['item_reserve'] = [x[2] for x in r['items']]
+        r['items'] = [x[:2] for x in r['items']]
     return out
 
 

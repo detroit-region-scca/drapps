@@ -16,6 +16,8 @@
         .pline .form-control, .pline .form-select { font-variant-numeric: tabular-nums; }
         @media (max-width: 767.98px) { .pline { border-bottom: 1px solid var(--border); } }
         .ref { font-size: .9rem; }
+        /* Operations budget on a phone: the column headings wrap so the equipment lines under each account fit. */
+        @media (max-width: 575.98px) { table.ops-acct th.num { white-space: normal; } }
         .viz { --series-actual: #3987e5; --series-plan: #d95926; }
         .viz-title { color: var(--muted); font-size: .9rem; }
         .viz-head { font-size: 1.05rem; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -122,12 +124,13 @@
             {% set actual_label = (prev ~ ' QuickBooks' ~ (' so far' if prev|int == now_year else '')) if future else ('QuickBooks so far' if year|int == now_year else 'QuickBooks') %}
             {% set heads = {'income': 'Income', 'cost': 'Expenses', 'capital': 'Equipment to buy (Capital Equipment: bought property, not an expense)', 'none': 'Reserve fund (not in QuickBooks)'} %}
             <h2 class="h6 text-muted">{{ 'Budget' if program == 'OPS' else 'Plan' }} and QuickBooks, by account</h2>
-            <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+            <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0{{ ' ops-acct' if ops_budget }}">
                 {% set ncol = 3 %}
                 <thead><tr><th class="ps-3">{{ 'Account' if ops_budget else 'Account and plan lines' }}</th><th class="num">{{ 'Budget' if ops_budget else 'Plan' }}</th><th class="num pe-3">{{ actual_label }}</th></tr></thead>
                 <tbody>{% for g in groups %}{% if loop.first or g.kind != loop.previtem.kind %}<tr><td colspan="{{ ncol }}" class="ps-3 pt-3 small text-uppercase text-muted" style="letter-spacing:.05em">{{ heads[g.kind] }}</td></tr>{% endif %}
                     <tr class="fw-semibold"><td class="ps-3">{{ g.account or 'Kept in savings (money market)' }}</td><td class="num">{{ money(g.plan) }}</td><td class="num pe-3">{{ money(g.last if future else g.actual) }}</td></tr>
-                    {% if ops_budget and g.budget_items %}<tr class="small text-muted"><td class="ps-4" colspan="{{ ncol }}">{% for what, amt in g.budget_items %}{{ what.split("(")[0].strip() }} {{ money(amt) }}{{ ' · ' if not loop.last }}{% endfor %}
+                    {% if ops_budget and g.budget_items %}<tr class="small text-muted"><td class="ps-4" colspan="{{ ncol }}">{% for what, amt in g.budget_items %}{{ what.split("(")[0].strip() }} {{ money(amt) }}{% if g.budget_reserve[loop.index0] and g.budget_reserve[loop.index0] > 0 %} (from the reserve fund: {{ money(g.budget_reserve[loop.index0]) }}){% endif %}{{ ' · ' if not loop.last }}{% endfor %}
+                        {% if g.from_reserve and g.from_reserve > 0 %}<div class="from-reserve">{{ money(g.from_reserve) }} of this comes from the reserve fund.</div>{% endif %}
                         {% if g.drift %}<div>The replacement plan now shows {{ '${:,.0f}'.format(g.records|abs) }} for this year.</div>{% endif %}</td></tr>
                     {% elif ops_budget and g.drift %}<tr class="small text-muted"><td class="ps-4" colspan="{{ ncol }}">The replacement plan now shows {{ '${:,.0f}'.format(g.records|abs) }} for this year.</td></tr>
                     {% elif g.lines|length > 1 or (g.lines and g.lines[0].item not in (g.account or '')) or (g.lines and g.lines[0].note) %}{% for ln in g.lines %}<tr class="small">

@@ -36,7 +36,7 @@ def test_each_page_has_its_own_heading_title_and_summary(plan):
         assert '<title>Budgeted purchases' in page and f'<h1 class="page-title m-0">Budgeted purchases for {y}</h1>' in html
         summary = html.split('id="summary"')[1].split('</div>\n    </div>')[0]
         assert 'class="card plan-sum p-3 mb-3"' in html and 'plan-sum reserve' not in html
-        assert _text(summary.split('>', 1)[1]) == (f'$51,000 planned for {y}. Paid from the {y} Operations budget, not the reserve fund. '
+        assert _text(summary.split('>', 1)[1]) == (f'$51,000 planned for {y}. Paid from the {y} Operations budget. '
                                                    f'{y} Operations budget (officers edit it)')
         # the intro and the note come right under the heading, before the summary
         assert text.index(f'What we plan to buy in {y}. The board approves it with the {y} Operations budget.') < text.index('Note from the committee: Radios first.') \

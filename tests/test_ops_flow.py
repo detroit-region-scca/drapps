@@ -232,7 +232,7 @@ def test_the_plan_has_no_rule_and_the_old_form_address_saves_nothing(ops):
     state['items'][0]['replace_year'] = state['items'][5]['replace_year'] = float(y)
     plan = _main(_page(ed, f'{O}/money/purchases')) + _main(_page(ed, f'{O}/money/reserve'))
     text = _text(plan)
-    assert f'$51,000 planned for {y}. Paid from the {y} Operations budget, not the reserve fund.' in text
+    assert f'$51,000 planned for {y}. Paid from the {y} Operations budget.' in text
     for gone in ('Big items', 'big item', 'from savings', 'come from savings', 'for the rest', 'motion', 'propose it', 'Due by', 'due within', 'this many years'):
         assert gone not in text, gone
     assert 'plan/settings' not in plan and 'rule-soon' not in plan and 'budget_within_years' not in plan

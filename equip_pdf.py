@@ -238,7 +238,8 @@ def build(items, places, tasks, docs=None, today=None, region='Detroit Region SC
         ('Vehicles', str(sum(1 for i in big if i['category'] == 'Vehicle')), f"and {sum(1 for i in big if i['category'] == 'Trailer')} trailers",
          f'{len(replace_soon)} due for replacement by {today.year + 1}' if replace_soon else 'none due for replacement soon', AMBER if replace_soon else None),
         ('Replacements', money(rp['near_total']), '',
-         f"of purchases planned for {rp['year']}\nReserve fund: {money(rp['monthly'])} a month, {money(reserve['amount'])} in it now", None)])
+         f"of purchases planned for {rp['year']}" + (f" ({money(rp['near_from_reserve'])} from the reserve fund)" if rp['near_from_reserve'] else '')
+         + f"\nReserve fund: {money(rp['monthly'])} a month, {money(reserve['amount'])} in it now", None)])
     attention = [[E.nice_date(t['due']), t['task'], 'Overdue to-do' + (f": {t['about']}" if t['about'] else '')] for t in overdue]
     attention += [[str(lcs[i['id']]['replace']), i['name'], 'Due for replacement'] for i in replace_soon]
     if docs_missing:
@@ -312,23 +313,29 @@ def build(items, places, tasks, docs=None, today=None, region='Detroit Region SC
 
     # 7. Replacement plan ------------------------------------------------------------------------------------------
     p.h1(next(n), 'Replacement plan', 'What we expect to replace or buy, and when.')
-    p.h2(f"{rp['year']} purchases (not from the reserve fund)")
+    p.h2(f"Budgeted purchases for {rp['year']}")
     if rp['near']:
-        p.note(f"Planned purchases for {rp['year']}: {money(rp['near_total'])}. Paid from the {rp['year']} Operations budget, not the reserve fund.")
-        p.grid(['Item', 'Program', 'Cost'], [[r['it']['name'], r['it']['program'], money(r['cost'])] for r in rp['near']],
-               (65, 20, 15), ['LEFT', 'LEFT', 'RIGHT'])
+        p.note(E.purchases_text(rp))
+        if rp['near_from_reserve']:
+            p.grid(['Item', 'Program', 'Cost', 'From the reserve fund', 'From the budget'],
+                   [[r['it']['name'], r['it']['program'], money(r['cost']), money(r['from_reserve']), money(r['from_budget'])] for r in rp['near']],
+                   (36, 12, 12, 22, 18), ['LEFT', 'LEFT', 'RIGHT', 'RIGHT', 'RIGHT'])
+        else:
+            p.grid(['Item', 'Program', 'Cost'], [[r['it']['name'], r['it']['program'], money(r['cost'])] for r in rp['near']],
+                   (65, 20, 15), ['LEFT', 'LEFT', 'RIGHT'])
     else:
         p.note(f"No planned purchases for {rp['year']}.")
     p.h2('Reserve fund')
     now, source = E.reserve_now_text(reserve)
     p.note(f"For everything due after {rp['year']}. Saved for month by month through the year each item is due. "
-           f"In the reserve fund now: {now}" + (f' {source}' if source else '') + '.')
+           f"In the reserve fund now: {now}" + (f' {source}' if source else '') + '.'
+           + (f" {money(rp['near_from_reserve'])} of it pays for {rp['year']} purchases." if rp['near_from_reserve'] else ''))
     if rp['schedule']:
         p.note(f"What to put in each month, from {rp['start_label']}:")
         p.grid(['Through', 'A month', 'Paid for that year'], [[str(s['year']), money(s['monthly']), E.paid_for_text(s)] for s in rp['schedule']],
                (15, 15, 70), ['LEFT', 'RIGHT', 'LEFT'])
         if rp['saved']:
-            p.note(f"The {money(rp['saved'])} in the reserve fund counts toward the items due first.")
+            p.note(f"The {money(rp['saved'])} {'left' if rp['near_from_reserve'] else 'in the reserve fund'} counts toward the items due first.")
     elif rp['later']:
         p.note('Nothing more to put in: the reserve fund already covers everything due later.')
     if rp['later']:

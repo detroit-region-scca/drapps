@@ -205,16 +205,19 @@ def detail(year, program):
     if by_account and program == OPS and int(year) >= 2027:      # 2027 was the first budget built from the records
         import equip_store as E
         if E.enabled():
-            ops_budget = E.budget(year, E.items(), E.places(), E.tasks())
+            reserve_amount = E.reserve_now()['amount']
+            ops_budget = E.budget(year, E.items(), E.places(), E.tasks(), balance=reserve_amount)
             # Money for the reserve fund (later replacements) is not in the budget; what the replacement plan calls
             # for a month is shown under the total.
-            set_aside = {'monthly': E.reserve_plan([i for i in E.items() if i['status'] != 'Gone'], balance=E.reserve_now()['amount'])['monthly']}
+            set_aside = {'monthly': E.reserve_plan([i for i in E.items() if i['status'] != 'Gone'], balance=reserve_amount)['monthly']}
             have = {r['account'] for r in accts}
             accts += [{'account': acc, 'plan': None, 'actual': None, 'items': [], 'last': None} for acc in ops_budget if acc not in have]
     groups = _account_groups(p['lines'], accts) if by_account else []
     for g in groups:
         b = (ops_budget or {}).get(g['account'] or '')
         g['records'], g['budget_items'] = (b['amount'], b['items']) if b else (None, [])
+        # what the reserve fund pays of each equipment item (the account's amount stays the full cost)
+        g['budget_reserve'], g['from_reserve'] = (b.get('item_reserve', []), b.get('from_reserve', 0.0)) if b else ([], 0.0)
         # The budget is the plan; the records only show what it is made of. When they differ by a dollar or more the
         # page says what the records show now, as information: it is no warning and changes no status.
         g['drift'] = g['records'] is not None and abs((g['records'] or 0) - (g['plan'] or 0)) >= 1

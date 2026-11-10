@@ -1,5 +1,5 @@
-"""The replacement plan in two parts, a page each: the plan year's purchases (not from the reserve fund, paid from that
-year's Operations budget) and the Reserve fund (everything due later: what is in it, what to put in each month through
+"""The replacement plan in two parts, a page each: the plan year's purchases (in that year's Operations budget, paid
+from the reserve fund first, up to what it holds) and the Reserve fund (everything due later: what is in it, what to put in each month through
 the year each item is due). No rule to change, and nothing about a board amount on any page. Made-up names only."""
 # ruff: noqa: F811  (the ops fixture is imported from test_ops_flow, then named as an argument)
 import html as html_lib
@@ -156,7 +156,7 @@ def test_this_years_purchases_then_the_reserve_fund_by_whole_years(plan):
     pur = _main(_page(lou, PUR))
     text = _text(pur)
     assert f'>Budgeted purchases for {y}</h1>' in pur and '>Reserve fund</h1>' not in pur and 'id="schedule"' not in pur
-    assert f'${51000:,} planned for {y}. Paid from the {y} Operations budget, not the reserve fund.' in text
+    assert f'${51000:,} planned for {y}. Paid from the {y} Operations budget.' in text
     assert f'href="/plan/{y}/OPS">{y} Operations budget (officers edit it)</a>' in pur
     near = pur.split(f'aria-label="Budgeted purchases for {y}"')[1].split('</table>')[0]
     assert 'Blue tow truck' in near and 'New radios' in near and 'Timing trailer' not in pur        # next year's item is not here
@@ -181,14 +181,17 @@ def test_this_years_purchases_then_the_reserve_fund_by_whole_years(plan):
     assert '>A month</th>' in later
 
     state['board'] = dict(BOARD)                                                        # an amount left in the sheet changes nothing
-    state['sheet'] = _sheet(('Equipment Replacement Reserve', 12000.0))
+    state['sheet'] = _sheet(('Equipment Replacement Reserve', 12000.0))              # all of it goes to this year's purchases
     html = _main(_page(lou, RES))
     text = _text(html)
     assert 'In it now: $12,000 (QuickBooks account Equipment Replacement Reserve, as of Nov 8, 2026)' in text and 'nothing booked yet' not in text
-    assert text.count('Equipment Replacement Reserve') == 1
-    m2 = f"${E.reserve_plan(state['items'], balance=12000.0)['monthly']:,.0f}"       # less: the reserve fund counts toward what is due first
+    assert text.count('Equipment Replacement Reserve') == 1 and f'$12,000 of it pays for {y} purchases (see Budgeted purchases).' in text
+    assert f'Put in {m} a month in {y}' in text and 'counts toward the items due first' not in text
+    state['sheet'] = _sheet(('Equipment Replacement Reserve', 63000.0))              # $51,000 to this year's purchases, $12,000 left
+    text = _text(html := _main(_page(lou, RES)))
+    m2 = f"${E.reserve_plan(state['items'], balance=63000.0)['monthly']:,.0f}"       # less: what is left counts toward what is due first
     assert m2 != m and f'Put in {m2} a month in {y}' in text and f'{y + 3} {m2} Timing trailer $12,000 ({y + 1}), Long trailer $40,000' in _text(html.split('id="schedule"')[1])
-    assert 'The $12,000 in the reserve fund counts toward the items due first.' in text
+    assert 'The $12,000 left counts toward the items due first.' in text and f'$51,000 of it pays for {y} purchases' in text
     state['sheet'] = _sheet(('Equipment Replacement Reserve', 0.0))
     assert 'In it now: $0, nothing booked yet' in _text(_main(_page(lou, RES)))
     state['sheet'] = _sheet(('Equipment Replacement Reserve', 200000.0))                # more than everything due later
@@ -271,8 +274,7 @@ def test_the_entries_for_quickbooks_are_shown_not_made(plan):
     assert 'The treasurer makes these two journal entries by hand. The app does not write them to QuickBooks.' in text
     assert (f'Once a year, when the budget is approved. Twelve months at ${mo:,.0f} (what the schedule calls for in {y}): '
             f'debit Retained Earnings ${mo * 12:,.0f}, credit Equipment Replacement Reserve ${mo * 12:,.0f}.') in text
-    assert 'When a reserve fund item is bought. Take what was saved for it back out: debit Equipment Replacement Reserve, credit Retained Earnings' in text
-    assert 'Blue tow truck' not in text and 'Purchases not from the reserve fund need no entry.' in text and 'Operations budget' not in text
+    assert 'Blue tow truck' not in text and f'When a {y} purchase is bought. Nothing this year comes from the reserve fund.' in text and 'Operations budget' not in text
     state['board'] = dict(BOARD)                                           # an amount left in the sheet is not used
     assert box() == text and 'board' not in text.lower()
     state['sheet'] = _sheet(('Equipment Replacement Reserve', 200000.0))   # the reserve fund covers it all: nothing to enter this year
@@ -294,7 +296,7 @@ def test_the_overview_card_says_what_is_true_now(plan):
     state['sheet'] = _sheet(('Equipment Replacement Reserve', 12000.0))
     m2 = f"${E.reserve_plan(state['items'], balance=12000.0)['monthly']:,.0f}"
     for c in (kim, ed, lou):                                              # always what the plan calls for, whatever the sheet holds
-        assert _card(c) == f'$51,000 of purchases planned for {y} Reserve fund: {m2} a month, $12,000 in it now'
+        assert _card(c) == f'$51,000 of purchases planned for {y} ($12,000 from the reserve fund) Reserve fund: {m2} a month, $12,000 in it now'
     home = _page(lou, f'{O}/')
     assert 'from savings' not in home and 'big item' not in home and f'href="{PUR}"><div class="label">Replacements</div>' in home
     assert f'<a href="{RES}">Reserve fund: ' in home
@@ -313,16 +315,16 @@ def test_the_report_says_the_same(plan):
         return ' '.join(' '.join(pg.extract_text() for pg in PdfReader(io.BytesIO(pdf)).pages).split())
     state['board'] = dict(BOARD)
     for text in (words(), words(reserve=E.reserve_balance(_sheet(('Equipment Replacement Reserve', 12000.0))))):
-        assert f'{y} purchases (not from the reserve fund)' in text and f'of purchases planned for {y}' in text
-        assert f'Planned purchases for {y}: $51,000. Paid from the {y} Operations budget, not the reserve fund.' in text
+        assert f'Budgeted purchases for {y}' in text and f'of purchases planned for {y}' in text
         assert f'For everything due after {y}. Saved for month by month through the year each item is due.' in text
         assert 'Through A month Paid for that year' in text and 'What we expect to replace or buy, and when.' in text
         assert 'from savings' not in text and 'big items' not in text and '*' not in text
         for gone in RETIRED + ('board',):
             assert gone not in text.lower(), gone
-    assert 'In the reserve fund now: $0, nothing booked yet.' in words()
-    assert 'In the reserve fund now: $12,000 (QuickBooks account Equipment Replacement Reserve, as of Nov 8, 2026).' in text
-    assert 'The $12,000 in the reserve fund counts toward the items due first.' in text
+    assert 'In the reserve fund now: $0, nothing booked yet.' in words() and f'$51,000 planned for {y}. Paid from the {y} Operations budget.' in words()
+    assert f'In the reserve fund now: $12,000 (QuickBooks account Equipment Replacement Reserve, as of Nov 8, 2026). $12,000 of it pays for {y} purchases.' in text
+    assert f'$51,000 planned for {y}: $12,000 from the reserve fund, $39,000 from the {y} Operations budget.' in text
+    assert 'counts toward the items due first' not in text
     state['items'] = state['items'][2:]
     assert f'No planned purchases for {y}.' in words()
 
@@ -398,7 +400,7 @@ RETIRED = ('buy soon', 'save for later', 'set aside', 'set-aside', 'suggest', 'h
 
 
 def test_the_retired_words_are_gone_for_all_three_people(budget):
-    """Two things to read: "Reserve fund" and purchases "not from the reserve fund". What they used to be called, the
+    """Two things to read: "Reserve fund" and "Budgeted purchases". What they used to be called, the
     month of July, the old rule and anything about a board amount are on no page a person reads, whatever old rows the
     sheet holds, whatever is in the reserve fund and whether or not anything is due in the plan year."""
     kim, ed, lou, state = budget
