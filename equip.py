@@ -194,7 +194,7 @@ def home():
     return render_template('equip.html', **_ctx(view='home', today=t_iso, overdue=overdue, coming=coming,
                                                 n_due=sum(1 for t in todo if t['due'] and t['due'] <= soon), undated=[t for t in todo if not t['due'] and not t['last_done']],
                                                 doc_gaps=gaps, docs_error=docs_error, root=os.environ.get('OPERATIONS_DOCS_FOLDER_URL', ''),
-                                                bills_year=sum(b['per_year'] for b in bills), n_bills=len(bills), rp=rp, board=board, reserve=reserve,
+                                                bills_year=sum(b['per_year'] for b in bills), n_bills=len(bills), rp=rp, near_years=E.near_years(rp), board=board, reserve=reserve,
                                                 n_vehicles=sum(1 for i in big if i['category'] == 'Vehicle'), n_trailers=sum(1 for i in big if i['category'] == 'Trailer'),
                                                 replace_soon=replace_soon))
 
@@ -691,21 +691,19 @@ def old_costs():
 @bp.route('/money/replacement')
 @login_required
 def replacement():
-    """Money, second part: when each long-lived item reaches the end of its life, what the plan suggests setting aside,
-    what the board set aside, and what is in the reserve."""
+    """Money, second part: when each long-lived item reaches the end of its life. Two lists: what the Operations
+    budget buys, and the reserve fund (what to put in each month, what the board puts in, what is in it now)."""
     if (g := _guard()):
         return g
     rows = [i for i in E.items() if i['status'] != 'Gone']
     board, reserve = E.board_amount(), E.reserve_now()
     rp = E.reserve_plan(rows, cfg=E.plan_settings(), balance=reserve['amount'])
     missing = [i for i in rows if E.is_capital(i) and not E.lifecycle(i) and i['status'] != 'Retire']
-    by_year = {}
-    for r in rp['near']:
-        by_year[r['year']] = by_year.get(r['year'], 0) + r['cost']
     proj = E.reserve_projection(rp['later'], rp['start'], board['monthly'] if board else None, reserve['amount'])
-    return render_template('equip.html', **_ctx(view='money', part='replacement', page_title=PAGE_TITLES['plan'], rp=rp, by_year=by_year, missing=missing,
+    return render_template('equip.html', **_ctx(view='money', part='replacement', page_title=PAGE_TITLES['plan'], rp=rp, near_text=E.near_text(rp), missing=missing,
                                                 note=E.plan_note(), note_max=E.NOTE_MAX, board=board, reserve=reserve,
-                                                projection=E.projection_text(proj), changed=E.plan_changed(rp), officer=bool(officer_current()),
+                                                projection=E.projection_text(proj), board_text=E.board_text(board), reserve_now=E.reserve_now_text(reserve),
+                                                paid_for=E.paid_for_text, changed=E.plan_changed(rp), officer=bool(officer_current()),
                                                 reserve_account=E.RESERVE_ACCOUNT, today=date.today().isoformat()))
 
 
@@ -720,7 +718,7 @@ def plan():
 @login_required
 @editor_required
 def plan_settings():
-    """Save the replacement plan's one rule: how soon a purchase is "buy soon" and goes in that year's budget. Anything
+    """Save the replacement plan's one rule: how soon a purchase has to be due to go in that year's Operations budget. Anything
     else a form sends (the old big-item fields) is ignored."""
     if (g := _guard()):
         return g
@@ -748,7 +746,7 @@ def plan_settings():
 @bp.route('/plan/board', methods=['POST'])
 @login_required
 def plan_board():
-    """Record what the board set aside each month for replacements, and the date it decided. Only for people whose
+    """Record what the board puts in the reserve fund each month, and the date it decided. Only for people whose
     role may record board decisions (the officers). Nothing else on the plan is touched, and nothing goes to QuickBooks."""
     back = url_for('equip.replacement')
     me = officer_current()
@@ -772,7 +770,7 @@ def plan_board():
         return redirect(back)
     E.save_board_amount(monthly, decided, me['name'], date.today().isoformat())
     log_audit_event('EQUIP_PLAN_BOARD', me['name'], {'before': old or {}, 'after': {'monthly': monthly, 'date': decided, 'by': me['name']}})
-    flash(f"Recorded: the board set aside ${monthly:,.0f} a month.", 'success')
+    flash(f"Recorded: the board puts ${monthly:,.0f} a month in the reserve fund.", 'success')
     return redirect(back)
 
 

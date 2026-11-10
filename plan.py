@@ -206,8 +206,8 @@ def detail(year, program):
         import equip_store as E
         if E.enabled():
             ops_budget = E.budget(year, E.items(), E.places(), E.tasks(), cfg=E.plan_settings())
-            # Money set aside for later replacements is not in the budget; it is shown under the total: the board's
-            # monthly amount once an officer has recorded it, else what the replacement plan suggests.
+            # Money for the reserve fund (later replacements) is not in the budget; it is shown under the total: the
+            # board's monthly amount once an officer has recorded it, else what the replacement plan calls for.
             board = E.board_amount()
             set_aside = {'monthly': board['monthly'], 'date': board['date']} if board else \
                 {'monthly': E.reserve_plan([i for i in E.items() if i['status'] != 'Gone'], cfg=E.plan_settings(), balance=E.reserve_now()['amount'])['monthly'], 'suggested': True}
@@ -233,7 +233,7 @@ def detail(year, program):
 
 def _account_groups(lines, accts):
     """Plan lines grouped under their QuickBooks account, in reading order: income, running costs (largest first),
-    equipment bought (Capital Equipment accounts, not an expense), then money set aside with no account. Accounts with
+    equipment bought (Capital Equipment accounts, not an expense), then reserve fund money with no account. Accounts with
     actuals but no plan line are included so nothing is hidden."""
     out = []
     for r in accts:

@@ -230,7 +230,7 @@ def test_the_one_rule_sits_in_its_sentence_and_saves_alone(ops):
     ed, lou, state = ops
     plan = _main(_page(ed, f'{O}/money/replacement'))
     text = _text(plan)
-    assert 'Buy soon (due within 2 years): $51,000 in %d.' % (T.year + 1) in text
+    assert "so bought out of that year's Operations budget: $51,000 in %d." % (T.year + 1) in text and 'Due by %d,' % (T.year + 2) in text
     for gone in ('Big items', 'big item', 'from savings', 'come from savings', 'for the rest', 'motion', 'propose it'):
         assert gone not in text, gone
     forms = dict(re.findall(r'<form id="(rule-\w+)" method="post" action="/operations/plan/settings"[^>]*hidden>(.*?)</form>', plan, re.S))
@@ -245,7 +245,7 @@ def test_the_one_rule_sits_in_its_sentence_and_saves_alone(ops):
     r = ed.post(f'{O}/plan/settings', data={'budget_within_years': '1'})
     assert r.headers['Location'] == f'{O}/money/replacement' and state['cfg'] == {'budget_within_years': 1}
     assert state['audit'][-1] == ('EQUIP_PLAN_SETTINGS', {'before': {'budget_within_years': 2}, 'after': {'budget_within_years': 1}})
-    assert 'Buy soon (due within 1 year):' in _text(_main(_page(ed, f'{O}/money/replacement')))
+    assert 'Due by %d,' % (T.year + 1) in _text(_main(_page(ed, f'{O}/money/replacement')))
     # an old form's big-item fields are ignored: nothing is saved for them
     n = len(state['audit'])
     _flashes(ed)
