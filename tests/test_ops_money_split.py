@@ -20,7 +20,7 @@ def test_money_has_three_sub_tabs(plan):
     for url, on in ((f'{O}/money', f'{O}/money'), (PUR, PUR), (RES, RES)):
         for c in (kim, ed, lou):
             tabs = _tabs(_main(_page(c, url)))
-            assert [(h, t) for _, h, t in tabs] == [(f'{O}/money', 'Bills'), (PUR, f'{y} purchases'), (RES, 'Reserve fund')], url
+            assert [(h, t) for _, h, t in tabs] == [(f'{O}/money', 'Bills'), (PUR, 'Budgeted purchases'), (RES, 'Reserve fund')], url
             assert [h for a, h, _ in tabs if a] == [on], url
             assert re.search(r'nav-link active" href="[^"]*">Money<', _page(c, url)), url
 
@@ -33,7 +33,7 @@ def test_each_page_has_its_own_heading_title_and_summary(plan):
         page = _page(c, PUR)
         html = _main(page)
         text = _text(html)
-        assert f'<title>{y} purchases' in page and f'<h1 class="page-title m-0">{y} purchases</h1>' in html
+        assert '<title>Budgeted purchases' in page and f'<h1 class="page-title m-0">Budgeted purchases for {y}</h1>' in html
         summary = html.split('id="summary"')[1].split('</div>\n    </div>')[0]
         assert 'class="card plan-sum p-3 mb-3"' in html and 'plan-sum reserve' not in html
         assert _text(summary.split('>', 1)[1]) == (f'$51,000 planned for {y}. Paid from the {y} Operations budget, not the reserve fund. '
@@ -103,7 +103,7 @@ def test_a_new_year_that_moves_an_item_says_where_it_went(plan):
     r = ed.post(f'{O}/items/EQ-003', data={'action': 'replacement', 'replace_year': str(y), 'replace_cost': '12000', 'back': f'{RES}#EQ-003'})
     assert r.headers['Location'] == RES
     shown = _main(_page(ed, RES))
-    assert f'Timing trailer: replacement updated. Moved to <a href="{PUR}#EQ-003">{y} purchases</a>.' in shown        # a link, not escaped
+    assert f'Timing trailer: replacement updated. Moved to <a href="{PUR}#EQ-003">budgeted purchases</a>.' in shown        # a link, not escaped
     # a change that stays on the same page says what it always did and keeps its place on the page
     r = ed.post(f'{O}/items/EQ-004', data={'action': 'replacement', 'replace_year': str(y + 5), 'replace_cost': '40000', 'back': f'{RES}#EQ-004'})
     assert r.headers['Location'] == f'{RES}#EQ-004' and _flashes(ed) == 'Long trailer: replacement updated.'
@@ -111,7 +111,7 @@ def test_a_new_year_that_moves_an_item_says_where_it_went(plan):
     assert r.headers['Location'] == f'{PUR}#EQ-002' and _flashes(ed) == 'New radios: replacement updated.'
     # from the item's own page it goes back there
     r = ed.post(f'{O}/items/EQ-005', data={'action': 'replacement', 'replace_year': str(y), 'replace_cost': '40000', 'back': f'{O}/items/EQ-005#replacement'})
-    assert r.headers['Location'] == f'{O}/items/EQ-005' and f'Moved to <a href="{PUR}#EQ-005">{y} purchases</a>.' in _flashes(ed)
+    assert r.headers['Location'] == f'{O}/items/EQ-005' and f'Moved to <a href="{PUR}#EQ-005">budgeted purchases</a>.' in _flashes(ed)
     # taking it off the plan goes back to the page it came from, as before
     r = ed.post(f'{O}/items/EQ-006', data={'action': 'off_plan', 'back': RES})
     assert r.headers['Location'] == RES and 'Pop-up tent is off the replacement plan. It is still in Gear.' in _flashes(ed)

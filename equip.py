@@ -396,7 +396,7 @@ def _save_item(it):
             now = _plan_part(dict(row, **{k: _number(row[k]) if row[k] else None for k in ('replace_year', 'replace_cost')}), year)
             if was and now and was != now:
                 # It moved to the other Money page: say where, and go back to the page it came from (its row is gone there).
-                to = Markup('<a href="{}">{}</a>').format(url_for(f'equip.{now}') + f"#{it['id']}", 'the reserve fund' if now == 'reserve' else f'{year} purchases')
+                to = Markup('<a href="{}">{}</a>').format(url_for(f'equip.{now}') + f"#{it['id']}", 'the reserve fund' if now == 'reserve' else 'budgeted purchases')
                 flash(Markup('{}: replacement updated. Moved to {}.').format(it['name'], to), 'success')
                 return redirect(back.split('#')[0])
             flash(f"{it['name']}: replacement updated.", 'success')
@@ -721,7 +721,7 @@ def _plan_page(part):
     reserve = E.reserve_now()
     rp = E.reserve_plan(rows, balance=reserve['amount'])
     missing = [i for i in rows if E.is_capital(i) and not E.lifecycle(i) and i['status'] != 'Retire'] if part == 'reserve' else []
-    return render_template('equip.html', **_ctx(view='money', part=part, page_title=f"{rp['year']} purchases" if part == 'purchases' else PAGE_TITLES['reserve'],
+    return render_template('equip.html', **_ctx(view='money', part=part, page_title='Budgeted purchases' if part == 'purchases' else PAGE_TITLES['reserve'],
                                                 rp=rp, plan_year=rp['year'], missing=missing, note=E.plan_note(), note_max=E.NOTE_MAX, reserve=reserve,
                                                 reserve_now=E.reserve_now_text(reserve), paid_for=E.paid_for_text, officer=bool(officer_current()),
                                                 reserve_account=E.RESERVE_ACCOUNT, today=date.today().isoformat()))

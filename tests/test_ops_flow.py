@@ -218,10 +218,10 @@ def test_money_has_bills_replacement_and_the_region_documents(ops):
     assert 'Web hosting' in bills and 'North barn' in bills and f'href="{O}/items/EQ-002">Long trailer</a>' in bills     # the bill is about the trailer
     assert 'Insurance and region documents' in bills and 'Region insurance' in bills and 'name="row_id" value="DC-003"' in bills
     y = E.reserve_plan([])['year']
-    assert 'aria-current="true" href="/operations/money">Bills<' in bills and f'href="{O}/money/purchases">{y} purchases</a>' in bills
+    assert 'aria-current="true" href="/operations/money">Bills<' in bills and f'href="{O}/money/purchases">Budgeted purchases</a>' in bills
     assert f'href="{O}/money/reserve">Reserve fund</a>' in bills
     plan = _main(_page(ed, f'{O}/money/purchases'))
-    assert f'aria-current="true" href="/operations/money/purchases">{y} purchases<' in plan and 'Plan settings' not in plan
+    assert 'aria-current="true" href="/operations/money/purchases">Budgeted purchases<' in plan and 'Plan settings' not in plan
     seen = _main(_page(lou, f'{O}/money'))
     assert 'Region insurance' in seen and not re.search(r'<(form|input|button|select|textarea)\b', seen)
 

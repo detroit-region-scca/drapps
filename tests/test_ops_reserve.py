@@ -155,10 +155,10 @@ def test_this_years_purchases_then_the_reserve_fund_by_whole_years(plan):
     m = f"${rp['monthly']:,.0f}"
     pur = _main(_page(lou, PUR))
     text = _text(pur)
-    assert f'>{y} purchases</h1>' in pur and '>Reserve fund</h1>' not in pur and 'id="schedule"' not in pur
+    assert f'>Budgeted purchases for {y}</h1>' in pur and '>Reserve fund</h1>' not in pur and 'id="schedule"' not in pur
     assert f'${51000:,} planned for {y}. Paid from the {y} Operations budget, not the reserve fund.' in text
     assert f'href="/plan/{y}/OPS">{y} Operations budget (officers edit it)</a>' in pur
-    near = pur.split(f'aria-label="{y} purchases"')[1].split('</table>')[0]
+    near = pur.split(f'aria-label="Budgeted purchases for {y}"')[1].split('</table>')[0]
     assert 'Blue tow truck' in near and 'New radios' in near and 'Timing trailer' not in pur        # next year's item is not here
     assert '>Year</th>' not in near and 'Total$51,000' in _text(near)               # all the plan year: no Year column for a reader
     html = _main(_page(lou, RES))
@@ -206,7 +206,7 @@ def test_nothing_due_in_the_plan_year_is_one_line_and_no_table(plan):
     for c in (kim, ed, lou):
         html = _main(_page(c, PUR))
         text = _text(html)
-        assert f'No planned purchases for {y}.' in text and f'aria-label="{y} purchases"' not in html and 'planned for' not in text
+        assert f'No planned purchases for {y}.' in text and f'aria-label="Budgeted purchases for {y}"' not in html and 'planned for' not in text
         assert f'{y} Operations budget (officers edit it)' in text and 'Timing trailer' not in html
         assert ('Add a planned purchase' in html) == (c is not lou)                   # the committee can still add one
         assert 'Timing trailer' in _main(_page(c, RES)).split('aria-label="Reserve fund items"')[1]
@@ -417,7 +417,7 @@ def test_the_retired_words_are_gone_for_all_three_people(budget):
                             assert gone not in text, (gone, url)
                         assert not re.search(r'the reserve(?! fund)', text), url
                     pur, res = _main(_page(c, PUR)), _main(_page(c, RES))
-                    assert f"{state['y']} purchases" in read(pur) and '>Operations budget</h2>' not in pur
+                    assert f"budgeted purchases for {state['y']}" in read(pur) and '>Operations budget</h2>' not in pur
                     # nothing about the board: either page, the Overview card, the budget page's reserve line
                     assert 'board' not in read(res) and 'board' not in read(pur)
                     assert 'board' not in _card(c).lower()

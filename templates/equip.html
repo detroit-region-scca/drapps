@@ -444,7 +444,7 @@
     {% elif view == 'money' %}
     {% if part == 'bills' %}<h1 class="visually-hidden">Bills</h1>{% endif %}
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 no-print">
-        {% call filter_bar('Money') %}{{ filter_btn(url_for('equip.money'), 'Bills', part == 'bills') }}{{ filter_btn(url_for('equip.purchases'), plan_year ~ ' purchases', part == 'purchases') }}{{ filter_btn(url_for('equip.reserve'), 'Reserve fund', part == 'reserve') }}{% endcall %}
+        {% call filter_bar('Money') %}{{ filter_btn(url_for('equip.money'), 'Bills', part == 'bills') }}{{ filter_btn(url_for('equip.purchases'), 'Budgeted purchases', part == 'purchases') }}{{ filter_btn(url_for('equip.reserve'), 'Reserve fund', part == 'reserve') }}{% endcall %}
         {% if part == 'bills' %}<a class="small" href="{{ url_for('plan.detail', year=budget_year, program='OPS') }}">{{ budget_year }} Operations budget (officers edit it)</a>{% endif %}
     </div>
 
@@ -479,7 +479,7 @@
 
     {% else %}
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-        <h1 class="page-title m-0">{{ rp.year ~ ' purchases' if part == 'purchases' else 'Reserve fund' }}</h1>
+        <h1 class="page-title m-0">{{ 'Budgeted purchases for ' ~ rp.year if part == 'purchases' else 'Reserve fund' }}</h1>
         {% if editor %}<a class="btn btn-sm btn-accent no-print" href="{{ url_for('equip.item', status='Planned', replace_year=rp.year if part == 'purchases' else none) }}">Add a planned purchase</a>{% endif %}
     </div>
     <p class="text-muted small mb-2">What we expect to replace or buy, and when. Change it any time.</p>
@@ -497,7 +497,7 @@
         <div class="small mt-1"><a href="{{ url_for('plan.detail', year=rp.year, program='OPS') }}">{{ rp.year }} Operations budget (officers edit it)</a></div>
     </div>
     {% if rp.near %}
-    <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0 align-middle repl" aria-label="{{ rp.year }} purchases">
+    <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0 align-middle repl" aria-label="Budgeted purchases for {{ rp.year }}">
         {{ repl_head(false) }}
         <tbody>{% for r in rp.near %}{{ repl_row(r, false) }}{% endfor %}
         {% if rp.near|length > 1 %}<tr class="fw-semibold"><td class="ps-3" colspan="{{ 2 if editor else 1 }}">Total</td><td class="num {{ 'pe-3' if not editor }}">{{ money(rp.near|sum(attribute='cost'), 0) }}</td>{% if editor %}<td class="no-print"></td>{% endif %}</tr>{% endif %}</tbody>
