@@ -140,7 +140,7 @@ def test_the_page_opens_with_one_plain_sentence(plan):
     kim, ed, lou, state = plan
     for c, url in ((c, u) for c in (kim, ed, lou) for u in (PUR, RES)):
         text = _text(_main(_page(c, url)))
-        assert 'What we expect to replace or buy, and when. Change it any time.' in text
+        assert 'The board approves' in text and 'Change it any time' not in text
         for gone in ('living estimate', 'whenever you learn', 'Last changed', 'Pat Example', 'Big items', 'big item', 'from savings', 'lump', 'motion',
                      'propose it', 'for the rest'):
             assert gone not in text, gone
@@ -419,7 +419,7 @@ def test_the_retired_words_are_gone_for_all_three_people(budget):
                     pur, res = _main(_page(c, PUR)), _main(_page(c, RES))
                     assert f"budgeted purchases for {state['y']}" in read(pur) and '>Operations budget</h2>' not in pur
                     # nothing about the board: either page, the Overview card, the budget page's reserve line
-                    assert 'board' not in read(res) and 'board' not in read(pur)
+                    assert all(w not in read(p) for p in (res, pur) for w in ('board puts in', 'record the board', 'has not picked', 'board set aside'))      # only that the board approves
                     assert 'board' not in _card(c).lower()
                     assert 'board' not in read(_main(_page(c, state['url'])).split('id="set-aside"')[1].split('</div>')[0])
     # the old rule's address says nothing and saves nothing

@@ -39,7 +39,7 @@ def test_each_page_has_its_own_heading_title_and_summary(plan):
         assert _text(summary.split('>', 1)[1]) == (f'$51,000 planned for {y}. Paid from the {y} Operations budget, not the reserve fund. '
                                                    f'{y} Operations budget (officers edit it)')
         # the intro and the note come right under the heading, before the summary
-        assert text.index('What we expect to replace or buy, and when. Change it any time.') < text.index('Note from the committee: Radios first.') \
+        assert text.index(f'What we plan to buy in {y}. The board approves it with the {y} Operations budget.') < text.index('Note from the committee: Radios first.') \
             < text.index(f'$51,000 planned for {y}')
 
         page = _page(c, RES)
@@ -50,7 +50,7 @@ def test_each_page_has_its_own_heading_title_and_summary(plan):
         mo = f"${E.reserve_plan(state['items'])['schedule'][0]['monthly']:,.0f}"
         assert (f'In it now: $0, nothing booked yet Put in {mo} a month in {y} '
                 f'For everything due after {y}, saved for month by month through the year each item is due.') in text
-        assert text.index('What we expect to replace or buy') < text.index('Note from the committee') < text.index('In it now:') \
+        assert text.index('What we expect to replace in later years, and what to save each month for it. The board approves the monthly amount') < text.index('Note from the committee') < text.index('In it now:') \
             < text.index('What to put in each month') < text.index('Total') and f'What to put in each month, from {E.reserve_plan([])["start_label"]}' in text
     state['sheet'] = _sheet(('Equipment Replacement Reserve', 12000.0))
     text = _text(_main(_page(lou, RES)))

@@ -482,7 +482,8 @@
         <h1 class="page-title m-0">{{ 'Budgeted purchases for ' ~ rp.year if part == 'purchases' else 'Reserve fund' }}</h1>
         {% if editor %}<a class="btn btn-sm btn-accent no-print" href="{{ url_for('equip.item', status='Planned', replace_year=rp.year if part == 'purchases' else none) }}">Add a planned purchase</a>{% endif %}
     </div>
-    <p class="text-muted small mb-2">What we expect to replace or buy, and when. Change it any time.</p>
+    <p class="text-muted small mb-2">{% if part == 'purchases' %}What we plan to buy in {{ rp.year }}. The board approves it with the {{ rp.year }} Operations budget.
+        {% else %}What we expect to replace in later years, and what to save each month for it. The board approves the monthly amount with the Operations budget each year.{% endif %}</p>
     {% if note %}<p class="mb-3" id="note"><b>Note from the committee:</b> {{ note }} {% if editor %}{{ reveal('note-form', 'Edit') }}{% endif %}</p>
     {% elif editor %}<p class="mb-3 small no-print" id="note">{{ reveal('note-form', 'Add a note from the committee') }}</p>{% endif %}
     {% if editor %}<form id="note-form" method="post" action="{{ url_for('equip.plan_note') }}" class="rule-form no-print" hidden><input type="hidden" name="back" value="{{ request.path }}">
