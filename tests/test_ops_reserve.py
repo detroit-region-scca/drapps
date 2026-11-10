@@ -1,6 +1,6 @@
-"""The replacement plan in two parts: the plan year's purchases (not from the reserve fund, paid from that year's
-Operations budget) and the Reserve fund (everything due later: what is in it, what to put in each month through the
-year each item is due). No rule to change, and nothing about a board amount on any page. Made-up names only."""
+"""The replacement plan in two parts, a page each: the plan year's purchases (not from the reserve fund, paid from that
+year's Operations budget) and the Reserve fund (everything due later: what is in it, what to put in each month through
+the year each item is due). No rule to change, and nothing about a board amount on any page. Made-up names only."""
 # ruff: noqa: F811  (the ops fixture is imported from test_ops_flow, then named as an argument)
 import html as html_lib
 import re
@@ -11,7 +11,8 @@ import pytest
 import equip_store as E
 from test_ops_flow import O, T, Tab, _flashes, _item, _main, _page, _text, ops  # noqa: F401  (ops is the fixture)
 
-REPL = f'{O}/money/replacement'
+REPL = f'{O}/money/replacement'      # the old address: the Annual Plan still links to it
+PUR, RES = f'{O}/money/purchases', f'{O}/money/reserve'
 BOARD = {'monthly': 500.0, 'date': '2026-11-05', 'by': 'Kim Officer'}
 
 
@@ -94,7 +95,7 @@ def test_the_old_board_address_still_works_for_officers_only(ops):
         r = c.post(f'{O}/plan/board', data={'board_monthly': '500', 'board_date': '2026-11-05'})
         assert r.status_code == 302 and state['board'] is None and not state['audit'] and 'roles the admin allows' in _flashes(c)
     r = kim.post(f'{O}/plan/board', data={'board_monthly': '$1,500', 'board_date': '2026-11-05'})
-    assert r.headers['Location'] == REPL and state['board'] == {'monthly': 1500.0, 'date': '2026-11-05', 'by': 'Kim Officer'}
+    assert r.headers['Location'] == RES and state['board'] == {'monthly': 1500.0, 'date': '2026-11-05', 'by': 'Kim Officer'}
     assert state['audit'] == [('EQUIP_PLAN_BOARD', {'before': {}, 'after': {'monthly': 1500.0, 'date': '2026-11-05', 'by': 'Kim Officer'}})]
     assert state['note'] == 'Radios first.' and not state['saves']       # nothing else is touched
     kim.post(f'{O}/plan/board', data={'board_monthly': '1500', 'board_date': '2026-11-05'})
@@ -103,8 +104,8 @@ def test_the_old_board_address_still_works_for_officers_only(ops):
                 {'board_monthly': '900', 'board_date': ''}, {'board_monthly': '900', 'board_date': '2999-01-01'}, {}):
         kim.post(f'{O}/plan/board', data=bad)
         assert state['board']['monthly'] == 1500.0 and len(state['audit']) == 1 and 'Nothing was saved' in _flashes(kim), bad
-    for c in (kim, ed, lou):                                              # and no page links to it or shows what it holds
-        page = _page(c, REPL)
+    for c, url in ((c, u) for c in (kim, ed, lou) for u in (PUR, RES)):   # and no page links to it or shows what it holds
+        page = _page(c, url)
         assert 'plan/board' not in page and 'rule-board' not in page and '1,500' not in page
 
 
@@ -113,11 +114,11 @@ def test_the_audit_log_says_it_in_a_sentence():
     import audit_view
     with A.app.test_request_context('/'):
         text = audit_view.plain({'action': 'EQUIP_PLAN_BOARD', 'user': 'Kim Officer', 'details': {'before': {}, 'after': {'monthly': 1500.0, 'date': '2026-11-05'}}})
-    assert text == 'Kim Officer recorded what the board puts in the reserve fund on the replacement plan: $1,500 a month'
+    assert text == 'Kim Officer recorded what the board puts in the reserve fund: $1,500 a month'
     assert audit_view.app_of('EQUIP_PLAN_BOARD') == audit_view.app_of('EQUIP_PLAN_NOTE')
 
 
-# The Replacement page, for each of the three people ----------------------------------------------------------------------
+# The two pages, for each of the three people ----------------------------------------------------------------------
 
 @pytest.fixture()
 def plan(ops):
@@ -137,8 +138,8 @@ def plan(ops):
 
 def test_the_page_opens_with_one_plain_sentence(plan):
     kim, ed, lou, state = plan
-    for c in (kim, ed, lou):
-        text = _text(_main(_page(c, REPL)))
+    for c, url in ((c, u) for c in (kim, ed, lou) for u in (PUR, RES)):
+        text = _text(_main(_page(c, url)))
         assert 'What we expect to replace or buy, and when. Change it any time.' in text
         for gone in ('living estimate', 'whenever you learn', 'Last changed', 'Pat Example', 'Big items', 'big item', 'from savings', 'lump', 'motion',
                      'propose it', 'for the rest'):
@@ -152,16 +153,19 @@ def test_this_years_purchases_then_the_reserve_fund_by_whole_years(plan):
     rp = E.reserve_plan(state['items'])
     assert [r['year'] for r in rp['near']] == [y, y] and [r['year'] for r in rp['later']] == [y + 1, y + 3, y + 4, y + 14]
     m = f"${rp['monthly']:,.0f}"
-    html = _main(_page(lou, REPL))
+    pur = _main(_page(lou, PUR))
+    text = _text(pur)
+    assert f'>{y} purchases</h1>' in pur and '>Reserve fund</h1>' not in pur and 'id="schedule"' not in pur
+    assert f'${51000:,} planned for {y}. Paid from the {y} Operations budget, not the reserve fund.' in text
+    assert f'href="/plan/{y}/OPS">{y} Operations budget (officers edit it)</a>' in pur
+    near = pur.split(f'aria-label="{y} purchases"')[1].split('</table>')[0]
+    assert 'Blue tow truck' in near and 'New radios' in near and 'Timing trailer' not in pur        # next year's item is not here
+    assert '>Year</th>' not in near and 'Total$51,000' in _text(near)               # all the plan year: no Year column for a reader
+    html = _main(_page(lou, RES))
     text = _text(html)
-    assert html.index(f'>{y} purchases (not from the reserve fund)</h2>') < html.index('>Reserve fund</h2>') and 'id="summary"' not in html
-    assert '>Operations budget</h2>' not in html and html.count('</h2>') == 2
-    assert f'Planned purchases for {y}: $51,000. Paid from the {y} Operations budget, not the reserve fund.' in text
-    assert f'href="/plan/{y}/OPS">{y} Operations budget (officers edit it)</a>' in html
-    near = html.split('aria-label="Purchases not from the reserve fund"')[1].split('</table>')[0]
-    assert 'Blue tow truck' in near and 'New radios' in near and 'Timing trailer' not in near        # next year's item is not here
-    assert f'For everything due after {y}. Saved for month by month through the year each item is due.' in text
-    assert 'In the reserve fund now: $0, nothing booked yet' in text                    # before the first sync that has it
+    assert '>Reserve fund</h1>' in html and 'Blue tow truck' not in html
+    assert f'For everything due after {y}, saved for month by month through the year each item is due.' in text
+    assert f'In it now: $0, nothing booked yet Put in {m} a month in {y}' in text       # before the first sync that has it
     # the schedule is a table: one row per whole year the amount changes, with what is paid for that year
     sched = html.split('id="schedule"')[1].split('</table>')[0]
     assert f'What to put in each month, from {rp["start_label"]}' in text and 'class="table mb-0 stack"' in html
@@ -178,20 +182,20 @@ def test_this_years_purchases_then_the_reserve_fund_by_whole_years(plan):
 
     state['board'] = dict(BOARD)                                                        # an amount left in the sheet changes nothing
     state['sheet'] = _sheet(('Equipment Replacement Reserve', 12000.0))
-    html = _main(_page(lou, REPL))
+    html = _main(_page(lou, RES))
     text = _text(html)
-    assert 'In the reserve fund now: $12,000 (QuickBooks account Equipment Replacement Reserve, as of Nov 8, 2026)' in text and 'nothing booked yet' not in text
+    assert 'In it now: $12,000 (QuickBooks account Equipment Replacement Reserve, as of Nov 8, 2026)' in text and 'nothing booked yet' not in text
     assert text.count('Equipment Replacement Reserve') == 1
     m2 = f"${E.reserve_plan(state['items'], balance=12000.0)['monthly']:,.0f}"       # less: the reserve fund counts toward what is due first
-    assert m2 != m and f'{y + 3} {m2} Timing trailer $12,000 ({y + 1}), Long trailer $40,000' in _text(html.split('id="schedule"')[1])
+    assert m2 != m and f'Put in {m2} a month in {y}' in text and f'{y + 3} {m2} Timing trailer $12,000 ({y + 1}), Long trailer $40,000' in _text(html.split('id="schedule"')[1])
     assert 'The $12,000 in the reserve fund counts toward the items due first.' in text
     state['sheet'] = _sheet(('Equipment Replacement Reserve', 0.0))
-    assert 'In the reserve fund now: $0, nothing booked yet' in _text(_main(_page(lou, REPL)))
+    assert 'In it now: $0, nothing booked yet' in _text(_main(_page(lou, RES)))
     state['sheet'] = _sheet(('Equipment Replacement Reserve', 200000.0))                # more than everything due later
-    html = _main(_page(lou, REPL))
+    html = _main(_page(lou, RES))
     assert 'Nothing more to put in: the reserve fund already covers everything due later.' in _text(html) and 'id="schedule"' not in html
     state['items'] = state['items'][:2]                                            # nothing left to save for
-    html = _main(_page(lou, REPL))
+    html = _main(_page(lou, RES))
     assert 'Nothing is due later' in _text(html) and 'id="schedule"' not in html and 'aria-label="Reserve fund items"' not in html
 
 
@@ -200,11 +204,12 @@ def test_nothing_due_in_the_plan_year_is_one_line_and_no_table(plan):
     y = state['y']
     state['items'] = state['items'][2:]
     for c in (kim, ed, lou):
-        html = _main(_page(c, REPL))
+        html = _main(_page(c, PUR))
         text = _text(html)
-        assert f'{y} purchases (not from the reserve fund) No planned purchases for {y}. Reserve fund' in text
-        assert 'aria-label="Purchases not from the reserve fund"' not in html and 'Planned purchases for' not in text
-        assert 'Operations budget (officers edit it)' not in html and 'Timing trailer' in html.split('aria-label="Reserve fund items"')[1]
+        assert f'No planned purchases for {y}.' in text and f'aria-label="{y} purchases"' not in html and 'planned for' not in text
+        assert f'{y} Operations budget (officers edit it)' in text and 'Timing trailer' not in html
+        assert ('Add a planned purchase' in html) == (c is not lou)                   # the committee can still add one
+        assert 'Timing trailer' in _main(_page(c, RES)).split('aria-label="Reserve fund items"')[1]
     assert _card(lou).startswith(f'$0 of purchases planned for {y} Reserve fund: ')
 
 
@@ -237,10 +242,12 @@ def test_the_reserve_fund_counts_toward_what_is_due_first_and_the_amount_steps_d
 
 def test_what_each_of_the_three_people_can_do(plan):
     kim, ed, lou, state = plan
-    fields = lambda html: set(re.findall(r'<(?:input|select|textarea)[^>]* name="(\w+)"', html)) - {'_csrf', 'action'}  # noqa: E731
+    fields = lambda html: set(re.findall(r'<(?:input|select|textarea)[^>]* name="(\w+)"', html)) - {'_csrf', 'action', 'back'}  # noqa: E731
     for board in (None, dict(BOARD)):
         state['board'] = board
-        officer, editor, looker = (_main(_page(c, REPL)) for c in (kim, ed, lou))
+        assert fields(_main(_page(kim, PUR))) == fields(_main(_page(ed, PUR))) == {'note', 'replace_year', 'replace_cost'}
+        assert 'Entries for QuickBooks' not in _page(kim, PUR) and not re.search(r'<(form|input|button|select|textarea|details)\b', _main(_page(lou, PUR)))
+        officer, editor, looker = (_main(_page(c, RES)) for c in (kim, ed, lou))
         # the officer: every editor control, plus the entries for QuickBooks
         assert fields(officer) == fields(editor) == {'note', 'replace_year', 'replace_cost'}
         assert '<summary>Entries for QuickBooks</summary>' in officer and '<details class="small mt-3" id="entries">' in officer      # collapsed
@@ -249,8 +256,8 @@ def test_what_each_of_the_three_people_can_do(plan):
         assert not re.search(r'<(form|input|button|select|textarea|details)\b', looker)
         for html in (officer, editor, looker):
             assert 'rule-board' not in html and 'rule-soon' not in html and 'id="board"' not in html and 'id="projection"' not in html
-        for c in (kim, ed, lou):
-            html = _page(c, REPL)
+        for c, url in ((c, u) for c in (kim, ed, lou) for u in (PUR, RES)):
+            html = _page(c, url)
             ids = re.findall(r'\sid="([^"]+)"', html)
             assert len(ids) == len(set(ids)), [i for i in ids if ids.count(i) > 1]
 
@@ -258,7 +265,7 @@ def test_what_each_of_the_three_people_can_do(plan):
 def test_the_entries_for_quickbooks_are_shown_not_made(plan):
     kim, ed, lou, state = plan
     y = state['y']
-    box = lambda: _text(_main(_page(kim, REPL)).split('<details')[1].split('</details>')[0])  # noqa: E731
+    box = lambda: _text(_main(_page(kim, RES)).split('<details')[1].split('</details>')[0])  # noqa: E731
     text = box()
     mo = E.reserve_plan(state['items'])['monthly']
     assert 'The treasurer makes these two journal entries by hand. The app does not write them to QuickBooks.' in text
@@ -275,7 +282,7 @@ def test_the_entries_for_quickbooks_are_shown_not_made(plan):
 # The Overview card and the report --------------------------------------------------------------------------------------
 
 def _card(c):
-    return _text(_main(_page(c, f'{O}/')).split('<div class="label">Replacements</div>')[1].split('</a>')[0])
+    return _text(_main(_page(c, f'{O}/')).split('<div class="label">Replacements</div>')[1].split('</a></div></div>')[0])
 
 
 def test_the_overview_card_says_what_is_true_now(plan):
@@ -289,7 +296,8 @@ def test_the_overview_card_says_what_is_true_now(plan):
     for c in (kim, ed, lou):                                              # always what the plan calls for, whatever the sheet holds
         assert _card(c) == f'$51,000 of purchases planned for {y} Reserve fund: {m2} a month, $12,000 in it now'
     home = _page(lou, f'{O}/')
-    assert 'from savings' not in home and 'big item' not in home and f'href="{REPL}"><div class="label">Replacements</div>' in home
+    assert 'from savings' not in home and 'big item' not in home and f'href="{PUR}"><div class="label">Replacements</div>' in home
+    assert f'<a href="{RES}">Reserve fund: ' in home
 
 
 def test_the_report_says_the_same(plan):
@@ -382,7 +390,7 @@ def test_the_budget_page_shows_the_reserve_fund_under_the_total(budget):
     assert html.index('class="total-row"') < html.index('id="set-aside"')
     total = _text(html.split('class="total-row"')[1].split('</tr>')[0])
     assert '-$53,736' in total and f"{rp['monthly'] * 12:,.0f}" not in total         # the reserve fund does not add to the total
-    assert f'href="{REPL}#reserve-fund">Reserve fund</a>' in html
+    assert f'href="{RES}">Reserve fund</a>' in html
 
 
 RETIRED = ('buy soon', 'save for later', 'set aside', 'set-aside', 'suggest', 'has not set an amount', 'july', 'not picked', 'living estimate',
@@ -403,17 +411,15 @@ def test_the_retired_words_are_gone_for_all_three_people(budget):
             for sheet in (_sheet(), _sheet(('Equipment Replacement Reserve', 45000.0))):
                 state['items'], state['board'], state['sheet'] = items, board, sheet
                 for c in (kim, ed, lou):
-                    for url in (REPL, f'{O}/', state['url']):
+                    for url in (PUR, RES, f'{O}/', state['url']):
                         text = read(_main(_page(c, url)))
                         for gone in RETIRED:
                             assert gone not in text, (gone, url)
                         assert not re.search(r'the reserve(?! fund)', text), url
-                    html = _main(_page(c, REPL))
-                    text = read(html)
-                    assert 'purchases (not from the reserve fund)' in text and '>Operations budget</h2>' not in html
-                    # nothing about the board: the Reserve fund section, the Overview card, the budget page's reserve line
-                    assert 'board' not in read(html.split('id="reserve-fund"')[1])
-                    assert 'board' not in read(html.split('id="operations-budget"')[1].split('id="reserve-fund"')[0])
+                    pur, res = _main(_page(c, PUR)), _main(_page(c, RES))
+                    assert f"{state['y']} purchases" in read(pur) and '>Operations budget</h2>' not in pur
+                    # nothing about the board: either page, the Overview card, the budget page's reserve line
+                    assert 'board' not in read(res) and 'board' not in read(pur)
                     assert 'board' not in _card(c).lower()
                     assert 'board' not in read(_main(_page(c, state['url'])).split('id="set-aside"')[1].split('</div>')[0])
     # the old rule's address says nothing and saves nothing

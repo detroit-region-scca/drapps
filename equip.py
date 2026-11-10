@@ -12,6 +12,7 @@ from datetime import date, timedelta
 from functools import wraps
 
 from flask import Blueprint, abort, flash, g as flask_g, redirect, render_template, request, session, url_for
+from markupsafe import Markup
 
 import equip_store as E
 import officials as O
@@ -25,7 +26,7 @@ NEXT_DAYS = 30  # the Overview's coming-up window
 
 
 PAGE_TITLES = {'home': 'Overview', 'vehicles': 'Vehicles', 'where': 'Gear', 'items': 'Gear by category', 'all': 'Gear',
-               'tasks': 'To do', 'costs': 'Bills', 'plan': 'Replacement'}
+               'tasks': 'To do', 'costs': 'Bills', 'reserve': 'Reserve fund'}
 GEAR_VIEWS = [('all', 'All'), ('vehicles', 'Vehicles and trailers'), ('place', 'By place'), ('category', 'By category')]
 BIG = ('Vehicle', 'Trailer')
 
@@ -77,6 +78,19 @@ def budget_year():
     """The Operations budget people are working on: next year's from September (when plans are built), else this year's."""
     today = date.today()
     return today.year + 1 if today.month >= 9 else today.year
+
+
+def plan_year():
+    """The year the replacement plan buys for (reserve_plan's 'year'): its purchases are that year's, the reserve fund is for later."""
+    return E.reserve_plan([])['year']
+
+
+def _plan_part(it, year):
+    """Which Money page an item's replacement is on: 'purchases' (due in the plan year), 'reserve' (later) or None."""
+    lc = E.lifecycle(it)
+    if not lc or it.get('status') == 'Gone' or not E.replace_cost(it) or lc['replace'] < year:
+        return None
+    return 'purchases' if lc['replace'] == year else 'reserve'
 
 
 def _guard():
@@ -316,6 +330,8 @@ def item(item_id=None):
     if not item_id and request.method == 'GET':
         # "Add item here" and "Add a planned purchase" start the form filled in.
         it = {k: request.args[k] for k in ('place', 'status', 'category') if request.args.get(k)}
+        if (_number(request.args.get('replace_year')) or 0) > 0:
+            it['replace_year'] = _number(request.args['replace_year'])
     if request.method == 'POST':
         return _save_item(it)
     edit = request.args.get('edit') == '1' or not item_id
@@ -365,7 +381,7 @@ def _save_item(it):
         # The quick edit on Replacement and on the item's own page: just the year and the cost estimate. "Take off
         # the plan" clears both; the item itself stays in Gear.
         off = f['action'] == 'off_plan'
-        back = local_path(f.get('back')) or url_for('equip.replacement') + f"#{it['id']}"
+        back = local_path(f.get('back')) or url_for('equip.purchases') + f"#{it['id']}"
         for k in ('replace_year', 'replace_cost'):
             row[k] = '' if off else f.get(k, '').replace('$', '').replace(',', '').strip()
         if not off and any(row[k] and _number(row[k]) is None for k in ('replace_year', 'replace_cost')):
@@ -375,6 +391,14 @@ def _save_item(it):
         E.save('Property', row, changed=_diff(it, row))
         log_audit_event('EQUIP_ITEM_SAVED', _who(), {'id': it['id'], 'name': it['name'], 'replace_year': row['replace_year'], 'replace_cost': row['replace_cost']})
         if not off:
+            year = plan_year()
+            was = _plan_part(it, year)
+            now = _plan_part(dict(row, **{k: _number(row[k]) if row[k] else None for k in ('replace_year', 'replace_cost')}), year)
+            if was and now and was != now:
+                # It moved to the other Money page: say where, and go back to the page it came from (its row is gone there).
+                to = Markup('<a href="{}">{}</a>').format(url_for(f'equip.{now}') + f"#{it['id']}", 'the reserve fund' if now == 'reserve' else f'{year} purchases')
+                flash(Markup('{}: replacement updated. Moved to {}.').format(it['name'], to), 'success')
+                return redirect(back.split('#')[0])
             flash(f"{it['name']}: replacement updated.", 'success')
             return redirect(back)
         lc = E.lifecycle(dict(it, replace_year=None, replace_cost=None))
@@ -383,7 +407,7 @@ def _save_item(it):
                   'It is still in Gear; open it there to change those.', 'warning')
         else:
             flash(f"{it['name']} is off the replacement plan. It is still in Gear.", 'success')
-        return redirect(local_path(f.get('back')) or url_for('equip.replacement'))
+        return redirect(local_path(f.get('back')) or url_for('equip.purchases'))
     if 'place' in f and f.get('place', '').strip() != (it or {}).get('place', ''):
         row['seen'] = date.today().isoformat()
     for k in E.ITEM_COLS:
@@ -672,7 +696,7 @@ def money():
         cats[r['category'] if r['category'] in cats else 'Other'].append(r)
     return render_template('equip.html', **_ctx(view='money', part='bills', page_title=PAGE_TITLES['costs'], cats=[(c, r) for c, r in cats.items() if r],
                                                 total=sum(r['per_year'] for r in rows), region_docs=_region_docs(),
-                                                today=date.today().isoformat(), plan_year=date.today().year + 1))
+                                                today=date.today().isoformat(), plan_year=plan_year()))
 
 
 @bp.route('/bills')
@@ -688,35 +712,54 @@ def old_costs():
     return _moved('equip.money')
 
 
-@bp.route('/money/replacement')
-@login_required
-def replacement():
-    """Money, second part: when each long-lived item reaches the end of its life. Two lists: what the Operations
-    budget buys this plan year, and the reserve fund for every later year (what is in it now, what to put in each month)."""
+def _plan_page(part):
+    """Money's replacement plan, one part a page: 'purchases' (what the Operations budget buys in the plan year) or
+    'reserve' (the reserve fund for every later year: what is in it now, what to put in each month)."""
     if (g := _guard()):
         return g
     rows = [i for i in E.items() if i['status'] != 'Gone']
     reserve = E.reserve_now()
     rp = E.reserve_plan(rows, balance=reserve['amount'])
-    missing = [i for i in rows if E.is_capital(i) and not E.lifecycle(i) and i['status'] != 'Retire']
-    return render_template('equip.html', **_ctx(view='money', part='replacement', page_title=PAGE_TITLES['plan'], rp=rp, missing=missing,
-                                                note=E.plan_note(), note_max=E.NOTE_MAX, reserve=reserve, reserve_now=E.reserve_now_text(reserve),
-                                                paid_for=E.paid_for_text, officer=bool(officer_current()),
+    missing = [i for i in rows if E.is_capital(i) and not E.lifecycle(i) and i['status'] != 'Retire'] if part == 'reserve' else []
+    return render_template('equip.html', **_ctx(view='money', part=part, page_title=f"{rp['year']} purchases" if part == 'purchases' else PAGE_TITLES['reserve'],
+                                                rp=rp, plan_year=rp['year'], missing=missing, note=E.plan_note(), note_max=E.NOTE_MAX, reserve=reserve,
+                                                reserve_now=E.reserve_now_text(reserve), paid_for=E.paid_for_text, officer=bool(officer_current()),
                                                 reserve_account=E.RESERVE_ACCOUNT, today=date.today().isoformat()))
+
+
+@bp.route('/money/purchases')
+@login_required
+def purchases():
+    """Money, second part: the planned purchases due in the plan year, paid from that year's Operations budget."""
+    return _plan_page('purchases')
+
+
+@bp.route('/money/reserve')
+@login_required
+def reserve():
+    """Money, third part: the reserve fund, for everything due after the plan year."""
+    return _plan_page('reserve')
+
+
+@bp.route('/money/replacement')
+@login_required
+def replacement():
+    """Replacement was one page; it is two now. Links to it (the Annual Plan, the audit log) land on the purchases."""
+    return _moved('equip.purchases')
 
 
 @bp.route('/plan')
 @login_required
 def plan():
-    """Replacement was a tab; it is the second part of Money now."""
-    return _moved('equip.replacement')
+    """Replacement was a tab; its purchases are the second part of Money now."""
+    return _moved('equip.purchases')
 
 
 @bp.route('/plan/settings', methods=['POST'])
 @login_required
 def plan_settings():
     """The plan has no settings any more. A page left open from before may still post here: nothing is saved."""
-    return redirect(url_for('equip.replacement'))
+    return redirect(url_for('equip.purchases'))
 
 
 @bp.route('/plan/board', methods=['POST'])
@@ -725,7 +768,7 @@ def plan_board():
     """Record what the board puts in the reserve fund each month, and the date it decided. No page shows the amount or
     links here any more; the address still works for people whose role may record board decisions (the officers).
     Nothing else on the plan is touched, and nothing goes to QuickBooks."""
-    back = url_for('equip.replacement')
+    back = url_for('equip.reserve')
     me = officer_current()
     if not me:
         from auth import refuse
@@ -758,7 +801,7 @@ def plan_note():
     """Save (or, left blank, clear) the committee's short note under the replacement summary. Nothing else is touched."""
     if (g := _guard()):
         return g
-    back = url_for('equip.replacement')
+    back = local_path(request.form.get('back')) or url_for('equip.purchases')
     text, old = ' '.join(request.form.get('note', '').split()), E.plan_note()
     if len(text) > E.NOTE_MAX:
         flash(f'Keep the note to {E.NOTE_MAX} characters. Nothing was saved.', 'danger')

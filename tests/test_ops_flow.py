@@ -126,8 +126,8 @@ def test_four_tabs_and_old_addresses_still_land(ops):
     tabs = re.findall(r'<a class="nav-link[^"]*" href="(/operations/[^"]*)">([^<]+)</a>', nav)
     assert tabs == [(f'{O}/', 'Overview'), (f'{O}/tasks', 'To do'), (f'{O}/items', 'Gear'), (f'{O}/money', 'Money')]
     moved = {f'{O}/vehicles': f'{O}/items?by=vehicles', f'{O}/documents': f'{O}/#documents', f'{O}/documents?fresh=1': f'{O}/?fresh=1#documents',
-             f'{O}/bills': f'{O}/money', f'{O}/costs': f'{O}/money', f'{O}/plan': f'{O}/money/replacement',
-             f'{O}/plan?year=2027': f'{O}/money/replacement?year=2027', f'{O}/places': f'{O}/items?by=place'}
+             f'{O}/bills': f'{O}/money', f'{O}/costs': f'{O}/money', f'{O}/plan': f'{O}/money/purchases',
+             f'{O}/plan?year=2027': f'{O}/money/purchases?year=2027', f'{O}/money/replacement': f'{O}/money/purchases', f'{O}/places': f'{O}/items?by=place'}
     for c in (ed, lou):
         for old, new in moved.items():
             r = c.get(old)
@@ -135,7 +135,7 @@ def test_four_tabs_and_old_addresses_still_land(ops):
             assert c.get(new).status_code == 200, new
     assert ed.get(f'{O}/items?by=category').status_code == 200            # an old Gear link, still the category list
     assert ed.get('/equipment/plan').status_code == 301                   # the older name still hops on to /operations/plan
-    for url, tab in ((f'{O}/money/replacement', 'Money'), (f'{O}/items/EQ-001', 'Gear'), (f'{O}/places/PL-001', 'Gear'), (f'{O}/tasks/new?bill=1', 'Money'),
+    for url, tab in ((f'{O}/money/purchases', 'Money'), (f'{O}/money/reserve', 'Money'), (f'{O}/items/EQ-001', 'Gear'), (f'{O}/places/PL-001', 'Gear'), (f'{O}/tasks/new?bill=1', 'Money'),
                      (f'{O}/tasks/new', 'To do')):
         assert re.search(r'nav-link active" href="[^"]*">%s<' % tab, _page(ed, url)), url
 
@@ -149,7 +149,7 @@ def test_overview_lists_missing_documents_with_the_page_that_takes_them(ops):
     assert f'href="{O}/items/EQ-002#add-document">Upload' in gaps and 'Missing title, registration' in gaps  # no row yet: what a trailer needs
     assert f'href="{O}/places/PL-001#add-document">Upload' in gaps and f'href="{O}/money#region-documents">Upload' in gaps
     assert 'Renew trailer plate' in page and '>Done</button>' in page and f'href="{O}/items/EQ-002">Long trailer</a>' in page
-    assert f'href="{O}/money"' in page and f'href="{O}/money/replacement"' in page and f'href="{O}/items?by=vehicles"' in page   # the four cards
+    assert f'href="{O}/money"' in page and f'href="{O}/money/purchases"' in page and f'href="{O}/items?by=vehicles"' in page   # the four cards
     assert '>Upload<' not in _main(_page(lou, f'{O}/'))
     state['docs'], state['items'] = [], []
     assert 'Every title, registration, card and agreement is on file.' in _page(ed, f'{O}/')
@@ -217,9 +217,11 @@ def test_money_has_bills_replacement_and_the_region_documents(ops):
     assert re.search(r'href="/plan/\d{4}/OPS[^"]*">\d{4} Operations budget \(officers edit it\)</a>', bills)
     assert 'Web hosting' in bills and 'North barn' in bills and f'href="{O}/items/EQ-002">Long trailer</a>' in bills     # the bill is about the trailer
     assert 'Insurance and region documents' in bills and 'Region insurance' in bills and 'name="row_id" value="DC-003"' in bills
-    assert 'aria-current="true" href="/operations/money">Bills<' in bills and f'href="{O}/money/replacement">Replacement</a>' in bills
-    plan = _main(_page(ed, f'{O}/money/replacement'))
-    assert 'aria-current="true" href="/operations/money/replacement">Replacement<' in plan and 'Plan settings' not in plan
+    y = E.reserve_plan([])['year']
+    assert 'aria-current="true" href="/operations/money">Bills<' in bills and f'href="{O}/money/purchases">{y} purchases</a>' in bills
+    assert f'href="{O}/money/reserve">Reserve fund</a>' in bills
+    plan = _main(_page(ed, f'{O}/money/purchases'))
+    assert f'aria-current="true" href="/operations/money/purchases">{y} purchases<' in plan and 'Plan settings' not in plan
     seen = _main(_page(lou, f'{O}/money'))
     assert 'Region insurance' in seen and not re.search(r'<(form|input|button|select|textarea)\b', seen)
 
@@ -228,41 +230,45 @@ def test_the_plan_has_no_rule_and_the_old_form_address_saves_nothing(ops):
     ed, lou, state = ops
     y = E.reserve_plan([])['year']
     state['items'][0]['replace_year'] = state['items'][5]['replace_year'] = float(y)
-    plan = _main(_page(ed, f'{O}/money/replacement'))
+    plan = _main(_page(ed, f'{O}/money/purchases')) + _main(_page(ed, f'{O}/money/reserve'))
     text = _text(plan)
-    assert f'Planned purchases for {y}: $51,000. Paid from the {y} Operations budget, not the reserve fund.' in text
+    assert f'$51,000 planned for {y}. Paid from the {y} Operations budget, not the reserve fund.' in text
     for gone in ('Big items', 'big item', 'from savings', 'come from savings', 'for the rest', 'motion', 'propose it', 'Due by', 'due within', 'this many years'):
         assert gone not in text, gone
     assert 'plan/settings' not in plan and 'rule-soon' not in plan and 'budget_within_years' not in plan
     # the totals are worked out, never typed: the only fields are the note and each row's year and cost
     # (Ed edits Operations but does not record board decisions, so the board's amount is nothing he can type)
-    assert set(re.findall(r'<(?:input|select|textarea)[^>]* name="(\w+)"', plan)) - {'_csrf', 'action'} == {'note', 'replace_year', 'replace_cost'}
+    assert set(re.findall(r'<(?:input|select|textarea)[^>]* name="(\w+)"', plan)) - {'_csrf', 'action', 'back'} == {'note', 'replace_year', 'replace_cost'}
     # a page left open from before may still post the old rule: nothing is saved, nothing is said, back to the page
     for c in (ed, lou):
         _flashes(c)
         for data in ({'budget_within_years': '0'}, {'budget_within_years': 'soon'}, {'big_cost': '$50,000', 'big_from_savings': 'yes'}, {}):
             r = c.post(f'{O}/plan/settings', data=data)
-            assert r.status_code == 302 and r.headers['Location'] == f'{O}/money/replacement' and not _flashes(c), data
+            assert r.status_code == 302 and r.headers['Location'] == f'{O}/money/purchases' and not _flashes(c), data
     assert not state['audit'] and not state['saves']
-    assert _text(_main(_page(ed, f'{O}/money/replacement'))) == text
+    assert _text(_main(_page(ed, f'{O}/money/purchases')) + _main(_page(ed, f'{O}/money/reserve'))) == text
 
 
 def test_the_committee_note_is_saved_and_cleared(ops):
     ed, lou, state = ops
-    assert 'Note from the committee:' not in _page(lou, f'{O}/money/replacement')
+    assert 'Note from the committee:' not in _page(lou, f'{O}/money/purchases')
     r = ed.post(f'{O}/plan/note', data={'note': '  Radios first.\nThe <b>trailer</b> can wait.  '})
-    assert r.headers['Location'] == f'{O}/money/replacement' and state['note'] == 'Radios first. The <b>trailer</b> can wait.'
+    assert r.headers['Location'] == f'{O}/money/purchases' and state['note'] == 'Radios first. The <b>trailer</b> can wait.'
     assert state['audit'][-1] == ('EQUIP_PLAN_NOTE', {'before': '', 'after': 'Radios first. The <b>trailer</b> can wait.'})
-    seen = _main(_page(lou, f'{O}/money/replacement'))
-    assert '<b>Note from the committee:</b> Radios first. The &lt;b&gt;trailer&lt;/b&gt; can wait.' in seen and 'data-reveal' not in seen
-    assert 'data-reveal="note-form" aria-expanded="false" aria-controls="note-form">Edit<' in _page(ed, f'{O}/money/replacement')
+    for page in ('purchases', 'reserve'):                                            # the note is on both pages, and saves back to the one it came from
+        seen = _main(_page(lou, f'{O}/money/{page}'))
+        assert '<b>Note from the committee:</b> Radios first. The &lt;b&gt;trailer&lt;/b&gt; can wait.' in seen and 'data-reveal' not in seen
+        mine = _page(ed, f'{O}/money/{page}')
+        assert 'data-reveal="note-form" aria-expanded="false" aria-controls="note-form">Edit<' in mine and f'name="back" value="{O}/money/{page}"' in mine
+    r = ed.post(f'{O}/plan/note', data={'note': 'Radios first. The <b>trailer</b> can wait.', 'back': f'{O}/money/reserve'})
+    assert r.headers['Location'] == f'{O}/money/reserve' and 'Nothing changed.' in _flashes(ed)
     ed.post(f'{O}/plan/note', data={'note': 'x' * (E.NOTE_MAX + 1)})
     assert state['note'].startswith('Radios') and str(E.NOTE_MAX) in _flashes(ed)
     lou.post(f'{O}/plan/note', data={'note': 'mine'})
     assert state['note'].startswith('Radios')
     ed.post(f'{O}/plan/note', data={'note': ' '})
     assert state['note'] == '' and 'Note removed.' in _flashes(ed)
-    assert 'Add a note from the committee' in _page(ed, f'{O}/money/replacement')
+    assert 'Add a note from the committee' in _page(ed, f'{O}/money/purchases')
 
 
 class Tab:
@@ -304,7 +310,7 @@ def test_the_note_is_one_more_row_on_the_plan_settings_tab(monkeypatch, tmp_path
 
 def test_replacement_rows_save_and_come_off_the_plan(ops):
     ed, lou, state = ops
-    plan = _main(_page(ed, f'{O}/money/replacement'))
+    plan = _main(_page(ed, f'{O}/money/reserve'))
     row = plan.split('<tr id="EQ-002">')[1].split('</tr>')[0]
     assert 'class="form-control form-control-sm"' in row and 'form="rp-EQ-002" name="replace_year"' in row and 'form="rp-EQ-002" name="replace_cost"' in row
     assert '<form id="rp-EQ-002" method="post" action="/operations/items/EQ-002"' in row and 'data-busy="Saving…">Save</button>' in row
@@ -313,7 +319,7 @@ def test_replacement_rows_save_and_come_off_the_plan(ops):
     assert f'href="{O}/items/EQ-003#replacement">Timing laptop</a>' in plan         # over $2,500, no year: opens at the fields
     r = ed.post(f'{O}/items/EQ-002', data={'action': 'replacement', 'replace_year': '2032', 'replace_cost': '$41,500'})
     tab, saved, changed = state['saves'][-1]
-    assert r.headers['Location'] == f'{O}/money/replacement#EQ-002' and saved['replace_year'] == '2032' and saved['replace_cost'] == '41500'
+    assert r.headers['Location'] == f'{O}/money/purchases#EQ-002' and saved['replace_year'] == '2032' and saved['replace_cost'] == '41500'
     assert {'replace_year', 'replace_cost'} <= changed
     n = len(state['saves'])
     ed.post(f'{O}/items/EQ-002', data={'action': 'replacement', 'replace_year': 'soon', 'replace_cost': '1'})
@@ -321,7 +327,7 @@ def test_replacement_rows_save_and_come_off_the_plan(ops):
     r = ed.post(f'{O}/items/EQ-002', data={'action': 'off_plan'})
     tab, saved, changed = state['saves'][-1]
     assert tab == 'Property' and saved['replace_year'] == '' and saved['replace_cost'] == '' and saved['status'] == 'In use' and saved['name'] == 'Long trailer'
-    assert {'replace_year', 'replace_cost'} <= changed and 'status' not in changed and r.headers['Location'] == f'{O}/money/replacement'
+    assert {'replace_year', 'replace_cost'} <= changed and 'status' not in changed and r.headers['Location'] == f'{O}/money/purchases'
     assert 'Long trailer is off the replacement plan. It is still in Gear.' in _flashes(ed)
     assert state['audit'][-1] == ('EQUIP_ITEM_SAVED', {'id': 'EQ-002', 'name': 'Long trailer', 'replace_year': '', 'replace_cost': ''})
     state['items'][6].update(replace_year=float(T.year + 4), replace_cost=5000.0)    # the tent also has a year bought and a useful life
@@ -352,7 +358,7 @@ def test_people_who_cannot_edit_see_no_controls(ops):
     ed, lou, state = ops
     state['note'] = 'Radios first.'
     for url in (f'{O}/', f'{O}/tasks', f'{O}/items', f'{O}/items?by=vehicles', f'{O}/items?by=place', f'{O}/items?by=category', f'{O}/items/EQ-001',
-                f'{O}/items/EQ-002', f'{O}/items/EQ-005', f'{O}/places/PL-001', f'{O}/money', f'{O}/money/replacement'):
+                f'{O}/items/EQ-002', f'{O}/items/EQ-005', f'{O}/places/PL-001', f'{O}/money', f'{O}/money/purchases', f'{O}/money/reserve'):
         seen = _main(_page(lou, url))
         assert not re.search(r'<(form|input|button|select|textarea)\b', seen), url
         assert not re.search(r'>\s*(Edit|Save|Change|Upload|Done|Remove|Take off the plan|Add an? [a-z -]+)\s*</(a|button)>', seen), url
@@ -366,7 +372,7 @@ def test_no_page_repeats_an_element_id_or_leaves_a_field_unnamed(ops):
     ed, lou, state = ops
     state['note'] = 'Radios first.'
     for url in (f'{O}/', f'{O}/tasks', f'{O}/items', f'{O}/items?by=vehicles', f'{O}/items?by=place', f'{O}/items?by=category&gone=1', f'{O}/items/EQ-001',
-                f'{O}/items/EQ-002', f'{O}/places/PL-001', f'{O}/money', f'{O}/money/replacement', f'{O}/tasks/TK-001', f'{O}/items/EQ-001?edit=1'):
+                f'{O}/items/EQ-002', f'{O}/places/PL-001', f'{O}/money', f'{O}/money/purchases', f'{O}/money/reserve', f'{O}/tasks/TK-001', f'{O}/items/EQ-001?edit=1'):
         html = _page(ed, url)
         ids = re.findall(r'\sid="([^"]+)"', html)
         assert len(ids) == len(set(ids)), (url, sorted(i for i in set(ids) if ids.count(i) > 1))

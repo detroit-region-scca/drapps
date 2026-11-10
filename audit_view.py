@@ -196,16 +196,16 @@ def _describe(log):
     if a == 'EQUIP_TASK_DONE':
         return Markup('{} marked done: {}{}').format(who, g('task', ''), f" (next due {g('next')})" if g('next') else '')
     if a == 'EQUIP_PLAN_SETTINGS':
-        return Markup('{} changed how soon an item has to be due to go in the Operations budget, on the {}').format(who, _link('equip.replacement', 'replacement plan'))
+        return Markup('{} changed how soon an item has to be due to go in the Operations budget, on the {}').format(who, _link('equip.purchases', 'replacement plan'))
     if a == 'EQUIP_PLAN_BOARD':
         after = g('after', {}) or {}
         try:
             amount = f"${float(after.get('monthly')):,.0f} a month"
         except (TypeError, ValueError):
             amount = 'an amount'
-        return Markup("{} recorded what the board puts in the reserve fund on the {}: {}").format(who, _link('equip.replacement', 'replacement plan'), amount)
+        return Markup("{} recorded what the board puts in the {}: {}").format(who, _link('equip.reserve', 'reserve fund'), amount)
     if a == 'EQUIP_PLAN_NOTE':
-        return Markup('{} {} the committee note on the {}').format(who, 'changed' if g('after') else 'removed', _link('equip.replacement', 'replacement plan'))
+        return Markup('{} {} the committee note on the {}').format(who, 'changed' if g('after') else 'removed', _link('equip.purchases', 'replacement plan'))
     if a == 'EQUIP_DOCS_FOLDER_MADE':
         return Markup('{} made a Drive folder for the documents of {}').format(who, g('name', ''))
     if a == 'EQUIP_DOCS_UPLOADED':
