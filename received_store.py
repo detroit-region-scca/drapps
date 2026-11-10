@@ -66,8 +66,8 @@ def _num(v):
 
 
 def _snapshot():
-    hit = _cache.get('snap')
-    if hit and hit[0] == C.version(_sid()):
+    hit, ver = _cache.get('snap'), C.version(_sid())      # the version first: a write during the read below must not look fresh
+    if hit and hit[0] == ver:
         return hit[1]
     try:
         res = C.batch_get(_sid(), [f"'{TAB}'!A:U", f"'{LINES_TAB}'!A:F"], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
@@ -82,7 +82,7 @@ def _snapshot():
     for ln in lines:
         ln['amount'] = _num(ln['amount'])
     snap = (reps, lines)
-    _cache['snap'] = (C.version(_sid()), snap)
+    _cache['snap'] = (ver, snap)
     return snap
 
 

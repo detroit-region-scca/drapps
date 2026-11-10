@@ -21,7 +21,7 @@ import sheet_cache as C
 REQ_COLS = ['id', 'submitted', 'status', 'event_code', 'event_name', 'program', 'submitter_name', 'submitter_email',
             'submitter_phone', 'submitter_address', 'payee_name', 'payee_address', 'payee_email', 'payee_phone', 'method',
             'total', 'advances', 'net', 'notes', 'receipts_url', 'entered_by', 'paid_date', 'paid_ref', 'paid_amount',
-            'closed_by', 'closed_note', 'approvals', 'notify']
+            'closed_by', 'closed_note', 'approvals', 'notify', 'filed_email']
 LINE_COLS = ['request_id', 'date', 'description', 'category', 'amount']
 NUMERIC = ('total', 'advances', 'net', 'paid_amount')
 CATEGORIES = ['Site Rental', 'Supplies', 'Professional Service', 'Storage', 'Travel Cost', 'Other']
@@ -50,10 +50,11 @@ def refresh():
 
 
 def _snapshot():
-    hit = _cache.get('snap')
-    if hit and hit[0] == C.version(os.environ['FUNDS_SHEET_ID']):
+    hit, ver = _cache.get('snap'), C.version(os.environ['FUNDS_SHEET_ID'])      # the version first: a write during the read below must not look fresh
+    if hit and hit[0] == ver:
         return hit[1]
-    res = C.batch_get(os.environ['FUNDS_SHEET_ID'], ['Requests!A:AB', 'Lines!A:E'],
+    # The whole Requests tab, not A:AC: a tab that does not have the newest column yet still reads.
+    res = C.batch_get(os.environ['FUNDS_SHEET_ID'], ["'Requests'", 'Lines!A:E'],
                                                                    params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], []]
     reqs = [dict(zip(REQ_COLS, [str(v) for v in r] + [''] * len(REQ_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
@@ -65,7 +66,7 @@ def _snapshot():
         ln['amount'] = _num(ln['amount'])
         ln['date'] = str(ln['date'])
     snap = (reqs, lines)
-    _cache['snap'] = (C.version(os.environ['FUNDS_SHEET_ID']), snap)
+    _cache['snap'] = (ver, snap)
     return snap
 
 
@@ -87,6 +88,27 @@ def get(req_id):
     if r:
         r = dict(r, lines=[ln for ln in lines if ln['request_id'] == req_id])
     return r
+
+
+def _col(n):
+    """Column letters for a 1-based column number (27 -> AA)."""
+    out = ''
+    while n:
+        n, r = divmod(n - 1, 26)
+        out = chr(65 + r) + out
+    return out
+
+
+def _heading(ws):
+    """Columns added later (filed_email) get their heading the first time a request is written; the tab is widened
+    first, or the write is refused."""
+    if not _cache.get('heading_ok'):
+        if ws.col_count < len(REQ_COLS):
+            ws.add_cols(len(REQ_COLS) - ws.col_count)
+        top = ws.row_values(1)
+        if len(top) < len(REQ_COLS):
+            ws.update([REQ_COLS[len(top):]], f'{_col(len(top) + 1)}1', value_input_option='RAW')
+        _cache['heading_ok'] = True
 
 
 def _next_id(year):
@@ -144,7 +166,9 @@ def create_once(req, lines, receipts, token=''):
         if token:      # recorded before the writes: a retry after a failure part-way finds this request, not a new number
             issued[token] = {'id': rid, 'at': time.time()}
             _save_issued(issued)
-        _ws('Requests').append_row([_cell(row.get(c, '')) for c in REQ_COLS], value_input_option='RAW')
+        ws = _ws('Requests')
+        _heading(ws)
+        ws.append_row([_cell(row.get(c, '')) for c in REQ_COLS], value_input_option='RAW')
         _ws('Lines').append_rows(_line_rows(rid, lines), value_input_option='RAW')
         refresh()
         return rid, False
@@ -168,6 +192,7 @@ def _change(req_id, change):
         cur = dict(zip(REQ_COLS, ['' if v is None else v for v in ws.row_values(row, value_render_option='UNFORMATTED_VALUE')] + [''] * len(REQ_COLS)))
         if change(cur) is False:
             return None
+        _heading(ws)
         for k in NUMERIC:
             cur[k] = _num(cur[k]) if cur[k] != '' else ''
         ws.update([[_cell(cur[c]) for c in REQ_COLS]], f'A{row}', value_input_option='RAW')

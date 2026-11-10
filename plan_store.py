@@ -6,6 +6,7 @@
   QBO Monthly     profit by program and month, this year and last      }
   QBO Status      bank balances and the worker points reserve          } tools/qbo_nightly.py,
   QBO Exceptions  things in the books the treasurer should look at     } read only here
+  QBO Bills       bills not paid in full yet (also nightly, read only here)
   Reviewed        exception keys the treasurer has looked at, so they stay hidden
 """
 import os
@@ -60,8 +61,8 @@ def _rows(values, cols):
 
 
 def _snapshot():
-    hit = _cache.get('snap')
-    if hit and hit[0] == C.version(os.environ['PLAN_SHEET_ID']):
+    hit, ver = _cache.get('snap'), C.version(os.environ['PLAN_SHEET_ID'])      # the version first: a write during the read below must not look fresh
+    if hit and hit[0] == ver:
         return hit[1]
     try:
         res = C.batch_get(os.environ['PLAN_SHEET_ID'], RANGES, params={'valueRenderOption': 'UNFORMATTED_VALUE'})
@@ -86,7 +87,7 @@ def _snapshot():
     reviewed = {str(r['key']): r for r in _rows(vr[5], ['key', 'reviewed', 'by', 'note'])}
     monthly = _rows(vr[6], ['year', 'program', 'month', 'net', 'as_of']) if len(vr) > 6 else []
     snap = (lines, progs, qbo, status, exc, reviewed, monthly)
-    _cache['snap'] = (C.version(os.environ['PLAN_SHEET_ID']), snap)
+    _cache['snap'] = (ver, snap)
     return snap
 
 
@@ -417,8 +418,8 @@ def clean_name(item, year=None):
 
 def outstanding():
     """Checks the bank has not cleared yet, as of the last sync: [{date, number, payee, amount, as_of}], oldest first."""
-    hit = _cache.get('outstanding')
-    if hit and hit[0] == C.version(os.environ['PLAN_SHEET_ID']):
+    hit, ver = _cache.get('outstanding'), C.version(os.environ['PLAN_SHEET_ID'])      # the version first: a write during the read below must not look fresh
+    if hit and hit[0] == ver:
         return hit[1]
     try:
         res = C.batch_get(os.environ['PLAN_SHEET_ID'], ["'QBO Outstanding'!A:E"], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
@@ -428,14 +429,14 @@ def outstanding():
     for r in rows:
         r['amount'], r['date'], r['number'] = _num(r['amount']) or 0.0, str(r['date']), str(r['number'])
     rows.sort(key=lambda r: r['date'])
-    _cache['outstanding'] = (C.version(os.environ['PLAN_SHEET_ID']), rows)
+    _cache['outstanding'] = (ver, rows)
     return rows
 
 
 def _mirror(title, cols, nums):
     """A whole QBO mirror tab as rows (empty before the first sync that writes it), cached on the sheet version."""
-    hit = _cache.get(title)
-    if hit and hit[0] == C.version(os.environ['PLAN_SHEET_ID']):
+    hit, ver = _cache.get(title), C.version(os.environ['PLAN_SHEET_ID'])      # the version first: a write during the read below must not look fresh
+    if hit and hit[0] == ver:
         return hit[1]
     try:
         res = C.batch_get(os.environ['PLAN_SHEET_ID'], [f"'{title}'!A:{chr(64 + len(cols))}"], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
@@ -445,7 +446,7 @@ def _mirror(title, cols, nums):
     for r in rows:
         for k in cols:
             r[k] = (_num(r[k]) or 0.0) if k in nums else str(r[k])
-    _cache[title] = (C.version(os.environ['PLAN_SHEET_ID']), rows)
+    _cache[title] = (ver, rows)
     return rows
 
 
@@ -461,6 +462,22 @@ def receivables():
     """Invoices still owed in QuickBooks as of the last sync, oldest first."""
     return sorted(_mirror('QBO Receivables', ['number', 'date', 'due', 'customer', 'total', 'balance', 'as_of'], {'total', 'balance'}),
                   key=lambda r: r['date'])
+
+
+BILL_COLS = ['id', 'date', 'vendor', 'total', 'balance', 'number', 'memo', 'lines', 'as_of']
+
+
+def bill_row(b, as_of):
+    """One exported QuickBooks bill as a 'QBO Bills' row; its lines as readable text (account / class / customer amount)."""
+    lines = '; '.join(' / '.join(x for x in (ln.get('account'), ln.get('class'), ln.get('customer')) if x) + f" {ln.get('amount') or 0:.2f}"
+                      for ln in b.get('lines') or [])
+    return [b.get('id', ''), b.get('date', ''), b.get('vendor', ''), b.get('total') or 0, b.get('balance') or 0, b.get('number', ''),
+            (b.get('memo') or '')[:300], lines[:1000], as_of]
+
+
+def bills():
+    """Bills not paid in full in QuickBooks as of the last sync ([] before the first sync that writes the tab)."""
+    return _mirror('QBO Bills', BILL_COLS, {'total', 'balance'})
 
 
 def accounts(program, years):

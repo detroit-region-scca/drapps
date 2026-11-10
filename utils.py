@@ -289,7 +289,7 @@ def request_qbo_refresh(who):
     now = datetime.now().astimezone()
     if s['pending'] and s['requested'] > (now - timedelta(minutes=10)).isoformat(timespec='seconds'):
         return False
-    tmp = QBO_REQUEST + '.tmp'
+    tmp = f'{QBO_REQUEST}.{os.getpid()}.{threading.get_ident()}.tmp'      # its own name: two clicks at once must not trip on each other
     with open(tmp, 'w') as f:
         json.dump({'at': now.isoformat(timespec='seconds'), 'by': who}, f)
     os.replace(tmp, QBO_REQUEST)

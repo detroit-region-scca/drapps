@@ -2,6 +2,7 @@
 {% from '_ui.html' import tab, money with context %}
 {% block body_class %}app-fr{% endblock %}
 {% block app_name %}Money{% endblock %}
+{% block page_title %}{{ {'list': 'Funds requests', 'new': 'New funds request', 'in_list': 'Money received', 'in_new': 'Report money received'}[view] if view in ('list', 'new', 'in_list', 'in_new') else (r.id if r else 'Approval') }}{% endblock %}
 {% block nav %}
     {% set money_in = request.endpoint.startswith('fr.in_') %}
     {{ tab('fr.home', 'Funds requests', not money_in and request.endpoint != 'fr.new') }}
@@ -64,9 +65,9 @@
                         {% set chosen_prog = form.get('program') or (chosen_ev.program_code if chosen_ev else '') %}
                         {% for code, name in programs.items() %}<option value="{{ code }}" {% if chosen_prog == code %}selected{% endif %}>{{ name }}</option>{% endfor %}
                     </select>
-                    <div class="form-text" id="approverNote" data-directors='{{ (directors or {})|tojson }}' data-signers="{{ (signers or [])|join(' or ') }}"></div></div>
+                    <div class="form-text" id="approverNote" data-directors='{{ (directors or {})|tojson }}' data-signers="{{ (signers or [])|join(' or ') }}" data-me="{{ me.name if me else '' }}"></div></div>
                 <div class="col-md-8"><label class="form-label" for="eventSel">Event</label>
-                    <select name="event_code" class="form-select" id="eventSel" data-chosen="{{ chosen or '' }}">
+                    <select name="event_code" class="form-select" id="eventSel" data-chosen="{{ chosen or '' }}" data-events='{{ (events_js or [])|tojson }}' data-program="progSel">
                         <option value="">Not for one event</option>
                     </select>
                     <div class="form-text">This year's and last year's events for the program, newest first.</div></div>
@@ -76,17 +77,17 @@
         <div class="card p-3 mb-3">
             <div class="section-label">Expenses</div>
             <div class="row g-2 d-none d-md-flex text-muted small mb-1"><div class="col-md-2">Date</div><div class="col-md-5">Description</div><div class="col-md-2">Category</div><div class="col-md-2 text-end">Amount</div></div>
-            <div id="lines">{% for ln in rows %}
-                <div class="row g-2 line mb-2 pb-2">
+            <div id="lines" data-lines data-focus="line_desc">{% for ln in rows %}
+                <div class="row g-2 line mb-2 pb-2" data-line>
                     <div class="col-6 col-md-2 order-1"><input type="date" name="line_date" class="form-control form-control-sm" value="{{ ln.date or '' }}" aria-label="Date"></div>
                     <div class="col-12 col-md-5 order-3 order-md-2"><input name="line_desc" class="form-control form-control-sm" placeholder="Track rental, cones, trophies…" value="{{ ln.description or '' }}" aria-label="Description"></div>
                     <div class="col-10 col-md-2 order-4 order-md-3"><select name="line_cat" class="form-select form-select-sm" aria-label="Category">{% for c in categories %}<option {% if ln.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
                     <div class="col-6 col-md-2 order-2 order-md-4"><input name="line_amount" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0.00" value="{{ ln.amount or '' }}" aria-label="Amount"></div>
-                    <div class="col-2 col-md-1 order-5 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)" aria-label="Remove line">✕</button></div>
+                    <div class="col-2 col-md-1 order-5 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" data-remove-line aria-label="Remove line">✕</button></div>
                 </div>{% endfor %}
             </div>
             <div class="d-flex flex-wrap align-items-center gap-3">
-                <button type="button" class="btn btn-outline-light btn-sm" onclick="addLine()">Add expense</button>
+                <button type="button" class="btn btn-outline-light btn-sm" data-add-line>Add expense</button>
                 <div class="ms-auto d-flex align-items-center gap-2"><label class="text-muted small text-nowrap" for="advances">Less paid in advance</label>
                     <input name="advances" id="advances" class="form-control form-control-sm text-end" style="width:7rem" inputmode="decimal" placeholder="0.00" value="{{ form.get('advances', '') }}"></div>
                 <div class="fs-5">Total <b id="total">$0.00</b></div>
@@ -258,7 +259,7 @@
                         {% for code, name in programs.items() %}<option value="{{ code }}" {% if chosen_prog == code %}selected{% endif %}>{{ name }}</option>{% endfor %}
                     </select></div>
                 <div class="col-md-6"><label class="form-label" for="eventSel">Event</label>
-                    <select name="event_code" class="form-select" id="eventSel" data-chosen="{{ chosen or '' }}"><option value="">Not from one event</option></select></div>
+                    <select name="event_code" class="form-select" id="eventSel" data-chosen="{{ chosen or '' }}" data-events='{{ (events_js or [])|tojson }}' data-program="progSel"><option value="">Not from one event</option></select></div>
                 <div class="col-md-3"><label class="form-label" for="received">Date received</label>
                     <input type="date" name="received" id="received" class="form-control" max="{{ today }}" value="{{ form.get('received') or today }}"></div>
             </div>
@@ -267,18 +268,18 @@
         <div class="card p-3 mb-3">
             <div class="section-label">What was taken in</div>
             <div class="row g-2 d-none d-md-flex text-muted small mb-1"><div class="col-md-4">What for</div><div class="col-md-2">Kind</div><div class="col-md-2">Cash or check</div><div class="col-md-2">Check #</div><div class="col-md-1 text-end">Amount</div></div>
-            <div id="lines">{% for ln in rows %}
-                <div class="row g-2 line mb-2 pb-2">
+            <div id="lines" data-lines>{% for ln in rows %}
+                <div class="row g-2 line mb-2 pb-2" data-line>
                     <div class="col-12 col-md-4"><input name="line_desc" class="form-control form-control-sm" placeholder="Gate, t-shirts, sponsor name…" value="{{ ln.description or '' }}" aria-label="What for"></div>
                     <div class="col-6 col-md-2"><select name="line_cat" class="form-select form-select-sm" aria-label="Kind">{% for c in rcats %}<option {% if ln.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
                     <div class="col-6 col-md-2"><select name="line_form" class="form-select form-select-sm" aria-label="Cash or check">{% for m in forms %}<option {% if ln.form == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
                     <div class="col-5 col-md-2"><input name="line_check" class="form-control form-control-sm{% if ln.form != 'Check' %} invisible{% endif %}" placeholder="Check #" value="{{ ln.check_number or '' }}" aria-label="Check number"></div>
                     <div class="col-5 col-md-1"><input name="line_amount" class="form-control form-control-sm text-end" inputmode="decimal" placeholder="0.00" value="{{ ln.amount or '' }}" aria-label="Amount"></div>
-                    <div class="col-2 col-md-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)" aria-label="Remove line">✕</button></div>
+                    <div class="col-2 col-md-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" data-remove-line aria-label="Remove line">✕</button></div>
                 </div>{% endfor %}
             </div>
             <div class="d-flex flex-wrap align-items-center gap-3">
-                <button type="button" class="btn btn-outline-light btn-sm" onclick="addLine()">Add line</button>
+                <button type="button" class="btn btn-outline-light btn-sm" data-add-line>Add line</button>
                 <div class="ms-auto text-muted small" id="split"></div>
                 <div class="fs-5">Total <b id="total">$0.00</b></div>
             </div>
@@ -377,55 +378,33 @@
     {% endif %}
 {% endblock %}
 {% block scripts %}
+{% include '_lines.html' %}
 <script>
     const lines = document.getElementById('lines');
-    const amt = v => parseFloat(String(v).replace(/[$,]/g, '')) || 0;
     function total() {
         if (!lines) return;
         let t = 0;
-        lines.querySelectorAll('[name=line_amount]').forEach(i => t += amt(i.value));
+        lines.querySelectorAll('[name=line_amount]').forEach(i => t += moneyNum(i.value));
         const adv = document.getElementById('advances');
-        if (adv) t -= amt(adv.value);
+        if (adv) t -= moneyNum(adv.value);
         const split = document.getElementById('split');
         if (split) {
             let cash = 0, chk = 0;
-            lines.querySelectorAll('.line').forEach(l => { const a = amt(l.querySelector('[name=line_amount]').value); if (l.querySelector('[name=line_form]').value === 'Check') chk += a; else cash += a; });
-            const f = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            split.textContent = (cash || chk) ? `Cash ${f(cash)} · Checks ${f(chk)}` : '';
+            lines.querySelectorAll('.line').forEach(l => { const a = moneyNum(l.querySelector('[name=line_amount]').value); if (l.querySelector('[name=line_form]').value === 'Check') chk += a; else cash += a; });
+            split.textContent = (cash || chk) ? `Cash ${moneyFmt(cash)} · Checks ${moneyFmt(chk)}` : '';
         }
-        document.getElementById('total').textContent = '$' + t.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('total').textContent = moneyFmt(t);
     }
-    function addLine() {
-        const tr = lines.querySelector('.line').cloneNode(true);
-        tr.querySelectorAll('input').forEach(i => i.value = '');
-        tr.querySelectorAll('select').forEach(x => x.selectedIndex = 0);
-        lines.appendChild(tr);
-        tr.querySelector('[name=line_desc]').focus();
-    }
-    function removeLine(btn) {
-        const tr = btn.closest('.line');
-        if (lines.querySelectorAll('.line').length > 1) tr.remove(); else tr.querySelectorAll('input').forEach(i => i.value = '');
-        total();
-    }
-    // Events for the picked program only (rebuilt rather than hidden: hidden options still show on iPhones).
-    const allEvents = {{ (events_js or [])|tojson }};
-    const progSel = document.getElementById('progSel'), evSel = document.getElementById('eventSel');
-    function fillEvents() {
-        if (!evSel) return;
-        const keep = evSel.value || evSel.dataset.chosen;
-        evSel.dataset.chosen = '';
-        evSel.innerHTML = `<option value="">${document.getElementById('inForm') ? 'Not from one event' : 'Not for one event'}</option>` + allEvents.filter(e => e.p === progSel.value).map(e =>
-            `<option value="${e.c}">${niceDate(e.d)} · ${e.n.replace(/[<>&"]/g, ch => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'})[ch])} ${e.c}</option>`).join('');
-        if (keep && allEvents.some(e => e.c === keep && e.p === progSel.value)) evSel.value = keep;
-    }
-    if (progSel) { progSel.addEventListener('change', fillEvents); fillEvents(); }
+    const progSel = document.getElementById('progSel');
     // Who will get the approval email, so the submitter knows who to nudge.
     const note = document.getElementById('approverNote');
     function showApprover() {
         if (!note || !progSel) return;
         const d = JSON.parse(note.dataset.directors || '{}')[progSel.value];
         note.className = 'form-text' + (progSel.value && !d ? ' text-warning' : '');
-        note.textContent = !progSel.value ? '' : d
+        const mine = d && note.dataset.me && d.trim().toLowerCase() === note.dataset.me.trim().toLowerCase();      // nobody approves their own
+        note.textContent = !progSel.value ? '' : mine && note.dataset.signers
+            ? `You direct this program, so the approval email goes to ${note.dataset.signers}.` : d
             ? `Approval email goes to ${d}` + (note.dataset.signers ? `. Over $2,500, also to ${note.dataset.signers} as second signer.` : '.')
             : 'No director is listed for this program, so no approval email can go out. Ask the admin to add one.';
     }

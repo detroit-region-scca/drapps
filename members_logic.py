@@ -74,6 +74,12 @@ def full_name(m):
     return f"{nice(m.get('first'))} {nice(m.get('last'))}".strip()
 
 
+def day_text(d):
+    """A date as people read it: 'Dec 5, 2026' (the same style as the pages' nice_date). '' for no date."""
+    d = to_date(d)
+    return f'{d:%b} {d.day}, {d.year}' if d else ''
+
+
 MAX_POINTS_PER_LINE = 50   # a typo guard: a 3-day event chair earns 12; a year's role points stay under 50
 
 
@@ -186,6 +192,65 @@ def candidates(name, members, limit=8):
         if mt and mt[-1] == last:
             out.append((0 if mt[0][:1] == first[:1] else 1, full_name(m).lower(), m))
     return [m for _, _, m in sorted(out, key=lambda x: (x[0], x[1]))][:limit]
+
+
+# Common short forms of first names, each with the names it stands for. Used only to decide whether two records of the
+# same last name are the same person; never to pick a member for the user.
+SHORT_NAMES = {
+    'al': ('albert', 'alan', 'allen', 'alfred'), 'alex': ('alexander', 'alexandra'), 'andy': ('andrew',), 'barb': ('barbara',),
+    'becky': ('rebecca',), 'beth': ('elizabeth',), 'betty': ('elizabeth',), 'bill': ('william',), 'billy': ('william',),
+    'bob': ('robert',), 'bobby': ('robert',), 'cathy': ('catherine',), 'chuck': ('charles',), 'charlie': ('charles',),
+    'chris': ('christopher', 'christine', 'christina'), 'dan': ('daniel',), 'danny': ('daniel',), 'dave': ('david',),
+    'deb': ('deborah', 'debra'), 'debbie': ('deborah', 'debra'), 'dick': ('richard',), 'don': ('donald',), 'doug': ('douglas',),
+    'ed': ('edward', 'edwin'), 'fred': ('frederick',), 'greg': ('gregory',), 'hank': ('henry',), 'jack': ('john',),
+    'jeff': ('jeffrey',), 'jen': ('jennifer',), 'jenny': ('jennifer',), 'jerry': ('gerald', 'jerome'), 'jim': ('james',),
+    'jimmy': ('james',), 'joe': ('joseph',), 'jon': ('jonathan',), 'kathy': ('katherine', 'kathleen'), 'kate': ('katherine',),
+    'katie': ('katherine',), 'ken': ('kenneth',), 'larry': ('lawrence',), 'liz': ('elizabeth',), 'matt': ('matthew',),
+    'meg': ('margaret',), 'mike': ('michael',), 'nick': ('nicholas',), 'pat': ('patrick', 'patricia'), 'patty': ('patricia',),
+    'peggy': ('margaret',), 'pete': ('peter',), 'phil': ('phillip', 'philip'), 'randy': ('randall',), 'rich': ('richard',),
+    'rick': ('richard',), 'rob': ('robert',), 'ron': ('ronald',), 'sam': ('samuel', 'samantha'), 'steve': ('steven', 'stephen'),
+    'sue': ('susan',), 'ted': ('theodore', 'edward'), 'terry': ('terrence', 'theresa'), 'tim': ('timothy',), 'tom': ('thomas',),
+    'tommy': ('thomas',), 'tony': ('anthony',), 'vicky': ('victoria',), 'will': ('william',), 'zach': ('zachary',),
+}
+
+
+def _first_match(a, b):
+    """Two first names that can be one person: the same, an initial of the other ("P" and "Pat"), one the start of the
+    other ("Rob" and "Robert"), or a common short form ("Bill" and "William")."""
+    if not a or not b:
+        return False
+    if a == b or (min(len(a), len(b)) == 1 and a[0] == b[0]):
+        return True
+    if min(len(a), len(b)) >= 3 and (a.startswith(b) or b.startswith(a)):
+        return True
+    return b in SHORT_NAMES.get(a, ()) or a in SHORT_NAMES.get(b, ()) or bool(set(SHORT_NAMES.get(a, ())) & set(SHORT_NAMES.get(b, ())))
+
+
+def same_person(a, b):
+    """Two records ({'first', 'last'}) loosely the same person: the same last name (suffixes ignored) and first names
+    that fit each other. A record with no first name fits nobody."""
+    la, lb = _plain(a.get('last')), _plain(b.get('last'))
+    fa, fb = _plain(a.get('first')).split(), _plain(b.get('first')).split()
+    return bool(la) and la == lb and bool(fa) and bool(fb) and _first_match(fa[0], fb[0])
+
+
+def review_labels(members):
+    """How members show on the review page to someone who is not the keeper: the name, never the SCCA number. Members
+    who share a name get the year they joined ("member since 2014") when that tells them apart, else the last two
+    digits of the number ("number ending 07")."""
+    groups = defaultdict(list)
+    for m in members:
+        groups[full_name(m).lower()].append(m)
+
+    def label(m):
+        same = groups.get(full_name(m).lower(), [])
+        if len(same) < 2:
+            return full_name(m)
+        year = m['joined'].year if m.get('joined') else None
+        if year and sum(1 for x in same if x.get('joined') and x['joined'].year == year) == 1:
+            return f'{full_name(m)} (member since {year})'
+        return f"{full_name(m)} (number ending {re.sub(r'[^0-9]', '', str(m['member']))[-2:]})"
+    return label
 
 
 def review_lines(lines, members, entries, event_code):
@@ -350,14 +415,19 @@ def lapse_status(m, hit, list_date):
 def merge_roster(members, report, list_date):
     """Members rows updated from the report: names and dates refreshed, new members added, everyone on it marked with
     the list date, and lapsed/rejoined kept up to date. Members not on it keep their row (and points). SCCA numbers
-    (500100_0, 500200_1) match the ledger's (500100, 500200-1); a family number falls back to its base number."""
+    (500100_0, 500200_1) match the ledger's (500100, 500200-1). A family number that is not on the report takes its base
+    number's dates only when the names also fit (one person listed under both forms); a spouse who left while the
+    primary stays is not on the list, and the primary keeps their own row."""
     by_canon = {canon(k): v for k, v in report.items()}
     out, seen = [], set()
     for m in members:
         c = canon(m['member'])
-        hit = by_canon.get(c) or by_canon.get(c.split('_')[0])
+        base = c.split('_')[0]
+        hit = by_canon.get(c)
+        if not hit and base != c and by_canon.get(base) and same_person(m, by_canon[base]):
+            hit = by_canon[base]
         if hit:
-            seen.add(c if c in by_canon else c.split('_')[0])
+            seen.add(c if c in by_canon else base)
             m = dict(m, joined=hit['joined'] or m.get('joined'), expires=hit['expires'] or m.get('expires'), listed=list_date)
             if c in by_canon:
                 m.update(first=hit['first'] or m['first'], last=hit['last'] or m['last'])
@@ -435,13 +505,13 @@ def books_email(bk, label, reserve=None, value=None):
         lines += ['Nothing to book: no points were earned or forfeited.', '']
     if bk['used']:
         lines.append('Points used (each paid by its own check or card charge; no journal entry):')
-        lines += [f"  {e['date']}: {e['name']}, {e['what']}, {-e['points']:g} points (${-e['points'] * POINT_VALUE:,.2f})" for e in bk['used']]
+        lines += [f"  {day_text(e['date'])}: {e['name']}, {e['what']}, {-e['points']:g} points (${-e['points'] * POINT_VALUE:,.2f})" for e in bk['used']]
         lines.append('')
     if reserve is not None and value is not None:
         diff = round(value - reserve, 2)
         lines.append('Worker points tie to the QuickBooks reserve.' if abs(diff) < 0.005 else
                      f'Worker points are ${diff:,.2f} off the QuickBooks reserve (${reserve:,.2f}) until these are booked.')
-    lines += ['', 'After booking, mark them reconciled in DRSCCA Apps > Members > QuickBooks.']
+    lines += ['', 'After entering them, mark them as entered in DRSCCA Apps > Members > QuickBooks.']
     return f'Worker points journal entries to book ({label})', '\n'.join(lines)
 
 

@@ -80,7 +80,7 @@ def home():
             d, label = L.parse(fl['name'])
             pub.append(dict(fl, when=d, label=label, year=y))
     pub.sort(key=lambda x: (x['when'] or date.min), reverse=True)
-    return render_template('minutes.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Minutes", kinds=L.KINDS,
+    return render_template('minutes.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Minutes", page_title='Minutes', kinds=L.KINDS,
                            drafts=S.drafts(), published=pub, public_url=S.public_folder_url(), private_url=S.private_folder_url())
 
 

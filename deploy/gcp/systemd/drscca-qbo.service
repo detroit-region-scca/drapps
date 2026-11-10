@@ -3,6 +3,8 @@ OnFailure=drscca-alert@%n.service
 Description=DRSCCA apps: nightly QuickBooks sync (its only write: receipts onto paid checks)
 [Service]
 Type=oneshot
+# A job stuck this long is stopped and counts as failed, so the alert email goes out.
+TimeoutStartSec=30min
 User=drapps
 Group=drapps
 WorkingDirectory=/opt/drscca/app

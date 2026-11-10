@@ -361,8 +361,9 @@ def add_receipts(req_id):
 @bp.post('/funds/<req_id>/approve')
 def approve_funds(req_id):
     """{"role": "chair"|"second"}: approve as the key's owner, who must be the person the website would ask: the
-    program's director for chair, the RE or ARE for second signer. Board approval is a vote, recorded with
-    /board/record."""
+    program's director for chair, the RE or ARE for second signer. Nobody approves a request they are the payee or
+    submitter of; when that is the director, the RE or ARE approves as chair in their place. Board approval is a vote,
+    recorded with /board/record."""
     import fr
     d = _body()
     role = d.get('role', 'chair')
@@ -374,9 +375,15 @@ def approve_funds(req_id):
     if not r:
         return _err('Funds request not found.', 404)
     me = g.api_user['email']
-    if role == 'chair' and me != O.director_email(r['program']):
+    if FL.on_request(r, g.api_user['name'], [me]):
+        return _err(f'You are the payee or the submitter of {req_id}, so you cannot approve it. Someone else has to.', 403)
+    signer = any(o.get('role') in ('RE', 'ARE') and (o.get('email') or '').strip().lower() == me for o in O.all())
+    if role == 'chair' and fr.approval_plan(r)['stand_in']:
+        if not signer:
+            return _err('The director is the payee or submitter of this request, so only the RE or ARE can approve it as chair.', 403)
+    elif role == 'chair' and me != O.director_email(r['program']):
         return _err(f"Only the {r['program']} program director can approve this as chair.", 403)
-    if role == 'second' and not any(o.get('role') in ('RE', 'ARE') and (o.get('email') or '').strip().lower() == me for o in O.all()):
+    if role == 'second' and not signer:
         return _err('Only the RE or ARE can approve as second signer.', 403)
     token = fr._serializer().dumps({'id': req_id, 'role': role, 'name': g.api_user['name'], 'email': me})
     st, loc, fl = _forward(f'/funds/approve/{token}', {'action': 'approve'})

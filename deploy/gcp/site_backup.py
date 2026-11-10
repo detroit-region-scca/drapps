@@ -23,9 +23,8 @@ from google.oauth2 import service_account
 
 SITE = 'https://drscca.org'
 SA = os.environ.get('WORKSPACE_SA') or '/opt/drscca/data/secrets/workspace-sa.json'
-# The DRSCCA Region shared drive. Set REGION_DRIVE_ID in drapps.env; this default keeps a server whose drapps.env
-# does not have it yet working.
-REGION_DRIVE = os.environ.get('REGION_DRIVE_ID') or '0AOGLnEtgl5aCUk9PVA'
+# The DRSCCA Region shared drive: REGION_DRIVE_ID in drapps.env (the id is not kept in this public repo).
+REGION_DRIVE = os.environ.get('REGION_DRIVE_ID') or ''
 PARENT = 'Website Archive'
 FOLDER = 'Weekly site backups'
 KEEP = 8
@@ -55,6 +54,8 @@ def everything(kind):
 
 
 def main():
+    if not REGION_DRIVE:
+        sys.exit('REGION_DRIVE_ID is not set in drapps.env: no website copy was made.')
     parts = {k: everything(k) for k in ('pages', 'posts', 'categories', 'tags', 'media')}
     if len(parts['pages']) < 10 or len(parts['posts']) < 10:
         sys.exit(f"Too little came back (pages {len(parts['pages'])}, posts {len(parts['posts'])}); not replacing a good backup.")

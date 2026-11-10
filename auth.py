@@ -149,14 +149,24 @@ ENDPOINT_PERMS = {
 
 
 def owns_request(r):
+    """Whoever filed it: by the signed-in address kept on the request (filed_email), or, for a request from before
+    that was kept, by the submitter address or the name it was entered under."""
     u = user()
-    return bool(u and r and ((r.get('submitter_email') or '').strip().lower() == u['email']
-                             or (r.get('entered_by') or '').strip().lower() == u['name'].lower()))
+    if not (u and r):
+        return False
+    filed = (r.get('filed_email') or '').strip().lower()
+    if u['email'] in (filed, (r.get('submitter_email') or '').strip().lower()):      # filed it, or it was filed for them
+        return True
+    return not filed and (r.get('entered_by') or '').strip().lower() == u['name'].lower()
 
 
 def owns_invoice(inv):
+    """Whoever created it: by the signed-in address kept on the invoice, or by name for one from before that was kept."""
     u = user()
-    return bool(u and inv and (inv.get('created_by') or '').strip().lower() == u['name'].lower())
+    if not (u and inv):
+        return False
+    filed = (inv.get('filed_email') or '').strip().lower()
+    return filed == u['email'] if filed else (inv.get('created_by') or '').strip().lower() == u['name'].lower()
 
 
 # ---------- every request ----------
@@ -376,8 +386,17 @@ def verify():
         if _ip_blocked(ip):
             flash('Too many wrong codes were typed from this network. Wait an hour and try again.', 'danger')
             return redirect(url_for('auth.verify', next=nxt or None))
+        try:
+            # Looked up first: when Google Sheets is down the code is not used up, and it works on the next try.
+            u = lookup(email)
+            down = not u and _vols['failed']      # "not on a list" cannot be told from "the list could not be read"
+        except Exception as e:
+            logging.error(f"Sign-in lookup failed, the code was not used: {e}")
+            u, down = None, True
+        if down:
+            flash('Google Sheets did not answer, so you are not signed in yet. Your code is still good: try again in a moment.', 'warning')
+            return redirect(url_for('auth.verify', next=nxt or None))
         ok = _check(email, request.form.get('code'), ip)     # checked whether or not the address is on a list
-        u = lookup(email)
         if u and ok:
             session.clear()
             session.permanent = True
@@ -472,21 +491,23 @@ def _vol_ws():
 def set_volunteer(email, name=None, note='', by=''):
     """Add or update (name given) or remove (name None) a volunteer on the Volunteers tab. Returns what changed."""
     email = (email or '').strip().lower()
-    ws = _vol_ws()
-    col = [c.strip().lower() for c in ws.col_values(1)]
-    out = ''
-    if name is None:
-        if email in col:
-            ws.delete_rows(col.index(email) + 1)
-            out = 'removed'
-    elif email in col:
-        ws.update([[email, name]], f'A{col.index(email) + 1}', value_input_option='RAW')
-        out = 'updated'
-    else:
-        ws.append_row([email, name, (note or '')[:200], date.today().isoformat(), by], value_input_option='RAW', table_range='A1')
-        out = 'added'
-    store._cache.pop('volunteers', None)
-    store._invalidate()
+    from filelock import FileLock
+    with FileLock(os.path.join(DATA_DIR, 'volunteers.lock')):      # two changes at once must not act on each other's row numbers
+        ws = _vol_ws()
+        col = [c.strip().lower() for c in ws.col_values(1)]
+        out = ''
+        if name is None:
+            if email in col:
+                ws.delete_rows(col.index(email) + 1)
+                out = 'removed'
+        elif email in col:
+            ws.update([[email, name]], f'A{col.index(email) + 1}', value_input_option='RAW')
+            out = 'updated'
+        else:
+            ws.append_row([email, name, (note or '')[:200], date.today().isoformat(), by], value_input_option='RAW', table_range='A1')
+            out = 'added'
+        store._cache.pop('volunteers', None)
+        store._invalidate()
     return out
 
 

@@ -250,7 +250,7 @@ def test_use_that_date_works_for_an_event_found_by_its_code(monkeypatch, tmp_pat
     monkeypatch.setattr(bud, 'log_audit_event', lambda *a, **k: None)
     c = _client(monkeypatch, {'events'})
     c.post('/events/event/%23C/msr-date')
-    assert saved == ['2027-05-08'] and 'Date set to 2027-05-08' in _flashes(c)
+    assert saved == ['2027-05-08'] and 'Date set to May 8, 2027' in _flashes(c)
 
 
 def test_only_money_roles_can_hide_a_books_check_row(monkeypatch):

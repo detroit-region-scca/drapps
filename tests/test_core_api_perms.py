@@ -12,6 +12,8 @@ REQS = [
      'submitter_email': 'rx@example.org', 'entered_by': 'Rae Director', 'approvals': ''},
     {'id': 'FR-2', 'status': 'Submitted', 'program': 'AX', 'event_code': '', 'submitted': '2026-10-02', 'net': 75.0,
      'submitter_email': 'someone@example.org', 'entered_by': 'Sam Other', 'approvals': ''},
+    {'id': 'FR-3', 'status': 'Submitted', 'program': 'RX', 'event_code': '', 'submitted': '2026-10-03', 'net': 20.0,
+     'submitter_email': 'someone@example.org', 'entered_by': 'Sam Other', 'approvals': ''},
 ]
 
 
@@ -72,7 +74,7 @@ def test_key_carries_its_owners_session_not_an_officers(client):
 def test_limited_owner_lists_only_their_own_requests(client):
     assert [r['id'] for r in client.get('/api/v1/funds', headers=key('rx@example.org')).json] == ['FR-1']
     assert client.get('/api/v1/funds/FR-2', headers=key('rx@example.org')).status_code == 404
-    assert [r['id'] for r in client.get('/api/v1/funds', headers=key('treasurer@example.org')).json] == ['FR-1', 'FR-2']
+    assert [r['id'] for r in client.get('/api/v1/funds', headers=key('treasurer@example.org')).json] == ['FR-1', 'FR-2', 'FR-3']
 
 
 def test_audit_needs_the_permission_and_survives_a_bad_limit(client, monkeypatch):
@@ -88,9 +90,20 @@ def test_audit_needs_the_permission_and_survives_a_bad_limit(client, monkeypatch
 def test_chair_approval_only_from_that_programs_director(client):
     r = client.post('/api/v1/funds/FR-2/approve', json={'role': 'chair'}, headers=key('rx@example.org'))     # an AX request
     assert r.status_code == 403 and not client.sent
+    r = client.post('/api/v1/funds/FR-3/approve', json={'role': 'chair'}, headers=key('treasurer@example.org'))
+    assert r.status_code == 403 and not client.sent
+    r = client.post('/api/v1/funds/FR-3/approve', json={'role': 'chair'}, headers=key('re@example.org'))    # the director is not on it
+    assert r.status_code == 403 and not client.sent
+    r = client.post('/api/v1/funds/FR-3/approve', json={'role': 'chair'}, headers=key('rx@example.org'))
+    assert r.status_code == 200 and client.sent[-1].startswith('/funds/approve/')
+
+
+def test_nobody_approves_their_own_request_by_api(client):
+    r = client.post('/api/v1/funds/FR-1/approve', json={'role': 'chair'}, headers=key('rx@example.org'))     # the director filed FR-1
+    assert r.status_code == 403 and 'payee or the submitter' in r.json['error'] and not client.sent
     r = client.post('/api/v1/funds/FR-1/approve', json={'role': 'chair'}, headers=key('treasurer@example.org'))
     assert r.status_code == 403 and not client.sent
-    r = client.post('/api/v1/funds/FR-1/approve', json={'role': 'chair'}, headers=key('rx@example.org'))
+    r = client.post('/api/v1/funds/FR-1/approve', json={'role': 'chair'}, headers=key('re@example.org'))     # the RE stands in
     assert r.status_code == 200 and client.sent[-1].startswith('/funds/approve/')
 
 

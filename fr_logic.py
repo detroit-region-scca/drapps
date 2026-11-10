@@ -14,8 +14,10 @@ A "ready|DRSCCA Apps|date|" entry records the day a request first had everything
 as passed: once the treasurer enters the bill in QuickBooks, the sync adds it to the event's spending and the open
 request would otherwise be counted twice (FR-2026-113: $9,600 in QuickBooks plus the same $9,600 still open).
 
-Approvals come from an emailed link sent to the official's address in the read-only officials list (fr.py). A
-director who files a request for their own program, signed in as themselves, has approved it by filing it.
+Approvals come from an emailed link sent to the official's address in the read-only officials list (fr.py).
+Nobody approves their own money: whoever filed a request, or is named on it as submitter or payee, cannot give its
+director or second signer approval (on_request, who_approves). When that is the director, the RE or ARE approves in
+their place; a director filing for their own program no longer approves it by filing.
 """
 import re
 
@@ -47,6 +49,17 @@ def add(text, role, name, day, note=''):
     return '; '.join(filter(None, [(text or '').strip(), '|'.join([role, clean(name), str(day), clean(note)])]))
 
 
+def nice_date(d):
+    """'2026-11-09' -> 'Nov 9, 2026' for text people read (as app.nice_date, kept here so this module needs no app);
+    anything else is given back as it is."""
+    from datetime import datetime
+    try:
+        d = datetime.strptime(str(d)[:10], '%Y-%m-%d')
+        return f'{d.strftime("%b")} {d.day}, {d.year}'
+    except ValueError:
+        return d or ''
+
+
 def _words(name):
     return re.findall(r'[a-z]+', (name or '').lower())
 
@@ -57,6 +70,79 @@ def same_person(a, b):
     if len(wa) < 2 or len(wb) < 2 or wa[-1] != wb[-1]:
         return False
     return wa[0].startswith(wb[0]) or wb[0].startswith(wa[0])
+
+
+def on_request(r, name='', emails=()):
+    """True when this person is the payee or the submitter of the request: one of their addresses filed it or is on it
+    as submitter or payee, or their name is on it exactly (ignoring case and punctuation). Not a loose match: two
+    relatives with like names are two people, and a loose match could leave a request nobody may approve."""
+    mine = {(e or '').strip().lower() for e in emails} - {''}
+    theirs = {(r.get(k) or '').strip().lower() for k in ('filed_email', 'submitter_email', 'payee_email')}
+    if mine & theirs:
+        return True
+    names = [r.get(k) or '' for k in ('submitter_name', 'payee_name', 'entered_by')]
+    me = _words(name)
+    return bool(me) and any(_words(n) == me for n in names)
+
+
+def who_approves(r, director, signers):
+    """Who may give each approval, leaving out anyone who is the payee or submitter (on_request).
+    director: {'name', 'mail', 'emails'} or None; signers: the RE and ARE, the same shape (mail: where their link goes,
+    emails: every address that is theirs). Returns {'chair': [...], 'second': [...], 'stand_in': bool, 'note': {key: text}}.
+    stand_in: the director is on the request, so the RE or ARE gives the director approval. note: a plain line for an
+    approval that works differently here, or that nobody can give."""
+    free = [s for s in signers if not on_request(r, s['name'], s.get('emails', ()))]
+    out = {'chair': [director] if director and director.get('mail') else [], 'second': free, 'stand_in': False, 'note': {}}
+    both = 'the RE and the ARE are both the payee or submitter of this request, so neither can approve it. Someone else has to file it'
+    if director and on_request(r, director['name'], director.get('emails', ())):
+        out['chair'], out['stand_in'] = free, True
+        out['note']['chair'] = ('the director is the payee or submitter, so the RE or ARE approves instead' if free else
+                                both if signers else 'the director is the payee or submitter and no RE or ARE is in the officials list')
+    if signers and not free:
+        out['note']['second'] = both
+    elif len(free) < len(signers):
+        out['note']['second'] = f"{' or '.join(s['name'] for s in free)} only: the other is the payee or submitter"
+    return out
+
+
+def explain(items, plan):
+    """Add who_approves' notes to the labels of the approvals still missing."""
+    for i in items:
+        if not i['done'] and i['key'] in plan['note']:
+            i['label'] += f" ({plan['note'][i['key']]})"
+    return items
+
+
+_COMPANY = {'llc', 'inc', 'co', 'corp', 'ltd', 'the', 'company', 'and'}
+
+
+def same_payee(a, b):
+    """A loose match of two payee names, a person or a business: same_person, or one name's words are all in the other
+    ("Example Rentals" and "Example Rentals LLC", "Sample, Sam" and "Sam Sample")."""
+    if same_person(a, b):
+        return True
+    wa, wb = set(_words(a)) - _COMPANY, set(_words(b)) - _COMPANY
+    return bool(wa and wb and (wa <= wb or wb <= wa))
+
+
+def billed(others, bills, code=''):
+    """The open requests among `others` whose bill is already in QuickBooks, as a set of ids: an unpaid bill of the same
+    amount to the cent whose vendor matches the payee (same_payee) and which is booked to the same place: for an
+    event (code), a line on that event's QuickBooks project; for a program's own spending (no code), no line on any
+    event project. Each bill is used once. Such a request is already in the QuickBooks spending being checked, so the
+    overrun check must not add it again. Anything less certain is not matched, and the request counts in full."""
+    def same_place(b):
+        lines = str(b.get('lines') or '')
+        return code in lines if code else '#DR' not in lines
+    left, out = list(bills or []), set()
+    for x in sorted(others, key=lambda x: x.get('id') or ''):
+        cents = round((x.get('net') or 0) * 100)
+        hit = next((b for b in left if round((b.get('total') or 0) * 100) == cents
+                    and (b.get('vendor') or '').strip() and same_payee(b['vendor'], x.get('payee_name')) and same_place(b)), None)
+        if hit:
+            left.remove(hit)
+            out.add(x['id'])
+    return out
 
 
 def is_points(r):
@@ -79,7 +165,7 @@ def review(r, budget_status=None, budget_expense=None, spent=0.0, scope='event',
     got = {}
     for a in parse(r.get('approvals')):
         got.setdefault(a['role'], a)
-    by = lambda a: f"{a['name']}, {a['date']}" + (f" ({a['note']})" if a['note'] else '')  # noqa: E731
+    by = lambda a: f"{a['name']}, {nice_date(a['date'])}" + (f" ({a['note']})" if a['note'] else '')  # noqa: E731
     items = []
 
     def item(key, label, done, who=''):
@@ -104,7 +190,7 @@ def review(r, budget_status=None, budget_expense=None, spent=0.0, scope='event',
             within = spent + net <= cap + 0.005
             frozen = ready_on(r.get('approvals'))
             item('overrun', f'Within 110% of budgeted expenses (${spent + net:,.2f} of ${cap:,.2f})', within or board or frozen,
-                 by(board) if board and not within else f'within budget when every approval was in, {frozen}' if frozen and not within else '')
+                 by(board) if board and not within else f'within budget when every approval was in, {nice_date(frozen)}' if frozen and not within else '')
     if net > SECOND_SIGNER_LIMIT:
         s = got.get('second')
         item('second', f'Second signer, over ${SECOND_SIGNER_LIMIT:,.0f} (RE or ARE)', s, by(s) if s else '')
@@ -131,7 +217,7 @@ def closed_message(r, link=''):
     for_ = r.get('event_name') or f"program {r.get('program', '')}"
     if r['status'] == 'Paid':
         ref, amt = r.get('paid_ref') or '', float(r.get('paid_amount') or r.get('net') or 0)
-        how = (f"{ref} for ${amt:,.2f}" if ref else f"${amt:,.2f}") + (f" on {r['paid_date']}" if r.get('paid_date') else '')
+        how = (f"{ref} for ${amt:,.2f}" if ref else f"${amt:,.2f}") + (f" on {nice_date(r['paid_date'])}" if r.get('paid_date') else '')
         to = ('it is on its way to you' if r.get('method') == 'Reimburse me' else
               'the region card was charged' if 'card' in ref.lower() else f"it goes to {r.get('payee_name') or 'the payee'}")
         body = [f"Your funds request {what} ({for_}) has been paid: {how}; {to}."]

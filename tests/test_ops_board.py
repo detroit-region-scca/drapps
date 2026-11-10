@@ -59,7 +59,7 @@ def test_recording_from_the_waiting_list_twice_records_once(env):
     form = {'item': 'motion:M-2026-009', 'decided': '2026-11-05', 'result': 'passed', 'how': 'meeting', 'vote': '8-0'}
     c.post('/board/', data=form)
     assert len(env['recorded']) == 1 and env['motions']['M-2026-009']['status'] == 'passed'
-    assert 'Recorded for 2026-11-05' in _flashes(c)
+    assert 'Recorded for Nov 5, 2026' in _flashes(c)
     c.post('/board/', data=form)                         # the double click, or a second officer
     assert len(env['recorded']) == 1
 

@@ -3,6 +3,8 @@ OnFailure=drscca-alert@%n.service
 Description=DRSCCA apps: apply officials-list changes (officials.json)
 [Service]
 Type=oneshot
+# A job stuck this long is stopped and counts as failed, so the alert email goes out.
+TimeoutStartSec=10min
 WorkingDirectory=/opt/drscca/app
 EnvironmentFile=/opt/drscca/data/secrets/drapps.env
 Environment=OFFICIALS_HOST=/opt/drscca/data/secrets/officials.json

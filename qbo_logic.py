@@ -7,6 +7,8 @@ so program actuals come straight from the region profit and loss. Everything tha
 import re
 from datetime import date, timedelta
 
+import fr_logic
+
 OPS = 'OPS'
 MATCH_WINDOW_DAYS = 10      # a check can be dated a little before the request was filed (paid at the event)
 AMOUNT_SLACK = 1.00         # requests are sometimes rounded on the check
@@ -124,7 +126,7 @@ def match_funds(requests, payments):
             p, ln = hits[0]
             card_left = [x for x in card_left if x is not hits[0]]
             out.append((r, {'paid_date': p['date'], 'paid_ref': card_ref(p['id']), 'paid_amount': ln['amount'],
-                            'note': f"Matched to the {p['date']} card statement line \"{ln['description'][:60]}\""}))
+                            'note': f"Matched to the {fr_logic.nice_date(p['date'])} card statement line \"{ln['description'][:60]}\""}))
     return out
 
 

@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% from '_ui.html' import nice_month with context %}
 {% block app_name %}Events{% endblock %}
+{% block page_title %}Add event{% endblock %}
 {% block nav %}{% include '_events_nav.html' %}{% endblock %}
 {% block content %}
         <div class="crumbs"><a href="{{ url_for('bud.home') }}">Events</a> / Add event</div>

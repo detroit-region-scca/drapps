@@ -124,7 +124,7 @@ on the newer commit until then, so follow it with a revert and a deploy.
 Server-only changes (secrets, `officials.json` by hand) are made on the server, never in git; restart with
 `sudo docker compose restart drapps` in `/opt/drscca`.
 
-The app runs under gunicorn with 2 workers and a 120 second limit per request
+The app runs under gunicorn with 2 workers of 4 threads each; calls to Google give up after 110 seconds
 (`deploy/gcp/docker-compose.yml`).
 
 ## Automatic jobs
@@ -239,7 +239,7 @@ adds to new files, then reads back who can open the file. If that is anyone but 
 and the job fails, so an email goes out naming who else can open it. Either fix the folder's sharing, or, if
 those people are meant to have access, list them in `BACKUP_READERS` in `drapps.env` (comma separated, admin@
 included). The folder and the region drive are `ACCOUNT_RECOVERY_FOLDER_ID` and `REGION_DRIVE_ID` in
-`drapps.env`; if they are not set there, the scripts use the ids built into them.
+`drapps.env`; without them the backup jobs stop with a message saying which one is missing (and the alert email goes out).
 
 **Restoring the app's own files.** Download `drapps app state (nightly).tar.gz` (for an older night: right
 click > File information > Manage versions), unpack it, and copy the files you need into

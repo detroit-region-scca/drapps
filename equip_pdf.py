@@ -234,7 +234,7 @@ def build(items, places, tasks, docs=None, today=None, region='Detroit Region SC
         ('Vehicles', str(sum(1 for i in big if i['category'] == 'Vehicle')), f"and {sum(1 for i in big if i['category'] == 'Trailer')} trailers",
          f'{len(replace_soon)} due for replacement by {today.year + 1}' if replace_soon else 'none due for replacement soon', AMBER if replace_soon else None),
         ('Save for replacements', money(rp['monthly']), 'a month', f"from {rp['start_label']}", None)])
-    attention = [[t['due'], t['task'], 'Overdue to-do' + (f": {t['about']}" if t['about'] else '')] for t in overdue]
+    attention = [[E.nice_date(t['due']), t['task'], 'Overdue to-do' + (f": {t['about']}" if t['about'] else '')] for t in overdue]
     attention += [[str(lcs[i['id']]['replace']), i['name'], 'Due for replacement'] for i in replace_soon]
     if docs_missing:
         attention.append(['', f'{docs_missing} documents missing', f'{docs_total - docs_missing} of {docs_total} are in Drive; see Documents'])
@@ -246,7 +246,7 @@ def build(items, places, tasks, docs=None, today=None, region='Detroit Region SC
                for b in bills if b['id'] in auto and (b['every'] or 0) > 1 and t_iso <= _roll(b, t_iso) <= month
                and not (b.get('ends') and _roll(b, t_iso) > b['ends'])]
     p.h2(f'Next {NEXT_DAYS} days')
-    p.grid(['Date', 'What', 'Kind', 'Amount'], sorted(coming), (14, 44, 30, 12), ['LEFT', 'LEFT', 'LEFT', 'RIGHT'])
+    p.grid(['Date', 'What', 'Kind', 'Amount'], [[E.nice_date(r[0])] + r[1:] for r in sorted(coming)], (14, 44, 30, 12), ['LEFT', 'LEFT', 'LEFT', 'RIGHT'])
 
     # 2. To do -----------------------------------------------------------------------------------------------------
     p.h1(next(n), 'To do', 'Things someone has to do. Bills that charge the card on their own are under Bills.')
@@ -258,7 +258,7 @@ def build(items, places, tasks, docs=None, today=None, region='Detroit Region SC
         p.h2(f'{name} ({len(rows)})', color or NAVY)
         rows = sorted(rows, key=lambda t: (t['due'] or '9999', t['task']))
         p.grid(['Due', 'To do', 'For', 'Who', 'How often', 'Cost'],
-               [[t['due'] or '', t['task'], t['about'], t['owner'], E.every_label(t['repeat_months']) if t['repeat_months'] else 'Once',
+               [[E.nice_date(t['due']), t['task'], t['about'], t['owner'], E.every_label(t['repeat_months']) if t['repeat_months'] else 'Once',
                  money(t['cost']) if t['cost'] else ''] for t in rows],
                (12, 38, 19, 12, 10, 9), ['LEFT'] * 5 + ['RIGHT'])
 
@@ -274,7 +274,7 @@ def build(items, places, tasks, docs=None, today=None, region='Detroit Region SC
     for c, bs in sorted(cats.items(), key=lambda kv: -sum(b['per_year'] for b in kv[1])):
         p.h2(f"{c}: {money(sum(b['per_year'] for b in bs))} a year")
         p.grid(['What', 'How often', 'Next', 'Paid by', 'Each', 'A year'],
-               [[b['what'], E.every_label(b['every']), _roll(b, t_iso) if b['id'] in auto else (b['next'] or ''), b['paid_how'] or '',
+               [[b['what'], E.every_label(b['every']), E.nice_date(_roll(b, t_iso) if b['id'] in auto else (b['next'] or '')), b['paid_how'] or '',
                  money(b['each'], 2 if b['each'] and b['each'] % 1 else 0), money(b['per_year'])] for b in bs],
                (38, 12, 13, 17, 10, 10), ['LEFT'] * 4 + ['RIGHT', 'RIGHT'])
 

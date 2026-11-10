@@ -41,7 +41,12 @@ def _ctx(**kw):
                pick_label=L.pick_label, ledger_url=S.members_sheet_url(), current_perms=sorted(_me().get('perms') or ()),
                structure=L.POINT_STRUCTURE, entry_key=L.entry_key)
     ctx.update(kw)
+    ctx.setdefault('page_title', PAGE_TITLES.get(ctx.get('view'), ''))      # the browser tab: the page's own name
     return ctx
+
+
+PAGE_TITLES = {'home': 'Members', 'enter': 'Add points', 'review': 'Check and save', 'log': 'Points log', 'use': 'Use points',
+               'auto': 'Auto add', 'quickbooks': 'QuickBooks', 'milestones': 'Service Awards'}
 
 
 def _labels(mem):
@@ -118,9 +123,15 @@ def home():
     t = date.today()
     open_value = round(sum(e['points'] for e in L.unreconciled(ent)) * L.POINT_VALUE, 2)
     lists = [m['listed'] for m in mem if m.get('listed')]
-    return render_template('members.html', **_ctx(view='home', members=mem, total=total, reserve=reserve, open_value=open_value,
+    latest = max(lists) if lists else None
+    # The list starts with current members and anyone with points; ?all=1 adds everyone who was ever a member.
+    show_all = request.args.get('all') == '1' or not latest
+    shown = mem if show_all else [m for m in mem if abs(m['points']) > 0.004 or m.get('life')
+                                  or (m.get('listed') == latest and not (m.get('expires') and m['expires'] < t))]
+    return render_template('members.html', **_ctx(view='home', members=shown, n_all=len(mem), show_all=show_all,
+                                                  find=request.args.get('q', '').strip(), total=total, reserve=reserve, open_value=open_value,
                                                   lapsed=L.lapsed(mem, t), token=secrets.token_urlsafe(16),
-                                                  latest_list=max(lists) if lists else None, list_url=S.list_folder_url(),
+                                                  latest_list=latest, list_url=S.list_folder_url(),
                                                   sheet_url=S.members_sheet_url(), scca_reports=SCCA_REPORTS))
 
 
@@ -134,7 +145,7 @@ def member(mid):
         flash('Member not found.', 'warning')
         return redirect(url_for('members.home'))
     hist = sorted([e for e in S.entries() if e['member'] == mid], key=lambda e: (e['date'] or date.min, e['row']), reverse=True)
-    return render_template('members.html', **_ctx(view='member', m=m, hist=hist))
+    return render_template('members.html', **_ctx(view='member', m=m, hist=hist, page_title=L.full_name(m)))
 
 
 @bp.route('/enter', methods=['GET', 'POST'])
@@ -211,9 +222,11 @@ def _read_sheet(up):
 
 
 def _relabel(rows, mem):
-    """The review page's "who is this?" choices, labelled the way this person sees the name pickers (_labels)."""
-    label, by_id = _labels(mem), {m['member']: m for m in mem}
+    """The review page's names. The keeper sees SCCA numbers. Everyone else sees names only; members who share a name
+    are told apart by the year they joined, or the last two digits of the number (L.review_labels)."""
+    label, by_id = (L.pick_label if _keeper() else L.review_labels(mem)), {m['member']: m for m in mem}
     for r in rows:
+        r['member_label'] = label(by_id[r['member']]) if r['member'] else ''
         for c in r['candidates']:
             c['label'] = label(by_id[c['member']])
     return rows
@@ -391,7 +404,7 @@ def forfeit():
         bal = L.balances(entries)
         cands = L.lapsed([dict(m, points=bal.get(m['member'], 0.0)) for m in S.members()], date.today())
         rows[:] = [{'date': date.today(), 'member': m['member'], 'name': L.full_name(m), 'points': -m['points'], 'event': '', 'kind': 'Forfeit',
-                    'what': f"Forfeit: membership lapsed ({'expired ' + m['expires'].isoformat() if m.get('expires') else 'not on the SCCA member list'})"}
+                    'what': f"Forfeit: membership lapsed ({'expired ' + L.day_text(m['expires']) if m.get('expires') else 'not on the SCCA member list'})"}
                    for m in cands]
         return rows, []
     n, problems = S.save_checked(build, _who(), request.form.get('token', ''))
@@ -432,7 +445,8 @@ def milestones():
                         new.append([month, ' '.join(line.split()), y, ''])
         S.save_milestones(month, new)
         log_audit_event('MILESTONES_SAVED', _who(), {'month': month, 'names': len(new)})
-        flash(f'{month}: {len(new)} names saved. Click Review and publish to open the draft.' if new else f'Removed {month}.', 'success')
+        label = date(int(month[:4]), int(month[5:]), 1).strftime('%B %Y')
+        flash(f'{label}: {len(new)} names saved. Click Review and publish to open the draft.' if new else f'Removed {label}.', 'success')
         return redirect(url_for('members.milestones', month=month))
     norm = lambda g: {k: sorted(x.lower() for x in v) for k, v in g.items() if v}
     lists = [m['listed'] for m in mem if m.get('listed')]
@@ -489,7 +503,7 @@ def use():
 
 
 def send_books(who='DRSCCA Apps'):
-    """Email the treasurer the journal entry for everything not yet reconciled. Used by the button and on the 1st."""
+    """Email the treasurer the entry for QuickBooks: everything not yet marked as entered there. Used by the button and on the 1st."""
     from utils import send_mail
     open_entries = L.unreconciled(S.entries())
     if not open_entries:
@@ -499,7 +513,7 @@ def send_books(who='DRSCCA Apps'):
     st = _reserve()
     value = round(sum(m['points'] for m in S.members()) * L.POINT_VALUE, 2)
     first, last = min(e['date'] for e in open_entries), max(e['date'] for e in open_entries)
-    subject, body = L.books_email(bk, f"{first:%-m/%-d/%Y} to {last:%-m/%-d/%Y}", st and st['amount'], value)
+    subject, body = L.books_email(bk, L.day_text(first) if first == last else f"{L.day_text(first)} to {L.day_text(last)}", st and st['amount'], value)
     send_mail(subject, body, recipient=os.environ.get('NOTIFICATION_EMAIL', 'treasurer@drscca.org'))
     log_audit_event('POINTS_BOOKS_EMAILED', who, {'entries': len(open_entries), 'journal_entries': len(jes)})
     return len(open_entries)
@@ -508,26 +522,27 @@ def send_books(who='DRSCCA Apps'):
 @bp.route('/quickbooks', methods=['GET', 'POST'])
 @login_required
 def quickbooks():
-    """Entries not yet booked in QuickBooks, the journal entry for them, and marking them reconciled."""
+    """Points entries not yet entered in QuickBooks, the entry for QuickBooks that covers them, and marking them entered."""
     if (g := _guard(keeper=True)):
         return g
     if request.method == 'POST':
         f = request.form
         if f.get('action') == 'email':
             n = send_books(_who())
-            flash(f'Emailed the journal entry for {n} entries to the treasurer.' if n else 'Nothing to book.', 'success')
+            flash(f'Emailed the entry for QuickBooks to the treasurer ({n} points entries).' if n else 'Nothing to enter in QuickBooks.', 'success')
             return redirect(url_for('members.quickbooks'))
         rows = [int(x) for x in f.getlist('row') if x.isdigit()]
         ref = f.get('ref', '').strip()
         if not rows:
-            flash('Tick the entries that are booked.', 'warning')
+            flash('Tick the entries that are entered in QuickBooks.', 'warning')
             return redirect(url_for('members.quickbooks'))
-        label = f"{L.to_date(f.get('booked')) or date.today()}" + (f' {ref}' if ref else '')
+        booked = L.to_date(f.get('booked')) or date.today()
+        label = f'{booked}' + (f' {ref}' if ref else '')      # kept in the sheet's Reconciled column as it always was
         # key<row>: what each ticked entry was when the page was made, so a row that moved in the sheet is not marked by mistake
         done, left = S.mark_reconciled(rows, label, {n: f.get(f'key{n}', '') for n in rows})
         if done:
             log_audit_event('POINTS_RECONCILED', _who(), {'entries': len(done), 'ref': label})
-            flash(f'Marked {len(done)} entries reconciled ({label}).', 'success')
+            flash(f"Marked {len(done)} {'entry' if len(done) == 1 else 'entries'} as entered in QuickBooks ({L.day_text(booked)}{' ' + ref if ref else ''}).", 'success')
         if left:
             flash(f"{left} ticked {'entry was' if left == 1 else 'entries were'} left alone: the Points sheet changed since this page was loaded "
                   '(or they are already marked). Check the list below and tick them again.', 'warning')

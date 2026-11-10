@@ -352,7 +352,9 @@
         <div class="col-md-6"><label class="form-label small">Account in the name of / paid how</label><input name="account_holder" class="form-control" value="{{ p.account_holder or '' }}"></div>
         <div class="col-12"><label class="form-label small">Access (who has keys; ask the treasurer for gate codes, don't write them here)</label><input name="access" class="form-control" value="{{ p.access or '' }}"></div>
         <div class="col-12"><label class="form-label small">Notes</label><textarea name="notes" class="form-control" rows="3">{{ p.notes or '' }}</textarea></div>
-        <div class="col-12"><label class="form-label small">Checked against QuickBooks (start with Matches, Corrected, Estimate or Differs)</label><input name="qbo_check" class="form-control" value="{{ p.qbo_check or '' }}"></div>
+        {% set qw, qn = qbo_split(p.qbo_check) %}<div class="col-12"><label class="form-label small">Checked against QuickBooks</label>
+            <div class="row g-2"><div class="col-sm-4 col-md-3"><select name="qbo_word" class="form-select" aria-label="Checked against QuickBooks"><option value="">Not checked</option>{% for w in qbo_words %}<option {{ 'selected' if w == qw }}>{{ w }}</option>{% endfor %}</select></div>
+            <div class="col-sm-8 col-md-9"><input name="qbo_note" class="form-control" value="{{ qn }}" aria-label="Note" placeholder="Note (optional)"></div></div></div>
     </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ back or url_for('equip.items') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
     {% else %}
     <div class="card p-3 mb-3">
@@ -405,7 +407,9 @@
         <div class="col-md-6"><label class="form-label small">QuickBooks account (puts it in the Operations budget)</label><input name="account" class="form-control" list="acctNames" value="{{ t.account or '' }}">
             <datalist id="acctNames">{% for a in accounts %}<option value="{{ a }}">{% endfor %}</datalist></div>
         <div class="col-6 col-md-3"><label class="form-label small">Ends (last charge)</label><input type="date" name="ends" class="form-control" value="{{ t.ends or '' }}"><div class="form-text">Blank = keeps going. Budgets leave it out after this date.</div></div>
-        <div class="col-12"><label class="form-label small">Checked against QuickBooks (start with Matches, Corrected, Estimate or Differs)</label><input name="qbo_check" class="form-control" value="{{ t.qbo_check or '' }}"></div>
+        {% set qw, qn = qbo_split(t.qbo_check) %}<div class="col-12"><label class="form-label small">Checked against QuickBooks</label>
+            <div class="row g-2"><div class="col-sm-4 col-md-3"><select name="qbo_word" class="form-select" aria-label="Checked against QuickBooks"><option value="">Not checked</option>{% for w in qbo_words %}<option {{ 'selected' if w == qw }}>{{ w }}</option>{% endfor %}</select></div>
+            <div class="col-sm-8 col-md-9"><input name="qbo_note" class="form-control" value="{{ qn }}" aria-label="Note" placeholder="Note (optional)"></div></div></div>
     </div><div class="d-flex gap-2 justify-content-end mt-3"><a class="btn btn-outline-secondary" href="{{ back or url_for('equip.costs' if bill else 'equip.tasks') }}">Cancel</a><button class="btn btn-accent">Save</button></div></form>
 
     {% elif view == 'plan' %}

@@ -117,8 +117,8 @@ def _date_text(v):
 
 
 def _snapshot():
-    hit = _cache.get('snap')
-    if hit and hit[0] == C.version(os.environ['OPERATIONS_SHEET_ID']):
+    hit, ver = _cache.get('snap'), C.version(os.environ['OPERATIONS_SHEET_ID'])      # the version first: a write during the read below must not look fresh
+    if hit and hit[0] == ver:
         return hit[1]
     res = C.batch_get(os.environ['OPERATIONS_SHEET_ID'], [f"'{t}'!A:Z" for t in TABS],
                                                                      params={'valueRenderOption': 'UNFORMATTED_VALUE'})
@@ -129,7 +129,7 @@ def _snapshot():
             for k in cols:
                 r[k] = _num(r[k]) if k in NUMERIC else _date_text(r[k]) if k in DATES else str(r[k])
         snap[title] = rows
-    _cache['snap'] = (C.version(os.environ['OPERATIONS_SHEET_ID']), snap)
+    _cache['snap'] = (ver, snap)
     return snap
 
 
@@ -172,8 +172,8 @@ def _plan_cfg(rows):
 def plan_settings():
     """The replacement plan's rules (PLAN_DEFAULTS until someone saves them)."""
     sid = os.environ['OPERATIONS_SHEET_ID']
-    hit = _cache.get('plan')
-    if hit and hit[0] == C.version(sid):
+    hit, ver = _cache.get('plan'), C.version(sid)      # the version first: a write during the read below must not look fresh
+    if hit and hit[0] == ver:
         return hit[1]
     try:
         res = C.batch_get(sid, [f"'{PLAN_TAB}'!A:B"], params={'valueRenderOption': 'UNFORMATTED_VALUE'})
@@ -181,7 +181,7 @@ def plan_settings():
     except Exception:            # no tab yet: the defaults
         rows = []
     cfg = _plan_cfg(rows)
-    _cache['plan'] = (C.version(sid), cfg)
+    _cache['plan'] = (ver, cfg)
     return cfg
 
 
@@ -236,6 +236,32 @@ def save(tab, row, changed=None, expect=None):
             ws.update([[_cell(out.get(c)) for c in cols]], f'A{n}', value_input_option='RAW')
         refresh()
         return row['id']
+
+
+QBO_WORDS = ('Matches', 'Corrected', 'Estimate', 'Differs')      # what "Checked against QuickBooks" can say
+
+
+def qbo_split(text):
+    """The "Checked against QuickBooks" cell as the form shows it: (word, note). The cell is "<Word>: note" or just
+    "<Word>"; older free text that starts with one of the words reads the same way, and anything else is all note."""
+    s = str(text or '').strip()
+    m = re.match(r'(%s)(?![A-Za-z0-9])[\s:;,.-]*' % '|'.join(QBO_WORDS), s)
+    return (m.group(1), s[m.end():].strip()) if m else ('', s)
+
+
+def qbo_join(word, note):
+    """The cell from the form's two fields: "<Word>: note", "<Word>", or the note alone when no word is picked."""
+    word, note = (word if word in QBO_WORDS else ''), ' '.join(str(note or '').split())
+    return f'{word}: {note}' if word and note else word or note
+
+
+def nice_date(d):
+    """'2026-12-05' -> 'Dec 5, 2026' for text people read (the pages' nice_date style); anything else as it is."""
+    try:
+        d = date.fromisoformat(str(d)[:10])
+        return f'{d:%b} {d.day}, {d.year}'
+    except ValueError:
+        return d or ''
 
 
 def norm(v):

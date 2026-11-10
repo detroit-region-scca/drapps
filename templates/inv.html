@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% from '_ui.html' import tab, money with context %}
 {% block app_name %}Invoices{% endblock %}
+{% block page_title %}{{ {'list': 'Invoices', 'new': 'New invoice'}[view] if view in ('list', 'new') else (('Delete ' if view == 'delete' else '') ~ (inv.id if inv else 'invoice')) }}{% endblock %}
 {% block nav %}
     {{ tab('inv.home', 'Invoices', request.endpoint != 'inv.new') }}
     {{ tab('inv.new', 'New invoice') }}
@@ -35,7 +36,7 @@
             <div class="col-md-4"><label class="form-label" for="progSel">Program</label>
                 <select name="program" id="progSel" class="form-select" required><option value="">Select…</option>{% for c, n in programs.items() %}<option value="{{ c }}" {{ 'selected' if form.get('program') == c }}>{{ n }}</option>{% endfor %}</select></div>
             <div class="col-md-8"><label class="form-label" for="eventSel">Event (optional)</label>
-                <select name="event_code" id="eventSel" class="form-select" data-chosen="{{ form.get('event_code', '') }}"><option value="">Not for one event</option></select></div>
+                <select name="event_code" id="eventSel" class="form-select" data-chosen="{{ form.get('event_code', '') }}" data-events='{{ (events or [])|tojson }}' data-program="progSel"><option value="">Not for one event</option></select></div>
         </div></div>
         <div class="card p-3 mb-3"><div class="section-label">Bill to</div><div class="row g-2">
             <div class="col-md-6"><input name="bill_name" class="form-control mb-2" aria-label="Company or person" placeholder="Company or person" required value="{{ form.get('bill_name', '') }}">
@@ -45,13 +46,13 @@
         </div></div>
         <div class="card p-3 mb-3"><div class="section-label">Lines</div>
             <div class="row g-2 text-muted small mb-1 d-none d-md-flex"><div class="col-md-7">Description</div><div class="col-3 col-md-1 text-end">Qty</div><div class="col-6 col-md-3 text-end">Price</div></div>
-            <div id="lines">{% for r in rows %}
-            <div class="row g-2 mb-2 line"><div class="col-12 col-md-7"><input name="desc" class="form-control" aria-label="Description" placeholder="e.g. 2027 Solo series sponsorship" value="{{ r.description or '' }}"></div>
+            <div id="lines" data-lines>{% for r in rows %}
+            <div class="row g-2 mb-2 line" data-line><div class="col-12 col-md-7"><input name="desc" class="form-control" aria-label="Description" placeholder="e.g. 2027 Solo series sponsorship" value="{{ r.description or '' }}"></div>
                 <div class="col-3 col-md-1"><input name="qty" class="form-control text-end" inputmode="decimal" aria-label="Quantity" placeholder="Qty" value="{{ r.quantity if r.quantity is string else ('%g'|format(r.quantity) if r.quantity else '') }}"></div>
                 <div class="col-6 col-md-3"><input name="price" class="form-control text-end" inputmode="decimal" aria-label="Price" placeholder="Price" value="{{ r.unit_price or '' }}"></div>
-                <div class="col-3 col-md-1 d-flex align-items-center"><a href="#" class="text-muted text-decoration-none" onclick="dropLine(this); return false;" aria-label="Remove line">✕</a></div></div>{% endfor %}
+                <div class="col-3 col-md-1 d-flex align-items-center"><a href="#" class="text-muted text-decoration-none" data-remove-line aria-label="Remove line">✕</a></div></div>{% endfor %}
             </div>
-            <div class="d-flex justify-content-between align-items-center"><button type="button" class="btn btn-sm btn-outline-light" onclick="addLine()">Add a line</button><div class="fw-semibold">Total <span id="total">$0.00</span></div></div>
+            <div class="d-flex justify-content-between align-items-center"><button type="button" class="btn btn-sm btn-outline-light" data-add-line>Add a line</button><div class="fw-semibold">Total <span id="total">$0.00</span></div></div>
         </div>
         <div class="card p-3 mb-3"><div class="row g-2">
             <div class="col-md-3"><label class="form-label">Due</label><input type="date" name="due" class="form-control" value="{{ due }}"><div class="form-text">Blank = 30 days</div></div>
@@ -117,33 +118,14 @@
     {% endif %}
 {% endblock %}
 {% block scripts %}
+{% include '_lines.html' %}
 <script>
     const form = document.getElementById('invForm');
-    if (form) {
-        const allEvents = {{ (events or [])|tojson }};
-        const progSel = document.getElementById('progSel'), evSel = document.getElementById('eventSel');
-        function fillEvents() {
-            const keep = evSel.value || evSel.dataset.chosen; evSel.dataset.chosen = '';
-            evSel.innerHTML = '<option value="">Not for one event</option>' + allEvents.filter(e => e.p === progSel.value).map(e =>
-                `<option value="${e.c}">${niceDate(e.d)} · ${e.n.replace(/[<>&"]/g, ch => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'})[ch])} ${e.c}</option>`).join('');
-            if (keep && allEvents.some(e => e.c === keep && e.p === progSel.value)) evSel.value = keep;
-        }
-        // Coming from an event page: pick its program first.
-        const pre = allEvents.find(e => e.c === evSel.dataset.chosen);
-        if (pre && !progSel.value) progSel.value = pre.p;
-        progSel.addEventListener('change', fillEvents); fillEvents();
-        const num = v => parseFloat(String(v).replace(/[$,]/g, '')) || 0;
-        window.total = () => {
-            let t = 0; form.querySelectorAll('.line').forEach(r => t += (num(r.querySelector('[name=qty]').value) || 1) * num(r.querySelector('[name=price]').value));
-            document.getElementById('total').textContent = '$' + t.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        };
-        // The last line is emptied, not removed, so Add a line always has one to copy.
-        window.dropLine = a => { const r = a.closest('.line');
-            if (form.querySelectorAll('.line').length > 1) r.remove(); else r.querySelectorAll('input').forEach(i => i.value = '');
-            total(); };
-        window.addLine = () => { const box = document.getElementById('lines'); const r = box.querySelector('.line').cloneNode(true);
-            r.querySelectorAll('input').forEach(i => i.value = ''); box.appendChild(r); r.querySelector('[name=desc]').focus(); };
-        form.addEventListener('input', total); total();
+    function total() {
+        let t = 0;
+        form.querySelectorAll('.line').forEach(r => t += (moneyNum(r.querySelector('[name=qty]').value) || 1) * moneyNum(r.querySelector('[name=price]').value));
+        document.getElementById('total').textContent = moneyFmt(t);
     }
+    if (form) { form.addEventListener('input', total); total(); }
 </script>
 {% endblock %}

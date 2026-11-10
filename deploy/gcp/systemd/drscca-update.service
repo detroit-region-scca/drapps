@@ -4,4 +4,6 @@ OnFailure=drscca-alert@%n.service
 After=docker.service
 [Service]
 Type=oneshot
+# A job stuck this long is stopped and counts as failed, so the alert email goes out.
+TimeoutStartSec=3h
 ExecStart=/opt/drscca/app/deploy/gcp/update.sh

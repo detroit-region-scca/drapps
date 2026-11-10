@@ -35,8 +35,9 @@ def check():
 
 
 def stamp(resp):
-    """after_request: put the token into every POST form of an HTML page."""
-    if resp.mimetype != 'text/html' or resp.direct_passthrough or resp.status_code >= 300:
+    """after_request: put the token into every POST form of an HTML page, including a form shown again with an error
+    (status 400): without it, sending the corrected form would be refused and what was typed lost."""
+    if resp.mimetype != 'text/html' or resp.direct_passthrough or 300 <= resp.status_code < 400:
         return resp
     html = resp.get_data(as_text=True)
     if '<form' not in html.lower():

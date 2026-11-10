@@ -1,0 +1,45 @@
+{# Shared by the money forms: funds request, money received, invoice, budget, annual plan.
+   Lines: rows marked data-line in a box marked data-lines. A data-add-line button in the same card copies the box's
+   first row, emptied, and focuses the field named in the box's data-focus (else the row's first field). A
+   data-remove-line control in a row removes it; the last row is emptied instead, so there is always one to copy.
+   The page hears "line-added" and "line-emptied" on the row for anything of its own, and "input" to redo its totals.
+   Event picker: <select data-events='[{c, d, n, p}]' data-program="id of the program select"> lists the picked
+   program's events (rebuilt rather than hidden: hidden options still show on iPhones). #}
+<script>
+function moneyNum(v) { return parseFloat(String(v).replace(/[$,]/g, '')) || 0; }
+function moneyFmt(v, places = 2) { return (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', {minimumFractionDigits: places, maximumFractionDigits: places}); }
+(function () {
+    document.addEventListener('click', e => {
+        const add = e.target.closest('[data-add-line]'), del = e.target.closest('[data-remove-line]');
+        if (add) {
+            const box = add.closest('.card').querySelector('[data-lines]'), row = box.querySelector('[data-line]').cloneNode(true);
+            row.querySelectorAll('input').forEach(i => i.value = '');
+            row.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
+            box.appendChild(row);
+            row.dispatchEvent(new CustomEvent('line-added', {bubbles: true}));
+            (row.querySelector(`[name="${box.dataset.focus}"]`) || row.querySelector('input')).focus();
+        } else if (del) {
+            e.preventDefault();
+            const row = del.closest('[data-line]'), box = row.closest('[data-lines]');
+            if (box.querySelectorAll('[data-line]').length > 1) row.remove();
+            else { row.querySelectorAll('input').forEach(i => i.value = ''); row.dispatchEvent(new CustomEvent('line-emptied', {bubbles: true})); }
+            box.dispatchEvent(new Event('input', {bubbles: true}));
+        }
+    });
+    const esc = t => String(t).replace(/[<>&"]/g, ch => ({'<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;'})[ch]);
+    document.querySelectorAll('select[data-events]').forEach(evSel => {
+        const all = JSON.parse(evSel.dataset.events), prog = document.getElementById(evSel.dataset.program), blank = evSel.options[0].outerHTML;
+        function fill() {
+            const keep = evSel.value || evSel.dataset.chosen;
+            evSel.dataset.chosen = '';
+            evSel.innerHTML = blank + all.filter(e => e.p === prog.value).map(e => `<option value="${esc(e.c)}">${niceDate(e.d)} · ${esc(e.n)} ${e.c}</option>`).join('');
+            if (keep && all.some(e => e.c === keep && e.p === prog.value)) evSel.value = keep;
+        }
+        // Coming from an event page: pick its program first.
+        const pre = all.find(e => e.c === evSel.dataset.chosen);
+        if (pre && !prog.value) prog.value = pre.p;
+        prog.addEventListener('change', fill);
+        fill();
+    });
+})();
+</script>

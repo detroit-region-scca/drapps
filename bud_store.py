@@ -68,8 +68,8 @@ def _read_cell(col, v):
 
 
 def _snapshot():
-    hit = _cache.get('snap')
-    if hit and hit[0] == C.version(os.environ['BUDGETS_SHEET_ID']):
+    hit, ver = _cache.get('snap'), C.version(os.environ['BUDGETS_SHEET_ID'])      # the version first: a write during the read below must not look fresh
+    if hit and hit[0] == ver:
         return hit[1]
     # The whole Budgets tab, not A:O: a tab that does not have the newest column yet still reads.
     try:
@@ -101,7 +101,7 @@ def _snapshot():
         exp = sum(ln['amount'] for ln in q['lines'] if ln['section'] == 'Expense')
         q['totals'] = {'income': round(inc, 2), 'expense': round(exp, 2), 'surplus': round(inc - exp, 2)}
     snap = (buds, lines, qbo)
-    _cache['snap'] = (C.version(os.environ['BUDGETS_SHEET_ID']), snap)
+    _cache['snap'] = (ver, snap)
     return snap
 
 

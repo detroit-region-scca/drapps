@@ -3,6 +3,8 @@ Description=DRSCCA apps: nightly copy of the app's own files (audit log, correct
 OnFailure=drscca-alert@%n.service
 [Service]
 Type=oneshot
+# A job stuck this long is stopped and counts as failed, so the alert email goes out.
+TimeoutStartSec=15min
 # ACCOUNT_RECOVERY_FOLDER_ID and BACKUP_READERS, when set in drapps.env.
 EnvironmentFile=-/opt/drscca/data/secrets/drapps.env
 ExecStart=/opt/drscca/venv/bin/python /opt/drscca/app/deploy/gcp/secrets_backup.py --state

@@ -23,9 +23,15 @@ SOON_DAYS = 90
 NEXT_DAYS = 30  # the Overview's coming-up window
 
 
+PAGE_TITLES = {'home': 'Overview', 'vehicles': 'Vehicles', 'where': 'Gear', 'items': 'Gear by category', 'documents': 'Documents',
+               'tasks': 'To do', 'costs': 'Bills', 'plan': 'Replacement'}
+
+
 def _ctx(**kw):
+    kw.setdefault('page_title', PAGE_TITLES.get(kw.get('view'), ''))      # the browser tab: the page's or the record's name
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Operations", editor=session.get('equip_editor'),
-                categories=E.CATEGORIES, statuses=E.STATUSES, cost_categories=E.COST_CATEGORIES, every_label=E.every_label, accounts=E.ACCOUNTS, budget_year=budget_year(), **kw)
+                categories=E.CATEGORIES, statuses=E.STATUSES, cost_categories=E.COST_CATEGORIES, every_label=E.every_label, accounts=E.ACCOUNTS, budget_year=budget_year(),
+                qbo_words=E.QBO_WORDS, qbo_split=E.qbo_split, **kw)
 
 
 def budget_year():
@@ -72,6 +78,26 @@ def _changed(f, cols, base_row):
     if not isinstance(base, dict):
         return set(sent)
     return {k for k in sent if E.norm(f.get(k, '')) != E.norm(base.get(k, ''))}
+
+
+def _qbo_check(f, row, current):
+    """The "Checked against QuickBooks" dropdown and note, put together into the row's qbo_check. True when the person
+    changed it; left alone, the cell keeps exactly what it had (older free text is not rewritten)."""
+    if 'qbo_word' not in f and 'qbo_note' not in f:
+        return False
+    import json
+    try:
+        base = json.loads(f.get('_base') or 'null')
+    except ValueError:
+        base = None
+    was = (base if isinstance(base, dict) else current or {}).get('qbo_check', '')
+    word, note = E.qbo_split(was)
+    new = E.qbo_join(f.get('qbo_word', ''), f.get('qbo_note', ''))
+    if new == E.qbo_join(word, note):
+        row['qbo_check'] = (current or {}).get('qbo_check', '')
+        return False
+    row['qbo_check'] = new
+    return True
 
 
 def _diff(before, after):
@@ -221,7 +247,7 @@ def item(item_id=None):
         return editor_required(lambda: None)()
     lc = E.lifecycle(it) if item_id else None
     tasks = [t for t in E.tasks() if it and t['about'] == it.get('name')]
-    return render_template('equip.html', **_ctx(view='item', it=it, lc=lc, edit=edit, locations=_location_names(), tasks=tasks,
+    return render_template('equip.html', **_ctx(view='item', page_title=it.get('name') or 'New item', it=it, lc=lc, edit=edit, locations=_location_names(), tasks=tasks,
                                                 docs=_docs_for(it['id'], it.get('category'), it.get('name', '')) if it and it.get('id') and not edit else None, today=date.today().isoformat()))
 
 
@@ -244,7 +270,7 @@ def _save_item(it):
         return redirect(url_for('equip.item', item_id=it['id']))
     if f.get('action') in ('remove', 'restore'):
         gone = f['action'] == 'remove'
-        stamp = f"{'Removed' if gone else 'Put back'} {date.today().isoformat()} by {_who()}."
+        stamp = f"{'Removed' if gone else 'Put back'} {E.nice_date(date.today().isoformat())} by {_who()}."
         row.update(status='Gone' if gone else 'In use', notes=((row.get('notes') or '') + '\n' + stamp).strip(),
                    updated=date.today().isoformat(), updated_by=_who())
         E.save('Property', row, changed=_diff(it, row))
@@ -381,7 +407,7 @@ def place(place_id=None):
         return editor_required(lambda: None)()
     held = [i for i in E.items() if p and i['place'] == p.get('name') and i['status'] != 'Gone']
     back = request.args.get('back', '')
-    return render_template('equip.html', **_ctx(view='place', p=p, edit=edit, held=held, back=local_path(back),
+    return render_template('equip.html', **_ctx(view='place', page_title=p.get('name') or 'New place', p=p, edit=edit, held=held, back=local_path(back),
                                                 docs=_docs_for(p['id'], 'place', p.get('name', '')) if p and p.get('id') and not edit else None))
 
 
@@ -406,7 +432,8 @@ def _save_place(p):
         flash('Give the place a name.', 'danger')
         return redirect(request.url)
     row.update(updated=date.today().isoformat(), updated_by=_who())
-    pid = E.save('Storage', row, changed=None if not row.get('id') else _changed(f, E.PLACE_COLS, p) | {'updated', 'updated_by'})
+    qbo = {'qbo_check'} if _qbo_check(f, row, p) else set()
+    pid = E.save('Storage', row, changed=None if not row.get('id') else _changed(f, E.PLACE_COLS, p) | {'updated', 'updated_by'} | qbo)
     log_audit_event('EQUIP_PLACE_SAVED', _who(), {'id': pid, 'name': row['name']})
     flash(f"Saved {row['name']}.", 'success')
     back = f.get('back', '')
@@ -450,8 +477,9 @@ def task(task_id=None):
         return editor_required(lambda: None)()
     names = sorted({i['name'] for i in E.items() if i['category'] in ('Vehicle', 'Trailer')} | {p['name'] for p in E.places()})
     back = request.args.get('back', '')
-    return render_template('equip.html', **_ctx(view='task', t=t, names=names, frequencies=E.FREQUENCIES, back=local_path(back),
-                                                bill=request.args.get('bill') == '1' or bool(t.get('cost'))))
+    bill = request.args.get('bill') == '1' or bool(t.get('cost'))
+    return render_template('equip.html', **_ctx(view='task', page_title=t.get('task') or ('New bill' if bill else 'New to-do'), t=t, names=names,
+                                                frequencies=E.FREQUENCIES, back=local_path(back), bill=bill))
 
 
 @editor_required
@@ -477,7 +505,7 @@ def _save_task(t):
             flash(f"{t['task']} was already marked done. Nothing was changed.", 'info')
             return redirect(back)
         log_audit_event('EQUIP_TASK_DONE', _who(), {'id': t['id'], 'task': t['task'], 'next': nxt})
-        flash(f"Marked done: {t['task']}." + (f" Next due {nxt}." if nxt else ''), 'success')
+        flash(f"Marked done: {t['task']}." + (f" Next due {E.nice_date(nxt)}." if nxt else ''), 'success')
         back = f.get('back', '')
         return redirect(local_path(back) or url_for('equip.tasks'))
     for k in E.TASK_COLS:
@@ -489,6 +517,8 @@ def _save_task(t):
         flash('Say what has to be done.', 'danger')
         return redirect(request.url)
     ch = _changed(f, E.TASK_COLS, t) - {'auto'}
+    if _qbo_check(f, row, t):
+        ch.add('qbo_check')
     if 'auto' in f and E.norm(row.get('auto')) != E.norm((t or {}).get('auto')):
         ch.add('auto')
     tid = E.save('Recurring costs and to-dos', row, changed=None if not row.get('id') else ch)

@@ -124,7 +124,7 @@ def new():
     inv, again = I.create({'program': program, 'event_code': f.get('event_code', '') if ev else '', 'event_name': ev['event_name'] if ev else '',
                     'bill_name': f['bill_name'].strip(), 'bill_contact': f.get('bill_contact', '').strip(), 'bill_email': f.get('bill_email', '').strip(),
                     'bill_address': f.get('bill_address', '').strip(), 'due': f.get('due', ''), 'notes': f.get('notes', '').strip(),
-                    'created_by': who}, lines, f.get('token', ''))
+                    'created_by': who, 'filed_email': (session.get('email') or '').strip().lower()}, lines, f.get('token', ''))
     if again:      # a double click, the back button or a second tab: that page already made this invoice
         flash(f"{inv['id']} was already created from that page, so no second invoice was made.", 'info')
         return redirect(url_for('inv.detail', inv_id=inv['id']))
@@ -137,7 +137,8 @@ def new():
     log_audit_event('INVOICE_CREATED', who, {'id': inv['id'], 'bill_name': inv['bill_name'], 'total': inv['total'], 'program': program,
                                              'event_code': inv['event_code']})
     me = _copy_to() or f.get('my_email', '').strip()      # officials get the copy at their role's group, never a personal inbox
-    body = (f"{who} created invoice {inv['id']} for {inv['bill_name']}: {I.money(inv['total'])}, due {inv['due']}.\n"
+    from app import nice_date
+    body = (f"{who} created invoice {inv['id']} for {inv['bill_name']}: {I.money(inv['total'])}, due {nice_date(inv['due'])}.\n"
             f"{(inv['event_name'] + ' ' + inv['event_code']) if inv['event_name'] else 'Program ' + program}\n\n"
             f"The PDF is attached. Send it to the customer from your own email.\n"
             f"{request.url_root.rstrip('/')}{url_for('inv.detail', inv_id=inv['id'])}")

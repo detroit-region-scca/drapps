@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% from '_ui.html' import money, approval_fields with context %}
 {% block app_name %}Events{% endblock %}
+{% block page_title %}{% if view == 'list' %}Events {{ year }}{% else %}{{ e.event_name or (b and b.event_name) or code }}{{ {'actuals': ' results', 'edit': ' budget'}.get(view, '') }}{% endif %}{% endblock %}
 {% block nav %}{% include '_events_nav.html' %}{% endblock %}
 {% macro amt(v) %}{{ '' if v is none or v == '' else (v if v is string else '%.2f'|format(v)) }}{% endmacro %}
 {% block style %}
@@ -207,11 +208,12 @@
     {% if yoy %}
     <h2 class="h6 text-muted">Year over year</h2>
     <div class="card mb-3"><div class="card-body p-0 table-responsive"><table class="table mb-0">
-        <thead><tr><th class="ps-3">Year</th><th>Event</th><th class="num">Budgeted surplus</th><th class="num">Income</th><th class="num">Expenses</th><th class="num pe-3">Surplus (loss)</th></tr></thead>
+        {# Phones: income and expenses are left out (each year's own page has them) and the two headings wrap, so it fits without scrolling sideways. #}
+        <thead><tr><th class="ps-3">Year</th><th>Event</th><th class="num text-wrap">Budgeted surplus</th><th class="num d-none d-md-table-cell">Income</th><th class="num d-none d-md-table-cell">Expenses</th><th class="num pe-3 text-wrap">Surplus (loss)</th></tr></thead>
         <tbody>{% for r in yoy %}<tr{% if loop.first %} class="fw-semibold"{% endif %}><td class="ps-3">{{ r.date[:4] }}</td>
             <td>{% if loop.first %}{{ r.name }}{% else %}<a href="{{ url_for('bud.detail', code=r.code) }}">{{ r.name }}</a>{% endif %} <span class="small text-muted">{{ r.code }}</span></td>
             <td class="num">{{ money(r.budget) }}</td>
-            <td class="num">{{ money(r.qbo.income if r.qbo else none) }}</td><td class="num">{{ money(r.qbo.expense if r.qbo else none) }}</td>
+            <td class="num d-none d-md-table-cell">{{ money(r.qbo.income if r.qbo else none) }}</td><td class="num d-none d-md-table-cell">{{ money(r.qbo.expense if r.qbo else none) }}</td>
             <td class="num pe-3">{{ money(r.qbo.surplus if r.qbo else none) }}</td></tr>{% endfor %}</tbody>
     </table></div></div>
     <p class="form-text">Income, expenses and surplus are from QuickBooks. Each year comes from the budget's "Last year's event"; change it with Edit budget.</p>
@@ -328,20 +330,20 @@
             <div class="section-label">{{ section_name[section] }}{% if section == 'Expense' %} <span class="text-muted text-lowercase fw-normal" style="letter-spacing:0">(as positive amounts)</span>{% endif %}</div>
             <div class="row g-2 d-none d-md-flex text-muted small mb-1"><div class="col-md-6">Description</div><div class="col-md-2 text-end">Last year reported</div><div class="col-md-3 text-end">This year budget</div></div>
             <div class="row g-2 d-md-none text-muted small mb-1"><div class="col-5 text-end">Last yr</div><div class="col-6 text-end">Budget</div></div>
-            <div class="lines" data-key="{{ key }}">
+            <div class="lines" data-lines data-key="{{ key }}">
             {% set rows = lines|selectattr('section', 'equalto', section)|list or starter[section]|map('string')|list %}
             {% for ln in rows %}{% set is_obj = ln is mapping %}
-                <div class="row g-2 bline mb-2 pb-2">
+                <div class="row g-2 bline mb-2 pb-2" data-line>
                     <div class="col-12 col-md-6"><input name="{{ key }}_desc" class="form-control form-control-sm" aria-label="Description" placeholder="{{ 'Description' if is_obj else 'e.g. ' ~ ln }}" value="{{ ln.description if is_obj else '' }}"></div>
                     <div class="col-5 col-md-2"><input name="{{ key }}_ly" class="form-control form-control-sm text-end" inputmode="decimal" aria-label="Last year reported" placeholder="Last yr" value="{{ amt(ln.last_year) if is_obj else '' }}"></div>
                     <div class="col-6 col-md-3"><input name="{{ key }}_bud" class="form-control form-control-sm text-end" inputmode="decimal" aria-label="This year budget" placeholder="Budget" value="{{ amt(ln.budget) if is_obj else '' }}"></div>
                     <input type="hidden" name="{{ key }}_act" value="{{ amt(ln.actual) if is_obj else '' }}">
-                    <div class="col-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)" aria-label="Remove line">✕</button></div>
+                    <div class="col-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" data-remove-line aria-label="Remove line">✕</button></div>
                 </div>
             {% endfor %}
             </div>
             <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
-                <button type="button" class="btn btn-outline-light btn-sm" onclick="addLine(this)">Add line</button>
+                <button type="button" class="btn btn-outline-light btn-sm" data-add-line>Add line</button>
                 <div class="ms-auto tot text-muted small" data-tot="{{ key }}"></div>
             </div>
         </div>
@@ -360,15 +362,15 @@
     {% endif %}
 {% endblock %}
 {% block scripts %}
+{% include '_lines.html' %}
 <script>
     const actForm = document.getElementById('actForm');
     function actTotals() {
         if (!actForm) return;
-        const num = v => parseFloat(String(v).replace(/[$,]/g, '')) || 0, fmt = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         ['inc', 'exp'].forEach(k => {
             let t = 0;
-            actForm.querySelectorAll(`[name=act][data-sec=${k}], [name=new_${k}_act]`).forEach(i => t += num(i.value));
-            actForm.querySelector(`[data-tot=${k}]`).textContent = fmt(t);
+            actForm.querySelectorAll(`[name=act][data-sec=${k}], [name=new_${k}_act]`).forEach(i => t += moneyNum(i.value));
+            actForm.querySelector(`[data-tot=${k}]`).textContent = moneyFmt(t);
         });
     }
     function addActual(key) {
@@ -419,11 +421,10 @@
         setTimeout(() => { btn.innerText = old; btn.disabled = false; }, 1500);
     }
     const form = document.getElementById('budForm');
-    const num = v => parseFloat(String(v).replace(/[$,]/g, '')) || 0;
-    const fmt = v => (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const fmt = moneyFmt;
     function sums(key) {
         const s = {ly: 0, bud: 0};
-        for (const c of Object.keys(s)) form.querySelectorAll(`[name=${key}_${c}]`).forEach(i => s[c] += num(i.value));
+        for (const c of Object.keys(s)) form.querySelectorAll(`[name=${key}_${c}]`).forEach(i => s[c] += moneyNum(i.value));
         return s;
     }
     function totals() {
@@ -442,19 +443,11 @@
             vp.classList.toggle('text-muted', !off);
         }
     }
-    function addLine(btn) {
-        const box = btn.closest('.card').querySelector('.lines');
-        const row = box.querySelector('.bline').cloneNode(true);
-        row.querySelectorAll('input').forEach(i => i.value = '');
-        row.querySelector('[name$=_desc]').placeholder = 'Description';
-        box.appendChild(row);
-        row.querySelector('input').focus();
-    }
-    function removeLine(btn) {
-        const box = btn.closest('.lines'), row = btn.closest('.bline');
-        if (box.querySelectorAll('.bline').length > 1) row.remove(); else row.querySelectorAll('input').forEach(i => i.value = '');
+    if (form) {
+        form.addEventListener('input', totals);
+        // A copied starter line ("e.g. Site rental") is a plain line.
+        form.addEventListener('line-added', e => e.target.querySelector('[name$=_desc]').placeholder = 'Description');
         totals();
     }
-    if (form) { form.addEventListener('input', totals); totals(); }
 </script>
 {% endblock %}

@@ -3,6 +3,8 @@ Description=DRSCCA apps: weekly copy of the drscca.org website's content to the 
 OnFailure=drscca-alert@%n.service
 [Service]
 Type=oneshot
+# A job stuck this long is stopped and counts as failed, so the alert email goes out.
+TimeoutStartSec=20min
 # REGION_DRIVE_ID, when set in drapps.env.
 EnvironmentFile=-/opt/drscca/data/secrets/drapps.env
 ExecStart=/opt/drscca/venv/bin/python /opt/drscca/app/deploy/gcp/site_backup.py

@@ -103,6 +103,11 @@ def sheets_client():
             import gspread
             # BackOffHTTPClient retries 429s (Sheets allows 60 reads/min per user) with backoff.
             _gc = gspread.service_account(filename=os.environ['GOOGLE_SERVICE_ACCOUNT_FILE'], http_client=gspread.BackOffHTTPClient)
+            # Every call to Google gives up after 110 s (10 s to connect), including the Drive calls made straight on
+            # the session: a call that never answered would hold a save lock, and every later save would wait on it.
+            session = _gc.http_client.session
+            send = session.request
+            session.request = lambda *a, **k: send(*a, **dict(k, timeout=k.get('timeout') or (10, 110)))      # gspread passes timeout=None
         return _gc
 
 
@@ -179,6 +184,7 @@ class SheetStore:
         self.sheet_id = sheet_id
         self.files = FileStore()
         self._cache = {}
+        self._state = threading.local()      # per thread: whether this request's events came from the local copy
 
     def _ws(self, title):
         return worksheet(self.sheet_id, title)
@@ -215,15 +221,15 @@ class SheetStore:
         # read, change and write the whole list) passes fresh=True, so another worker's write is never undone.
         try:
             rows = self._records('Events!A:J', fresh=fresh)
-            self._degraded = False
+            self._state.degraded = False
             return [{k: (r.get(k) or '') for k in EVENT_COLS} for r in rows if r.get('id')]
         except Exception as e:
             logger.error(f"Sheets unreachable, using local copy of events: {e}")
-            self._degraded = True
+            self._state.degraded = True
             return self.files.load_events()
 
     def save_events(self, events):
-        if getattr(self, '_degraded', False):
+        if getattr(self._state, 'degraded', False):
             # The list came from the local mirror; writing it back could undo edits made in the sheet.
             raise StorageUnavailable('Google Sheets is unreachable, so events are read-only until it is back.')
         rows = [[str(e.get(c, '') or '') for c in EVENT_COLS] for e in sorted(events, key=lambda e: e.get('date', ''))]

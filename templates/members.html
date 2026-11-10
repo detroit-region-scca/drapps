@@ -55,6 +55,7 @@
 </ul>{% endif %}{% endmacro %}
 {% block style %}
         #memberTable tbody tr[hidden] { display: none; }
+        #memberTable tbody tr { cursor: pointer; }
         #memberTable thead th { position: sticky; top: 0; background: var(--bs-body-bg); z-index: 1; cursor: pointer; user-select: none; white-space: nowrap; }
         #memberTable th[data-sort]::after { content: " \2195"; opacity: .3; font-size: .8em; }
         #memberTable th[aria-sort=ascending]::after { content: " \2191"; opacity: .8; }
@@ -87,7 +88,7 @@
 <div class="row g-3 mb-3">
     <div class="col-6 col-lg-3"><div class="card stat p-3 h-100"><div class="label">Worker points</div><div class="value">{{ '{:,.1f}'.format(total) }}</div><div class="label">{{ money(total * point_value) }}</div></div></div>
     <div class="col-6 col-lg-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('members.quickbooks') }}"><div class="label">QuickBooks</div>
-        {% if reserve and (total * point_value - reserve.amount)|abs >= 0.005 %}<div class="value text-warning">{{ money(total * point_value - reserve.amount) }}</div><div class="label">off: see what to book</div>
+        {% if reserve and (total * point_value - reserve.amount)|abs >= 0.005 %}<div class="value text-warning">{{ money(total * point_value - reserve.amount) }}</div><div class="label">off: see what to enter</div>
         {% elif reserve %}<div class="value text-success">Ties</div><div class="label">to the reserve</div>{% else %}<div class="value">·</div><div class="label">no sync yet</div>{% endif %}</a></div>
     <div class="col-6 col-lg-3"><div class="card stat p-3 h-100"><div class="label">SCCA member list</div><div class="value">{{ day(latest_list) if latest_list else 'not loaded' }}</div>
         <div class="label"><a href="{{ url_for('members.home', load=1) }}#loadlist">load a new list</a></div></div></div>
@@ -100,17 +101,19 @@
         <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" aria-label="Member List file" required><button class="btn btn-sm btn-accent">Load list</button>
         <a class="small ms-auto" href="{{ list_url }}">past lists</a></div></form>
 
-<input id="find" class="form-control mb-2" type="search" aria-label="Find a member" placeholder="Find a member by name or SCCA number" autocomplete="off" style="max-width: 30rem">
+<input id="find" class="form-control mb-2" type="search" aria-label="Find a member" placeholder="Find a member by name or SCCA number" autocomplete="off" style="max-width: 30rem" value="{{ find }}">
 <div class="card"><div class="card-body p-0 table-responsive" style="max-height: 60vh; overflow-y: auto;">
     <table class="table table-hover mb-0" id="memberTable">
-        <thead><tr><th class="ps-3" data-sort="name">Name</th><th class="d-none d-md-table-cell" data-sort="num" data-type="n">SCCA #</th><th class="d-none d-md-table-cell" data-sort="since">Member since</th><th data-sort="exp">Expires</th><th class="num pe-3" data-sort="pts" data-type="n">Points</th></tr></thead>
-        <tbody>{% for m in members %}<tr data-k="{{ (m.first ~ ' ' ~ m.last ~ ' ' ~ m.member)|lower }}" data-name="{{ (m.last ~ ' ' ~ m.first)|lower }}" data-num="{{ m.member }}" data-since="{{ m.joined.isoformat() if m.joined else '' }}" data-exp="{{ m.expires.isoformat() if m.expires else '' }}" data-pts="{{ m.points }}" data-href="{{ url_for('members.member', mid=m.member) }}">
+        <thead><tr><th class="ps-3" data-sort="name" data-type="n">Name</th><th class="d-none d-md-table-cell" data-sort="num" data-type="n">SCCA #</th><th class="d-none d-md-table-cell" data-sort="since">Member since</th><th data-sort="exp">Expires</th><th class="num pe-3" data-sort="pts" data-type="n">Points</th></tr></thead>
+        <tbody>{% for m in members %}<tr{% if m.expires %} data-exp="{{ m.expires.isoformat() }}"{% endif %}>
             <td class="ps-3"><a href="{{ url_for('members.member', mid=m.member) }}">{{ m.first }} {{ m.last }}</a>{% if m.life %} <span class="badge text-bg-secondary">LIFE</span>{% endif %}{% if m.lapsed %} <span class="badge text-bg-warning">lapsed</span>{% elif m.rejoined %} <span class="badge text-bg-info" title="Rejoined {{ day(m.rejoined) }}">rejoined</span>{% endif %}</td>
             <td class="text-muted d-none d-md-table-cell">{{ m.member }}</td><td class="text-muted d-none d-md-table-cell">{{ m.joined.year if m.joined else '' }}</td>
             <td class="{{ 'text-warning' if m.expires and m.expires < today_ else 'text-muted' }}">{{ day(m.expires) }}</td>
             <td class="num pe-3">{{ '%.1f'|format(m.points) }}</td></tr>{% endfor %}</tbody>
     </table>
 </div></div>
+{% if not show_all and (n_all or 0) > members|length %}<p class="small mt-2 mb-0"><span id="nomatch" hidden>Nobody here by that name. </span><a id="everyone" href="{{ url_for('members.home', all=1) }}">Show everyone ({{ n_all }})</a></p>
+{% elif show_all and latest_list %}<p class="small mt-2 mb-0"><a href="{{ url_for('members.home') }}">Show current members only</a></p>{% endif %}
 
 {% if lapsed %}
 <details id="lapsed" class="mt-3"><summary class="small"><span class="text-warning">{{ lapsed|length }} members with points are not current SCCA members</span> ({{ '{:,.1f}'.format(lapsed|sum(attribute='points')) }} points)</summary>
@@ -131,22 +134,43 @@
 <p class="small mt-3"><a href="{{ sheet_url }}">Open the Members sheet</a></p>
 <script>
     (function () {
+        // Everything the find box and the sorting need is read from the row's own cells (rows arrive sorted by last name).
         const q = document.getElementById('find'), rows = [...document.querySelectorAll('#memberTable tbody tr')];
-        q.addEventListener('input', () => { const v = q.value.trim().toLowerCase(); rows.forEach(r => r.hidden = v && !r.dataset.k.includes(v)); });
+        const text = (r, i) => r.cells[i].textContent.trim();
+        const key = new Map(rows.map(r => [r, (r.cells[0].querySelector('a').textContent + ' ' + text(r, 1)).toLowerCase()]));
+        const order = new Map(rows.map((r, i) => [r, String(i + 1)]));
+        const get = {name: r => order.get(r), num: r => text(r, 1), since: r => text(r, 2), exp: r => r.dataset.exp || '', pts: r => text(r, 4)};
+        const everyone = document.getElementById('everyone'), nomatch = document.getElementById('nomatch');
+        function find() {
+            const v = q.value.trim().toLowerCase();
+            let n = 0;
+            rows.forEach(r => { r.hidden = !!v && !key.get(r).includes(v); n += !r.hidden; });
+            if (everyone) {      // nothing in the short list: the same search over everyone is one click away
+                nomatch.hidden = !v || n > 0;
+                everyone.href = everyone.href.split('&q=')[0] + (v ? '&q=' + encodeURIComponent(q.value.trim()) : '');
+            }
+        }
+        q.addEventListener('input', find);
+        if (q.value) find();
         // Click a heading to sort by it; click again to reverse. Blanks always go last.
         const body = document.querySelector('#memberTable tbody'), heads = document.querySelectorAll('#memberTable th[data-sort]');
         heads.forEach(th => th.addEventListener('click', () => {
-            const key = th.dataset.sort, num = th.dataset.type === 'n';
+            const val = get[th.dataset.sort], num = th.dataset.type === 'n';
             const dir = th.getAttribute('aria-sort') === 'ascending' ? -1 : 1;
             heads.forEach(h => h.removeAttribute('aria-sort'));
             th.setAttribute('aria-sort', dir === 1 ? 'ascending' : 'descending');
-            const val = r => r.dataset[key] || '';
             rows.sort((a, b) => {
                 const x = val(a), y = val(b);
                 if (!x || !y) return !x - !y;
                 return dir * (num ? parseFloat(x) - parseFloat(y) : x.localeCompare(y));
             }).forEach(r => body.appendChild(r));
         }));
+        // A click anywhere on a row opens that member (the name is the link).
+        body.addEventListener('click', e => {
+            if (e.target.closest('a, button, input, select, textarea, label') || String(window.getSelection())) return;
+            const r = e.target.closest('tr'), a = r && r.querySelector('a[href]');
+            if (a) location.href = a.href;
+        });
     })();
 </script>
 
@@ -256,7 +280,7 @@
                     {% if r.already %}<option value="">Leave out: already has {{ '%g'|format(r.already.points) }} points{% if r.already.by %} (entered by {{ r.already.by|join(', ') }}){% endif %}</option>
                     {% elif r.twice %}<option value="">Leave out: listed twice</option>
                     {% else %}<option value="">Leave out</option>{% endif %}
-                    <option value="{{ r.member }}" {{ 'selected' if r.choice == r.member }}>{{ 'Add anyway: ' if (r.already or r.twice) }}{{ r.member_name }} ({{ r.member }})</option>
+                    <option value="{{ r.member }}" {{ 'selected' if r.choice == r.member }}>{{ 'Add anyway: ' if (r.already or r.twice) }}{{ r.member_label or r.member_name }}</option>
                 {% else %}
                     <option value="">{{ 'Leave out: pick who this is' if r.candidates else 'Leave out: not on the member list' }}</option>
                     {% for c in r.candidates %}<option value="{{ c.member }}" {{ 'selected' if r.choice == c.member }}>{{ c.label }}{% if c.already %} · already has {{ '%g'|format(c.already.points) }} points{% endif %}</option>{% endfor %}
@@ -383,9 +407,9 @@
 <h1 class="page-title">QuickBooks</h1>
 <p class="text-muted mb-3">Worker points {{ money(total) }}{% if reserve %} · QuickBooks reserve {{ money(reserve.amount) }} (sync of {{ (reserve.as_of or '')|nice_date }}) ·
     {% if diff|abs < 0.005 %}<span class="text-success">ties</span>{% else %}<span class="text-warning">{{ money(diff) }} off</span>{% endif %}{% endif %}</p>
-{% if unexplained is not none and unexplained|abs >= 0.005 %}<div class="alert alert-warning small">{{ money(unexplained) }} of the difference is not explained by the entries below: something was booked in QuickBooks without a points entry, or an entry was marked reconciled by mistake.</div>{% endif %}
+{% if unexplained is not none and unexplained|abs >= 0.005 %}<div class="alert alert-warning small">{{ money(unexplained) }} of the difference is not explained by the entries below: something was entered in QuickBooks without a points entry, or a points entry was marked as entered by mistake.</div>{% endif %}
 {% if open_entries %}
-<div class="d-flex justify-content-between align-items-center mb-2"><h2 class="h6 m-0">{{ jes|length }} journal entr{{ 'y' if jes|length == 1 else 'ies' }} to book ({{ money(open_value) }})</h2>
+<div class="d-flex justify-content-between align-items-center mb-2"><h2 class="h6 m-0">{{ jes|length }} entr{{ 'y' if jes|length == 1 else 'ies' }} for QuickBooks ({{ money(open_value) }})</h2>
     <form method="post" class="m-0"><input type="hidden" name="action" value="email"><button class="btn btn-sm btn-outline-secondary">Email to treasurer</button></form></div>
 {% for je in jes %}
 <div class="card mb-3"><div class="card-body">
@@ -396,21 +420,21 @@
                <tr><td>{{ je.credit }}</td><td></td><td class="num">{{ money(je.amount) }}</td></tr></tbody></table>
 </div></div>
 {% endfor %}
-{% if used %}<div class="card mb-3"><div class="card-body small"><div class="fw-semibold mb-1">Points used (no journal entry: each is paid by its own check or card charge)</div>
+{% if used %}<div class="card mb-3"><div class="card-body small"><div class="fw-semibold mb-1">Points used (no entry for QuickBooks: each is paid by its own check or card charge)</div>
     {% for e in used %}<div>{{ day(e.date) }} · {{ e.name }} · {{ e.what }} · {{ '%g'|format(-e.points) }} points ({{ money(-e.points * point_value) }})</div>{% endfor %}</div></div>{% endif %}
-<h2 class="h6 mt-4">Entries behind these</h2>
+<h2 class="h6 mt-4">Points entries behind these</h2>
 <form method="post" class="card"><div class="card-body p-0 table-responsive">
     <table class="table table-sm mb-0 stack">
         <thead><tr><th class="ps-3"><input type="checkbox" checked aria-label="Tick all" onclick="document.querySelectorAll('[name=row]').forEach(c => c.checked = this.checked)"></th><th>Date</th><th>Member</th><th>What for</th><th>Kind</th><th class="num">Points</th><th class="num pe-3">$</th></tr></thead>
         <tbody>{% for e in open_entries %}<tr><td class="ps-3"><input type="checkbox" name="row" value="{{ e.row }}" checked aria-label="{{ e.name }}, {{ day(e.date) }}"><input type="hidden" name="key{{ e.row }}" value="{{ entry_key(e) }}"></td><td class="text-nowrap" data-label="Date">{{ day(e.date) }}</td><td data-label="Member">{{ e.name }}</td><td class="small" data-label="What for">{{ e.what }}{% if e.event %} <span class="text-muted">{{ e.event }}</span>{% endif %}</td><td class="small" data-label="Kind">{{ e.kind }}</td><td class="num" data-label="Points">{{ pts(e.points) }}</td><td class="num pe-3" data-label="$">{{ money(e.points * point_value) }}</td></tr>{% endfor %}</tbody>
     </table></div>
     <div class="card-body d-flex flex-wrap gap-2 align-items-end border-top">
-        <div><label class="form-label small">Booked on</label><input type="date" name="booked" class="form-control form-control-sm"></div>
-        <div><label class="form-label small">Journal entry # <span class="text-muted">(optional)</span></label><input name="ref" class="form-control form-control-sm" placeholder="e.g. JE 2041"></div>
-        <button class="btn btn-sm btn-accent">Mark ticked entries reconciled</button>
+        <div><label class="form-label small">Entered on</label><input type="date" name="booked" class="form-control form-control-sm"></div>
+        <div><label class="form-label small">QuickBooks entry # <span class="text-muted">(optional)</span></label><input name="ref" class="form-control form-control-sm" placeholder="e.g. 2041"></div>
+        <button class="btn btn-sm btn-accent">Mark ticked as entered in QuickBooks</button>
     </div>
 </form>
-{% else %}<p class="text-success">Everything is reconciled.</p>{% endif %}
+{% else %}<p class="text-success">Everything is entered in QuickBooks.</p>{% endif %}
 
 {# ================================================================== Milestones #}
 {% elif view == 'milestones' %}

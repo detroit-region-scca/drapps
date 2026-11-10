@@ -14,7 +14,10 @@ import received_store as R
 
 def _at(rng):
     m = re.match(r'([A-Z]+)(\d+)', rng)
-    return ord(m.group(1)) - 65, int(m.group(2)) - 1
+    col = 0
+    for ch in m.group(1):       # A=0 ... Z=25, AA=26
+        col = col * 26 + ord(ch) - 64
+    return col - 1, int(m.group(2)) - 1
 
 
 class FakeWS:

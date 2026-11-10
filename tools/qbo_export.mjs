@@ -7,6 +7,8 @@
 //   outstanding  checks since PAYMENTS_SINCE the bank has not cleared yet (QuickBooks "Clr" blank; voided $0 checks left out)
 //   deposits  deposit lines since PAYMENTS_SINCE (date, amount, description, payer), to match against open invoices
 //   balance_sheet  today's balance sheet to two levels; receivables  every invoice still owed
+//   bills     every bill not paid in full yet (vendor, total, balance and each line's account, class and customer), so
+//             an open funds request whose bill is already entered is not counted twice against its budget
 // Runs on the machine that holds the QuickBooks connection (the qbo-mcp install and its token
 // store); the web app never talks to QuickBooks. QBO_MCP_DIR points at that install. Read only (writes are qbo_write.mjs).
 const dir = process.env.QBO_MCP_DIR || `${process.env.HOME}/.mcp-servers/qbo-mcp`;
@@ -143,4 +145,22 @@ bwalk(bs.Rows?.Row, 0);
 const receivables = (await query('Invoice', "WHERE Balance > '0'")).map(i => ({
   number: i.DocNumber || '', date: i.TxnDate, due: i.DueDate || '', customer: i.CustomerRef?.name || '', total: i.TotalAmt, balance: i.Balance,
 }));
-console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding, deposits, balance_sheet, receivables }));
+
+// Every bill not paid in full yet. A failure here never stops the export: the apps then count every open request in full.
+let bills = [], bills_error = '';
+try {
+  bills = (await query('Bill', "WHERE Balance > '0'")).map(b => ({
+    id: `Bill ${b.Id}`, date: b.TxnDate, vendor: b.VendorRef?.name || '', total: b.TotalAmt, balance: b.Balance,
+    number: b.DocNumber || '', memo: b.PrivateNote || '',
+    lines: (b.Line || []).filter(l => l.Amount).map(l => {
+      const d = l.AccountBasedExpenseLineDetail || l.ItemBasedExpenseLineDetail || {};
+      return { description: l.Description || '', amount: l.Amount, account: (d.AccountRef || d.ItemRef)?.name || '',
+               class: d.ClassRef?.name || '', customer: d.CustomerRef?.name || '' };
+    }),
+  }));
+} catch (e) {
+  console.error(`unpaid bills not exported: ${e.message}`);
+  bills = [];
+  bills_error = String(e.message || e).slice(0, 300);
+}
+console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding, deposits, balance_sheet, receivables, bills, bills_error }));

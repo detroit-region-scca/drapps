@@ -267,7 +267,8 @@ def approve(year, program):
         flash(str(e), 'warning')
         return redirect(url_for('plan.detail', year=year, program=program))
     log_audit_event('PLAN_APPROVED' if approved else 'PLAN_UNAPPROVED', who, {'year': year, 'program': program, 'approved': approved})
-    flash(f'Board approval recorded: {approved}.' if approved else 'Board approval cleared.', 'success')
+    from app import nice_date
+    flash(f'Board approval recorded: {nice_date(approved)}.' if approved else 'Board approval cleared.', 'success')
     return redirect(url_for('plan.detail', year=year, program=program))
 
 

@@ -19,9 +19,11 @@ from storage import DATA_DIR, worksheet
 import sheet_cache as C
 
 INV_COLS = ['id', 'created', 'status', 'program', 'event_code', 'event_name', 'bill_name', 'bill_contact', 'bill_email', 'bill_address',
-            'total', 'due', 'notes', 'created_by', 'pdf_url', 'paid_date', 'paid_ref', 'paid_amount', 'closed_by', 'closed_note']
+            'total', 'due', 'notes', 'created_by', 'pdf_url', 'paid_date', 'paid_ref', 'paid_amount', 'closed_by', 'closed_note',
+            'filed_email']
 INV_LABELS = ['Invoice #', 'Date', 'Status', 'Program', 'Event code', 'Event', 'Bill to', 'Attention', 'Email', 'Address',
-              'Total', 'Due', 'Notes', 'Created by', 'PDF', 'Paid on', 'Payment reference', 'Amount paid', 'Closed by', 'Closing note']
+              'Total', 'Due', 'Notes', 'Created by', 'PDF', 'Paid on', 'Payment reference', 'Amount paid', 'Closed by', 'Closing note',
+              'Created by (sign-in email)']
 LINE_COLS = ['invoice_id', 'description', 'quantity', 'unit_price', 'amount']
 LINE_LABELS = ['Invoice #', 'Description', 'Quantity', 'Unit price', 'Amount']
 NUMERIC = {'total', 'paid_amount', 'quantity', 'unit_price', 'amount'}
@@ -58,10 +60,11 @@ def _num(v):
 
 
 def _snapshot():
-    hit = _cache.get('snap')
-    if hit and hit[0] == C.version(os.environ['INVOICES_SHEET_ID']):
+    hit, ver = _cache.get('snap'), C.version(os.environ['INVOICES_SHEET_ID'])      # the version first: a write during the read below must not look fresh
+    if hit and hit[0] == ver:
         return hit[1]
-    res = C.batch_get(os.environ['INVOICES_SHEET_ID'], ['Invoices!A:T', 'Lines!A:E'],
+    # The whole Invoices tab, not A:U: a tab that does not have the newest column yet still reads.
+    res = C.batch_get(os.environ['INVOICES_SHEET_ID'], ["'Invoices'", 'Lines!A:E'],
                                                                      params={'valueRenderOption': 'UNFORMATTED_VALUE'})
     vr = [r.get('values', []) for r in res.get('valueRanges', [])] + [[], []]
     invs = [dict(zip(INV_COLS, list(r) + [''] * len(INV_COLS))) for r in vr[0][1:] if r and str(r[0]).strip()]
@@ -69,7 +72,7 @@ def _snapshot():
     for row in invs + lines:
         for k in list(row):
             row[k] = _num(row[k]) if k in NUMERIC else str(row[k])
-    _cache['snap'] = (C.version(os.environ['INVOICES_SHEET_ID']), (invs, lines))
+    _cache['snap'] = (ver, (invs, lines))
     return invs, lines
 
 
@@ -85,6 +88,18 @@ def get(inv_id):
 
 def _cell(v):
     return '' if v is None else v if isinstance(v, (int, float)) else str(v)
+
+
+def _heading(ws):
+    """Columns added later (the sign-in email) get their heading the first time an invoice is written; the tab is
+    widened first, or the write is refused."""
+    if not _cache.get('heading_ok'):
+        if ws.col_count < len(INV_COLS):
+            ws.add_cols(len(INV_COLS) - ws.col_count)
+        top = ws.row_values(1)
+        if len(top) < len(INV_LABELS):
+            ws.update([INV_LABELS[len(top):]], f'{chr(ord("A") + len(top))}1', value_input_option='RAW')
+        _cache['heading_ok'] = True
 
 
 def _issued():
@@ -131,6 +146,7 @@ def create(inv, lines, token=''):
         if token:
             issued['tokens'][token] = {'id': iid, 'at': time.time()}
         _save_issued(issued)
+        _heading(ws)
         ws.append_row([_cell(row.get(c)) for c in INV_COLS], value_input_option='RAW')
         _ws('Lines').append_rows([[_cell(r.get(c)) for c in LINE_COLS] for r in rows], value_input_option='RAW')
         refresh()
@@ -152,6 +168,7 @@ def update(inv_id, expect=None, **fields):
         if expect and cur['status'] != expect:
             return None
         cur.update(fields)
+        _heading(ws)
         for k in NUMERIC & set(INV_COLS):
             cur[k] = _num(cur[k])
         ws.update([[_cell(cur[c]) for c in INV_COLS]], f'A{n}', value_input_option='RAW')
@@ -187,6 +204,8 @@ def setup_sheet(book):
     have = {w.title: w for w in book.worksheets()}
     for title, labels in (('Invoices', INV_LABELS), ('Lines', LINE_LABELS)):
         ws = have.get(title) or book.add_worksheet(title, rows=500, cols=len(labels))
+        if ws.col_count < len(labels):
+            ws.add_cols(len(labels) - ws.col_count)
         ws.update([labels], 'A1', value_input_option='RAW')
     guide = have.get('How to use') or book.add_worksheet('How to use', rows=40, cols=1)
     guide.clear()

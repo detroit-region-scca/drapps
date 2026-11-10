@@ -54,7 +54,7 @@ def test_once_ready_the_bill_in_quickbooks_does_not_reopen_the_overrun_check():
     assert L.ready(L.review(r, 'approved', 1000, 800))
     r['approvals'] = L.add(r['approvals'], 'ready', 'DRSCCA Apps', '2026-11-06')
     items = L.review(r, 'approved', 1000, 1100)
-    assert L.ready(items) and 'when every approval was in, 2026-11-06' in [i for i in items if i['key'] == 'overrun'][0]['by']
+    assert L.ready(items) and 'when every approval was in, Nov 6, 2026' in [i for i in items if i['key'] == 'overrun'][0]['by']
     assert [a['role'] for a in L.parse(r['approvals'])] == ['chair'] and L.ready_on(r['approvals']) == '2026-11-06'
     # a budget changed after approval still holds it
     assert 'budget' in keys(L.review(r, 'changed', 1000, 1100), False)
@@ -104,7 +104,7 @@ def _closed(**kw):
 def test_submitter_told_when_paid_only_if_they_asked():
     subject, body = L.closed_message(_closed(), 'https://example.org/funds/FR-2026-001')
     assert subject == 'Funds request FR-2026-001 paid'
-    assert 'Check 6100 for $1,200.00 on 2026-11-04' in body and 'goes to Example Hall' in body
+    assert 'Check 6100 for $1,200.00 on Nov 4, 2026' in body and 'goes to Example Hall' in body
     assert body.endswith('https://example.org/funds/FR-2026-001')
     assert L.closed_message(_closed(notify='')) is None
     assert L.closed_message(_closed(submitter_email='')) is None
@@ -131,7 +131,7 @@ def test_only_a_passed_board_motion_stands_in_for_a_missing_budget():
     vote = {'id': 'M-2026-005', 'decided': '2026-11-10', 'how': 'email vote', 'vote': '7-0'}
     items = L.review(r, None, board_vote=vote)
     assert L.ready(items)
-    assert next(i for i in items if i['key'] == 'budget')['by'] == 'Board, motion M-2026-005, 2026-11-10 (email vote, 7-0)'
+    assert next(i for i in items if i['key'] == 'budget')['by'] == 'Board, motion M-2026-005, Nov 10, 2026 (email vote, 7-0)'
 
 
 def test_motion_for_a_request():

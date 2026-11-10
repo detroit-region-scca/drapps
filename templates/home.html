@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% from '_ui.html' import money, nice_time with context %}
+{% block page_title %}{{ {'code': 'Check your email', 'access': 'App access', 'name': 'Your name', 'officials': 'Region officials', 'treasurer': 'Treasurer'}.get(view) or ('Apps' if session.get('authenticated') else 'Sign in') }}{% endblock %}
 {# One home tile; the caller is its icon's paths. A tile the person's role cannot use is left out. #}
 {% macro tile(on, href, color, name, what) %}{% if on %}
         <div class="col">

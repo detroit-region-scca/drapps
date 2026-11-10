@@ -72,6 +72,13 @@ class Approvals:
         self.plans = {}
         self.other = {}
         self._motions = None
+        self._bills = None
+
+    def bills(self):
+        """Unpaid QuickBooks bills as of the last sync ([] before the first sync that writes them)."""
+        if self._bills is None:
+            self._bills = P.bills() if P.enabled() else []
+        return self._bills
 
     def motions(self):
         if self._motions is None:
@@ -93,6 +100,11 @@ class Approvals:
         return O.director(r['program'])
 
     def items(self, r):
+        """What the request still needs (fr_logic.review), with a plain line where the payee or submitter is one of
+        its usual approvers (fr_logic.who_approves)."""
+        return FL.explain(self._items(r), approval_plan(r))
+
+    def _items(self, r):
         """A request for an event is paid against the event's budget. One not tied to an event is paid against its
         program's budget for the year (Operations: its annual plan, which is its budget)."""
         code, year, program = r['event_code'], r['submitted'][:4], r['program']
@@ -123,7 +135,11 @@ class Approvals:
             q = self.other[(program, year)] if b else {}
             same = [x for x in self.reqs if not x['event_code'] and x['program'] == program and x['submitted'][:4] == year and x['id'] != r['id']]
         spent = (q.get('totals') or {}).get('expense') or 0.0
-        spent += sum(x['net'] or 0 for x in same if x['status'] == 'Submitted')      # open requests count in full
+        # Open requests count in full, except one whose bill the treasurer has already entered in QuickBooks: that
+        # bill is in the spending above, so adding the request too would count it twice.
+        open_ = [x for x in same if x['status'] == 'Submitted']
+        billed = FL.billed(open_, self.bills(), code) if open_ else set()
+        spent += sum(x['net'] or 0 for x in open_ if x['id'] not in billed)
         return FL.review(r, status, expense, round(spent, 2), scope=scope, board_vote=self.board_vote(r))
 
 
@@ -136,12 +152,27 @@ def _link(rid, role, name, mail):
     return shortlinks.make(f"{request.url_root.rstrip('/')}{url_for('fr.approve_link', token=token)}", LINK_DAYS)
 
 
+def _own_emails(name):
+    """The sign-in addresses the officials list has for a name."""
+    return [(o.get('email') or '').strip().lower() for o in O.all() if o.get('name') == name and o.get('email')]
+
+
+def approval_plan(r):
+    """Who may approve this request (fr_logic.who_approves), from the read-only officials list: never its payee or
+    submitter. When that is the director, the RE or ARE approves in their place."""
+    name, mail = O.director(r['program'])
+    director = {'name': name, 'mail': mail, 'emails': [mail, O.director_email(r['program'])]} if name else None
+    signers = [{'name': n, 'mail': m, 'emails': [m] + _own_emails(n)} for n, m in O.signers()]
+    return FL.who_approves(r, director, signers)
+
+
 def approvers(r):
     """Who gets the approval email for each approval item: {item key: [names]}, from the read-only officials list.
-    An empty list means nobody would be emailed."""
-    name, mail = O.director(r['program'])
+    An empty list means nobody would be emailed. An item whose label already says why nobody can approve is left out."""
+    plan = approval_plan(r)
     signers = [n for n, m in O.signers()]
-    return {'chair': [name] if mail else [], 'second': signers, 'budget': signers, 'overrun': signers}
+    out = {'chair': [x['name'] for x in plan['chair']], 'second': [x['name'] for x in plan['second']], 'budget': signers, 'overrun': signers}
+    return {k: v for k, v in out.items() if v or k not in plan['note']}
 
 
 def directors():
@@ -152,7 +183,8 @@ def directors():
 def ask_approvals(rid, roles=None):
     """Ask whoever still has to approve. The program director, and the RE and ARE as second signers over the limit,
     get an emailed link (at their address in the read-only officials list; approving is only possible from these
-    links). When the budget does not cover the request, it goes on the Board page as a motion instead: only a vote
+    links). Nobody is asked to approve a request they are the payee or submitter of: the RE or ARE is asked in the
+    director's place, and only the other of the RE and ARE as second signer (approval_plan). When the budget does not cover the request, it goes on the Board page as a motion instead: only a vote
     the board has taken, recorded there, counts. Returns who was asked (addresses, and "the board (motion ...)")."""
     r = F.get(rid)
     if not r or r['status'] != 'Submitted':
@@ -161,20 +193,18 @@ def ask_approvals(rid, roles=None):
     missing = {i['key'] for i in a.items(r) if not i['done']}
     need_board, no_budget = bool(missing & {'budget', 'overrun'}), 'budget' in missing
     missing &= set(roles or ('chair', 'second', 'board'))
-    to = []
-    if 'chair' in missing:
-        name, mail = a.director(r)
-        if mail:
-            to.append(('chair', name, mail))
-    if 'second' in missing:
-        to += [('second', n, m) for n, m in O.signers()]
-    why = {'chair': 'Region policy asks the program director to approve each expense before the treasurer pays.',
+    plan = approval_plan(r)
+    to = [(role, x['name'], x['mail']) for role in ('chair', 'second') if role in missing for x in plan[role]]
+    why = {'chair': 'Region policy asks the program director to approve each expense before the treasurer pays.' if not plan['stand_in'] else
+                    'Region policy asks the program director to approve each expense before the treasurer pays. The director is the '
+                    'payee or submitter of this one, so the approval is asked of the RE or ARE instead.',
            'second': f'It is over ${FL.SECOND_SIGNER_LIMIT:,.0f}, so the bylaws ask the RE or ARE to approve it as second signer.'}
+    from app import nice_date
     for role, name, mail in to:
         body = '\n'.join([
             f"{r['submitter_name']} asked the region to pay {r['payee_name'] or '(payee not given)'} ${r['net']:,.2f} ({rid}).",
             f"For: {r['event_name'] or 'program ' + r['program']} {r['event_code']}", '',
-            *[f"  {ln['date']}  {ln['description']}  ${ln['amount']:,.2f}" for ln in r['lines']], '',
+            *[f"  {nice_date(ln['date'])}  {ln['description']}  ${ln['amount']:,.2f}" for ln in r['lines']], '',
             why[role],
             f"Approve or reject (no password needed; the link only works for this request): {_link(rid, role, name, mail)}"])
         send_mail(f"Please approve funds request {rid}: {r['payee_name']} ${r['net']:,.2f}", body, mail)
@@ -198,7 +228,8 @@ def board_motion(r, no_budget=True):
         return None     # taken off the board's list on purpose (paid against a budget instead): never put it back
     why = 'no approved budget' if no_budget else 'over its budget by more than 10%'
     title = f"Pay funds request {r['id']}: {r['payee_name']} ${r['net']:,.2f} for {r['event_name'] or 'program ' + r['program']} ({why})"
-    details = '\n'.join([f"{ln['date']}  {ln['description']}  ${ln['amount']:,.2f}" for ln in r['lines']] +
+    from app import nice_date
+    details = '\n'.join([f"{nice_date(ln['date'])}  {ln['description']}  ${ln['amount']:,.2f}" for ln in r['lines']] +
                         ([f"Notes from {r['submitter_name']}: {r['notes']}"] if r.get('notes') else []))
     # Made by the app, not proposed by anyone: say so, rather than putting it in the submitter's name.
     who = f"DRSCCA Apps (for {r['id']})"
@@ -230,12 +261,13 @@ def announce_ready(rids):
 
 def notify(rid, req, lines, n_files):
     """Email the treasurer about a new funds request (from the form, or an approved points redemption)."""
+    from app import nice_date
     body = '\n'.join([
         f"{req['submitter_name']} submitted funds request {rid}.", '',
         f"Event: {req['event_name'] or '(not one event)'} {req['event_code']}  Program: {req['program']}",
         f"Pay: {req['payee_name']}  by {req['method']}",
         f"Address: {req['payee_address']}" if req['payee_address'] else '', '',
-        *[f"  {ln['date']}  {ln['category']}: {ln['description']}  ${ln['amount']:,.2f}" for ln in lines], '',
+        *[f"  {nice_date(ln['date'])}  {ln['category']}: {ln['description']}  ${ln['amount']:,.2f}" for ln in lines], '',
         f"Total ${req['total']:,.2f}" + (f"  less advances ${req['advances']:,.2f}  = ${req['net']:,.2f}" if req['advances'] else ''),
         f"Receipts: {n_files} file(s)" if n_files else 'Receipts: none attached',
         f"Notes: {req['notes']}" if req['notes'] else '', '',
@@ -349,12 +381,11 @@ def new():
            **{f'submitter_{k}': v for k, v in sub.items()}, **{f'payee_{k}': v for k, v in payee.items()},
            'method': F.METHODS[method], 'total': total, 'advances': advances, 'net': round(total - advances, 2),
            'notes': f.get('notes', '').strip(), 'entered_by': session.get('who') or sub['name'],
-           'notify': 'yes' if f.get('notify') else ''}
-    # A director filing a request for their own program has approved it: they are signed in as themselves
-    # (emailed code or Google), so their filing is their approval.
-    me = (session.get('email') or '').lower()
-    if me and me == O.director_email(program):
-        req['approvals'] = FL.add('', 'chair', O.director(program)[0] or sub['name'], date.today().isoformat(), 'filed it themselves')
+           'notify': 'yes' if f.get('notify') else '',
+           # Who filed it, from the sign-in and not from anything typed: this is what "my own request" goes by.
+           'filed_email': (session.get('email') or '').strip().lower()}
+    # A director filing for their own program does not approve it by filing: nobody approves their own money, so the
+    # RE or ARE is asked in their place (approval_plan).
     rid, again = F.create_once(req, lines, receipts, f.get('token', ''))
     if again:      # a double click, the back button, or a retry after an error: that page already filed this request
         flash(f'{rid} was already submitted from that page, so no second request was made.', 'info')
@@ -403,7 +434,8 @@ def ask(req_id):
     if (g := _guard()):
         return g
     sent = ask_approvals(req_id)
-    flash(f"Emailed {', '.join(sorted(set(sent)))}." if sent else 'Nobody to email: this program has no director in the officials list. Ask the admin to add one.',
+    flash(f"Emailed {', '.join(sorted(set(sent)))}." if sent else 'Nobody to email. The approvals list on this page says who has to approve; '
+          'if the program has no director in the officials list, ask the admin to add one.',
           'success' if sent else 'warning')
     return redirect(url_for('fr.detail', req_id=req_id))
 
@@ -423,6 +455,17 @@ def receipts(req_id):
     return redirect(url_for('fr.detail', req_id=req_id))
 
 
+def _signed_other(r, t):
+    """True when this person already gave the other of the director (stand-in) and second-signer approvals, and the
+    RE and ARE are both free to sign. With only one of them free, that one may give both: there is nobody else."""
+    other = {'chair': 'second', 'second': 'chair'}.get(t.get('role'))
+    plan = approval_plan(r)
+    if not other or not plan['stand_in'] or len(plan['second']) < 2:
+        return False
+    return any(a['role'] == other and (a['name'] or '').strip().lower() == (t.get('name') or '').strip().lower()
+               for a in FL.parse(r.get('approvals')))
+
+
 @bp.route('/approve/<token>', methods=['GET', 'POST'])
 def approve_link(token):
     """The emailed approval link: the signed token stands in for the app password, for this one request and role."""
@@ -437,10 +480,17 @@ def approve_link(token):
     if not r:
         return render_template('fr.html', **_ctx(view='link', r=None, msg=f"{t['id']} no longer exists: it was deleted, so there is nothing to approve."))
     done = next((a for a in FL.parse(r.get('approvals')) if a['role'] == t['role']), None)
+    from app import nice_date
     msg = (f"{r['id']} is already {r['status'].lower()}." if r['status'] != 'Submitted' else
            "Board approval is no longer confirmed from an email. The board votes on it (Board page, Request email vote), "
            "and the RE, ARE, secretary or treasurer records the result there." if t['role'] == 'board' else
-           f"Already approved by {done['name']} on {done['date']}." if done else '')
+           f"Already approved by {done['name']} on {nice_date(done['date'])}." if done else
+           # Nobody approves their own money, whoever the link was sent to and whenever.
+           f"You are the payee or the submitter of {r['id']}, so you cannot approve it. Someone else has to."
+           if FL.on_request(r, t.get('name'), [t.get('email')] + _own_emails(t.get('name'))) else
+           # Standing in for the director and signing second are two signatures: two people, when two can sign.
+           f"You already gave the other approval on {r['id']}. The other of the RE and ARE gives this one."
+           if _signed_other(r, t) else '')
     if request.method == 'POST' and not msg:
         who = t['name'] or t['email']
         if request.form.get('action') == 'reject':
@@ -458,6 +508,8 @@ def approve_link(token):
                 msg = f"{r['id']} was just paid, rejected or deleted by someone else, so nothing was changed."
         else:
             note = f"by email link ({t['email']})"
+            if t['role'] == 'chair' and approval_plan(r)['stand_in']:
+                note += ', in place of the director, who is the payee or submitter'
             _approved(r['id'], t['role'], who, note)
             msg = 'Approved. Thank you; the treasurer has it from here.'
     return render_template('fr.html', **_ctx(view='link', r=r, role=FL.ROLES[t['role']], role_key=t['role'], name=t['name'], msg=msg))
@@ -541,8 +593,12 @@ import received_store as R  # noqa: E402
 
 
 def _owns_report(r):
-    me, name = (session.get('email') or '').lower(), (session.get('who') or '').lower()
-    return bool(r and ((r.get('reported_email') or '').lower() == me or (r.get('reported_by') or '').lower() == name))
+    """Whoever reported it: by the signed-in address kept on the report, or by name for a report that has none."""
+    me, name = (session.get('email') or '').strip().lower(), (session.get('who') or '').strip().lower()
+    if not r:
+        return False
+    filed = (r.get('reported_email') or '').strip().lower()
+    return bool(me) and filed == me if filed else bool(name) and (r.get('reported_by') or '').strip().lower() == name
 
 
 @bp.route('/in')
@@ -633,10 +689,11 @@ def in_new():
 def notify_received(rid):
     """Email the treasurer (and the program's group) about money taken in."""
     r = R.get(rid)
+    from app import nice_date
     body = '\n'.join([
         f"{r['reported_by']} reported money received: {rid}.", '',
         f"Event: {r['event_name'] or '(not one event)'} {r['event_code']}  Program: {r['program']}",
-        f"Received {r['received']}. Counted by {r['counted_by']}" + (f" and {r['second_counter']}." if r['second_counter'] else ' only.'),
+        f"Received {nice_date(r['received'])}. Counted by {r['counted_by']}" + (f" and {r['second_counter']}." if r['second_counter'] else ' only.'),
         f"Held by {r['held_by']} until it is deposited.", '',
         *[f"  {ln['form']}{(' #' + ln['check_number']) if ln['check_number'] else ''}  {ln['category']}: {ln['description']}  ${ln['amount']:,.2f}"
           for ln in r['lines']], '',

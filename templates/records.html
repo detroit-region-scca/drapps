@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% block app_name %}Records{% endblock %}
+{% block page_title %}{% if view == 'add' %}Add results{% elif view == 'hall' %}Hall of Fame{% elif view == 'program' %}{{ p }}{% elif view == 'season' %}{{ year }} {{ p }}{% elif view == 'event' %}{{ e.name }}{% elif view == 'event_edit' %}Correct {{ e.name }}{% elif view == 'season_edit' %}Correct {{ year }} {{ p }} standings{% elif view == 'person' %}{{ person.name }}{% else %}Records{% endif %}{% endblock %}
 {% block nav %}
     <li class="nav-item"><a class="nav-link {% if view in ('home', 'program', 'season', 'event', 'person', 'event_edit', 'season_edit') %}active{% endif %}" href="{{ url_for('records.home') }}">Records</a></li>
     <li class="nav-item"><a class="nav-link {% if view == 'hall' %}active{% endif %}" href="{{ url_for('records.hall') }}">Hall of Fame</a></li>

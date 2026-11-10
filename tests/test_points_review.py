@@ -133,8 +133,11 @@ def test_upload_shows_a_review_and_saves_nothing_until_save(site):
                   content_type='multipart/form-data').get_data(as_text=True)
     assert store['entries'] == [] and 'Check and save' in page and 'Matches the sheet' in page
     assert 'Leave out: not on the member list' in page and 'Rob Tester III' in page
-    # someone who only enters points sees names, not SCCA numbers, except where two members share a name
-    assert 'Rob Tester III (300)' not in page and 'Kim Doe (400)' in page and 'Kim Doe (401)' in page
+    # someone who only enters points never sees SCCA numbers: two members who share a name are told apart by the last
+    # two digits (or the year they joined, when the list has it)
+    assert not re.search(r'\((100|200|201|300|400|401)\)', page)
+    assert 'Kim Doe (number ending 00)' in page and 'Kim Doe (number ending 01)' in page
+    assert '>Pat Example</option>' in page and '>Lee Sample</option>' in page
     # Save what the page offers: Pat, Lee, Kim (picked: 401), Robert (picked: 300); Nobody left out
     token = re.search(r'name="token" value="([^"]+)"', page).group(1)
     form = MultiDict([('step', 'save'), ('event', '#E1'), ('first', '2026-05-14'), ('what', ''), ('seen', '{}'), ('sheet_name', 'points.xlsx'),
@@ -227,3 +230,25 @@ def test_log_is_only_for_people_in_worker_points(site, monkeypatch):
     monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Other Official', 'level': 'official', 'roles': [], 'perms': {'funds'}})
     r = c.get('/members/log')
     assert r.status_code == 302
+
+
+def test_review_shows_scca_numbers_to_the_keeper_only(site, monkeypatch):
+    import members
+    c, store = site
+    form = MultiDict([('event', '#E1'), ('first', ''), ('member', 'Pat Example'), ('points', '2'), ('member', 'Kim Doe'), ('points', '1')])
+    page = c.post('/members/enter', data=form).get_data(as_text=True)
+    assert '(100)' not in page and '(400)' not in page
+    monkeypatch.setattr(members, '_keeper', lambda: True)
+    page = c.post('/members/enter', data=form).get_data(as_text=True)
+    assert 'Pat Example (100)' in page and 'Kim Doe (400)' in page and 'Kim Doe (401)' in page
+
+
+def test_same_named_members_are_told_apart_without_the_number():
+    mem = [{'member': '500100', 'first': 'Kim', 'last': 'Doe', 'joined': date(2014, 3, 1)},
+           {'member': '500207', 'first': 'Kim', 'last': 'Doe', 'joined': date(2021, 6, 1)},
+           {'member': '500311', 'first': 'Lee', 'last': 'Sample', 'joined': date(2019, 1, 1)},
+           {'member': '500412', 'first': 'Lee', 'last': 'Sample', 'joined': date(2019, 8, 1)},
+           {'member': '500513', 'first': 'Pat', 'last': 'Example', 'joined': date(2019, 8, 1)}]
+    label = L.review_labels(mem)
+    assert [label(m) for m in mem] == ['Kim Doe (member since 2014)', 'Kim Doe (member since 2021)', 'Lee Sample (number ending 11)',
+                                       'Lee Sample (number ending 12)', 'Pat Example']

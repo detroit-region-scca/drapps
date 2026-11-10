@@ -3,6 +3,7 @@
 {% macro money(v) %}{{ cents(v, 0) }}{% endmacro %}
 {# Books check is the treasurer's page: it shows under Treasurer, without the plan's tab. #}
 {% block app_name %}{{ 'Treasurer' if view == 'checks' else 'Annual Plan' }}{% endblock %}
+{% block page_title %}{% if view == 'checks' %}Books check{% elif view == 'home' %}Annual Plan {{ year }}{% else %}{{ 'Edit ' if view == 'edit' }}{{ name }} {{ 'budget' if program == 'OPS' else 'plan' }} {{ year }}{% endif %}{% endblock %}
 {% block nav %}{% if view != 'checks' %}
     {{ tab('plan.home', 'Plan vs actual', true) }}
 {% endif %}{% endblock %}
@@ -205,14 +206,14 @@
         </div></div>
         <div class="card p-3 mb-3">
             <div class="row g-2 d-none d-md-flex text-muted small mb-1"><div class="col-md-5">Event or item</div><div class="col-md-2">Month</div><div class="col-md-2 text-end">Expected surplus</div><div class="col-md-2">Note</div></div>
-            <div class="lines">
+            <div class="lines" data-lines>
             {% for ln in (lines or [{'net': none}, {'net': none}, {'net': none}]) %}
-                <div class="row g-2 pline mb-2 pb-2">
+                <div class="row g-2 pline mb-2 pb-2" data-line>
                     <div class="col-12 col-md-5"><input name="item" class="form-control form-control-sm" aria-label="Event or item" placeholder="Event or item" value="{{ ln.item or '' }}"{% if ln.event_code and reg %} readonly title="The registered event's name; change it on the event's page"{% endif %}></div>
                     <div class="col-4 col-md-2"><select name="month" class="form-select form-select-sm{{ ' locked' if ln.event_code and reg }}" aria-label="Month"><option value=""></option>{% for m in months %}<option value="{{ loop.index }}" {% if ln.month == loop.index %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
                     <div class="col-4 col-md-2"><input name="net" class="form-control form-control-sm text-end" inputmode="decimal" aria-label="Expected surplus" placeholder="0" value="{{ ln.net_typed if ln.net_typed is defined and ln.net is none else '' if ln.net is none or ln.net == '' else ('%.0f'|format(ln.net) if ln.net == ln.net|round else ln.net) }}"></div>
                     <div class="col-3 col-md-2"><input name="note" class="form-control form-control-sm" aria-label="Note" placeholder="Note" value="{{ ln.note or '' }}"></div>
-                    <div class="col-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" onclick="removeLine(this)" aria-label="Remove line">✕</button></div>
+                    <div class="col-1 text-end"><button type="button" class="btn btn-sm btn-link row-remove p-1" title="Remove" data-remove-line aria-label="Remove line">✕</button></div>
                     <div class="col-12 col-md-5"><select name="account" class="form-select form-select-sm text-muted" title="The QuickBooks account this is booked to" aria-label="QuickBooks account">
                         <option value="">QuickBooks account: not set</option>{% for sec, acc in accounts %}<option {{ 'selected' if ln.account == acc }}>{{ acc }}</option>{% endfor %}
                         {% if ln.account and ln.account not in accounts|map(attribute=1)|list %}<option selected>{{ ln.account }}</option>{% endif %}
@@ -224,7 +225,7 @@
             {% endfor %}
             </div>
             <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
-                <button type="button" class="btn btn-outline-light btn-sm" onclick="addLine()">Add a line</button>
+                <button type="button" class="btn btn-outline-light btn-sm" data-add-line>Add a line</button>
                 <div class="ms-auto fw-semibold">Program total <span id="total"></span></div>
             </div>
         </div>
@@ -282,6 +283,7 @@
 {% endblock %}
 {% block scripts %}
 {% include '_rollup.html' %}
+{% if view == 'edit' %}{% include '_lines.html' %}{% endif %}
 {% if chart %}<script>
 // Plan vs actual: cumulative surplus by month for the region or one program. One axis, two lines.
 (() => {
@@ -363,29 +365,20 @@
 </script>{% endif %}
 <script>
     const form = document.getElementById('planForm');
-    const num = v => parseFloat(String(v).replace(/[$,]/g, '').replace('−', '-')) || 0;
-    const fmt = v => (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', {maximumFractionDigits: 0});
+    const num = v => moneyNum(String(v).replace('−', '-'));     // a typed minus sign counts as a minus
     function total() {
         let t = 0;
         form.querySelectorAll('[name=net]').forEach(i => t += num(i.value));
         const el = document.getElementById('total');
-        el.textContent = fmt(t);
+        el.textContent = moneyFmt(t, 0);
         el.className = t < 0 ? 'text-danger' : '';
-    }
-    function addLine() {
-        const box = form.querySelector('.lines');
-        const row = box.querySelector('.pline').cloneNode(true);
-        row.querySelectorAll('input, select').forEach(i => { i.value = ''; i.readOnly = false; i.classList.remove('locked'); });
-        box.appendChild(row);
-        row.querySelector('[name=item]').focus();
-    }
-    function removeLine(btn) {
-        const box = btn.closest('.lines'), row = btn.closest('.pline');
-        if (box.querySelectorAll('.pline').length > 1) row.remove(); else row.querySelectorAll('input, select').forEach(i => i.value = '');
-        total();
     }
     if (form) {
         form.addEventListener('input', total);
+        // A new line copied from a tied one is not tied; the last line, emptied, loses its dropdown choices too.
+        form.addEventListener('line-added', e => e.target.querySelectorAll('input, select').forEach(i => { i.readOnly = false; i.classList.remove('locked'); }));
+        form.addEventListener('line-emptied', e => { e.target.querySelectorAll('select').forEach(i => i.value = '');
+            e.target.querySelectorAll('input, select').forEach(i => { i.readOnly = false; i.classList.remove('locked'); }); });
         // A line tied to a registered event takes the event's name and month, locked; untying it frees them again.
         form.addEventListener('change', e => {
             if (e.target.name !== 'code') return;

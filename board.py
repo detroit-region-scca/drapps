@@ -57,7 +57,11 @@ def _guard():
     return None
 
 
+PAGE_TITLES = {'waiting': 'Waiting for the board', 'decisions': 'Decisions', 'vote': 'Board vote'}
+
+
 def _ctx(**kw):
+    kw.setdefault('page_title', PAGE_TITLES.get(kw.get('view'), ''))      # the browser tab: the page's own name
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Board", who=session.get('who', ''), officer=officer_current(),
                 board_email=board_email(), programs=load_programs(), today=date.today().isoformat(), **kw)
 
@@ -263,7 +267,7 @@ def home():
                 send_mail(subject,
                           f"This email is for discussion. Reply all to discuss.\n\n"
                           f"{who} asks the board to vote on:\n\n{_plain(items[0]) if n == 1 else listed}\n\n"
-                          f"Your vote link comes in a separate email.\nCloses {BL.closes(today)}.\n\n"
+                          f"Your vote link comes in a separate email.\nCloses {BL.nice_date(BL.closes(today))}.\n\n"
                           f"Who has voted:\n{board_url}",
                           board_email(), reply_to=board_email())
             else:
@@ -277,7 +281,7 @@ def home():
                 mine = '\n\n'.join(f"{title}:\n\n{_vote_link(bid, p)}" for (_, title, _), bid in zip(items, bids))
                 send_mail(f"{u}Your vote link: {first}",
                           f"This email has your vote link.\n\n{mine}\n\n"
-                          f"Closes {BL.closes(today)}. To discuss, see the \"{subject}\" email.",
+                          f"Closes {BL.nice_date(BL.closes(today))}. To discuss, see the \"{subject}\" email.",
                           p['email'])
             for m in ms:
                 M.update(m['id'], asked=today)
@@ -305,7 +309,7 @@ def home():
                 flash('Those items are already recorded. Nothing was changed.', 'warning')
                 return redirect(url_for('board.home'))
             said = _record(bcodes, ms, decided, result, f.get('how', ''), bud._how_vote({'vote': f.get('vote', '')}), off)
-        flash(f"Recorded for {decided}: " + '; '.join(said) + '.', 'success')
+        flash(f"Recorded for {BL.nice_date(decided)}: " + '; '.join(said) + '.', 'success')
         return redirect(url_for('board.home'))
     rows = [dict(r, year=y) for y in bud.pending_years() for r in bud._pending_rows(y)] if B.enabled() else []
     rows.sort(key=lambda r: str(r['b'].get('date', '')))
@@ -438,7 +442,7 @@ def _vote_page(b, p, via, back):
     mine = next((r['choice'] for r in t['rows'] if r['email'] == p['email']), '')
     # The page says "Voting as <me.name>". Someone signed in keeps their own permissions under that name, so the menu
     # (Minutes, Audit log) stays as it was; an emailed link with nobody signed in has only the voter.
-    return render_template('board.html', **_ctx(view='vote', b=b, t=t, state=st, summary=BL.summary(b, t), me=dict(_me(), **p), mine=mine,
+    return render_template('board.html', **_ctx(view='vote', page_title=b['title'] or 'Board vote', b=b, t=t, state=st, summary=BL.summary(b, t), me=dict(_me(), **p), mine=mine,
                                                   msg=msg, link=_item_link(b['item']), BL=BL))
 
 
@@ -589,4 +593,4 @@ def decisions_page():
     meetings = [d['date'] for d in days if any(i['how'] == 'board meeting' for i in d['items']) or d['minutes']]
     last = max(meetings) if meetings else ''
     since = [i for d in days if d['date'] > last for i in d['items'] if i['how'] == 'email vote']
-    return render_template('board.html', **_ctx(view='decisions', days=days, year=year, years=_years(), since=since, last=last))
+    return render_template('board.html', **_ctx(view='decisions', page_title=f'Decisions {year}', days=days, year=year, years=_years(), since=since, last=last))

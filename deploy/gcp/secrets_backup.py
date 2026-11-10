@@ -18,7 +18,7 @@ default sharing adds an "anyone at drscca.org" permission to new files; it is re
 reads back who can open the file: if that is anyone but admin@ (or an address in BACKUP_READERS), the copy is still
 saved but the run fails, so the alert email goes out.
 
-The folder is ACCOUNT_RECOVERY_FOLDER_ID in drapps.env; the id below is used when that is not set.
+The folder is ACCOUNT_RECOVERY_FOLDER_ID in drapps.env (the id is not kept in this public repo).
 """
 import io
 import json
@@ -28,9 +28,8 @@ import tarfile
 
 SA = os.environ.get('WORKSPACE_SA') or '/opt/drscca/data/secrets/workspace-sa.json'
 ADMIN = 'admin@drscca.org'
-# Account Recovery (limited to admin@). Set ACCOUNT_RECOVERY_FOLDER_ID in drapps.env; this default keeps a server
-# whose drapps.env does not have it yet working.
-FOLDER = os.environ.get('ACCOUNT_RECOVERY_FOLDER_ID') or '1FQpvirIhnC0tJdkueJxA-8v4g3OYkkM9'
+# Account Recovery (limited to admin@): ACCOUNT_RECOVERY_FOLDER_ID in drapps.env.
+FOLDER = os.environ.get('ACCOUNT_RECOVERY_FOLDER_ID') or ''
 # Who may be able to open the copies, besides nobody: comma separated, lower case. Default: admin@ only.
 READERS = {a.strip().lower() for a in (os.environ.get('BACKUP_READERS') or ADMIN).split(',') if a.strip()}
 
@@ -135,6 +134,8 @@ def lock_down(s, fid):
 
 
 def main(argv):
+    if not FOLDER:
+        sys.exit('ACCOUNT_RECOVERY_FOLDER_ID is not set in drapps.env: no copy was made.')
     if '--state' in argv[1:]:
         name, paths = STATE_NAME, state_paths()
         what = 'Nightly copy of the drapps app files that exist only on the server (audit log, records corrections, short links, role settings). See docs/RUNBOOK.md, "Backups".'

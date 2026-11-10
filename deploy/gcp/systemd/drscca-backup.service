@@ -3,4 +3,6 @@ OnFailure=drscca-alert@%n.service
 Description=DRSCCA apps: nightly .xlsx copy of the Google Sheets
 [Service]
 Type=oneshot
+# A job stuck this long is stopped and counts as failed, so the alert email goes out.
+TimeoutStartSec=20min
 ExecStart=/usr/bin/docker exec drapps python backup_sheets.py

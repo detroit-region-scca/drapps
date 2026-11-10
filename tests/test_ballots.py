@@ -68,7 +68,7 @@ def test_summary_lines():
     people = BL.roster(OFFICIALS)
     t = BL.tally([_v('one@example.org', 'yes', 'x'), _v('two@example.org', 'no', 'y')], people)
     b = {'status': 'open', 'closes': '2026-12-01'}
-    assert BL.summary(b, t, '2026-11-05') == '2 of 11 voted: 1 yes, 1 no. 7 decide it. Closes 2026-12-01.'
+    assert BL.summary(b, t, '2026-11-05') == '2 of 11 voted: 1 yes, 1 no. 7 decide it. Closes Dec 1, 2026.'
     assert BL.summary({'status': 'recorded', 'result': 'passed'}, t) == 'Passed 1-1 by email vote.'
 
 

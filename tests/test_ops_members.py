@@ -235,4 +235,4 @@ def test_quickbooks_page_says_what_was_left_alone(site, monkeypatch):
     c.post('/members/quickbooks', data=MultiDict([('row', '2'), ('row', '3'), ('key2', 'k-two'), ('ref', 'JE 9')]))
     assert got == [([2, 3], {2: 'k-two', 3: ''})]
     said = _flashes(c)
-    assert 'Marked 1 entries reconciled' in said and '1 ticked entry was left alone' in said
+    assert 'Marked 1 entry as entered in QuickBooks' in said and '1 ticked entry was left alone' in said

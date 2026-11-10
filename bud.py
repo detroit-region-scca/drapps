@@ -449,7 +449,8 @@ def msr_date(code):
         e['date'] = info['date']
         save_events(events)
     log_audit_event('EVENT_EDITED', who, {'event_code': code, 'date': [old, info['date']], 'from': 'MotorsportReg'})
-    flash(f"Date set to {info['date']}, as on MotorsportReg.", 'success')
+    from app import nice_date
+    flash(f"Date set to {nice_date(info['date'])}, as on MotorsportReg.", 'success')
     return redirect(url_for('bud.detail', code=code))
 
 
@@ -526,8 +527,9 @@ def budget_vote_lines(year, codes):
             run = r['surplus'] + r['equipment']
             money = (f", income minus running costs {'+' if run >= 0 else '-'}${abs(run):,.0f}, plus ${r['equipment']:,.0f} of equipment to buy"
                      f" (total ${abs(r['surplus']):,.0f} {'surplus' if r['surplus'] >= 0 else 'out'})")
-        changed = ' (changed since approved ' + b['approved'] + ')' if r['status'] == 'changed' else ''
-        when = '' if str(b.get('date', '')) in b['event_name'] else f", {b.get('date', '')}"
+        from app import nice_date
+        changed = f" (changed since approved {nice_date(b['approved'])})" if r['status'] == 'changed' else ''
+        when = '' if str(b.get('date', '')) in b['event_name'] else f", {nice_date(b.get('date', ''))}"
         prog = load_programs().get(b.get('program', ''), '')
         lines.append(f"- Budget: {b['event_name']}{when}{f' ({prog})' if prog else ''}{money}{changed}\n  {link}")
     return lines, rows
@@ -577,7 +579,8 @@ def approve_many():
         flash('Tick at least one budget.', 'warning')
         return redirect(url_for('board.home'))
     n = record_budgets(year, picked, approved, _how_vote(request.form))
-    flash(f'Board approval on {approved} recorded for {n} budget{"s" if n != 1 else ""}.', 'success')
+    from app import nice_date
+    flash(f'Board approval on {nice_date(approved)} recorded for {n} budget{"s" if n != 1 else ""}.', 'success')
     return redirect(url_for('board.home'))
 
 
@@ -601,7 +604,8 @@ def approve(code):
     how = _how_vote(request.form) if approved else ''
     B.set_approved(code, approved, f"{who} ({how})" if how else who)
     log_audit_event('BUDGET_APPROVED' if approved else 'BUDGET_UNAPPROVED', who, {'event_code': code, 'approved': approved, 'how': how})
-    flash(f'Board approval recorded: {approved}.' if approved else 'Board approval cleared.', 'success')
+    from app import nice_date
+    flash(f'Board approval recorded: {nice_date(approved)}.' if approved else 'Board approval cleared.', 'success')
     return redirect(url_for('bud.detail', code=code))
 
 

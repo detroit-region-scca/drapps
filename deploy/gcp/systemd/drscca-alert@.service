@@ -2,6 +2,8 @@
 Description=DRSCCA apps: email admin@ that %i failed
 [Service]
 Type=oneshot
+# A job stuck this long is stopped and counts as failed.
+TimeoutStartSec=2min
 EnvironmentFile=/opt/drscca/data/secrets/drapps.env
 Environment=ALERT_EMAIL=admin@drscca.org
 # drapps.env names the key's path inside the container; this is the same key on the host (as in drscca-qbo.service).

@@ -8,8 +8,18 @@ import inv_store as I
 
 
 class FakeWS:
-    def __init__(self, rows):
-        self.rows = rows
+    def __init__(self, rows, cols=None):
+        self.rows, self.col_count = rows, cols or len(rows[0])
+
+    def row_values(self, n, **k):
+        return list(self.rows[n - 1])
+
+    def add_cols(self, n):
+        self.col_count += n
+
+    def update(self, values, rng, **k):
+        assert rng[1:] == '1' and ord(rng[0]) - 65 + len(values[0]) <= self.col_count, 'write outside the grid'
+        self.rows[0][ord(rng[0]) - 65:] = values[0]
 
     def col_values(self, n):
         return [r[n - 1] for r in self.rows]
@@ -133,8 +143,16 @@ def test_volunteer_may_ask_to_delete_their_own_invoice_only(site, sheet):
     c, store = site
     c.post('/invoices/new', data=_form())
     iid = sheet['Invoices'].rows[1][0]
+    row, by, mail = sheet['Invoices'].rows[1], I.INV_COLS.index('created_by'), I.INV_COLS.index('filed_email')
+    assert row[mail] == 'pat@example.org'                  # the signed-in address, kept at filing
     store['user'] = {'name': 'Val Volunteer', 'level': 'volunteer', 'roles': [], 'perms': {'invoices'}}
+    row[mail] = 'someone@example.org'                      # created by another address: the same name is not enough
+    row[by] = 'Val Volunteer'
     assert c.post(f'/invoices/{iid}/delete', data={'note': 'test'}).status_code == 403
-    sheet['Invoices'].rows[1][I.INV_COLS.index('created_by')] = 'Val Volunteer'
+    row[mail], row[by] = '', 'Pat Director'                # from before addresses were kept: by name, and not theirs
+    assert c.post(f'/invoices/{iid}/delete', data={'note': 'test'}).status_code == 403
+    row[by] = 'Val Volunteer'
     r = c.post(f'/invoices/{iid}/delete', data={'note': 'test'})
     assert r.status_code == 302 and r.location.endswith(f'/invoices/{iid}')
+    row[mail], row[by] = 'pat@example.org', 'Pat Director'  # their address, whatever the name
+    assert c.post(f'/invoices/{iid}/delete', data={'note': 'test'}).status_code == 302

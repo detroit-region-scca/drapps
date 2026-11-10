@@ -85,6 +85,15 @@ def closes(opened, days=OPEN_DAYS):
     return (date.fromisoformat(opened[:10]) + timedelta(days=days)).isoformat()
 
 
+def nice_date(d):
+    """'2026-12-05' -> 'Dec 5, 2026' for text people read (the pages' nice_date style); anything else as it is."""
+    try:
+        d = date.fromisoformat(str(d)[:10])
+        return f'{d:%b} {d.day}, {d.year}'
+    except ValueError:
+        return d or ''
+
+
 def state(ballot, t, today=None):
     """What a ballot is now: 'open', 'passed', 'failed' (decided, waiting for an officer to record it), 'recorded',
     'expired' (30 days without a result) or 'cancelled' (the item was decided another way or withdrawn)."""
@@ -99,11 +108,11 @@ def state(ballot, t, today=None):
 
 
 def summary(ballot, t, today=None):
-    """One line for the Board page: '5 of 12 voted: 4 yes, 1 no. 7 decide it. Closes 2026-12-05.'"""
+    """One line for the Board page: '5 of 12 voted: 4 yes, 1 no. 7 decide it. Closes Dec 5, 2026.'"""
     st = state(ballot, t, today)
     voted = f"{t['voted']} of {t['of']} voted: {t['yes']} yes, {t['no']} no" + (f", {t['abstain']} abstain" if t['abstain'] else '')
     if st == 'open':
-        return f"{voted}. {needed()} decide it. Closes {ballot.get('closes', '')}."
+        return f"{voted}. {needed()} decide it. Closes {nice_date(ballot.get('closes', ''))}."
     if st in ('passed', 'failed', 'recorded'):
         res = ballot.get('result') or st
         return f"{'Passed' if res == 'passed' else 'Failed'} {count_text(t)} by email vote."

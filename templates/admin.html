@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% from '_ui.html' import nice_time with context %}
 {% block app_name %}Admin{% endblock %}
+{% block page_title %}{{ {'users': 'Users', 'roles': 'Roles', 'programs': 'Programs'}.get(view, '') }}{% endblock %}
 {% block nav %}{% include '_admin_nav.html' %}{% endblock %}
 {% block content %}
 {% macro user_form(u, roles) %}
