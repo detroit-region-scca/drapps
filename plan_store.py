@@ -6,7 +6,6 @@
   QBO Monthly     profit by program and month, this year and last      }
   QBO Status      bank balances and the worker points reserve          } tools/qbo_nightly.py,
   QBO Exceptions  things in the books the treasurer should look at     } read only here
-  QBO Bills       bills not paid in full yet (also nightly, read only here)
   Reviewed        exception keys the treasurer has looked at, so they stay hidden
 """
 import os
@@ -462,22 +461,6 @@ def receivables():
     """Invoices still owed in QuickBooks as of the last sync, oldest first."""
     return sorted(_mirror('QBO Receivables', ['number', 'date', 'due', 'customer', 'total', 'balance', 'as_of'], {'total', 'balance'}),
                   key=lambda r: r['date'])
-
-
-BILL_COLS = ['id', 'date', 'vendor', 'total', 'balance', 'number', 'memo', 'lines', 'as_of']
-
-
-def bill_row(b, as_of):
-    """One exported QuickBooks bill as a 'QBO Bills' row; its lines as readable text (account / class / customer amount)."""
-    lines = '; '.join(' / '.join(x for x in (ln.get('account'), ln.get('class'), ln.get('customer')) if x) + f" {ln.get('amount') or 0:.2f}"
-                      for ln in b.get('lines') or [])
-    return [b.get('id', ''), b.get('date', ''), b.get('vendor', ''), b.get('total') or 0, b.get('balance') or 0, b.get('number', ''),
-            (b.get('memo') or '')[:300], lines[:1000], as_of]
-
-
-def bills():
-    """Bills not paid in full in QuickBooks as of the last sync ([] before the first sync that writes the tab)."""
-    return _mirror('QBO Bills', BILL_COLS, {'total', 'balance'})
 
 
 def accounts(program, years):

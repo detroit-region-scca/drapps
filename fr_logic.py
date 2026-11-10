@@ -113,38 +113,6 @@ def explain(items, plan):
     return items
 
 
-_COMPANY = {'llc', 'inc', 'co', 'corp', 'ltd', 'the', 'company', 'and'}
-
-
-def same_payee(a, b):
-    """A loose match of two payee names, a person or a business: same_person, or one name's words are all in the other
-    ("Example Rentals" and "Example Rentals LLC", "Sample, Sam" and "Sam Sample")."""
-    if same_person(a, b):
-        return True
-    wa, wb = set(_words(a)) - _COMPANY, set(_words(b)) - _COMPANY
-    return bool(wa and wb and (wa <= wb or wb <= wa))
-
-
-def billed(others, bills, code=''):
-    """The open requests among `others` whose bill is already in QuickBooks, as a set of ids: an unpaid bill of the same
-    amount to the cent whose vendor matches the payee (same_payee) and which is booked to the same place: for an
-    event (code), a line on that event's QuickBooks project; for a program's own spending (no code), no line on any
-    event project. Each bill is used once. Such a request is already in the QuickBooks spending being checked, so the
-    overrun check must not add it again. Anything less certain is not matched, and the request counts in full."""
-    def same_place(b):
-        lines = str(b.get('lines') or '')
-        return code in lines if code else '#DR' not in lines
-    left, out = list(bills or []), set()
-    for x in sorted(others, key=lambda x: x.get('id') or ''):
-        cents = round((x.get('net') or 0) * 100)
-        hit = next((b for b in left if round((b.get('total') or 0) * 100) == cents
-                    and (b.get('vendor') or '').strip() and same_payee(b['vendor'], x.get('payee_name')) and same_place(b)), None)
-        if hit:
-            left.remove(hit)
-            out.add(x['id'])
-    return out
-
-
 def is_points(r):
     """A worker points redemption: already approved in the app when the points were taken off."""
     return r.get('event_name') == 'Worker points redemption'

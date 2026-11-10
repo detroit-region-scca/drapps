@@ -8,8 +8,6 @@
 6. Exceptions for the treasurer -> Annual Plan sheet, 'QBO Exceptions' tab
 7. The one QuickBooks write (tools/qbo_write.mjs): a paid request's receipts are attached to its check or card statement
 8. Balance sheet and money owed -> Annual Plan sheet, 'QBO Balance Sheet' and 'QBO Receivables' tabs, for the report
-9. Unpaid bills                -> Annual Plan sheet, 'QBO Bills' tab: an open funds request whose bill is already in
-                                  QuickBooks is not counted twice against its budget (fr_logic.billed)
 
 Run on the machine with the QuickBooks connection (see qbo_export.mjs); the web app only reads what this writes.
 Needs node, the QBO env (QUICKBOOKS_* from the qbo-mcp token store) and the app's .env. --dry-run prints only.
@@ -132,13 +130,6 @@ def main():
                     [[b['depth'], b['name'], b['amount'], as_of] for b in data.get('balance_sheet', [])])
         P.write_tab('QBO Receivables', ['number', 'date', 'due', 'customer', 'total', 'balance', 'as_of'],
                     [[r['number'], r['date'], r['due'], r['customer'], r['total'], r['balance'], as_of] for r in data.get('receivables', [])])
-        if data.get('bills_error'):      # QuickBooks would not list them: keep the tab from the last good night
-            say.append(f"unpaid bills export failed: {data['bills_error']}")
-        else:
-            try:      # an older export has no bills; a failure here must not stop the rest of the sync
-                P.write_tab('QBO Bills', P.BILL_COLS, [P.bill_row(b, as_of) for b in data.get('bills', [])])
-            except Exception as e:
-                say.append(f"writing unpaid bills failed: {e}")
         # A deposit pays one thing, once: each matcher leaves out what its own records used on earlier nights, and is
         # told what the other kind (invoices, money received) has used.
         deposits = data.get('deposits', [])

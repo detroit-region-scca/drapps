@@ -72,13 +72,6 @@ class Approvals:
         self.plans = {}
         self.other = {}
         self._motions = None
-        self._bills = None
-
-    def bills(self):
-        """Unpaid QuickBooks bills as of the last sync ([] before the first sync that writes them)."""
-        if self._bills is None:
-            self._bills = P.bills() if P.enabled() else []
-        return self._bills
 
     def motions(self):
         if self._motions is None:
@@ -135,11 +128,7 @@ class Approvals:
             q = self.other[(program, year)] if b else {}
             same = [x for x in self.reqs if not x['event_code'] and x['program'] == program and x['submitted'][:4] == year and x['id'] != r['id']]
         spent = (q.get('totals') or {}).get('expense') or 0.0
-        # Open requests count in full, except one whose bill the treasurer has already entered in QuickBooks: that
-        # bill is in the spending above, so adding the request too would count it twice.
-        open_ = [x for x in same if x['status'] == 'Submitted']
-        billed = FL.billed(open_, self.bills(), code) if open_ else set()
-        spent += sum(x['net'] or 0 for x in open_ if x['id'] not in billed)
+        spent += sum(x['net'] or 0 for x in same if x['status'] == 'Submitted')      # open requests count in full
         return FL.review(r, status, expense, round(spent, 2), scope=scope, board_vote=self.board_vote(r))
 
 

@@ -6,7 +6,6 @@ import fr
 import fr_logic as FL
 import fr_store as F
 import inv_store as I
-import plan_store as P
 from test_money_stores import FakeWS, _book
 
 RAE = {'name': 'Rae Director', 'mail': 'rx-group@example.org', 'emails': ['rx-group@example.org', 'rae@example.org']}
@@ -243,77 +242,6 @@ def test_an_invoices_tab_without_the_new_column_reads(monkeypatch):
     monkeypatch.setattr(I.C, 'batch_get', lambda sid, ranges, params=None: {'valueRanges': [{'values': [I.INV_LABELS[:-1], row]}, {}]})
     inv = I.get('INV-2026-001')
     assert inv['filed_email'] == '' and inv['created_by'] == 'Sam Sample' and inv['total'] == 100.0
-
-
-# ---------- C: a request whose bill is already in QuickBooks ----------
-
-def test_same_payee_is_a_loose_name_match():
-    assert FL.same_payee('Example Rentals', 'Example Rentals LLC') and FL.same_payee('Sample, Sam', 'Sam Sample')
-    assert FL.same_payee('Matt Sample', 'Matthew Sample')
-    assert not FL.same_payee('Example Rentals', 'Other Rentals') and not FL.same_payee('', 'Example Rentals') and not FL.same_payee('LLC', 'Inc')
-
-
-def _open(rid, net, payee):
-    return {'id': rid, 'net': net, 'payee_name': payee, 'status': 'Submitted'}
-
-
-def test_a_request_is_left_out_only_for_a_bill_of_its_amount_and_payee():
-    others = [_open('FR-1', 300.0, 'Example Rentals'), _open('FR-2', 300.0, 'Sam Sample'), _open('FR-3', 120.5, 'Lee Other')]
-    bills = [{'id': 'Bill 7', 'vendor': 'Example Rentals LLC', 'total': 300.0}, {'id': 'Bill 8', 'vendor': 'Lee Other', 'total': 120.51}]
-    assert FL.billed(others, bills) == {'FR-1'}                    # FR-2: another vendor; FR-3: a cent off
-    assert FL.billed(others, []) == set() and FL.billed(others, None) == set()
-
-
-def test_each_bill_is_used_once_and_must_name_the_vendor_and_the_same_event():
-    twins = [_open('FR-1', 300.0, 'Example Rentals'), _open('FR-2', 300.0, 'Example Rentals')]
-    assert FL.billed(twins, [{'vendor': 'Example Rentals', 'total': 300.0}]) == {'FR-1'}
-    assert FL.billed(twins, [{'vendor': 'Example Rentals', 'total': 300.0}, {'vendor': '', 'total': 300.0}]) == {'FR-1'}
-    on_a = {'vendor': 'Example Rentals', 'total': 300.0, 'lines': 'Site Rental / Autocross / Test Day #DRAAA 300.00'}
-    assert FL.billed(twins, [on_a], '#DRAAA') == {'FR-1'} and FL.billed(twins, [on_a], '#DRBBB') == set()
-    assert FL.billed(twins, [on_a]) == set()      # a program's own spending is not excused by an event's bill
-
-
-def test_the_overrun_check_does_not_count_a_billed_request_twice(monkeypatch, officials):
-    r, other = req(event_code='#DRAAA', net=100.0), req(id='FR-2026-002', event_code='#DRAAA', net=400.0)
-    budget = {'totals': {'budget': {'expense': 1000.0}}}
-    monkeypatch.setattr(fr.F, 'requests', lambda: [r, other])
-    monkeypatch.setattr(fr.B, 'enabled', lambda: True)
-    monkeypatch.setattr(fr.B, 'budgets', lambda: {'#DRAAA': budget})
-    monkeypatch.setattr(fr.B, 'status', lambda b: 'approved')
-    monkeypatch.setattr(fr.B, 'qbo_actuals', lambda: {'#DRAAA': {'totals': {'expense': 700.0}}})     # the $400 bill is in here
-    monkeypatch.setattr(fr.P, 'enabled', lambda: True)
-    monkeypatch.setattr(fr.Approvals, 'board_vote', lambda self, r: None)
-    over = lambda: next(i for i in fr.Approvals().items(r) if i['key'] == 'overrun')      # noqa: E731
-    monkeypatch.setattr(fr.P, 'bills', lambda: [])
-    assert not over()['done'] and '$1,200.00 of $1,100.00' in over()['label']              # 700 + 400 + 100: counted twice
-    monkeypatch.setattr(fr.P, 'bills', lambda: [{'id': 'Bill 7', 'vendor': 'Example Rentals', 'total': 400.0, 'balance': 400.0,
-                                                  'lines': 'Site Rental / Test Day #DRAAA 400.00'}])
-    assert over()['done'] and '$800.00 of $1,100.00' in over()['label']
-
-
-def test_bills_read_as_none_before_the_first_sync_writes_the_tab(monkeypatch):
-    import gspread
-    monkeypatch.setenv('PLAN_SHEET_ID', 'sheet')
-    monkeypatch.setattr(P, '_cache', {})
-    monkeypatch.setattr(P.C, 'version', lambda sid: 1)
-
-    def no_tab(sid, ranges, params=None):
-        raise gspread.exceptions.WorksheetNotFound('QBO Bills')
-    monkeypatch.setattr(P.C, 'batch_get', no_tab)
-    assert P.bills() == []
-
-
-def test_bills_go_to_the_tab_and_come_back(monkeypatch):
-    bill = {'id': 'Bill 7', 'date': '2026-11-02', 'vendor': 'Example Rentals', 'total': 400, 'balance': 400, 'number': 'A-1', 'memo': 'FR-2026-002',
-            'lines': [{'description': 'Site', 'amount': 400, 'account': 'Site Rental', 'class': 'RallyCross', 'customer': '#DRAAA Fall'}]}
-    row = P.bill_row(bill, '2026-11-09')
-    assert len(row) == len(P.BILL_COLS) and row[P.BILL_COLS.index('lines')] == 'Site Rental / RallyCross / #DRAAA Fall 400.00'
-    assert P.bill_row({'id': 'Bill 8'}, '2026-11-09')[3:5] == [0, 0]            # an export with fields missing still writes
-    monkeypatch.setenv('PLAN_SHEET_ID', 'sheet')
-    monkeypatch.setattr(P, '_cache', {})
-    monkeypatch.setattr(P.C, 'version', lambda sid: 1)
-    monkeypatch.setattr(P.C, 'batch_get', lambda sid, ranges, params=None: {'valueRanges': [{'values': [P.BILL_COLS, row]}]})
-    assert P.bills()[0]['vendor'] == 'Example Rentals' and P.bills()[0]['total'] == 400.0
 
 
 # ---------- D: a sign-in code and a Sheets outage ----------
