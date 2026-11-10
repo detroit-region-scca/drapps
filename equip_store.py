@@ -67,6 +67,9 @@ PLAN_HELP = {
     'budget_within_years': 'Items due within this many years (1 = this year only, 2 = this year or next) are bought outright in that year\'s budget.',
     'big_from_savings': 'yes: offer paying the big items from savings. no: save monthly for everything.',
 }
+# One more row on the same tab: a short note from the committee, shown under the replacement summary.
+NOTE_KEY, NOTE_MAX = 'note', 300
+NOTE_HELP = 'A short note from the committee, shown under the replacement summary. Blank = no note.'
 LOCK = os.path.join(DATA_DIR, 'equipment.lock')
 
 _lock = threading.Lock()
@@ -169,8 +172,8 @@ def _plan_cfg(rows):
     return cfg
 
 
-def plan_settings():
-    """The replacement plan's rules (PLAN_DEFAULTS until someone saves them)."""
+def _plan_rows():
+    """The 'Plan settings' tab's rows below the header ([key, value, ...]); none when the tab is not there yet."""
     sid = os.environ['OPERATIONS_SHEET_ID']
     hit, ver = _cache.get('plan'), C.version(sid)      # the version first: a write during the read below must not look fresh
     if hit and hit[0] == ver:
@@ -180,20 +183,69 @@ def plan_settings():
         rows = (res.get('valueRanges') or [{}])[0].get('values', [])[1:]
     except Exception:            # no tab yet: the defaults
         rows = []
-    cfg = _plan_cfg(rows)
-    _cache['plan'] = (ver, cfg)
-    return cfg
+    _cache['plan'] = (ver, rows)
+    return rows
+
+
+def plan_settings():
+    """The replacement plan's rules (PLAN_DEFAULTS until someone saves them)."""
+    return _plan_cfg(_plan_rows())
+
+
+def _note_text(rows):
+    """The committee's note from the tab's rows: the 'note' row's value as one line of plain text, '' when there is none."""
+    for r in rows:
+        if r and str(r[0]).strip().lower() == NOTE_KEY:
+            return ' '.join(str(r[1]).split())[:NOTE_MAX] if len(r) > 1 else ''
+    return ''
+
+
+def plan_note():
+    """The committee's note shown under the replacement summary ('' when none was written)."""
+    return _note_text(_plan_rows())
+
+
+def _plan_ws():
+    book = open_book(os.environ['OPERATIONS_SHEET_ID'])
+    have = {w.title: w for w in book.worksheets()}
+    return have.get(PLAN_TAB) or book.add_worksheet(PLAN_TAB, rows=20, cols=len(PLAN_LABELS))
+
+
+def _plan_sheet_rows(live, cfg=None, note=None, who='', when=''):
+    """The whole 'Plan settings' tab as it should be written: the header, the four rules, then every other row (the
+    committee's note, anything added by hand). live: the tab as it is now. cfg: new rules, else the rule rows stay as
+    they are (and are not written at all when the tab has none yet). note: new note text, else the note row stays."""
+    width = len(PLAN_LABELS)
+    body = [list(r) + [''] * (width - len(r)) for r in live[1:] if r and str(r[0]).strip()]
+    key = lambda r: str(r[0]).strip()
+    rules = [r for r in body if key(r) in PLAN_DEFAULTS]
+    rest = [r for r in body if key(r) not in PLAN_DEFAULTS and key(r).lower() != NOTE_KEY]
+    note_row = next((r for r in body if key(r).lower() == NOTE_KEY), None)
+    if cfg is not None:
+        rules = [[k, ('yes' if cfg[k] else 'no') if k == 'big_from_savings' else cfg[k], PLAN_HELP[k], when, who] for k in PLAN_DEFAULTS]
+    if note is not None:
+        note_row = [NOTE_KEY, note, NOTE_HELP, when, who]
+    rows = [PLAN_LABELS] + rules + ([note_row] if note_row else []) + rest
+    return rows + [[''] * width] * max(0, len(live) - len(rows))      # blank what is left of a longer tab
 
 
 def save_plan_settings(cfg, who, when):
-    """Write the four settings to the 'Plan settings' tab (made the first time), one row each, with who and when."""
+    """Write the four settings to the 'Plan settings' tab (made the first time), one row each, with who and when.
+    The committee's note and any other row on the tab are kept."""
     with FileLock(LOCK), _lock:
-        book = open_book(os.environ['OPERATIONS_SHEET_ID'])
-        have = {w.title: w for w in book.worksheets()}
-        ws = have.get(PLAN_TAB) or book.add_worksheet(PLAN_TAB, rows=20, cols=len(PLAN_LABELS))
-        rows = [PLAN_LABELS] + [[k, ('yes' if cfg[k] else 'no') if k == 'big_from_savings' else cfg[k], PLAN_HELP[k], when, who]
-                                for k in PLAN_DEFAULTS]
-        ws.update(rows, 'A1', value_input_option='RAW')
+        ws = _plan_ws()
+        live = ws.get('A1:E60', value_render_option='UNFORMATTED_VALUE') or []
+        ws.update(_plan_sheet_rows(live, cfg=cfg, who=who, when=when), 'A1', value_input_option='RAW')
+        refresh()
+
+
+def save_plan_note(text, who, when):
+    """Write the committee's note ('' clears it) as the 'note' row of the 'Plan settings' tab. The four rules are
+    written back exactly as they are."""
+    with FileLock(LOCK), _lock:
+        ws = _plan_ws()
+        live = ws.get('A1:E60', value_render_option='UNFORMATTED_VALUE') or []
+        ws.update(_plan_sheet_rows(live, note=text, who=who, when=when), 'A1', value_input_option='RAW')
         refresh()
 
 
@@ -376,13 +428,13 @@ def recurring_costs(places_rows, tasks_rows):
         if per:
             rows.append({'what': p['name'], 'category': 'Storage', 'every': 1 if p['cost_month'] else 12, 'per_year': round(per, 2),
                          'each': p['cost_month'] or p['cost_year'], 'next': '', 'paid_how': p['account_holder'], 'owner': '', 'kind': 'place',
-                         'id': p['id'], 'qbo': p.get('qbo_check', ''), 'notes': p['notes'], 'account': STORAGE_ACCOUNT})
+                         'id': p['id'], 'qbo': p.get('qbo_check', ''), 'notes': p['notes'], 'account': STORAGE_ACCOUNT, 'about': ''})
     for t in tasks_rows:
         if t['repeat_months'] and t['cost']:
             rows.append({'what': t['task'], 'category': t.get('category') or 'Other', 'every': t['repeat_months'],
                          'per_year': round(t['cost'] * 12 / t['repeat_months'], 2), 'each': t['cost'], 'next': t['due'],
                          'paid_how': t.get('paid_how', ''), 'owner': t['owner'], 'kind': 'task', 'id': t['id'], 'qbo': t.get('qbo_check', ''),
-                         'notes': t['notes'], 'account': t.get('account', ''), 'ends': t.get('ends', '')})
+                         'notes': t['notes'], 'account': t.get('account', ''), 'ends': t.get('ends', ''), 'about': t.get('about', '')})
     return sorted(rows, key=lambda r: -r['per_year'])
 
 

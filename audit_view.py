@@ -181,6 +181,10 @@ def _describe(log):
         return Markup('{} saved the Operations to-do "{}" (due {})').format(who, g('task', ''), g('due', '') or 'no date')
     if a == 'EQUIP_TASK_DONE':
         return Markup('{} marked done: {}{}').format(who, g('task', ''), f" (next due {g('next')})" if g('next') else '')
+    if a == 'EQUIP_PLAN_SETTINGS':
+        return Markup('{} changed the rules of the {}').format(who, _link('equip.replacement', 'replacement plan'))
+    if a == 'EQUIP_PLAN_NOTE':
+        return Markup('{} {} the committee note on the {}').format(who, 'changed' if g('after') else 'removed', _link('equip.replacement', 'replacement plan'))
     if a == 'EQUIP_DOCS_FOLDER_MADE':
         return Markup('{} made a Drive folder for the documents of {}').format(who, g('name', ''))
     if a == 'EQUIP_DOCS_UPLOADED':

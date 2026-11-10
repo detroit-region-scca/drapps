@@ -11,7 +11,7 @@ import os
 from datetime import date, timedelta
 from functools import wraps
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, flash, g as flask_g, redirect, render_template, request, session, url_for
 
 import equip_store as E
 import officials as O
@@ -23,15 +23,53 @@ SOON_DAYS = 90
 NEXT_DAYS = 30  # the Overview's coming-up window
 
 
-PAGE_TITLES = {'home': 'Overview', 'vehicles': 'Vehicles', 'where': 'Gear', 'items': 'Gear by category', 'documents': 'Documents',
+PAGE_TITLES = {'home': 'Overview', 'vehicles': 'Vehicles', 'where': 'Gear', 'items': 'Gear by category', 'all': 'Gear',
                'tasks': 'To do', 'costs': 'Bills', 'plan': 'Replacement'}
+GEAR_VIEWS = [('all', 'All'), ('vehicles', 'Vehicles and trailers'), ('place', 'By place'), ('category', 'By category')]
+BIG = ('Vehicle', 'Trailer')
 
 
 def _ctx(**kw):
     kw.setdefault('page_title', PAGE_TITLES.get(kw.get('view'), ''))      # the browser tab: the page's or the record's name
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Operations", editor=session.get('equip_editor'),
                 categories=E.CATEGORIES, statuses=E.STATUSES, cost_categories=E.COST_CATEGORIES, every_label=E.every_label, accounts=E.ACCOUNTS, budget_year=budget_year(),
-                qbo_words=E.QBO_WORDS, qbo_split=E.qbo_split, **kw)
+                qbo_words=E.QBO_WORDS, qbo_split=E.qbo_split, about_url=_about_url, gear_views=GEAR_VIEWS, **kw)
+
+
+def _key(name):
+    return ' '.join(str(name or '').lower().split())
+
+
+def _about_url(about):
+    """The page of the gear item or storage place a to-do or bill is about, when its "about" is that thing's name
+    ('' for free text). Looked up once a page, and only when a row has an "about" at all."""
+    k = _key(about)
+    if not k:
+        return ''
+    names = flask_g.get('equip_about')
+    if names is None:
+        names = {}
+        for i in E.items():
+            if i['status'] != 'Gone':
+                for n in (i['name'], i.get('nickname')):
+                    if _key(n):
+                        names.setdefault(_key(n), url_for('equip.item', item_id=i['id']))
+        for p in E.places():      # a place wins over an item of the same name: the bill is the place's
+            if _key(p['name']):
+                names[_key(p['name'])] = url_for('equip.place', place_id=p['id'])
+        flask_g.equip_about = names
+    return names.get(k, '')
+
+
+def _about_names():
+    """What a to-do's "about" offers: every gear item that is not gone, and every storage place in use."""
+    return sorted({i['name'] for i in E.items() if i['status'] != 'Gone' and i['name']} | {p['name'] for p in E.places() if p['name']}, key=str.lower)
+
+
+def _moved(endpoint, anchor='', **kw):
+    """An old address: on to where that page lives now, with whatever the link asked for."""
+    args = {k: v for k, v in request.args.items() if k not in kw}
+    return redirect(url_for(endpoint, **kw, **args) + anchor)
 
 
 def budget_year():
@@ -143,18 +181,44 @@ def home():
                        for b in bills if b['id'] in auto and (b['every'] or 0) > 1 and t_iso <= _roll(b, t_iso) <= month and not (b.get('ends') and _roll(b, t_iso) > b['ends'])],
                     key=lambda r: r['date'])
     rp = E.reserve_plan(items, today, E.plan_settings())
-    big = [i for i in items if i['category'] in ('Vehicle', 'Trailer') and i['status'] != 'Planned']
+    big = [i for i in items if i['category'] in BIG and i['status'] != 'Planned']
     for i in big:
         i['lc'] = E.lifecycle(i, today)
     replace_soon = sorted([i for i in big if i['lc'] and i['lc'].get('replace') and i['lc']['replace'] <= today.year + 1], key=lambda i: i['lc']['replace'])
     import equip_docs as D
-    docs = D.status(E.documents())
+    if request.args.get('fresh'):
+        D.refresh()
+    gaps, docs_error = _doc_gaps(items, places)
     return render_template('equip.html', **_ctx(view='home', today=t_iso, overdue=overdue, coming=coming,
                                                 n_due=sum(1 for t in todo if t['due'] and t['due'] <= soon), undated=[t for t in todo if not t['due'] and not t['last_done']],
-                                                docs_missing=sum(len(r['missing']) for r in docs), docs_total=sum(len(D.needed(r)) for r in docs),
+                                                doc_gaps=gaps, docs_error=docs_error, root=os.environ.get('OPERATIONS_DOCS_FOLDER_URL', ''),
                                                 bills_year=sum(b['per_year'] for b in bills), n_bills=len(bills), rp=rp,
                                                 n_vehicles=sum(1 for i in big if i['category'] == 'Vehicle'), n_trailers=sum(1 for i in big if i['category'] == 'Trailer'),
                                                 replace_soon=replace_soon))
+
+
+def _doc_gaps(items, places):
+    """Documents that are missing, one entry per vehicle, trailer, place or region-wide row, each with the page whose
+    upload form takes it: [{'name', 'missing', 'url'}], and whether Drive could not be read. A vehicle or trailer with
+    no Documents row yet is missing everything its kind needs."""
+    import equip_docs as D
+    rows = D.status(E.documents())
+    live = {i['id']: i for i in items}
+    open_places = {p['id'] for p in places}
+    out = []
+    for r in rows:
+        rid = r['for_id']
+        if not r['missing'] or (rid.startswith('EQ') and rid not in live) or (rid.startswith('PL') and rid not in open_places):
+            continue
+        url = url_for('equip.item', item_id=rid) + '#add-document' if rid.startswith('EQ') else url_for('equip.place', place_id=rid) + '#add-document' \
+            if rid.startswith('PL') else url_for('equip.money') + '#region-documents'
+        out.append({'name': r['for_name'], 'missing': r['missing'], 'url': url})
+    have_row = {r['for_id'] for r in rows}
+    for i in items:
+        if i['category'] in BIG and i['status'] != 'Planned' and i['id'] not in have_row:
+            out.append({'name': i['name'], 'missing': D.needed({'needed': D.DEFAULT_NEEDED[i['category']]}),
+                        'url': url_for('equip.item', item_id=i['id']) + '#add-document'})
+    return out, any(r['error'] for r in rows)
 
 
 def _roll(b, today):
@@ -168,11 +232,14 @@ def _roll(b, today):
 @bp.route('/vehicles')
 @login_required
 def vehicles():
+    """Vehicles was a tab; it is Gear's "Vehicles and trailers" filter now."""
+    return _moved('equip.items', by='vehicles')
+
+
+def _vehicles(rows):
     """Vehicles and trailers the region has (planned purchases are on Replacement): where each one is kept, its condition, value left and when to replace it."""
-    if (g := _guard()):
-        return g
     today = date.today()
-    big = sorted([i for i in E.items() if i['status'] not in ('Gone', 'Planned') and i['category'] in ('Vehicle', 'Trailer')], key=lambda i: (i['category'], i['name']))
+    big = sorted([i for i in rows if i['status'] not in ('Gone', 'Planned') and i['category'] in BIG], key=lambda i: (i['category'], i['name']))
     import equip_docs as D
     docs = {r['for_id']: r for r in D.status([d for d in E.documents() if d['for_id']])}
     for i in big:
@@ -180,27 +247,34 @@ def vehicles():
         d = docs.get(i['id'])
         i['docs'] = {'have': len(d['have']), 'missing': d['missing'], 'error': d['error']} if d else \
             {'have': 0, 'missing': D.needed({'needed': D.DEFAULT_NEEDED.get(i['category'], '')}), 'error': ''}
-    return render_template('equip.html', **_ctx(view='vehicles', big=big))
+    return big
 
 
 @bp.route('/items')
 @login_required
 def items():
-    """Property, by where it is (the default) or by category."""
+    """Gear, one list four ways: everything by name, the vehicles and trailers, by where it is kept, or by category."""
     if (g := _guard()):
         return g
+    by = request.args.get('by', 'all')
+    if by not in dict(GEAR_VIEWS):
+        by = 'all'
     rows = E.items()
-    places = E.places()
-    if request.args.get('by') != 'category':
-        where, people, other, unknown = E.locations(rows, places)
-        return render_template('equip.html', **_ctx(view='where', where=where, people=people, other=other, unknown=unknown,
-                                                    n_live=sum(1 for i in rows if i['status'] not in ('Gone', 'Planned'))))
     show_gone = request.args.get('gone') == '1'
+    n_live = sum(1 for i in rows if i['status'] not in ('Gone', 'Planned'))
+    if by == 'vehicles':
+        return render_template('equip.html', **_ctx(view='gear', by=by, page_title=PAGE_TITLES['vehicles'], big=_vehicles(rows), n_live=n_live))
+    if by == 'place':
+        where, people, other, unknown = E.locations(rows, E.places())
+        return render_template('equip.html', **_ctx(view='gear', by=by, page_title=PAGE_TITLES['where'], where=where, people=people, other=other,
+                                                    unknown=unknown, n_live=n_live))
     rows = [i for i in rows if show_gone or i['status'] != 'Gone']
-    for i in rows:
-        i['lc'] = E.lifecycle(i)
-    groups = [(c, [i for i in rows if i['category'] == c]) for c in E.CATEGORIES + ['']]
-    return render_template('equip.html', **_ctx(view='items', groups=[(c or 'Uncategorized', g) for c, g in groups if g], show_gone=show_gone))
+    if by == 'category':
+        groups = [(c, [i for i in rows if i['category'] == c]) for c in E.CATEGORIES] + [('', [i for i in rows if i['category'] not in E.CATEGORIES])]
+        return render_template('equip.html', **_ctx(view='gear', by=by, page_title=PAGE_TITLES['items'], n_live=n_live, show_gone=show_gone,
+                                                    groups=[(c or 'Uncategorized', g) for c, g in groups if g]))
+    return render_template('equip.html', **_ctx(view='gear', by=by, page_title=PAGE_TITLES['all'], n_live=n_live, show_gone=show_gone,
+                                                rows=sorted(rows, key=lambda i: i['name'].lower())))
 
 
 def _location_names():
@@ -246,9 +320,17 @@ def item(item_id=None):
     if edit and not _is_editor():
         return editor_required(lambda: None)()
     lc = E.lifecycle(it) if item_id else None
-    tasks = [t for t in E.tasks() if it and t['about'] == it.get('name')]
+    mine = {_key(n) for n in (it.get('name'), it.get('nickname')) if _key(n)} if item_id else set()
+    tasks = [t for t in E.tasks() if _key(t['about']) in mine and not _finished(t)]
     return render_template('equip.html', **_ctx(view='item', page_title=it.get('name') or 'New item', it=it, lc=lc, edit=edit, locations=_location_names(), tasks=tasks,
                                                 docs=_docs_for(it['id'], it.get('category'), it.get('name', '')) if it and it.get('id') and not edit else None, today=date.today().isoformat()))
+
+
+def _number(v):
+    try:
+        return float(E.norm(v))
+    except ValueError:
+        return None
 
 
 def _is_editor():
@@ -277,15 +359,29 @@ def _save_item(it):
         log_audit_event('EQUIP_ITEM_REMOVED' if gone else 'EQUIP_ITEM_RESTORED', _who(), {'id': it['id'], 'name': it['name']})
         flash(f"{it['name']} {'removed. It stays on record as Gone' if gone else 'is back in use'}.", 'success')
         return redirect(local_path(f.get('back')) or url_for('equip.item', item_id=it['id']))
-    if f.get('action') == 'replacement':
-        # The Replacement page's quick edit: just the year and the cost estimate.
+    if f.get('action') in ('replacement', 'off_plan'):
+        # The quick edit on Replacement and on the item's own page: just the year and the cost estimate. "Take off
+        # the plan" clears both; the item itself stays in Gear.
+        off = f['action'] == 'off_plan'
+        back = local_path(f.get('back')) or url_for('equip.replacement') + f"#{it['id']}"
         for k in ('replace_year', 'replace_cost'):
-            row[k] = f.get(k, '').replace('$', '').replace(',', '').strip()
+            row[k] = '' if off else f.get(k, '').replace('$', '').replace(',', '').strip()
+        if not off and any(row[k] and _number(row[k]) is None for k in ('replace_year', 'replace_cost')):
+            flash('Enter the year and the cost as numbers.', 'danger')
+            return redirect(back)
         row.update(updated=date.today().isoformat(), updated_by=_who())
         E.save('Property', row, changed=_diff(it, row))
         log_audit_event('EQUIP_ITEM_SAVED', _who(), {'id': it['id'], 'name': it['name'], 'replace_year': row['replace_year'], 'replace_cost': row['replace_cost']})
-        flash(f"{it['name']}: replacement updated.", 'success')
-        return redirect(url_for('equip.plan') + f"#{it['id']}")
+        if not off:
+            flash(f"{it['name']}: replacement updated.", 'success')
+            return redirect(back)
+        lc = E.lifecycle(dict(it, replace_year=None, replace_cost=None))
+        if lc and it.get('cost') and it['status'] != 'Gone':
+            flash(f"{it['name']}: replacement year and cost cleared. It is still on the plan for {lc['replace']}, from its year bought and useful life. "
+                  'It is still in Gear; open it there to change those.', 'warning')
+        else:
+            flash(f"{it['name']} is off the replacement plan. It is still in Gear.", 'success')
+        return redirect(local_path(f.get('back')) or url_for('equip.replacement'))
     if 'place' in f and f.get('place', '').strip() != (it or {}).get('place', ''):
         row['seen'] = date.today().isoformat()
     for k in E.ITEM_COLS:
@@ -306,28 +402,25 @@ def _save_item(it):
 @bp.route('/places')
 @login_required
 def places():
-    """Storage places are the sections of Property, by location."""
-    return redirect(url_for('equip.items'))
+    """Storage places are the sections of Gear's "By place" list."""
+    return _moved('equip.items', by='place')
 
 
 @bp.route('/documents')
 @login_required
 def documents():
-    """Titles, registrations, insurance cards and agreements: which the region has in Drive and which are missing."""
-    if (g := _guard()):
-        return g
+    """Documents was a tab. What is missing is on Overview now, each thing's documents are on its own page, and the
+    region-wide ones (insurance) are on Money."""
+    return _moved('equip.home', anchor='#documents')
+
+
+def _region_docs():
+    """The Documents rows that belong to no item or place ("Insurance and region"), with what is there and missing."""
     import equip_docs as D
-    if request.args.get('fresh'):
-        D.refresh()
-    rows = D.status(E.documents())
-    kinds = [('Insurance and region', [r for r in rows if not r['for_id']]),
-             ('Vehicles and trailers', [r for r in rows if r['for_id'].startswith('EQ')]),
-             ('Storage places', [r for r in rows if r['for_id'].startswith('PL')])]
+    rows = D.status([d for d in E.documents() if not d['for_id']])
     for r in rows:
         r['kinds'] = D.kinds_for(r)
-    return render_template('equip.html', **_ctx(view='documents', kinds=[(k, r) for k, r in kinds if r], n_missing=sum(len(r['missing']) for r in rows),
-                                                error=next((r['error'] for r in rows if r['error']), ''),
-                                                root=os.environ.get('OPERATIONS_DOCS_FOLDER_URL', '')))
+    return rows
 
 
 @bp.route('/documents/add', methods=['POST'])
@@ -341,7 +434,9 @@ def add_document():
     import equip_docs as D
     from storage import drive_folder
     f = request.form
-    back = local_path(f.get('back')) or url_for('equip.documents')
+    rid = f.get('for_id', '')
+    back = local_path(f.get('back')) or (url_for('equip.item', item_id=rid) + '#documents' if rid.startswith('EQ') else url_for('equip.place', place_id=rid) + '#documents'
+                                         if rid.startswith('PL') else url_for('equip.money') + '#region-documents')
     files = [x for x in request.files.getlist('files') if x and x.filename]
     doc = (f.get('other') if f.get('doc') == '_other' else f.get('doc') or '').strip()
     if not files or not doc:
@@ -407,7 +502,14 @@ def place(place_id=None):
         return editor_required(lambda: None)()
     held = [i for i in E.items() if p and i['place'] == p.get('name') and i['status'] != 'Gone']
     back = request.args.get('back', '')
+    about = [t for t in E.tasks() if place_id and _key(p.get('name')) and _key(t['about']) == _key(p['name'])]
+    bills = [b for b in E.recurring_costs([p] if place_id and p.get('status') != 'Closed' else [], about)]
+    for b in bills:
+        b['how_often'] = E.every_label(b['every'])
+    paid = {b['id'] for b in bills}
     return render_template('equip.html', **_ctx(view='place', page_title=p.get('name') or 'New place', p=p, edit=edit, held=held, back=local_path(back),
+                                                bills=bills, tasks=[t for t in about if t['id'] not in paid and not E.is_auto(t) and not _finished(t)],
+                                                today=date.today().isoformat(),
                                                 docs=_docs_for(p['id'], 'place', p.get('name', '')) if p and p.get('id') and not edit else None))
 
 
@@ -424,7 +526,7 @@ def _save_place(p):
         E.save('Storage', row, changed=_diff(p, row))
         log_audit_event('EQUIP_PLACE_CLOSED' if f['action'] == 'close' else 'EQUIP_PLACE_REOPENED', _who(), {'id': p['id'], 'name': p['name']})
         flash(f"{p['name']} {'closed: it no longer shows in Gear or Bills' if f['action'] == 'close' else 'is in use again'}.", 'success')
-        return redirect(url_for('equip.items') if f['action'] == 'close' else url_for('equip.place', place_id=p['id']))
+        return redirect(url_for('equip.items', by='place') if f['action'] == 'close' else url_for('equip.place', place_id=p['id']))
     for k in E.PLACE_COLS:
         if k in f:
             row[k] = f.get(k, '').strip()
@@ -475,7 +577,9 @@ def task(task_id=None):
         return _save_task(t)
     if not _is_editor():
         return editor_required(lambda: None)()
-    names = sorted({i['name'] for i in E.items() if i['category'] in ('Vehicle', 'Trailer')} | {p['name'] for p in E.places()})
+    if not task_id and request.args.get('about'):
+        t = {'about': request.args['about']}      # "Add a to-do" on an item's or place's page starts with its name
+    names = _about_names()
     back = request.args.get('back', '')
     bill = request.args.get('bill') == '1' or bool(t.get('cost'))
     return render_template('equip.html', **_ctx(view='task', page_title=t.get('task') or ('New bill' if bill else 'New to-do'), t=t, names=names,
@@ -548,29 +652,44 @@ def one_pager():
     return redirect(url_for('equip.report_pdf'), 301)
 
 
-@bp.route('/bills')
+@bp.route('/money')
 @login_required
-def costs():
-    """Every bill the region pays on a schedule (storage, insurance, subscriptions, registrations), by category."""
+def money():
+    """Money, first part: every bill the region pays on a schedule (storage, insurance, subscriptions, registrations),
+    by category, and the insurance and region-wide documents."""
     if (g := _guard()):
         return g
+    if request.args.get('fresh'):
+        import equip_docs as D
+        D.refresh()
     rows = E.recurring_costs(E.places(), E.tasks())
     for r in rows:
         r['how_often'] = E.every_label(r['every'])
-    cats = [(c, [r for r in rows if r['category'] == c]) for c in E.COST_CATEGORIES]
-    return render_template('equip.html', **_ctx(view='costs', cats=[(c, r) for c, r in cats if r], total=sum(r['per_year'] for r in rows),
+    cats = {c: [] for c in E.COST_CATEGORIES}
+    for r in rows:      # a category typed by hand in the sheet still counts: under Other
+        cats[r['category'] if r['category'] in cats else 'Other'].append(r)
+    return render_template('equip.html', **_ctx(view='money', part='bills', page_title=PAGE_TITLES['costs'], cats=[(c, r) for c, r in cats.items() if r],
+                                                total=sum(r['per_year'] for r in rows), region_docs=_region_docs(),
                                                 today=date.today().isoformat(), plan_year=date.today().year + 1))
 
 
-@bp.route('/costs')
-def old_costs():
-    return redirect(url_for('equip.costs'))
-
-
-@bp.route('/plan')
+@bp.route('/bills')
 @login_required
-def plan():
-    """Replacement plan: when each long-lived item reaches the end of its life, and the yearly amount to set aside."""
+def costs():
+    """Bills was a tab; it is the first part of Money now."""
+    return _moved('equip.money')
+
+
+@bp.route('/costs')
+@login_required
+def old_costs():
+    return _moved('equip.money')
+
+
+@bp.route('/money/replacement')
+@login_required
+def replacement():
+    """Money, second part: when each long-lived item reaches the end of its life, and the amount to set aside."""
     if (g := _guard()):
         return g
     rows = [i for i in E.items() if i['status'] != 'Gone']
@@ -586,7 +705,15 @@ def plan():
             motion = next((m for m in MS.motions() if 'replacement' in m['title'].lower() and m['status'] != 'withdrawn'), None)
     except Exception:
         motion = None
-    return render_template('equip.html', **_ctx(view='plan', rp=rp, by_year=by_year, missing=missing, motion=motion))
+    return render_template('equip.html', **_ctx(view='money', part='replacement', page_title=PAGE_TITLES['plan'], rp=rp, by_year=by_year, missing=missing,
+                                                motion=motion, note=E.plan_note(), note_max=E.NOTE_MAX))
+
+
+@bp.route('/plan')
+@login_required
+def plan():
+    """Replacement was a tab; it is the second part of Money now."""
+    return _moved('equip.replacement')
 
 
 @bp.route('/plan/settings', methods=['POST'])
@@ -594,28 +721,51 @@ def plan():
 @editor_required
 def plan_settings():
     """Save the replacement plan's rules: what counts as a big item, how soon, what is budgeted outright, and whether big
-    items may be paid from savings."""
+    items may be paid from savings. Each rule has its own small form on the page, so a rule the form did not send
+    keeps the value it has."""
     if (g := _guard()):
         return g
     f, old, new = request.form, E.plan_settings(), {}
+    back = url_for('equip.replacement')
     try:
-        new['big_cost'] = float(E.norm(f.get('big_cost', '')))
-        new['big_within_years'] = int(float(E.norm(f.get('big_within_years', ''))))
-        new['budget_within_years'] = int(float(E.norm(f.get('budget_within_years', ''))))
+        new['big_cost'] = float(E.norm(f['big_cost'])) if 'big_cost' in f else old['big_cost']
+        new['big_within_years'] = int(float(E.norm(f['big_within_years']))) if 'big_within_years' in f else old['big_within_years']
+        new['budget_within_years'] = int(float(E.norm(f['budget_within_years']))) if 'budget_within_years' in f else old['budget_within_years']
     except ValueError:
         flash('Enter numbers for the amount and the years.', 'danger')
-        return redirect(url_for('equip.plan') + '#settings')
-    new['big_from_savings'] = f.get('big_from_savings') == 'yes'
+        return redirect(back)
+    new['big_from_savings'] = f.get('big_from_savings') == 'yes' if 'big_from_savings' in f else old['big_from_savings']
     if new['big_cost'] < 0 or not 1 <= new['big_within_years'] <= 30 or not 1 <= new['budget_within_years'] <= 5:
-        flash('The amount can\'t be negative, big items must be due within 1 to 30 years, and buy-outright within 1 to 5 years.', 'danger')
-        return redirect(url_for('equip.plan') + '#settings')
+        flash('The amount can\'t be negative, big items must be due within 1 to 30 years, and buy-soon within 1 to 5 years.', 'danger')
+        return redirect(back)
     if new == {k: old[k] for k in new}:
         flash('Nothing changed.', 'info')
-        return redirect(url_for('equip.plan'))
+        return redirect(back)
     E.save_plan_settings(new, _who(), date.today().isoformat())
     log_audit_event('EQUIP_PLAN_SETTINGS', _who(), {'before': {k: old[k] for k in new}, 'after': new})
-    flash('Plan settings saved. The plan below uses them.', 'success')
-    return redirect(url_for('equip.plan'))
+    flash('Saved. The numbers below use the new rule.', 'success')
+    return redirect(back)
+
+
+@bp.route('/plan/note', methods=['POST'])
+@login_required
+@editor_required
+def plan_note():
+    """Save (or, left blank, clear) the committee's short note under the replacement summary. The rules are not touched."""
+    if (g := _guard()):
+        return g
+    back = url_for('equip.replacement')
+    text, old = ' '.join(request.form.get('note', '').split()), E.plan_note()
+    if len(text) > E.NOTE_MAX:
+        flash(f'Keep the note to {E.NOTE_MAX} characters. Nothing was saved.', 'danger')
+        return redirect(back)
+    if text == old:
+        flash('Nothing changed.', 'info')
+        return redirect(back)
+    E.save_plan_note(text, _who(), date.today().isoformat())
+    log_audit_event('EQUIP_PLAN_NOTE', _who(), {'before': old, 'after': text})
+    flash('Note saved.' if text else 'Note removed.', 'success')
+    return redirect(back)
 
 
 def overdue_count():
