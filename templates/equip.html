@@ -479,17 +479,21 @@
     <p class="text-muted small mb-3">A living estimate, not a commitment: change a year or cost whenever you learn something.
         {% if changed %}Last changed {{ changed.date|nice_date }}{% if changed.by %} by {{ changed.by }}{% endif %} ({{ changed.name }}).{% endif %}</p>
     <div class="card p-3 mb-4" id="summary">
-        <p class="mb-2"><b>Buy soon</b> (due within {{ cfg.budget_within_years }} year{{ 's' if cfg.budget_within_years != 1 }}):
+        <p class="mb-2"><b>Buy soon</b>
+            {% if cfg.budget_within_years %}(due within {{ cfg.budget_within_years }} year{{ 's' if cfg.budget_within_years != 1 }}):
             {% for y, c in by_year.items() %}{{ money(c, 0) }} in {{ y }}{{ ', ' if loop.revindex > 2 else ' and ' if not loop.last }}{% else %}nothing{% endfor %}.
             In that year's Operations budget.
+            {% else %}is off: everything on the plan is saved for.{% endif %}
             {% if editor %}{{ reveal('rule-soon') }}{% endif %}</p>
         {% if editor %}<form id="rule-soon" method="post" action="{{ url_for('equip.plan_settings') }}" class="rule-form no-print" hidden>
             <div class="d-flex flex-wrap gap-2 align-items-end">
-                <div><label class="form-label small mb-1" for="rule-soon-years">Buy soon if due within this many years (1 = this year only)</label>
-                    <input id="rule-soon-years" name="budget_within_years" type="number" min="1" max="5" class="form-control form-control-sm" style="width: 6rem" value="{{ cfg.budget_within_years }}"></div>
+                <div><label class="form-label small mb-1" for="rule-soon-years">Buy soon if due within this many years (1 = this year only, 0 = save for everything)</label>
+                    <input id="rule-soon-years" name="budget_within_years" type="number" min="0" max="5" required class="form-control form-control-sm" style="width: 6rem" value="{{ cfg.budget_within_years }}"></div>
                 <button type="button" class="btn btn-sm btn-outline-secondary" data-reveal="rule-soon">Cancel</button><button class="btn btn-sm btn-accent" data-busy="Saving…">Save</button></div>
         </form>{% endif %}
-        <p class="mb-2"><b>The plan suggests</b> {{ money(rp.monthly, 0) }} a month from {{ rp.start_label }}, to pay for everything under Save for later.</p>
+        <p class="mb-2"><b>The plan suggests</b> {{ money(rp.monthly, 0) }} a month from {{ rp.start_label }}, to pay for everything under Save for later{% if rp.saved %} beyond the {{ money(rp.saved, 0) }} already in the reserve{% endif %}.
+            {% if rp.steps|length > 1 %}<span class="text-muted">It drops as things are bought:
+            {% for y, m in rp.steps %}{{ money(m, 0) }} until July {{ y }}{{ ', then ' if not loop.last }}{% endfor %}.</span>{% endif %}</p>
         <p class="mb-2"><b>The board set aside</b>
             {% if board %}{{ money(board.monthly, 0) }} a month{% if board.date %}, decided {{ board.date|nice_date }}{% endif %}{% if board.by %}, recorded by {{ board.by }}{% endif %}.
             {% else %}nothing yet: it has not decided an amount.{% endif %}
@@ -522,19 +526,21 @@
     </div>
     {% if editor %}<div class="d-flex flex-wrap gap-2 mb-3 no-print"><a class="btn btn-sm btn-accent" href="{{ url_for('equip.item', status='Planned') }}">Add a planned purchase</a>
         <span class="small text-muted align-self-center">Change a year or cost in the lists below, then Save on that row.</span></div>{% endif %}
+    {% if cfg.budget_within_years %}
     <h2 class="h6 text-muted">Buy soon <span class="fw-normal">(due by {{ rp.near_until }})</span></h2>
     <div class="card mb-4"><div class="card-body p-0 table-responsive"><table class="table mb-0 align-middle repl">
         {{ repl_head(false) }}
         <tbody>{% for r in rp.near %}{{ repl_row(r, false) }}{% else %}<tr><td class="ps-3 text-muted" colspan="4">Nothing.</td></tr>{% endfor %}
         {% if rp.near|length > 1 %}<tr class="fw-semibold"><td class="ps-3" colspan="2">Total</td><td class="num {{ 'pe-3' if not editor }}">{{ money(rp.near|sum(attribute='cost'), 0) }}</td>{% if editor %}<td class="no-print"></td>{% endif %}</tr>{% endif %}</tbody>
     </table></div></div>
+    {% endif %}
     <h2 class="h6 text-muted">Save for later</h2>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0 align-middle repl">
         {{ repl_head(true) }}
         <tbody>{% for r in rp.later %}{{ repl_row(r, true) }}{% else %}<tr><td class="ps-3 text-muted" colspan="5">Nothing.</td></tr>{% endfor %}
         {% if rp.later %}<tr class="fw-semibold"><td class="ps-3" colspan="2">Total</td><td class="num">{{ money(rp.later|sum(attribute='cost'), 0) }}</td><td class="num {{ 'pe-3' if not editor }}">{{ money(rp.monthly, 0) }}</td>{% if editor %}<td class="no-print"></td>{% endif %}</tr>{% endif %}</tbody>
     </table></div></div>
-    <p class="small text-muted mt-2">Set aside a month = the item's estimated cost spread over the months from {{ rp.start_label }} to July of the year it is due.</p>
+    <p class="small text-muted mt-2">Set aside a month = what is still to save for the item, spread over the months from {{ rp.start_label }} to July of the year it is due.{% if rp.saved %} The {{ money(rp.saved, 0) }} in the reserve counts toward the items due first.{% endif %}</p>
     {% if missing %}<p class="small mt-3" id="no-year"><b>Over $2,500 with no replacement year</b>, so not in the plan: {% set mnames = missing|map(attribute='name')|list %}{% for i in missing %}<a href="{{ url_for('equip.item', item_id=i.id) }}#replacement">{{ i.name }}{% if mnames.count(i.name) > 1 and i.place %} ({{ i.place }}){% endif %}</a>{{ ', ' if not loop.last }}{% endfor %}.{% if editor %} Open one to give it a year and a cost.{% endif %}</p>{% endif %}
     {% endif %}
 

@@ -214,10 +214,10 @@ def build(items, places, tasks, docs=None, today=None, region='Detroit Region SC
     undated = [t for t in todo if not t['due'] and not t['last_done']]
     bills = E.recurring_costs(places, tasks)
     auto = {t['id'] for t in tasks if E.is_auto(t)}
-    rp = E.reserve_plan(live, today, E.plan_settings() if E.enabled() else None)
     if E.enabled():
         board, reserve = board or E.board_amount(), reserve or E.reserve_now()
     reserve = reserve or E.reserve_balance([])
+    rp = E.reserve_plan(live, today, E.plan_settings() if E.enabled() else None, balance=reserve['amount'])
     proj = E.reserve_projection(rp['later'], rp['start'], board['monthly'] if board else None, reserve['amount'])
     replace_soon = [i for i in big if lcs[i['id']] and lcs[i['id']].get('replace') and lcs[i['id']]['replace'] <= today.year + 1]
     docs_missing = sum(len(r['missing']) for r in docs or [])

@@ -210,7 +210,7 @@ def detail(year, program):
             # monthly amount once an officer has recorded it, else what the replacement plan suggests.
             board = E.board_amount()
             set_aside = {'monthly': board['monthly'], 'date': board['date']} if board else \
-                {'monthly': E.reserve_plan([i for i in E.items() if i['status'] != 'Gone'], cfg=E.plan_settings())['monthly'], 'suggested': True}
+                {'monthly': E.reserve_plan([i for i in E.items() if i['status'] != 'Gone'], cfg=E.plan_settings(), balance=E.reserve_now()['amount'])['monthly'], 'suggested': True}
             have = {r['account'] for r in accts}
             accts += [{'account': acc, 'plan': None, 'actual': None, 'items': [], 'last': None} for acc in ops_budget if acc not in have]
     groups = _account_groups(p['lines'], accts) if by_account else []

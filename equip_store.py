@@ -394,15 +394,18 @@ def replace_cost(it):
     return it.get('replace_cost') or it['cost'] or 0
 
 
-def reserve_plan(rows, today=None, cfg=None):
+def reserve_plan(rows, today=None, cfg=None, balance=0.0):
     """How to pay for replacements and planned purchases. A living estimate: it is worked out again from the rows
     every time.
 
     near:  due within budget_within_years (this year or next): too close to save for, so each is bought outright in
            that year's Operations budget.
     later: due after that: money set aside each month, item by item, so each is paid for by July of its year
-           (cost / months left). 'monthly' is their sum: what the plan suggests. It is front-loaded when costly items
-           come due soon, as it should be.
+           (what is still to save / months left). 'monthly' is their sum: what the plan suggests. It is front-loaded
+           when costly items come due soon, as it should be.
+    balance: what is in the reserve now. It counts toward the items due first ('saved' on each row), so the suggestion
+           is only for what is still to save.
+    steps: how the suggestion steps down as items are bought: [(year, monthly until July of that year)].
     cfg:   the rule (plan_settings(); PLAN_DEFAULTS when not given): budget_within_years. Other keys are ignored.
     """
     cfg = dict(PLAN_DEFAULTS, **{k: v for k, v in (cfg or {}).items() if k in PLAN_DEFAULTS})
@@ -419,12 +422,20 @@ def reserve_plan(rows, today=None, cfg=None):
         if lc['replace'] < start.year + near_years:
             near.append(row)
         else:
-            row['monthly'] = round(row['cost'] / max(_months_to_july(start.isoformat()[:7], lc['replace']), 1), 2)
             later.append(row)
     near.sort(key=lambda r: (r['year'], -r['cost']))
     later.sort(key=lambda r: (r['year'], -r['cost']))
+    left = max(float(balance or 0), 0.0)
+    for row in later:      # the reserve counts toward what is due first
+        row['saved'] = round(min(row['cost'], left), 2)
+        left -= row['saved']
+        row['monthly'] = round((row['cost'] - row['saved']) / max(_months_to_july(start.isoformat()[:7], row['year']), 1), 2)
     monthly = round(sum(r['monthly'] for r in later), 2)
+    steps = [(y, round(sum(r['monthly'] for r in later if r['year'] >= y), 2)) for y in sorted({r['year'] for r in later})]
+    # One step per change: where the amount stays the same past a year (that item is already paid for), the later year stands.
+    steps = [s for i, s in enumerate(steps) if s[1] >= 0.5 and (i == len(steps) - 1 or abs(s[1] - steps[i + 1][1]) >= 0.5)]
     return {'start': start.isoformat()[:7], 'start_label': start.strftime('%B %Y'), 'near': near, 'later': later, 'monthly': monthly,
+            'steps': steps, 'saved': round(sum(r['saved'] for r in later), 2),
             'cfg': cfg, 'near_until': start.year + near_years - 1, 'near_total': round(sum(r['cost'] for r in near), 2)}
 
 

@@ -181,8 +181,8 @@ def home():
                     + [{'date': _roll(b, t_iso), 'what': b['what'], 'about': b['paid_how'], 'kind': 'bill', 'amount': b['each'], 'b': b}
                        for b in bills if b['id'] in auto and (b['every'] or 0) > 1 and t_iso <= _roll(b, t_iso) <= month and not (b.get('ends') and _roll(b, t_iso) > b['ends'])],
                     key=lambda r: r['date'])
-    rp = E.reserve_plan(items, today, E.plan_settings())
     board, reserve = E.board_amount(), E.reserve_now()
+    rp = E.reserve_plan(items, today, E.plan_settings(), balance=reserve['amount'])
     big = [i for i in items if i['category'] in BIG and i['status'] != 'Planned']
     for i in big:
         i['lc'] = E.lifecycle(i, today)
@@ -696,12 +696,12 @@ def replacement():
     if (g := _guard()):
         return g
     rows = [i for i in E.items() if i['status'] != 'Gone']
-    rp = E.reserve_plan(rows, cfg=E.plan_settings())
+    board, reserve = E.board_amount(), E.reserve_now()
+    rp = E.reserve_plan(rows, cfg=E.plan_settings(), balance=reserve['amount'])
     missing = [i for i in rows if E.is_capital(i) and not E.lifecycle(i) and i['status'] != 'Retire']
     by_year = {}
     for r in rp['near']:
         by_year[r['year']] = by_year.get(r['year'], 0) + r['cost']
-    board, reserve = E.board_amount(), E.reserve_now()
     proj = E.reserve_projection(rp['later'], rp['start'], board['monthly'] if board else None, reserve['amount'])
     return render_template('equip.html', **_ctx(view='money', part='replacement', page_title=PAGE_TITLES['plan'], rp=rp, by_year=by_year, missing=missing,
                                                 note=E.plan_note(), note_max=E.NOTE_MAX, board=board, reserve=reserve,
@@ -733,8 +733,8 @@ def plan_settings():
     except ValueError:
         flash('Enter a number of years.', 'danger')
         return redirect(back)
-    if not 1 <= new['budget_within_years'] <= 5:
-        flash('Buy soon must be within 1 to 5 years.', 'danger')
+    if not 0 <= new['budget_within_years'] <= 5:
+        flash('Enter 0 to 5 years.', 'danger')
         return redirect(back)
     if new == old:
         flash('Nothing changed.', 'info')

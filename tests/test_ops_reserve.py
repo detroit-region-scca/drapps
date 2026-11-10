@@ -212,7 +212,9 @@ def test_three_numbers_kept_apart_and_one_projection(plan):
     text = _text(_main(_page(lou, REPL)))
     assert 'The board set aside $500 a month, decided Nov 5, 2026, recorded by Kim Officer.' in text
     assert 'In the reserve now $12,000 (QuickBooks as of Nov 8, 2026).' in text and 'nothing booked yet' not in text
-    assert f'The plan suggests {m} a month from' in text                            # still shown, still its own number
+    m2 = f"${E.reserve_plan(state['items'], balance=12000.0)['monthly']:,.0f}"       # less: the reserve counts toward what is due first
+    assert m2 != m and f'The plan suggests {m2} a month from' in text and 'beyond the $12,000 already in the reserve' in text
+    assert 'It drops as things are bought:' in text and f'until July {y + 3}, then ' in text
     short = E.reserve_projection(rp['later'], rp['start'], 500.0, 12000.0)
     assert short['item'] == 'Long trailer' and f"At $500 a month the reserve is short by about ${short['short_by']:,.0f} when Long trailer is due in {y + 3}." in text
     state['board']['monthly'] = 5000.0
@@ -275,6 +277,7 @@ def test_the_overview_card_says_what_is_true_now(plan):
     assert _card(lou) == f'{m} a month suggested by the plan; no board amount yet · $63,000 to buy soon · $0 in the reserve'
     state['board'] = {'monthly': 500.0, 'date': '2026-11-05', 'by': 'Kim Officer'}
     state['sheet'] = _sheet(('Equipment Replacement Reserve', 12000.0))
+    m = f"${E.reserve_plan(state['items'], balance=12000.0)['monthly']:,.0f}"
     for c in (kim, ed, lou):
         assert _card(c) == f'$500 a month set aside by the board; the plan suggests {m} · $63,000 to buy soon · $12,000 in the reserve'
     home = _page(lou, f'{O}/')
@@ -363,3 +366,26 @@ def test_the_budget_page_shows_the_set_aside_under_the_total(budget):
     total = _text(html.split('class="total-row"')[1].split('</tr>')[0])
     assert '-$53,736' in total and '6,000' not in total                              # the set-aside does not add to the total
     assert f'href="{REPL}">replacements</a>' in html
+
+
+def test_the_reserve_counts_toward_what_is_due_first_and_the_suggestion_steps_down():
+    from datetime import date
+    items = [{'id': f'EQ-{n}', 'name': n, 'status': 'In use', 'cost': c, 'year': '', 'life_years': '', 'replace_year': y, 'replace_cost': c}
+             for n, y, c in (('First', 2029, 12000.0), ('Second', 2030, 24000.0))]
+    t = date(2027, 1, 15)
+    rp = E.reserve_plan(items, t, {'budget_within_years': 1})
+    assert [r['monthly'] for r in rp['later']] == [400.0, round(24000 / 42, 2)] and rp['saved'] == 0      # 30 and 42 months to July
+    assert rp['steps'] == [(2029, round(400 + 24000 / 42, 2)), (2030, round(24000 / 42, 2))]
+    rp = E.reserve_plan(items, t, {'budget_within_years': 1}, balance=15000.0)                       # pays First, and 3,000 of Second
+    assert [r['saved'] for r in rp['later']] == [12000.0, 3000.0] and rp['monthly'] == 500.0 and rp['steps'] == [(2030, 500.0)]
+    rp = E.reserve_plan(items, t, {'budget_within_years': 0})                                         # buy soon off: nothing is bought outright
+    assert rp['near'] == [] and len(rp['later']) == 2
+
+
+def test_buy_soon_can_be_switched_off(plan):
+    kim, ed, lou, state = plan
+    ed.post(f'{O}/plan/settings', data={'budget_within_years': '0'})
+    assert state['cfg'] == {'budget_within_years': 0}
+    text = _text(_main(_page(ed, REPL)))
+    assert 'Buy soon is off: everything on the plan is saved for.' in text and 'Blue tow truck' in text
+    assert 'Replacements' in _page(lou, f'{O}/')      # the Overview still renders

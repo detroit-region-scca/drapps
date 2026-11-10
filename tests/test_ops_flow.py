@@ -251,7 +251,7 @@ def test_the_one_rule_sits_in_its_sentence_and_saves_alone(ops):
     _flashes(ed)
     ed.post(f'{O}/plan/settings', data={'big_cost': '$50,000', 'big_within_years': '4', 'big_from_savings': 'yes'})
     assert state['cfg'] == {'budget_within_years': 1} and len(state['audit']) == n and 'Nothing changed.' in _flashes(ed)
-    for bad in ({'budget_within_years': '6'}, {'budget_within_years': '0'}, {'budget_within_years': 'soon'}):
+    for bad in ({'budget_within_years': '6'}, {'budget_within_years': '-1'}, {'budget_within_years': 'soon'}):
         ed.post(f'{O}/plan/settings', data=bad)
         assert state['cfg'] == {'budget_within_years': 1} and _flashes(ed), bad
     lou.post(f'{O}/plan/settings', data={'budget_within_years': '3'})
