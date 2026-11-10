@@ -4,13 +4,15 @@ SQLite at data/records.db, built off the server from every results, standings an
 its old website (1982 to 2026): events, result rows, season standings and the people in them. The heavy work (reading
 PDFs, OCR of old scans) happens where the database is built, never here. A program's director and the officers can
 correct what was read (records_edits.py): each correction goes into data/records-edits.json and is applied to the
-live database at once, again whenever a rebuilt database arrives, and by every rebuild.
+live database at once, again whenever a rebuilt database arrives, and by every rebuild. records-base.db is the database
+as the last rebuild delivered it (copied before the log is applied); /records/corrections lists the log with before and
+after, and Undo rebuilds the live database from that copy without the undone entry (see undo()).
 """
 import functools
 import os
 import re
 import sqlite3
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import date
 
 from filelock import FileLock
@@ -26,8 +28,8 @@ PROGRAM_CODES = {'Autocross': 'AX', 'RallyCross': 'RX', 'Rally': 'RY', 'Road Rac
 
 
 def _side(name):
-    """Files kept next to records.db: records-edits.json (the corrections log) and records-edits.applied (the database
-    file the log was last applied to)."""
+    """Files kept next to records.db: records-edits.json (the corrections log), records-edits.applied (the database
+    file the log was last applied to), records-base.db and records-base.json (the database as delivered, for undo)."""
     return os.path.join(os.path.dirname(PATH), name)
 bp = Blueprint('records', __name__, url_prefix='/records')
 # New results go here first (a Drive folder, RESULTS_INBOX_FOLDER_ID); they are read into the records later, in a batch.
@@ -144,13 +146,63 @@ def _edits_lock():
 
 
 def _replay():
-    """A rebuilt records.db arrived (its mtime changed): apply the corrections log to it once."""
-    if _applied() == str(os.path.getmtime(PATH)):
+    """A rebuilt records.db arrived (its mtime changed): keep a copy of it as it came, then apply the corrections log to
+    it once."""
+    if _applied() == str(os.path.getmtime(PATH)) and os.path.exists(BASE_PATH()):
         return
     with _edits_lock():
-        if _applied() == str(os.path.getmtime(PATH)):      # another worker did it while this one waited
-            return
-        edits = RE.load(_side('records-edits.json'))
+        _sync()
+
+
+def _copy_db(src, dst):
+    """A consistent copy of a SQLite file, swapped in whole."""
+    tmp = dst + '.tmp'
+    if os.path.exists(tmp):
+        os.remove(tmp)
+    a, b = sqlite3.connect(src), sqlite3.connect(tmp)
+    try:
+        a.backup(b)
+    finally:
+        a.close()
+        b.close()
+    os.replace(tmp, dst)
+
+
+def _base_meta():
+    """records-base.json: which log entries the base copy may already hold. A rebuild applies the log it was given
+    (export_records.py), so every entry in the log when a rebuilt database arrives may be in it."""
+    import json
+    try:
+        return json.load(open(_side('records-base.json')))
+    except (FileNotFoundError, ValueError):
+        return {'in_base': []}
+
+
+def _save_base(edits):
+    import json
+    from datetime import datetime
+    _copy_db(PATH, BASE_PATH())
+    tmp = _side('records-base.json.tmp')
+    with open(tmp, 'w') as f:
+        json.dump({'in_base': [RE.ref(e) for e in edits], 'made': datetime.now().isoformat(timespec='seconds')}, f)
+    os.replace(tmp, _side('records-base.json'))
+
+
+def BASE_PATH():
+    return _side('records-base.db')
+
+
+def _stamp():
+    with open(_side('records-edits.applied'), 'w') as f:
+        f.write(str(os.path.getmtime(PATH)))
+
+
+def _sync():
+    """Under the lock: a newly arrived records.db is copied as the base, then gets the log; a records.db that already
+    has the log (from before the base copy existed) becomes the base as it is."""
+    edits = RE.load(_side('records-edits.json'))
+    if _applied() != str(os.path.getmtime(PATH)):
+        _save_base(edits)
         if edits:
             c = sqlite3.connect(PATH)
             try:
@@ -158,8 +210,9 @@ def _replay():
                 c.commit()
             finally:
                 c.close()
-        with open(_side('records-edits.applied'), 'w') as f:
-            f.write(str(os.path.getmtime(PATH)))
+        _stamp()
+    elif not os.path.exists(BASE_PATH()):
+        _save_base(edits)
 
 
 def can_edit(program):
@@ -176,8 +229,9 @@ def can_edit(program):
     return bool(code) and (u.get('email') or '') == O.director_email(code)
 
 
-def _record(entries, what):
-    """Save corrections: apply them to the live database, add them to the log, audit them."""
+def _record(entries, what, label=''):
+    """Save corrections: apply them to the live database, add them to the log, audit them (with before and after)."""
+    import uuid
     import auth
     from datetime import datetime
     from utils import log_audit_event
@@ -185,8 +239,9 @@ def _record(entries, what):
         return 0
     who = (auth.user() or {}).get('name') or session.get('email') or 'unknown'
     for e in entries:
-        e.update(who=who, when=datetime.now().isoformat(timespec='seconds'))
+        e.update(id=uuid.uuid4().hex[:12], who=who, when=datetime.now().isoformat(timespec='seconds'))
     with _edits_lock():
+        _sync()                          # the base copy is kept before the first correction ever touches records.db
         c = sqlite3.connect(PATH)
         try:
             for e in entries:
@@ -195,10 +250,197 @@ def _record(entries, what):
         finally:
             c.close()
         RE.save(_side('records-edits.json'), RE.load(_side('records-edits.json')) + entries)
-        with open(_side('records-edits.applied'), 'w') as f:
-            f.write(str(os.path.getmtime(PATH)))
-    log_audit_event('RECORDS_CORRECTED', who, {'what': what, 'changes': len(entries)})
+        _stamp()
+    diff = [x for e in entries for x in short_lines(e)]
+    log_audit_event('RECORDS_CORRECTED', who, {'what': what, 'label': label, 'changes': len(entries),
+                                               'diff': [x[:120] for x in diff[:AUDIT_MAX]], 'more': max(0, len(diff) - AUDIT_MAX)})
     return len(entries)
+
+
+AUDIT_MAX = 20       # before/after lines kept in one audit entry; the rest are counted
+
+
+# ---- what a correction changed, in plain words -------------------------------------------------------------------
+
+LABELS = {'driver': 'Driver', 'name': 'Name', 'class': 'Class', 'position': 'Place', 'place': 'Place', 'total': 'Total', 'score': 'Score',
+          'date': 'Date'}
+NOT_RECORDED = object()
+
+
+def ordinal(n):
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return str(n or '')
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+def _show(f, v):
+    if v is None or v == '':
+        return '(blank)'
+    if f == 'date':
+        return nice_date(v)
+    if f == 'score' and isinstance(v, float):
+        return '%g' % v
+    return str(v)
+
+
+def _changes(e):
+    """[(field, before or NOT_RECORDED, after)] for an entry that sets fields."""
+    k, s, was = e.get('key') or {}, e.get('set') or {}, e.get('was')
+    out = []
+    for f, after in s.items():
+        if isinstance(was, dict) and f in was:
+            before = was[f]
+        elif e.get('kind') == 'row' and f == 'driver':
+            before = k.get('driver')
+        elif e.get('kind') == 'standing' and f in k:
+            before = k[f]
+        else:
+            before = NOT_RECORDED
+        out.append((f, before, after))
+    return out
+
+
+def _standing_words(d):
+    cl = (d.get('class') or '').strip()
+    return f"{d.get('name') or ''}, {ordinal(d.get('place'))}" + (f' in {cl}' if cl else '') if d.get('place') not in (None, '') else \
+        (d.get('name') or '') + (f' in {cl}' if cl else '')
+
+
+def change_lines(e):
+    """Lines for the Corrections page: "Driver: Jon Smith -> John Smith", "Removed the event"."""
+    kind, k, was = e.get('kind'), e.get('key') or {}, e.get('was') or {}
+    if kind == 'add_standing':
+        return ['Added ' + _standing_words(e.get('set') or {})]
+    if e.get('remove'):
+        if kind == 'event':
+            return ['Removed the event']
+        if kind == 'row':
+            return [f"Removed the line for {k.get('driver') or 'a driver'}" + (f", {ordinal(was['position'])}" if str(was.get('position') or '').isdigit() else '')]
+        return ['Removed ' + _standing_words(k)]
+    out = []
+    for f, before, after in _changes(e):
+        lab = 'Event name' if kind == 'event' and f == 'name' else LABELS.get(f, f.capitalize())
+        if before is NOT_RECORDED:
+            out.append(f'{lab}: {_show(f, after)} (before: not recorded)')
+        else:
+            out.append(f'{lab}: {_show(f, before)} -> {_show(f, after)}')
+    return out
+
+
+def short_lines(e):
+    """The same, shorter, for the audit log: "Jon Smith -> John Smith", "class str -> STR"."""
+    kind, k = e.get('kind'), e.get('key') or {}
+    if kind == 'add_standing':
+        return ['added ' + _standing_words(e.get('set') or {})]
+    if e.get('remove'):
+        return ['removed the event' if kind == 'event' else f"removed the line for {k.get('driver')}" if kind == 'row' else 'removed ' + _standing_words(k)]
+    out = []
+    for f, before, after in _changes(e):
+        b = 'unknown' if before is NOT_RECORDED else _show(f, before)
+        if f in ('driver', 'name') and kind != 'event':
+            out.append(f'{b} -> {_show(f, after)}')
+        else:
+            out.append(f"{'event name' if f == 'name' else LABELS.get(f, f).lower()} {b} -> {_show(f, after)}")
+    return out
+
+
+# ---- checks on names and classes before a correction is saved ----------------------------------------------------
+
+def _person_events(c, name):
+    """(the person's name as stored, events they have results in) for a name in the people table, else None."""
+    r = c.execute('select id, name from people where lower(name) = lower(?)', (name,)).fetchone()
+    if not r:
+        return None
+    n = c.execute('select count(distinct event_id) from result_rows where person_id = ?', (r[0],)).fetchone()[0]
+    return r[1], n
+
+
+def joins_text(name, n):
+    return f"This joins {name}'s results ({n} event{'s' if n != 1 else ''})" if n else f"This joins {name}'s results (season standings only)"
+
+
+def check_name(c, field, value, old, issues, where=''):
+    """A changed name: one word is refused; a name that joins another person or makes a new one needs a confirm."""
+    v = RE.clean_name(value)
+    if v.lower() == RE.clean_name(old).lower():
+        return
+    if len(v.split()) < 2:
+        issues.append(dict(field=field, stop=True, text='Use a first and last name', where=where))
+        return
+    hit = _person_events(c, v)
+    issues.append(dict(field=field, stop=False, text=joins_text(*hit) if hit else 'This creates a new person', where=where,
+                       token=f'{field}={value.strip()}'))
+
+
+def check_classes(changes, gone, counts, season, issues):
+    """Changed classes, [(field, old, new, where)], with gone = the classes of lines removed, against counts = {class:
+    lines} already in that program and year. A class that differs from one still in use after these changes only by case
+    or spaces is refused; one the database does not have yet needs a confirm."""
+    after = Counter(counts)
+    for _, old, new, _ in changes:
+        if (old or '').strip():
+            after[old.strip()] -= 1
+        if new.strip():
+            after[new.strip()] += 1
+    for old in gone:
+        if (old or '').strip():
+            after[old.strip()] -= 1
+    for field, old, new, where in changes:
+        v = new.strip()
+        if not v or v == (old or '').strip():
+            continue
+        others = after.copy()
+        others[v] -= 1
+        near = next((c for c in sorted(others) if others[c] > 0 and c != v and RE.norm_class(c) == RE.norm_class(v)), None)
+        if near:
+            issues.append(dict(field=field, stop=True, text=f'Did you mean {near}?', where=where))
+        elif v not in counts:
+            issues.append(dict(field=field, stop=False, text=f'{v} is not a class in {season} yet', where=where, token=f'{field}={v}'))
+
+
+def _held(issues, form):
+    """True when the form must be shown again: something refused, or a warning not yet confirmed."""
+    ok = set(form.getlist('ok'))
+    return any(i['stop'] for i in issues) or any(i['token'] not in ok for i in issues if not i['stop'])
+
+
+# ---- undo --------------------------------------------------------------------------------------------------------
+
+def undo(ref):
+    """Take one entry out of the log and bring the live database back to the state without it.
+
+    records-base.db is records.db as the last rebuild delivered it, before the server applied the log. Undo copies it,
+    applies every other entry in order, and swaps the result in. A rebuild applies the log it was given, so an entry
+    that was in the log when the rebuilt database arrived may already be in the base copy: such an entry is also put
+    back from its "was" values; a removed event or result line it holds cannot be, and comes back with the next
+    rebuild (the log no longer has the entry). Returns (entry, restored, why_not) with entry None when it is gone."""
+    with _edits_lock():
+        _sync()
+        log = RE.load(_side('records-edits.json'))
+        i = next((n for n, e in enumerate(log) if RE.ref(e) == ref), None)
+        if i is None:
+            return None, False, 'gone'
+        x, rest = log[i], log[:i] + log[i + 1:]
+        if any(RE.depends(x, y) for y in log[i + 1:]):
+            return x, False, 'later'
+        tmp = PATH + '.undo'
+        _copy_db(BASE_PATH(), tmp)
+        c = sqlite3.connect(tmp)
+        try:
+            RE.apply_all(c, rest)
+            if ref in _base_meta().get('in_base', []):
+                for r in RE.reverse(x):
+                    RE.apply(c, r)
+            restored = RE.present(c, x) if x.get('remove') else True
+            c.commit()
+        finally:
+            c.close()
+        os.replace(tmp, PATH)
+        RE.save(_side('records-edits.json'), rest)
+        _stamp()
+    return x, restored, ''
 
 
 @bp.route('/')
@@ -213,7 +455,8 @@ def home():
             from people p where p.name like ? order by n desc limit 30''', like)
         events = _q('select id, program, date, year, name from events where name like ? order by date desc limit 20', like)
     top = _hall(PATH, os.path.getmtime(PATH))['titles'][:3]
-    return render_template('records.html', **_ctx(view='home', q=q, people=people, events=events, top=top))
+    return render_template('records.html', **_ctx(view='home', q=q, people=people, events=events, top=top,
+                                                  can_fix=any(can_edit(pg) for pg in PROGRAMS)))
 
 
 @bp.route('/hall-of-fame')
@@ -286,6 +529,12 @@ def _count_entrants(events, program):
             e['n'] = len({r['person_id'] or (r['driver'] or '').lower() for r in rs})
 
 
+def _classes(table, program, year):
+    """{class: lines} already used in a program and year: the standings' own, or the event results'."""
+    return Counter({r[0]: r[1] for r in _q(f"select class, count(*) from {table} where program = ? and year is ? and coalesce(class, '') != '' "
+                                           'group by class', program, year)})
+
+
 @bp.route('/<prog>/<int:year>/edit', methods=['GET', 'POST'])
 def season_edit(prog, year):
     """Correct a season's standings: class, place, name and score of each row, remove rows, add missing ones."""
@@ -294,8 +543,10 @@ def season_edit(prog, year):
     if not can_edit(p):
         abort(403)
     st = _q('select * from season_standings where program = ? and year = ? order by class, place, name', p, year)
+    classes, issues = _classes('season_standings', p, year), []
     if request.method == 'POST':
-        f, out = request.form, []
+        f, out, cls, gone = request.form, [], [], []
+        db = _db()
         same = defaultdict(int)          # rows alike in class, name, place and score: the key says which one (0, 1, ...)
         for s in sorted(st, key=lambda s: s['id']):
             ident = (s['class'] or '', s['name'], s['place'], s['score'])
@@ -304,22 +555,49 @@ def season_edit(prog, year):
             same[ident] += 1
             if f.get(f'rm{s["id"]}'):
                 out.append({'kind': 'standing', 'key': k, 'remove': True})
+                gone.append(s['class'])
                 continue
             ch = {fld: f.get(f'{fld}{s["id"]}', '').strip() for fld in RE.STANDING_FIELDS if f'{fld}{s["id"]}' in f}
             old = {'class': s['class'] or '', 'place': str(s['place']), 'name': s['name'], 'score': '' if s['score'] is None else '%g' % s['score']}
             ch = {fld: v for fld, v in ch.items() if v != old[fld]}
             if ch:
-                out.append({'kind': 'standing', 'key': k, 'set': ch})
+                where = f"{s['name']}, {ordinal(s['place'])} in {s['class'] or 'no class'}"
+                if 'name' in ch:
+                    check_name(db, f'name{s["id"]}', ch['name'], s['name'], issues, where)
+                if 'class' in ch:
+                    cls.append((f'class{s["id"]}', s['class'], ch['class'], where))
+                was = {'class': s['class'], 'place': s['place'], 'name': s['name'], 'score': s['score']}
+                out.append({'kind': 'standing', 'key': k, 'set': ch, 'was': {fld: was[fld] for fld in ch}})
         out.sort(key=lambda e: -e['key']['nth'])      # of rows that are alike, the later one first, so "which one" still holds for the rest
         for i in range(5):
             nm, pl = f.get(f'new_name{i}', '').strip(), f.get(f'new_place{i}', '').strip()
-            if nm and pl.isdigit():
-                out.append({'kind': 'add_standing', 'set': {'program': p, 'year': year, 'class': f.get(f'new_class{i}', '').strip(),
-                                                            'place': pl, 'name': nm, 'score': f.get(f'new_score{i}', '').strip()}})
-        n = _record(out, f'standings {p} {year}')
-        flash(f'Saved {n} correction{"s" if n != 1 else ""}.' if n else 'Nothing changed.', 'success' if n else 'info')
-        return redirect(url_for('records.season', prog=prog, year=year))
-    return render_template('records.html', **_ctx(view='season_edit', p=p, year=year, st=st))
+            cl, sc = f.get(f'new_class{i}', '').strip(), f.get(f'new_score{i}', '').strip()
+            if not (nm or pl or cl or sc):
+                continue
+            where = f'New line {i + 1}'
+            if not pl.isdigit():
+                issues.append(dict(field=f'new_place{i}', stop=True, text='Give the place as a number', where=where))
+            if not nm:
+                issues.append(dict(field=f'new_name{i}', stop=True, text='Use a first and last name', where=where))
+            else:
+                check_name(db, f'new_name{i}', nm, '', issues, where)
+            cls.append((f'new_class{i}', None, cl, where))
+            out.append({'kind': 'add_standing', 'set': {'program': p, 'year': year, 'class': cl, 'place': pl, 'name': nm, 'score': sc}})
+        db.close()
+        check_classes(cls, gone, classes, f'{year} {p}', issues)
+        if not _held(issues, f):
+            n = _record(out, f'standings {p} {year}', f'the {year} {p} standings')
+            flash(f'Saved {n} correction{"s" if n != 1 else ""}.' if n else 'Nothing changed.', 'success' if n else 'info')
+            return redirect(url_for('records.season', prog=prog, year=year))
+    return render_template('records.html', **_ctx(view='season_edit', p=p, year=year, st=st, classes=classes, **_held_ctx(issues)))
+
+
+def _held_ctx(issues):
+    """What the form shows again: the typed values, a message beside each field, and the confirm tokens."""
+    if request.method != 'POST':
+        return dict(form={}, msgs={}, issues=[], tokens=[], stops=False)
+    return dict(form=request.form, msgs={i['field']: i for i in issues}, issues=issues,
+                tokens=[i['token'] for i in issues if not i['stop']], stops=any(i['stop'] for i in issues))
 
 
 @bp.route('/event/<int:eid>')
@@ -427,11 +705,13 @@ def event_edit(eid):
     files = _q('select id, name, drive_url, coalesce(label, \'Results\') label from files where event_id = ? order by coalesce(sort, 9), name', eid)
     url = {f['id']: f['drive_url'] for f in files}
     rows = _q('select * from result_rows where event_id = ? order by file_id, line_no, id', eid)
+    classes, issues = _classes('result_rows', e['program'], e['year']), []
+    about = {'program': e['program'], 'year': e['year'], 'date': e['date'], 'event': e['name']}
     if request.method == 'POST':
         f, out = request.form, []
         key = {'url': files[0]['drive_url']} if files else None
         if key and f.get('remove_event'):
-            out.append({'kind': 'event', 'key': key, 'remove': True})
+            out.append({'kind': 'event', 'key': key, 'remove': True, 'about': about, 'was': {'name': e['name'], 'date': e['date'], 'lines': len(rows)}})
         elif key:
             ch = {}
             if f.get('name', '').strip() and f['name'].strip() != e['name']:
@@ -439,23 +719,159 @@ def event_edit(eid):
             if f.get('date', '') and f['date'] != (e['date'] or ''):
                 ch['date'] = f['date']
             if ch:
-                out.append({'kind': 'event', 'key': key, 'set': ch})
+                out.append({'kind': 'event', 'key': key, 'set': ch, 'about': about, 'was': {fld: e[fld] for fld in ch}})
+            db, cls, gone = _db(), [], []
+            season = f"{e['year']} {e['program']}" if e['year'] else e['program']
             for r in rows:
                 k = {'url': url[r['file_id']], 'line': r['line_no'], 'driver': r['driver']}
+                was = {fld: r[fld] for fld in RE.ROW_FIELDS}
                 if f.get(f'rm{r["id"]}'):
-                    out.append({'kind': 'row', 'key': k, 'remove': True})
+                    out.append({'kind': 'row', 'key': k, 'remove': True, 'about': about, 'was': was})
+                    gone.append(r['class'])
                     continue
                 ch = {fld: f.get(f'{fld}{r["id"]}', '').strip() for fld in RE.ROW_FIELDS if f'{fld}{r["id"]}' in f}
                 ch = {fld: v for fld, v in ch.items() if v != (r[fld] or '')}
                 if ch:
-                    out.append({'kind': 'row', 'key': k, 'set': ch})
-        n = _record(out, f"event {e['program']} {e['date'] or e['year']} {e['name']}")
-        flash(f'Saved {n} correction{"s" if n != 1 else ""}.' if n else 'Nothing changed.', 'success' if n else 'info')
-        if f.get('remove_event'):
-            return redirect(url_for('records.season', prog=slug(e['program']), year=e['year']) if e['year'] else url_for('records.home'))
-        return redirect(url_for('records.event', eid=eid))
+                    where = (r['driver'] or 'A line') + (f", {r['position']}" if r['position'] else '')
+                    if 'driver' in ch:
+                        check_name(db, f'driver{r["id"]}', ch['driver'], r['driver'], issues, where)
+                    if 'class' in ch:
+                        cls.append((f'class{r["id"]}', r['class'], ch['class'], where))
+                    out.append({'kind': 'row', 'key': k, 'set': ch, 'about': about, 'was': {fld: was[fld] for fld in ch}})
+            db.close()
+            check_classes(cls, gone, classes, season, issues)
+        if f.get('remove_event') or not _held(issues, f):
+            n = _record(out, f"event {e['program']} {e['date'] or e['year']} {e['name']}",
+                        f"{e['name']} ({e['program']}, {nice_date(e['date']) or e['year']})")
+            flash(f'Saved {n} correction{"s" if n != 1 else ""}.' if n else 'Nothing changed.', 'success' if n else 'info')
+            if f.get('remove_event'):
+                return redirect(url_for('records.season', prog=slug(e['program']), year=e['year']) if e['year'] else url_for('records.home'))
+            return redirect(url_for('records.event', eid=eid))
     labels = {f['id']: f['label'] for f in files}
-    return render_template('records.html', **_ctx(view='event_edit', e=e, rows=rows, labels=labels))
+    return render_template('records.html', **_ctx(view='event_edit', e=e, rows=rows, labels=labels, classes=classes, **_held_ctx(issues)))
+
+
+NAMES_MAX = 5000
+SHOW = 200           # corrections listed before "Show all"
+
+
+@bp.route('/names.json')
+def names_json():
+    """[[name, events], ...] for the name pickers: people in the program first (most events first), then everyone else,
+    at most NAMES_MAX."""
+    from flask import jsonify
+    _need()
+    p = request.args.get('program') if request.args.get('program') in PROGRAMS else ''
+    rows = _q('''select p.name, count(distinct r.event_id) n,
+        max(case when r.program = ? then 1 else 0 end) or exists (select 1 from season_standings s where s.person_id = p.id and s.program = ?) mine
+        from people p left join result_rows r on r.person_id = p.id group by p.id order by mine desc, n desc, p.name limit ?''', p, p, NAMES_MAX)
+    return jsonify([[r['name'], r['n']] for r in rows if len((r['name'] or '').split()) >= 2])
+
+
+@bp.route('/name.json')
+def name_json():
+    """What saving a name would do: {"stop": text} for a one-word name, {"joins": name, "n": events, "text"}, or {"new": true, "text"}."""
+    from flask import jsonify
+    _need()
+    v = RE.clean_name(request.args.get('name'))
+    if len(v.split()) < 2:
+        return jsonify(stop='Use a first and last name')
+    c = _db()
+    try:
+        hit = _person_events(c, v)
+    finally:
+        c.close()
+    return jsonify(joins=hit[0], n=hit[1], text=joins_text(*hit)) if hit else jsonify(new=True, text='This creates a new person')
+
+
+# ---- the Corrections page ----------------------------------------------------------------------------------------
+
+def _events_by_url(path, urls):
+    """{drive link: event} from a records database (the live one, or the base copy for a removed event)."""
+    out, urls = {}, list(urls)
+    if not urls or not os.path.exists(path):
+        return out
+    c = sqlite3.connect(f'file:{path}?mode=ro', uri=True)
+    c.row_factory = sqlite3.Row
+    try:
+        for i in range(0, len(urls), 500):
+            part = urls[i:i + 500]
+            for r in c.execute(f'''select f.drive_url, e.program, e.year, e.date, e.name from files f join events e on e.id = f.event_id
+                                   where f.drive_url in ({",".join("?" * len(part))})''', part):
+                out.setdefault(r['drive_url'], dict(r))
+    finally:
+        c.close()
+    return out
+
+
+def _views(log):
+    """Log entries, newest first, as the Corrections page shows them."""
+    urls = {(e.get('key') or {}).get('url') for e in log if e.get('kind') in ('event', 'row')} - {None}
+    evs = _events_by_url(PATH, urls)
+    evs = {**_events_by_url(BASE_PATH(), urls - set(evs)), **evs}
+    in_base = set(_base_meta().get('in_base', []))
+    base, may, out = None, {}, []
+    try:
+        for e in reversed(log):
+            kind, k, s = e.get('kind'), e.get('key') or {}, e.get('set') or {}
+            ref = RE.ref(e)
+            if kind in ('event', 'row'):
+                ev = evs.get(k.get('url')) or e.get('about') or {}
+                name = ev.get('name') or ev.get('event')
+                program = ev.get('program')
+                when = nice_date(ev.get('date')) or ev.get('year') or ''
+                what = (name or 'An event no longer in Records') + (f', {when}' if when else '')
+            else:
+                d = k if kind == 'standing' else s
+                program, what = d.get('program'), f"{d.get('year')} standings, {(d.get('class') or '').strip() or 'no class'}"
+            if program not in may:
+                may[program] = can_edit(program)
+            back = True                  # a removal that may be in the base copy: is what it removed there?
+            if e.get('remove') and kind in ('event', 'row') and ref in in_base:
+                if base is None and os.path.exists(BASE_PATH()):
+                    base = sqlite3.connect(f'file:{BASE_PATH()}?mode=ro', uri=True)
+                back = bool(base) and RE.present(base, e)
+            out.append(dict(ref=ref, when=e.get('when'), who=e.get('who') or '', program=program or '', what=what, lines=change_lines(e),
+                            can_undo=may[program], back=back))
+    finally:
+        if base:
+            base.close()
+    return out
+
+
+@bp.route('/corrections')
+def corrections():
+    """Every correction people made, newest first, with what it changed; Undo for those who could have made it."""
+    _need()
+    log = RE.load(_side('records-edits.json'))
+    show_all = bool(request.args.get('all')) or len(log) <= SHOW
+    return render_template('records.html', **_ctx(view='corrections', items=_views(log if show_all else log[-SHOW:]), total=len(log), show_all=show_all))
+
+
+@bp.route('/corrections/undo', methods=['POST'])
+def corrections_undo():
+    import auth
+    from utils import log_audit_event
+    _need()
+    ref = request.form.get('ref', '')
+    x = next((e for e in RE.load(_side('records-edits.json')) if RE.ref(e) == ref), None)
+    if x is None:
+        flash('That correction was already undone.', 'info')
+        return redirect(url_for('records.corrections'))
+    view = _views([x])[0]
+    if not view['can_undo']:
+        abort(403)
+    x, restored, why = undo(ref)
+    if why == 'gone':
+        flash('That correction was already undone.', 'info')
+    elif why == 'later':
+        flash('A later correction changed the same line. Undo that one first.', 'warning')
+    else:
+        who = (auth.user() or {}).get('name') or session.get('email') or 'unknown'
+        log_audit_event('RECORDS_UNDONE', who, {'program': view['program'], 'label': f"{view['what']} ({view['program']})" if view['program'] else view['what'], 'diff': [y[:120] for y in short_lines(x)][:AUDIT_MAX],
+                                                'made_by': x.get('who', ''), 'made_on': (x.get('when') or '')[:10], 'restored': restored})
+        flash('Undone.' if restored else 'Undone. What it removed comes back with the next results rebuild.', 'success')
+    return redirect(url_for('records.corrections'))
 
 
 @bp.route('/person/<int:pid>')

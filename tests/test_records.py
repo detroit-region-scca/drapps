@@ -187,12 +187,16 @@ def test_the_programs_director_corrects_records_and_corrections_survive_a_rebuil
     monkeypatch.setattr(O, 'director_email', lambda code: 'pat@example.org' if code == 'AX' else '')
     c = _signed_in(monkeypatch, roles=['Director'])
     assert b'Correct this event' in c.get('/records/event/1').data
-    r = c.post('/records/event/1/edit', data={'name': 'Spring Opener', 'date': '2025-05-24', 'driver1': 'Alexis Example', 'class1': 'SS',
-                                              'position1': '1', 'total1': '45.123'})
+    from werkzeug.datastructures import MultiDict
+    form = {'name': 'Spring Opener', 'date': '2025-05-24', 'driver1': 'Alexis Example', 'class1': 'SS', 'position1': '1', 'total1': '45.123'}
+    r = c.post('/records/event/1/edit', data=form)
+    assert r.status_code == 200 and b'This creates a new person' in r.data      # asked first: nothing saved yet
+    r = c.post('/records/event/1/edit', data=MultiDict(list(form.items()) + [('ok', 'driver1=Alexis Example'), ('ok', 'class1=SS')]))
     assert r.status_code == 302
     page = c.get('/records/event/1').data
     assert b'Spring Opener' in page and b'Alexis Example' in page
-    c.post('/records/autocross/2025/edit', data={'rm2': '1', 'new_class0': 'SS - Super Street', 'new_place0': '2', 'new_name0': 'Lee Sample', 'new_score0': '410'})
+    c.post('/records/autocross/2025/edit', data={'rm2': '1', 'new_class0': 'SS - Super Street', 'new_place0': '2', 'new_name0': 'Lee Sample', 'new_score0': '410',
+                                                 'ok': 'new_name0=Lee Sample'})
     season = c.get('/records/autocross/2025').data
     assert b'Season Opener Points' not in season and b'Lee Sample' in season
     # a rebuilt database arrives: the log is applied to it on the next page view

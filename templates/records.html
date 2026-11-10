@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
 {% block app_name %}Records{% endblock %}
-{% block page_title %}{% if view == 'add' %}Add results{% elif view == 'hall' %}Hall of Fame{% elif view == 'program' %}{{ p }}{% elif view == 'season' %}{{ year }} {{ p }}{% elif view == 'event' %}{{ e.name }}{% elif view == 'event_edit' %}Correct {{ e.name }}{% elif view == 'season_edit' %}Correct {{ year }} {{ p }} standings{% elif view == 'person' %}{{ person.name }}{% else %}Records{% endif %}{% endblock %}
+{% block page_title %}{% if view == 'add' %}Add results{% elif view == 'hall' %}Hall of Fame{% elif view == 'program' %}{{ p }}{% elif view == 'season' %}{{ year }} {{ p }}{% elif view == 'event' %}{{ e.name }}{% elif view == 'event_edit' %}Correct {{ e.name }}{% elif view == 'season_edit' %}Correct {{ year }} {{ p }} standings{% elif view == 'person' %}{{ person.name }}{% elif view == 'corrections' %}Corrections{% else %}Records{% endif %}{% endblock %}
 {% block nav %}
-    <li class="nav-item"><a class="nav-link {% if view in ('home', 'program', 'season', 'event', 'person', 'event_edit', 'season_edit') %}active{% endif %}" href="{{ url_for('records.home') }}">Records</a></li>
+    <li class="nav-item"><a class="nav-link {% if view in ('home', 'program', 'season', 'event', 'person', 'event_edit', 'season_edit', 'corrections') %}active{% endif %}" href="{{ url_for('records.home') }}">Records</a></li>
     <li class="nav-item"><a class="nav-link {% if view == 'hall' %}active{% endif %}" href="{{ url_for('records.hall') }}">Hall of Fame</a></li>
     <li class="nav-item"><a class="nav-link {% if view == 'add' %}active{% endif %}" href="{{ url_for('records.add') }}">Add results</a></li>
 {% endblock %}
@@ -67,6 +67,9 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 .class-jump { position: sticky; top: 0; background: var(--bg); padding: .4rem 0; z-index: 2; }
 .nav-tabs .nav-link { color: var(--text); font-weight: 600; }
 .nav-tabs .nav-link.active { color: var(--red); }
+.rec-msg:empty { display: none; }
+.rec-msg { max-width: 16rem; }
+.rec-change { overflow-wrap: anywhere; }
 {% endblock %}
 {% block content %}
 
@@ -75,6 +78,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 <h1 class="page-title">Detroit Region SCCA records</h1>
 <p class="text-muted">Results and season standings the region has posted since 1982, in one place.</p>
 <div class="rec-stats"><div><b>{{ '{:,}'.format(n.events) }}</b>events</div><div><b>{{ '{:,}'.format(n.result_rows) }}</b>results</div><div><b>{{ '{:,}'.format(n.people) }}</b>people</div></div>
+{% if can_fix %}<p class="small mb-2"><a href="{{ url_for('records.corrections') }}">See every correction</a> <span class="text-muted">(with Undo)</span></p>{% endif %}
 <form method="get" class="mb-3" style="max-width: 32rem;"><input class="form-control form-control-lg" name="q" value="{{ q }}" aria-label="Search a driver or event" placeholder="Search a driver or event"></form>
 {% if q %}
   {% if people %}<div class="section-label">People</div><div class="list-group mb-3">{% for r in people %}
@@ -199,51 +203,163 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 {% else %}<p class="text-muted">{% if files and files[0].ocr and files[0].ocr.startswith('needs transcription') %}The results for this event are being transcribed from the original sheet{% else %}The results for this event are only in the original {{ 'scan' if files and files[0].ocr else 'file' }}, which could not be read reliably{% endif %}{% if files %}: <a href="{{ files[0].drive_url }}" target="_blank" rel="noopener">open the original</a>{% endif %}.</p>{% endif %}
 {% if sheets and scanned %}<p class="small text-muted">Read from a scanned sheet by OCR: check the original before relying on a time or a place.</p>{% endif %}
 
-{% elif view == 'event_edit' %}
+{% elif view in ('event_edit', 'season_edit') %}
+{% macro fld(name, value, old, label, width, kind='', placeholder='') %}{% set m = msgs.get(name) %}
+  <input class="form-control form-control-sm{{ ' is-invalid' if m and m.stop }}" style="{{ width }}" name="{{ name }}" aria-label="{{ label }}" value="{{ form.get(name, value) }}"{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}{% if kind %} data-check="{{ kind }}" data-old="{{ old }}" list="{{ 'rec-classes' if kind == 'class' else 'rec-names' }}" aria-describedby="msg-{{ name }}"{% endif %}>
+  {% if kind %}<div class="small rec-msg {{ 'text-danger' if m and m.stop else 'text-warning-emphasis' }}" id="msg-{{ name }}" aria-live="polite">{{ m.text if m }}</div>{% endif %}
+{%- endmacro %}
+{% if view == 'event_edit' %}{% set season = (e.year ~ ' ' ~ e.program) if e.year else e.program %}{% set prog = e.program %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.event', eid=e.id) }}">{{ e.name }}</a> / Correct</div>
 <h1 class="page-title">Correct this event</h1>
-<p class="text-muted small">Change what is wrong and save. Your corrections are kept when the records are rebuilt, and each one is in the audit log.</p>
-<form method="post" onsubmit="return !this.remove_event.checked || confirm('Remove this event from Records?')">
+{% else %}{% set season = year ~ ' ' ~ p %}{% set prog = p %}
+<div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.season', prog=slug(p), year=year) }}">{{ year }} {{ p }}</a> / Correct</div>
+<h1 class="page-title">Correct the {{ year }} {{ p }} standings</h1>
+{% endif %}
+<p class="text-muted small">{% if view == 'season_edit' %}Place 1 in a class is its champion. {% else %}Change what is wrong and save. {% endif %}Your corrections are kept when the records are rebuilt. <a href="{{ url_for('records.corrections') }}">See every correction</a>.</p>
+{% if issues %}<div class="alert alert-warning" role="alert">
+  <strong>{{ 'Not saved. Fix the lines marked in red.' if stops else 'Not saved yet. Check these, then Save anyway.' }}</strong>
+  <ul class="mb-0 mt-1">{% for i in issues %}<li>{{ i.where }}: {{ i.text }}</li>{% endfor %}</ul></div>{% endif %}
+<datalist id="rec-classes">{% for c, n in classes|dictsort %}<option value="{{ c }}" data-n="{{ n }}"></option>{% endfor %}</datalist>
+<datalist id="rec-names"></datalist>
+<form method="post" id="rec-edit" data-season="{{ season }}" data-names="{{ url_for('records.names_json', program=prog) }}" data-name-check="{{ url_for('records.name_json') }}"{% if view == 'event_edit' %} onsubmit="return !this.remove_event.checked || confirm('Remove this event from Records?')"{% endif %}>
+{% for t in tokens %}<input type="hidden" name="ok" value="{{ t }}">{% endfor %}
+{% if view == 'event_edit' %}
 <div class="row g-2 mb-3" style="max-width:40rem">
-  <div class="col-sm-8"><label class="form-label small">Event name</label><input class="form-control" name="name" value="{{ e.name }}"></div>
-  <div class="col-sm-4"><label class="form-label small">Date</label><input class="form-control" type="date" name="date" value="{{ e.date or '' }}"></div>
+  <div class="col-sm-8"><label class="form-label small" for="ev-name">Event name</label><input class="form-control" id="ev-name" name="name" value="{{ form.get('name', e.name) }}"></div>
+  <div class="col-sm-4"><label class="form-label small" for="ev-date">Date</label><input class="form-control" id="ev-date" type="date" name="date" value="{{ form.get('date', e.date or '') }}"></div>
 </div>
-<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Sheet</th><th>Place</th><th>Class</th><th>Name</th><th>{{ 'Score' if e.program == 'Rally' else 'Total' }}</th><th>Remove</th></tr></thead><tbody>
+{% set total = 'Score' if e.program == 'Rally' else 'Total' %}
+<div class="table-responsive"><table class="table table-sm align-middle stack"><thead><tr><th>Sheet</th><th>Place</th><th>Class</th><th>Name</th><th>{{ total }}</th><th>Remove</th></tr></thead><tbody>
 {% for r in rows %}<tr>
-  <td class="small text-muted">{{ labels.get(r.file_id, '') }}</td>
-  <td><input class="form-control form-control-sm" style="width:4.5rem" name="position{{ r.id }}" aria-label="Place" value="{{ r.position or '' }}"></td>
-  <td><input class="form-control form-control-sm" style="width:6rem" name="class{{ r.id }}" aria-label="Class" value="{{ r['class'] or '' }}"></td>
-  <td><input class="form-control form-control-sm" style="min-width:12rem" name="driver{{ r.id }}" aria-label="Name" value="{{ r.driver or '' }}"></td>
-  <td><input class="form-control form-control-sm" style="width:6rem" name="total{{ r.id }}" aria-label="{{ 'Score' if e.program == 'Rally' else 'Total' }}" value="{{ r.total or '' }}"></td>
-  <td class="text-center"><input class="form-check-input" type="checkbox" name="rm{{ r.id }}" value="1" aria-label="Remove this line"></td>
+  <td class="small text-muted" data-label="Sheet">{{ labels.get(r.file_id, '') }}</td>
+  <td data-label="Place">{{ fld('position%d' % r.id, r.position or '', '', 'Place', 'width:4.5rem') }}</td>
+  <td data-label="Class">{{ fld('class%d' % r.id, r['class'] or '', r['class'] or '', 'Class', 'width:6rem', 'class') }}</td>
+  <td data-label="Name">{{ fld('driver%d' % r.id, r.driver or '', r.driver or '', 'Name', 'min-width:12rem', 'name') }}</td>
+  <td data-label="{{ total }}">{{ fld('total%d' % r.id, r.total or '', '', total, 'width:6rem') }}</td>
+  <td class="text-md-center" data-label="Remove"><input class="form-check-input" type="checkbox" name="rm{{ r.id }}" value="1" aria-label="Remove this line"{{ ' checked' if form.get('rm%d' % r.id) }}></td>
 </tr>{% endfor %}
 </tbody></table></div>
 <div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="remove_event" value="1" id="rmev"><label class="form-check-label" for="rmev">This event is not a real event: remove it from Records</label></div>
-<a class="btn btn-outline-secondary" href="{{ url_for('records.event', eid=e.id) }}">Cancel</a> <button class="btn btn-accent">Save corrections</button>
-</form>
-
-{% elif view == 'season_edit' %}
-<div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.season', prog=slug(p), year=year) }}">{{ year }} {{ p }}</a> / Correct</div>
-<h1 class="page-title">Correct the {{ year }} {{ p }} standings</h1>
-<p class="text-muted small">Place 1 in a class is its champion. Your corrections are kept when the records are rebuilt, and each one is in the audit log.</p>
-<form method="post">
-<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Class</th><th>Place</th><th>Name</th><th>Score</th><th>Remove</th></tr></thead><tbody>
+<a class="btn btn-outline-secondary" href="{{ url_for('records.event', eid=e.id) }}">Cancel</a> <button class="btn btn-accent">{{ 'Save anyway' if tokens and not stops else 'Save corrections' }}</button>
+{% else %}
+<div class="table-responsive"><table class="table table-sm align-middle stack"><thead><tr><th>Class</th><th>Place</th><th>Name</th><th>Score</th><th>Remove</th></tr></thead><tbody>
 {% for s in st %}<tr>
-  <td><input class="form-control form-control-sm" style="width:9rem" name="class{{ s.id }}" aria-label="Class" value="{{ s['class'] or '' }}"></td>
-  <td><input class="form-control form-control-sm" style="width:4.5rem" name="place{{ s.id }}" aria-label="Place" value="{{ s.place }}"></td>
-  <td><input class="form-control form-control-sm" style="min-width:12rem" name="name{{ s.id }}" aria-label="Name" value="{{ s.name }}"></td>
-  <td><input class="form-control form-control-sm" style="width:6rem" name="score{{ s.id }}" aria-label="Score" value="{{ '%g'|format(s.score) if s.score is not none else '' }}"></td>
-  <td class="text-center"><input class="form-check-input" type="checkbox" name="rm{{ s.id }}" value="1" aria-label="Remove this row"></td>
+  <td data-label="Class">{{ fld('class%d' % s.id, s['class'] or '', s['class'] or '', 'Class', 'width:9rem', 'class') }}</td>
+  <td data-label="Place">{{ fld('place%d' % s.id, s.place, '', 'Place', 'width:4.5rem') }}</td>
+  <td data-label="Name">{{ fld('name%d' % s.id, s.name, s.name, 'Name', 'min-width:12rem', 'name') }}</td>
+  <td data-label="Score">{{ fld('score%d' % s.id, '%g'|format(s.score) if s.score is not none else '', '', 'Score', 'width:6rem') }}</td>
+  <td class="text-md-center" data-label="Remove"><input class="form-check-input" type="checkbox" name="rm{{ s.id }}" value="1" aria-label="Remove this row"{{ ' checked' if form.get('rm%d' % s.id) }}></td>
 </tr>{% endfor %}
 {% for i in range(5) %}<tr class="table-light">
-  <td><input class="form-control form-control-sm" style="width:9rem" name="new_class{{ i }}" aria-label="Class" placeholder="Class"></td>
-  <td><input class="form-control form-control-sm" style="width:4.5rem" name="new_place{{ i }}" aria-label="Place" placeholder="Place"></td>
-  <td><input class="form-control form-control-sm" style="min-width:12rem" name="new_name{{ i }}" aria-label="Add a missing person" placeholder="Add a missing person"></td>
-  <td><input class="form-control form-control-sm" style="width:6rem" name="new_score{{ i }}" aria-label="Score" placeholder="Score"></td><td></td>
+  <td data-label="Class">{{ fld('new_class%d' % i, '', '', 'Class of the added person', 'width:9rem', 'class', 'Class') }}</td>
+  <td data-label="Place">{{ fld('new_place%d' % i, '', '', 'Place of the added person', 'width:4.5rem', '', 'Place') }}{% set m = msgs.get('new_place%d' % i) %}{% if m %}<div class="small text-danger">{{ m.text }}</div>{% endif %}</td>
+  <td data-label="Add">{{ fld('new_name%d' % i, '', '', 'Add a missing person', 'min-width:12rem', 'name', 'Add a missing person') }}</td>
+  <td data-label="Score">{{ fld('new_score%d' % i, '', '', 'Score of the added person', 'width:6rem', '', 'Score') }}</td><td></td>
 </tr>{% endfor %}
 </tbody></table></div>
-<a class="btn btn-outline-secondary" href="{{ url_for('records.season', prog=slug(p), year=year) }}">Cancel</a> <button class="btn btn-accent">Save corrections</button>
+<a class="btn btn-outline-secondary" href="{{ url_for('records.season', prog=slug(p), year=year) }}">Cancel</a> <button class="btn btn-accent">{{ 'Save anyway' if tokens and not stops else 'Save corrections' }}</button>
+{% endif %}
 </form>
+<script>
+// Before saving: what a changed name or class will do, beside the field as it is typed (the server asks again).
+(function () {
+  const form = document.getElementById('rec-edit');
+  const counts = {};
+  document.querySelectorAll('#rec-classes option').forEach(o => { counts[o.value] = +o.dataset.n || 0; });
+  const norm = s => s.toLowerCase().replace(/\s+/g, '');
+  const clean = s => s.trim().split(/\s+/).filter(Boolean).join(' ');
+  let known = null, loading = false;
+  function say(el, level, text) {
+    const d = document.getElementById('msg-' + el.name);
+    el.dataset.level = text ? level : ''; el.dataset.say = text || '';
+    el.classList.toggle('is-invalid', level === 'stop' && !!text);
+    if (d) { d.textContent = text || ''; d.className = 'small rec-msg ' + (level === 'stop' ? 'text-danger' : 'text-warning-emphasis'); }
+  }
+  function joins(name, n) { return n ? `This joins ${name}'s results (${n} event${n === 1 ? '' : 's'})` : `This joins ${name}'s results (season standings only)`; }
+  function removed(el) { const rm = el.closest('tr') && el.closest('tr').querySelector('input[name^=rm]'); return !!(rm && rm.checked); }
+  function inUse() {            // classes in use once this form is saved (the server counts the same way)
+    const a = Object.assign({}, counts);
+    form.querySelectorAll('[data-check=class]').forEach(el => {
+      const old = (el.dataset.old || '').trim(), v = el.value.trim();
+      if (old) a[old] = (a[old] || 0) - 1;
+      if (v && !removed(el)) a[v] = (a[v] || 0) + 1;
+    });
+    return a;
+  }
+  function checkClass(el) {
+    const v = el.value.trim(), old = (el.dataset.old || '').trim();
+    if (!v || v === old || removed(el)) return say(el);
+    const others = inUse(); others[v] -= 1;
+    const near = Object.keys(others).sort().find(c => others[c] > 0 && c !== v && norm(c) === norm(v));
+    if (near) return say(el, 'stop', `Did you mean ${near}?`);
+    if (!(v in counts)) return say(el, 'ask', `${v} is not a class in ${form.dataset.season} yet`);
+    say(el);
+  }
+  function checkName(el) {
+    const v = clean(el.value), old = clean(el.dataset.old || '');
+    if (v.toLowerCase() === old.toLowerCase() || (!v && !old)) return say(el);
+    if (v.split(' ').length < 2) return say(el, 'stop', 'Use a first and last name');
+    const hit = known && known.get(v.toLowerCase());
+    if (hit) return say(el, 'ask', joins(hit[0], hit[1]));
+    say(el, 'ask', '');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => fetch(form.dataset.nameCheck + '?name=' + encodeURIComponent(v)).then(r => r.json()).then(j => {
+      if (clean(el.value) === v) say(el, j.stop ? 'stop' : 'ask', j.stop || j.text);
+    }).catch(() => {}), 250);
+  }
+  function load() {               // the name list is long: fetched once, on the first name field used
+    if (known || loading) return;
+    loading = true;
+    fetch(form.dataset.names).then(r => r.json()).then(list => {
+      known = new Map(list.map(x => [x[0].toLowerCase(), x]));
+      const dl = document.createElement('datalist'); dl.id = 'rec-names-all';
+      dl.innerHTML = list.map(x => `<option></option>`).join('');
+      [...dl.options].forEach((o, i) => { o.value = list[i][0]; o.textContent = list[i][1] + ' event' + (list[i][1] === 1 ? '' : 's'); });
+      document.body.appendChild(dl);
+      form.querySelectorAll('[data-check=name]').forEach(el => { el.dataset.pick = 'rec-names-all'; });
+    }).catch(() => { loading = false; });
+  }
+  form.addEventListener('focusin', e => { if (e.target.dataset.check === 'name') load(); });
+  function changed(e) {
+    if (e.target.dataset.check === 'name') checkName(e.target);
+    else if (e.target.dataset.check === 'class' || /^rm/.test(e.target.name)) form.querySelectorAll('[data-check=class]').forEach(checkClass);
+  }
+  form.addEventListener('input', changed);
+  form.addEventListener('change', changed);
+  form.addEventListener('submit', e => {
+    if (e.defaultPrevented || (form.remove_event && form.remove_event.checked)) return;
+    const fields = [...form.querySelectorAll('[data-check]')];
+    fields.filter(f => f.dataset.check === 'class').forEach(checkClass);
+    const stop = fields.find(f => f.dataset.level === 'stop');
+    if (stop) { e.preventDefault(); stop.focus(); return; }
+    const have = new Set([...form.querySelectorAll('input[name=ok]')].map(i => i.value));
+    const tok = f => f.name + '=' + f.value.trim();
+    const need = fields.filter(f => f.dataset.level === 'ask' && f.dataset.say && !have.has(tok(f)));
+    if (!need.length) return;
+    if (!confirm('Please check:\n' + need.map(f => '- ' + f.value.trim() + ': ' + f.dataset.say).join('\n') + '\n\nSave anyway?')) { e.preventDefault(); return; }
+    need.forEach(f => { const i = document.createElement('input'); i.type = 'hidden'; i.name = 'ok'; i.value = tok(f); form.appendChild(i); });
+  });
+})();
+</script>
+
+{% elif view == 'corrections' %}
+<div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a></div>
+<h1 class="page-title">Corrections</h1>
+<p class="text-muted small" style="max-width: 44rem;">Every change people made in Records, newest first. Undo takes one out and puts back what was there.</p>
+{% if items %}
+<div class="table-responsive"><table class="table table-sm align-middle stack"><thead><tr><th>When</th><th>Who</th><th>Program</th><th>What</th><th>Change</th><th><span class="visually-hidden">Undo</span></th></tr></thead><tbody>
+{% for c in items %}<tr>
+  <td class="text-nowrap" data-label="When">{{ c.when|nice_date }}</td>
+  <td data-label="Who">{{ c.who }}</td>
+  <td data-label="Program">{{ c.program }}</td>
+  <td data-label="What">{{ c.what }}</td>
+  <td class="rec-change" data-label="Change">{% for ln in c.lines %}{{ ln }}{{ '<br>'|safe if not loop.last }}{% endfor %}{% if c.can_undo and not c.back %}<div class="small text-muted">After Undo, what it removed comes back with the next results rebuild.</div>{% endif %}</td>
+  <td>{% if c.can_undo %}{% set msg = 'Undo this correction? ' ~ c.lines|join('; ') ~ ('. What it removed comes back with the next results rebuild.' if not c.back else '') %}
+    <form method="post" action="{{ url_for('records.corrections_undo') }}" onsubmit="return confirm({{ msg|tojson|forceescape }})"><input type="hidden" name="ref" value="{{ c.ref }}"><button class="btn btn-sm btn-outline-secondary" aria-label="Undo: {{ c.lines|join('; ') }}">Undo</button></form>{% endif %}</td>
+</tr>{% endfor %}
+</tbody></table></div>
+{% if not show_all %}<p class="small"><a href="{{ url_for('records.corrections', all=1) }}">Show all {{ total }}</a></p>{% endif %}
+{% else %}<p class="text-muted">No corrections yet.</p>{% endif %}
 
 {% elif view == 'person' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a></div>

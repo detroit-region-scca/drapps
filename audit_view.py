@@ -4,6 +4,7 @@ Everything shown comes from what people typed (names, notes), so it is escaped h
 only marks the result safe.
 """
 import re
+from datetime import datetime
 
 from flask import url_for
 from markupsafe import Markup, escape
@@ -149,8 +150,21 @@ def _describe(log):
         return Markup('{} marked {} as entered in QuickBooks ({})').format(who, _n(g('entries'), 'points entry', 'points entries'), g('ref', ''))
     if a == 'AUTO_ADD_SAVED':
         return Markup('{} saved the list of people who get points added every month ({})').format(who, _n(g('people'), 'person', 'people'))
+    if a == 'RECORDS_CORRECTED' and isinstance(g('diff'), list) and g('diff'):
+        more = f" and {_n(g('more'), 'more change')}" if g('more') else ''
+        return Markup('{} corrected {}: {}{}').format(who, g('label') or g('what') or 'the records', ', '.join(map(str, g('diff'))), more)
     if a == 'RECORDS_CORRECTED':
         return Markup('{} corrected the records: {} ({})').format(who, g('what', ''), _n(g('changes'), 'change'))
+    if a == 'RECORDS_UNDONE':
+        try:
+            on = datetime.strptime(str(g('made_on'))[:10], '%Y-%m-%d')
+            on = f'{on:%b} {on.day}, {on.year}'
+        except ValueError:
+            on = g('made_on') or ''
+        made = ' '.join(x for x in (f"by {g('made_by')}" if g('made_by') else '', f'on {on}' if on else '') if x)
+        return Markup('{} undid a correction to {}: {}{}{}').format(
+            who, g('label') or 'the records', ', '.join(map(str, g('diff') or [])) or 'a change', f' (made {made})' if made else '',
+            '; what it removed comes back with the next results rebuild' if g('restored') is False else '')
     if a == 'RESULTS_ADDED':
         return Markup('{} added results for {} ({} {}): {}').format(who, g('event', ''), g('program', ''), g('date', ''), _n(g('files'), 'file'))
     if a == 'FUNDS_REQUESTED':

@@ -18,8 +18,15 @@ Entries (dicts):
     place and score, and "nth" (0, 1, ...) when rows are the same in all of those: one correction changes one row.
     Older entries have only program, year, class and name, and still change every row that matches.
   {"kind": "add_standing", "set": {"program", "year", "class", "place", "name", "score"}}
-Every entry also carries "who" and "when".
+Every entry also carries "who" and "when". Entries made since 2026-11-10 also carry:
+  "id": a short random id (older entries are known by a hash of their content, see ref()),
+  "was": the fields the correction changed, with the values the database held just before it (for a removal, what
+    was removed: the line's driver, class, place and total, or the event's name, date and number of lines), so the
+    Corrections page can show before and after;
+  "about": for event and row entries, the event's program, year, date and name when the correction was made.
+apply() ignores those three; they are for people and for undo (records.py).
 """
+import hashlib
 import json
 import os
 import re
@@ -136,3 +143,108 @@ def apply(c, e):
 def apply_all(c, edits):
     """Apply every entry in order. Returns how many found their target."""
     return sum(1 for e in edits if apply(c, e))
+
+
+def ref(e):
+    """How the Corrections page and undo name one entry: its id, or for an older entry a hash of what it says."""
+    return e.get('id') or 'h' + hashlib.sha1(json.dumps(e, sort_keys=True, default=str).encode()).hexdigest()[:12]
+
+
+def clean_name(name):
+    return ' '.join((name or '').split())
+
+
+def norm_class(c):
+    """'S TR', 'str' and 'STR' are the same letters: a near-duplicate class."""
+    return re.sub(r'\s+', '', (c or '').lower())
+
+
+def _now_key(e):
+    """For a "row" or "standing" entry: the key that finds its row once the entry is applied."""
+    k, s = dict(e.get('key') or {}), e.get('set') or {}
+    if e.get('kind') == 'row':
+        if 'driver' in s:
+            k['driver'] = s['driver'].strip()
+        return k
+    k.pop('nth', None)
+    if 'name' in s:
+        k['name'] = s['name'].strip()
+    if 'class' in s:
+        k['class'] = (s['class'] or '').strip()
+    if 'place' in s and str(s['place']).strip().isdigit():
+        k['place'] = int(s['place'])
+    if 'score' in s:
+        k['score'] = _num(s['score'])
+    return k
+
+
+def reverse(e):
+    """Entries that put back what e changed, on a database that has e applied: [] when that cannot be done in place
+    (a removed event or result line is gone from the database; only a rebuild brings it back)."""
+    kind, k, s, was = e.get('kind'), e.get('key') or {}, e.get('set') or {}, e.get('was') or {}
+    if e.get('remove'):
+        if kind == 'standing' and 'place' in k:
+            return [{'kind': 'add_standing', 'set': {'program': k.get('program'), 'year': k.get('year'), 'class': k.get('class') or '',
+                                                     'place': str(k['place']), 'name': k.get('name'), 'score': k.get('score')}}]
+        return []
+    if kind == 'event':
+        back = {f: was[f] for f in ('name', 'date') if f in s and was.get(f)}
+        return [{'kind': 'event', 'key': k, 'set': back}] if back else []
+    if kind == 'row':
+        back = {f: (k.get('driver') if f == 'driver' else was[f]) for f in s if f in ROW_FIELDS and (f == 'driver' or f in was)}
+        return [{'kind': 'row', 'key': _now_key(e), 'set': {f: '' if v is None else str(v) for f, v in back.items()}}] if back else []
+    if kind == 'standing':
+        back = {}
+        for f in s:
+            if f in was:
+                back[f] = was[f]
+            elif f in k:
+                back[f] = k[f]
+        back = {f: ('' if v is None else ('%g' % v if f == 'score' and isinstance(v, (int, float)) else str(v))) for f, v in back.items()}
+        return [{'kind': 'standing', 'key': _now_key(e), 'set': back}] if back else []
+    if kind == 'add_standing':
+        place = str(s.get('place', '')).strip()
+        if not (s.get('name') and place.isdigit()):
+            return []
+        return [{'kind': 'standing', 'remove': True, 'key': {'program': s.get('program'), 'year': int(s['year']), 'class': (s.get('class') or '').strip(),
+                                                             'name': s['name'].strip(), 'place': int(place), 'score': _num(s.get('score')), 'nth': 0}}]
+    return []
+
+
+def present(c, e):
+    """For a removal: whether what it removed is in this database (a rebuilt one that never had it applied)."""
+    k, kind = e.get('key') or {}, e.get('kind')
+    if kind == 'event':
+        return bool(c.execute('select 1 from files where drive_url = ? and event_id is not null', (k.get('url'),)).fetchone())
+    if kind == 'row':
+        return bool(c.execute('select 1 from result_rows r join files f on f.id = r.file_id where f.drive_url = ? and r.line_no = ? and r.driver = ?',
+                              (k.get('url'), k.get('line'), k.get('driver'))).fetchone())
+    if kind == 'standing':
+        n = sum(1 for r in c.execute("select place, score from season_standings where program = ? and year = ? and coalesce(class, '') = ? and name = ?",
+                                     (k.get('program'), k.get('year'), k.get('class') or '', k.get('name')))
+                if ('place' not in k or str(r[0]) == str(k['place'])) and ('score' not in k or _num(r[1]) == _num(k['score'])))
+        return n > (k.get('nth') or 0) if isinstance(k.get('nth', 0), int) else n > 0
+    return True
+
+
+def depends(x, y):
+    """True when entry y (made after x) finds its row by what x changed: undoing x alone would leave y with nothing to change."""
+    if y.get('kind') != x.get('kind') and not (x.get('kind') == 'add_standing' and y.get('kind') == 'standing'):
+        return False
+    yk = y.get('key') or {}
+    if x.get('kind') == 'row':
+        if x.get('remove') or 'driver' not in (x.get('set') or {}):
+            return False
+        nk = _now_key(x)
+        return (yk.get('url'), yk.get('line'), yk.get('driver')) == (nk.get('url'), nk.get('line'), nk.get('driver'))
+    if x.get('kind') == 'standing':
+        if x.get('remove'):
+            return False
+        nk = _now_key(x)
+    elif x.get('kind') == 'add_standing':
+        s = x.get('set') or {}
+        nk = {'program': s.get('program'), 'year': s.get('year'), 'class': (s.get('class') or '').strip(), 'name': (s.get('name') or '').strip()}
+    else:
+        return False
+    return (yk.get('program'), str(yk.get('year')), yk.get('class') or '', (yk.get('name') or '').lower()) == \
+        (nk.get('program'), str(nk.get('year')), nk.get('class') or '', (nk.get('name') or '').lower())

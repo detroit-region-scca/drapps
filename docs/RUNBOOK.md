@@ -55,6 +55,7 @@ This is `/opt/drscca/app/data/` on the server. "Off-server copy" means the file 
 | `events.ndjson` | Local copy of the event registry, written with every change. The Events tab of the registry spreadsheet is the record | Yes | Nothing: the sheet is the record |
 | `records-edits.json`, `records-edits.applied` | Corrections people made in Records, and which `records.db` they were last applied to. The only copy of those corrections | Yes, and 60 dated copies in `backups/` | Corrections are gone unless restored. Never delete it |
 | `records.db` | The Records database (results back to 1982), built off the server by `tools/records/` | No (rebuilt off the server) | Records shows nothing until it is copied in again; see "Records" |
+| `records-base.db`, `records-base.json` | A copy of `records.db` as it arrived, before corrections, and which corrections it may already hold. Undo on the Corrections page rebuilds from it | No | Safe to delete: it is remade from the current database on the next page view |
 | `role-access.json` | Admin > Roles settings | Yes | Roles fall back to defaults; redo them in Admin > Roles |
 | `short_links.json` | Short links in emails (votes, approvals) | Yes | Emailed links not yet used stop working; send them again |
 | `invoices-issued.json` | Invoice numbers already given out, and New invoice pages already used | Yes | A number could be reused after the newest invoice is deleted; a double click could make two invoices |
@@ -192,7 +193,7 @@ No restart is needed.
 standings" in Records. Each correction is applied at once, added to `data/records-edits.json` and written to the audit
 log. A newly copied `records.db` gets the whole log applied on the first page view (`records-edits.applied` remembers
 which file it was applied to), and the build applies it too: copy `records-edits.json` off the server before each
-export. Never delete that file: it holds people's corrections. The nightly backup (`backup_sheets.py`) keeps 60 dated copies in `data/backups/`. New results that people add land in the Drive folder *Timing and Results / Results inbox*
+export. Before saving, the forms warn when a new name would create a new person or join another person's results, and when a class is new for that year; a class that differs from an existing one only by case or spaces is refused. *Records > See every correction* lists each correction with before and after, and Undo: the app copies `records-base.db`, applies the remaining corrections and swaps it in. Undoing a removed event or result line that a rebuild already left out brings it back only at the next rebuild (the page says so). Never delete that file: it holds people's corrections. The nightly backup (`backup_sheets.py`) keeps 60 dated copies in `data/backups/`. New results that people add land in the Drive folder *Timing and Results / Results inbox*
 (`RESULTS_INBOX_FOLDER_ID`); they are read in later, in a batch. Records never holds worker points.
 
 Worker points: Add points (typed or the uploaded worker points sheet) shows a review page first; Save there is the only
