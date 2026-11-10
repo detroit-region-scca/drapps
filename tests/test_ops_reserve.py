@@ -285,7 +285,7 @@ def test_the_report_says_the_same(plan):
     import io
 
     import equip_pdf
-    from pypdf import PdfReader
+    PdfReader = pytest.importorskip('pypdf').PdfReader      # only on the maintainer's computer; the server image has no PDF reader
     kim, ed, lou, state = plan
 
     def words(**kw):
