@@ -15,6 +15,7 @@ from flask import Blueprint, abort, flash, g as flask_g, redirect, render_templa
 
 import equip_store as E
 import officials as O
+from officer import current as officer_current
 from utils import local_path, log_audit_event, login_required
 
 bp = Blueprint('equip', __name__, url_prefix='/operations')
@@ -181,6 +182,7 @@ def home():
                        for b in bills if b['id'] in auto and (b['every'] or 0) > 1 and t_iso <= _roll(b, t_iso) <= month and not (b.get('ends') and _roll(b, t_iso) > b['ends'])],
                     key=lambda r: r['date'])
     rp = E.reserve_plan(items, today, E.plan_settings())
+    board, reserve = E.board_amount(), E.reserve_now()
     big = [i for i in items if i['category'] in BIG and i['status'] != 'Planned']
     for i in big:
         i['lc'] = E.lifecycle(i, today)
@@ -192,7 +194,7 @@ def home():
     return render_template('equip.html', **_ctx(view='home', today=t_iso, overdue=overdue, coming=coming,
                                                 n_due=sum(1 for t in todo if t['due'] and t['due'] <= soon), undated=[t for t in todo if not t['due'] and not t['last_done']],
                                                 doc_gaps=gaps, docs_error=docs_error, root=os.environ.get('OPERATIONS_DOCS_FOLDER_URL', ''),
-                                                bills_year=sum(b['per_year'] for b in bills), n_bills=len(bills), rp=rp,
+                                                bills_year=sum(b['per_year'] for b in bills), n_bills=len(bills), rp=rp, board=board, reserve=reserve,
                                                 n_vehicles=sum(1 for i in big if i['category'] == 'Vehicle'), n_trailers=sum(1 for i in big if i['category'] == 'Trailer'),
                                                 replace_soon=replace_soon))
 
@@ -689,7 +691,8 @@ def old_costs():
 @bp.route('/money/replacement')
 @login_required
 def replacement():
-    """Money, second part: when each long-lived item reaches the end of its life, and the amount to set aside."""
+    """Money, second part: when each long-lived item reaches the end of its life, what the plan suggests setting aside,
+    what the board set aside, and what is in the reserve."""
     if (g := _guard()):
         return g
     rows = [i for i in E.items() if i['status'] != 'Gone']
@@ -698,15 +701,12 @@ def replacement():
     by_year = {}
     for r in rp['near']:
         by_year[r['year']] = by_year.get(r['year'], 0) + r['cost']
-    motion = None
-    try:
-        import motions_store as MS
-        if MS.enabled():
-            motion = next((m for m in MS.motions() if 'replacement' in m['title'].lower() and m['status'] != 'withdrawn'), None)
-    except Exception:
-        motion = None
+    board, reserve = E.board_amount(), E.reserve_now()
+    proj = E.reserve_projection(rp['later'], rp['start'], board['monthly'] if board else None, reserve['amount'])
     return render_template('equip.html', **_ctx(view='money', part='replacement', page_title=PAGE_TITLES['plan'], rp=rp, by_year=by_year, missing=missing,
-                                                motion=motion, note=E.plan_note(), note_max=E.NOTE_MAX))
+                                                note=E.plan_note(), note_max=E.NOTE_MAX, board=board, reserve=reserve,
+                                                projection=E.projection_text(proj), changed=E.plan_changed(rp), officer=bool(officer_current()),
+                                                reserve_account=E.RESERVE_ACCOUNT, today=date.today().isoformat()))
 
 
 @bp.route('/plan')
@@ -720,30 +720,59 @@ def plan():
 @login_required
 @editor_required
 def plan_settings():
-    """Save the replacement plan's rules: what counts as a big item, how soon, what is budgeted outright, and whether big
-    items may be paid from savings. Each rule has its own small form on the page, so a rule the form did not send
-    keeps the value it has."""
+    """Save the replacement plan's one rule: how soon a purchase is "buy soon" and goes in that year's budget. Anything
+    else a form sends (the old big-item fields) is ignored."""
     if (g := _guard()):
         return g
-    f, old, new = request.form, E.plan_settings(), {}
+    f, old = request.form, E.plan_settings()
     back = url_for('equip.replacement')
+    new = dict(old)
     try:
-        new['big_cost'] = float(E.norm(f['big_cost'])) if 'big_cost' in f else old['big_cost']
-        new['big_within_years'] = int(float(E.norm(f['big_within_years']))) if 'big_within_years' in f else old['big_within_years']
-        new['budget_within_years'] = int(float(E.norm(f['budget_within_years']))) if 'budget_within_years' in f else old['budget_within_years']
+        if 'budget_within_years' in f:
+            new['budget_within_years'] = int(float(E.norm(f['budget_within_years'])))
     except ValueError:
-        flash('Enter numbers for the amount and the years.', 'danger')
+        flash('Enter a number of years.', 'danger')
         return redirect(back)
-    new['big_from_savings'] = f.get('big_from_savings') == 'yes' if 'big_from_savings' in f else old['big_from_savings']
-    if new['big_cost'] < 0 or not 1 <= new['big_within_years'] <= 30 or not 1 <= new['budget_within_years'] <= 5:
-        flash('The amount can\'t be negative, big items must be due within 1 to 30 years, and buy-soon within 1 to 5 years.', 'danger')
+    if not 1 <= new['budget_within_years'] <= 5:
+        flash('Buy soon must be within 1 to 5 years.', 'danger')
         return redirect(back)
-    if new == {k: old[k] for k in new}:
+    if new == old:
         flash('Nothing changed.', 'info')
         return redirect(back)
     E.save_plan_settings(new, _who(), date.today().isoformat())
-    log_audit_event('EQUIP_PLAN_SETTINGS', _who(), {'before': {k: old[k] for k in new}, 'after': new})
+    log_audit_event('EQUIP_PLAN_SETTINGS', _who(), {'before': old, 'after': new})
     flash('Saved. The numbers below use the new rule.', 'success')
+    return redirect(back)
+
+
+@bp.route('/plan/board', methods=['POST'])
+@login_required
+def plan_board():
+    """Record what the board set aside each month for replacements, and the date it decided. Only for people whose
+    role may record board decisions (the officers). Nothing else on the plan is touched, and nothing goes to QuickBooks."""
+    back = url_for('equip.replacement')
+    me = officer_current()
+    if not me:
+        from auth import refuse
+        return refuse("Recording the board's amount is for the roles the admin allows it.", back)
+    if (g := _guard()):
+        return g
+    f, old = request.form, E.board_amount()
+    try:
+        monthly = round(float(E.norm(f.get('board_monthly', ''))), 2)
+        decided = date.fromisoformat(f.get('board_date', '').strip()).isoformat()
+    except ValueError:
+        flash('Enter the monthly amount as a number and the date the board decided. Nothing was saved.', 'danger')
+        return redirect(back)
+    if not 0 <= monthly <= 1000000 or decided > date.today().isoformat():
+        flash("The amount can't be negative and the date can't be in the future. Nothing was saved.", 'danger')
+        return redirect(back)
+    if old and (old['monthly'], old['date']) == (monthly, decided):
+        flash('Nothing changed.', 'info')
+        return redirect(back)
+    E.save_board_amount(monthly, decided, me['name'], date.today().isoformat())
+    log_audit_event('EQUIP_PLAN_BOARD', me['name'], {'before': old or {}, 'after': {'monthly': monthly, 'date': decided, 'by': me['name']}})
+    flash(f"Recorded: the board set aside ${monthly:,.0f} a month.", 'success')
     return redirect(back)
 
 
@@ -751,7 +780,7 @@ def plan_settings():
 @login_required
 @editor_required
 def plan_note():
-    """Save (or, left blank, clear) the committee's short note under the replacement summary. The rules are not touched."""
+    """Save (or, left blank, clear) the committee's short note under the replacement summary. Nothing else is touched."""
     if (g := _guard()):
         return g
     back = url_for('equip.replacement')

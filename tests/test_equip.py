@@ -28,7 +28,8 @@ def test_reserve_plan_near_term_budgeted_later_saved_for():
     assert [r['year'] for r in rp['later']] == [2029, 2044]
     assert rp['later'][0]['monthly'] == round(40000 / 30, 2)              # Jan 2027 to Jul 2029
     assert rp['later'][1]['monthly'] == round(25000 / (17 * 12 + 6), 2)
-    assert rp['big_total'] == 40000.0 and rp['monthly_without_big'] == rp['later'][1]['monthly']
+    assert rp['monthly'] == round(rp['later'][0]['monthly'] + rp['later'][1]['monthly'], 2) and rp['near_total'] == 6000.0
+    assert 'big_total' not in rp and not any('big' in r for r in rp['later'])       # no item is carved out as "big"
 
 
 def test_replacement_year_on_the_item_wins():
@@ -107,16 +108,18 @@ def test_plan_settings_change_the_plan():
     rows = [dict(item(cost=23475.0, life=None, year=2012.0), replace_year=2029.0, replace_cost=40000.0),
             dict(item(cost=None, life=None, year=None, status='Planned'), replace_year=2028.0, replace_cost=15000.0)]
     day = date(2026, 11, 15)
-    rp = E.reserve_plan(rows, day)                                        # defaults: big = $20,000 within 5 years
-    assert rp['big_total'] == 40000.0 and rp['near_until'] == 2028 and [r['year'] for r in rp['near']] == [2028]
-    rp = E.reserve_plan(rows, day, {'big_cost': 10000.0, 'budget_within_years': 1})
-    assert [r['year'] for r in rp['later']] == [2028, 2029] and rp['big_total'] == 55000.0
-    rp = E.reserve_plan(rows, day, {'big_from_savings': False})
-    assert rp['big_total'] == 0 and rp['monthly_without_big'] == rp['monthly'] and not any(r['big'] for r in rp['later'])
+    rp = E.reserve_plan(rows, day)                                        # default: buy soon = this year or next
+    assert rp['near_until'] == 2028 and [r['year'] for r in rp['near']] == [2028] and [r['year'] for r in rp['later']] == [2029]
+    rp = E.reserve_plan(rows, day, {'budget_within_years': 1})
+    assert [r['year'] for r in rp['later']] == [2028, 2029] and rp['monthly'] == round(round(15000 / 18, 2) + round(40000 / 30, 2), 2)
+    # the old big-item rules change nothing, whatever they say
+    old = E.reserve_plan(rows, day, {'budget_within_years': 1, 'big_cost': 10000.0, 'big_within_years': 5, 'big_from_savings': True})
+    assert old['monthly'] == rp['monthly'] and old['cfg'] == {'budget_within_years': 1}
 
 
 def test_plan_settings_read_from_the_tab():
     cfg = E._plan_cfg([['big_cost', '$25,000'], ['big_within_years', 3], ['budget_within_years', 0],
                        ['big_from_savings', 'No'], ['unknown', 5], ['big_cost']])
-    assert cfg == {'big_cost': 25000.0, 'big_within_years': 3, 'budget_within_years': 1, 'big_from_savings': False}
-    assert E._plan_cfg([]) == E.PLAN_DEFAULTS
+    assert cfg == {'budget_within_years': 1}                              # old big_* rows are ignored
+    assert E._plan_cfg([['big_cost', 1], ['budget_within_years', '3']]) == {'budget_within_years': 3}
+    assert E._plan_cfg([]) == E.PLAN_DEFAULTS == {'budget_within_years': 2}

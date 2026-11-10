@@ -201,21 +201,27 @@ def detail(year, program):
     by_account = bool(p['lines']) and all(not ln['event_code'] for ln in p['lines']) and any(ln.get('account') for ln in p['lines'])
     # Operations has no events, so its Budget column comes from the Operations records instead: the bills and the
     # replacement list, by QuickBooks account (equip_store.budget).
-    ops_budget = None
+    ops_budget = set_aside = None
     if by_account and program == OPS and int(year) >= 2027:      # 2027 was the first budget built from the records
         import equip_store as E
         if E.enabled():
             ops_budget = E.budget(year, E.items(), E.places(), E.tasks(), cfg=E.plan_settings())
+            # Money set aside for later replacements is not in the budget; it is shown under the total: the board's
+            # monthly amount once an officer has recorded it, else what the replacement plan suggests.
+            board = E.board_amount()
+            set_aside = {'monthly': board['monthly'], 'date': board['date']} if board else \
+                {'monthly': E.reserve_plan([i for i in E.items() if i['status'] != 'Gone'], cfg=E.plan_settings())['monthly'], 'suggested': True}
             have = {r['account'] for r in accts}
             accts += [{'account': acc, 'plan': None, 'actual': None, 'items': [], 'last': None} for acc in ops_budget if acc not in have]
     groups = _account_groups(p['lines'], accts) if by_account else []
     for g in groups:
         b = (ops_budget or {}).get(g['account'] or '')
         g['records'], g['budget_items'] = (b['amount'], b['items']) if b else (None, [])
-        # The budget is the plan; the records only show what it is made of, and flag a line the bills no longer match.
+        # The budget is the plan; the records only show what it is made of. When they differ by a dollar or more the
+        # page says what the records show now, as information: it is no warning and changes no status.
         g['drift'] = g['records'] is not None and abs((g['records'] or 0) - (g['plan'] or 0)) >= 1
     return render_template('plan.html', **_ctx(view='detail', year=year, program=program, name=names[program], p=p,
-                                               ops_budget=ops_budget is not None, pb_code=pb_code, pb=pb,
+                                               ops_budget=ops_budget is not None, set_aside=set_aside, pb_code=pb_code, pb=pb,
                                                pb_status=B.status(pb),
                                                can_draft=bool(p['info'].get('submitted') or p['info'].get('approved'))
                                                and (bool(officer_current()) or (not p['info'].get('approved') and may_write(program))),
