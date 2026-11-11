@@ -278,8 +278,9 @@ def deck(d):
     y = int(d['period'][:4])
     heads = ['Account', d['since'], 'Year to date', f'Average {y - 5} to {y - 1}', 'Difference']
     widths = [3.9, 1.8, 1.9, 2.4, 1.8]
-    tbl = sl.shapes.add_table(len(rows) + 1, 5, Inches(0.6), Inches(1.75), Inches(sum(widths)), Inches(0.2 * (len(rows) + 1))).table
-    size = Pt(10 if len(rows) <= 26 else 8)
+    rh = min(0.19, 5.1 / (len(rows) + 1))            # the whole statement fits above the note
+    tbl = sl.shapes.add_table(len(rows) + 1, 5, Inches(0.6), Inches(1.7), Inches(sum(widths)), Inches(rh * (len(rows) + 1))).table
+    size = Pt(9 if rh >= 0.17 else 7)
     for i, wd in enumerate(widths):
         tbl.columns[i].width = Inches(wd)
 
@@ -291,14 +292,15 @@ def deck(d):
         ce.fill.fore_color.rgb = RGBColor.from_string(fill or 'FFFFFF')
         p = ce.text_frame.paragraphs[0]
         p.alignment = PP_ALIGN.LEFT if c == 0 else PP_ALIGN.RIGHT
+        p.font.size = size                       # an empty cell otherwise takes Slides' default size and a taller row
         run = p.add_run()
-        run.text, run.font.size, run.font.bold = t, size, bold
+        run.text, run.font.size, run.font.bold = t or ' ', size, bold
         run.font.color.rgb = RGBColor.from_string(color or '111111')
     for c, h in enumerate(heads):
         cell(0, c, h, bold=True, color='555555')
     short, section = False, 'income'
     for i, r in enumerate(rows, 1):
-        tbl.rows[i].height = Inches(0.2)
+        tbl.rows[i].height = Inches(rh)
         if r['depth'] == 0 and r['kind'] == 'head':
             section = 'income' if 'Income' in r['label'] else 'cost'
         kind = 'net' if r['kind'] == 'total' and r['label'] in NETS else section
@@ -318,11 +320,11 @@ def deck(d):
         cell(i, 2, _amt(r['ytd']), bold, fill)
         cell(i, 3, (_amt(avg) + mark) if avg is not None else '', bold, fill)
         cell(i, 4, _amt(diff), bold, fill, (GOOD if good else BAD) if diff else None)
-    tbl.rows[0].height = Inches(0.22)
+    tbl.rows[0].height = Inches(rh)
     note = (f"Through {_nice(d['period'])}. Average: January 1 to {date.fromisoformat(d['period']).strftime('%B %-d')} of each of "
             'the five years before. Difference: year to date less the average; green is better for the region, red worse.'
             + (' * Fewer than five years: the account did not exist in all of them (accounts reorganized in 2022).' if short else ''))
-    text(sl, 0.6, 7.0, 12.1, 0.4, [(note, 9, False, GRAY)])
+    text(sl, 0.6, 1.7 + rh * (len(rows) + 1) + 0.1, 12.1, 0.4, [(note, 9, False, GRAY)])
     buf = io.BytesIO()
     prs.save(buf)
     return buf.getvalue()
