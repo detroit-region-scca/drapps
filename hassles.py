@@ -1,6 +1,6 @@
 """Hassles: anyone signed in (officials and volunteers) posts something that is a hassle, in the apps or in how the
-region does things. Everyone sees them all, gives a thumbs up to the ones that bother them too, and can reply. The
-admin marks each Open, Planned, Fixed or Not doing, with a short note. admin@ is emailed about each new hassle and
+region does things. Everyone sees them all, gives a thumbs up to the ones that bother them too, and can reply. Whoever
+has the hassles permission (the officers by default) marks each Open, Planned, Fixed or Not doing, with a short note. admin@ is emailed about each new hassle and
 each reply. Stored in the Registry sheet (hassles_store)."""
 import os
 
@@ -18,7 +18,7 @@ ADMIN = os.environ.get('HASSLES_EMAIL', 'admin@drscca.org')      # told about ea
 
 def _me():
     u = auth.user() or {}
-    return (u.get('email') or '').lower(), u.get('name') or u.get('email') or 'Someone', 'admin' in set(u.get('perms') or ())
+    return (u.get('email') or '').lower(), u.get('name') or u.get('email') or 'Someone', 'hassles' in set(u.get('perms') or ())
 
 
 def _clean(text, n):
@@ -116,7 +116,7 @@ def reply(sid):
 @bp.route('/<int:sid>/reply/delete', methods=['POST'])
 @login_required
 def delete_reply(sid):
-    """Whoever wrote the reply, or the admin."""
+    """Whoever wrote the reply, or someone with the hassles permission."""
     if (g := _guard()):
         return g
     email, name, is_admin = _me()
@@ -135,7 +135,7 @@ def status(sid):
         return g
     _, name, is_admin = _me()
     if not is_admin:
-        return auth.refuse('Only the admin marks hassles planned or fixed.', url_for('hassles.home'))
+        return auth.refuse("Your role can't mark hassles planned or fixed. Ask the admin if you need it.", url_for('hassles.home'))
     st = request.form.get('status')
     if st not in STATUSES:
         abort(400)
@@ -149,7 +149,7 @@ def status(sid):
 @bp.route('/<int:sid>/delete', methods=['POST'])
 @login_required
 def delete(sid):
-    """Whoever posted it, or the admin."""
+    """Whoever posted it, or someone with the hassles permission."""
     if (g := _guard()):
         return g
     email, name, is_admin = _me()

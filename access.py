@@ -29,6 +29,7 @@ EVERYDAY = {
 EXTRA = {
     'board': 'Record board decisions (budget approvals, votes, motions)',
     'no_vote': 'Take a budget off the board\'s list with no vote needed',
+    'hassles': 'Manage hassles (set status, delete any post or reply)',
     'pay': 'Mark funds requests and invoices paid',
     'minutes': 'Upload and publish board minutes',
     'points': 'Manage worker points (milestones, auto add, books)',

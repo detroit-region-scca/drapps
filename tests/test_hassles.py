@@ -60,7 +60,7 @@ def box(monkeypatch):
     import hassles
     people = {'pat@example.org': {'name': 'Pat', 'level': 'official', 'roles': ['Director'], 'perms': {'events'}},
               'vic@example.org': {'name': 'Vic', 'level': 'volunteer', 'roles': [], 'perms': {'invoices'}},
-              'ada@example.org': {'name': 'Ada', 'level': 'officer', 'roles': ['Treasurer'], 'perms': {'admin'}}}
+              'ada@example.org': {'name': 'Ada', 'level': 'officer', 'roles': ['Treasurer'], 'perms': {'hassles'}}}
     monkeypatch.setattr(auth, 'lookup', lambda e: dict(people[e], email=e) if e in people else None)
     store, sent = FakeStore(), []
     monkeypatch.setattr(hassles, 'S', store)
