@@ -569,6 +569,13 @@ def edit_event(event_id):
         })
         _carry_code(original_event.get('custom_tag') or original_event.get('unique_code'),
                     event_to_edit.get('custom_tag') or event_to_edit['unique_code'])
+        # Its budget, funds requests, money received and invoices take the event's program (also mending any left
+        # behind when a program was split out).
+        import recode
+        moved = recode.follow_program(event_to_edit.get('custom_tag') or event_to_edit['unique_code'], event_to_edit['program_code'])
+        if moved:
+            log_audit_event('EVENT_PROGRAM_FOLLOWED', _signed_in_name(), {'event_id': event_id, 'program': event_to_edit['program_code'],
+                                                                          'records': moved})
     
     flash('Event updated.', 'success')
     return redirect(url_for('bud.detail', code=event_to_edit.get('custom_tag') or event_to_edit['unique_code']))

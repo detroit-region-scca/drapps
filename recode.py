@@ -78,3 +78,40 @@ def rename_folder(url, old, new):
                     json={'name': name.replace(old, new)}).raise_for_status()
     except Exception:
         logging.exception('Could not rename the Drive folder for %s', new)
+
+
+# (sheet setting, tab) whose rows carry both an event code and that event's program
+PROGRAM_PLACES = [('BUDGETS_SHEET_ID', 'Budgets'), ('FUNDS_SHEET_ID', 'Requests'), ('FUNDS_SHEET_ID', 'Money received'),
+                  ('INVOICES_SHEET_ID', 'Invoices')]
+
+
+def follow_program(code, program):
+    """Give every record of the event `code` the event's program (after the event moves to another program, or a
+    program is split out). Returns {'Tab': cells changed}."""
+    done = {}
+    for env, tab in PROGRAM_PLACES:
+        sid = os.environ.get(env)
+        if not sid or not code or not program:
+            continue
+        try:
+            ws = worksheet(sid, tab)
+            rows = ws.get_all_values()
+        except Exception:
+            continue
+        head = rows[0] if rows else []
+        if 'event_code' not in head or 'program' not in head:
+            continue
+        ec, pc = head.index('event_code'), head.index('program')
+        upd = [{'range': _a1(n, pc + 1), 'values': [[program]]} for n, r in enumerate(rows, 1)
+               if n > 1 and len(r) > max(ec, pc) and r[ec] == code and r[pc] != program]
+        if upd:
+            ws.batch_update(upd, value_input_option='RAW')
+            done[tab] = len(upd)
+            C.invalidate(sid)
+    if done:
+        for mod in ('bud_store', 'fr_store', 'inv_store', 'received_store'):
+            try:
+                __import__(mod).refresh()
+            except Exception:
+                pass
+    return done

@@ -69,3 +69,22 @@ def test_the_treasurer_is_emailed_once_about_an_old_code(monkeypatch, tmp_path):
     qn.tell_old_codes(renamed, [])
     qn.tell_old_codes(renamed, [])
     assert len(sent) == 1 and 'rename to: 2027 RY Son of Sno*Drift XXIX #DR4F5' in sent[0]
+
+
+def test_records_follow_their_events_program(monkeypatch):
+    tabs = {'Budgets': FakeWS([['event_code', 'event_name', 'program'], ['#DR99L', 'Street Survival #1', 'SS']]),
+            'Requests': FakeWS([['id', 'submitted', 'status', 'event_code', 'event_name', 'program'],
+                                ['FR-2026-087', '2026-09-13', 'Paid', '#DR99L', 'Street Survival #1', 'DR'],
+                                ['FR-2026-088', '2026-09-14', 'Paid', '#DRABC', 'Other', 'DR']])}
+    for env in ('BUDGETS_SHEET_ID', 'FUNDS_SHEET_ID'):
+        monkeypatch.setenv(env, env)
+    monkeypatch.delenv('INVOICES_SHEET_ID', raising=False)
+
+    def ws(sid, tab):
+        if tab not in tabs:
+            raise KeyError(tab)
+        return tabs[tab]
+    monkeypatch.setattr(recode, 'worksheet', ws)
+    monkeypatch.setattr(recode.C, 'invalidate', lambda sid: None)
+    assert recode.follow_program('#DR99L', 'SS') == {'Requests': 1}
+    assert tabs['Requests'].updates == [{'range': 'F2', 'values': [['SS']]}] and tabs['Budgets'].updates == []
