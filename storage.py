@@ -33,7 +33,9 @@ DATA_LOCK_FILE = os.environ.get("DATA_LOCK_FILE", f"{DATA_FILE}.lock")
 PROGRAMS_FILE = os.environ.get("PROGRAMS_FILE", os.path.join(DATA_DIR, "programs.json"))
 
 EVENT_COLS = ['id', 'program_code', 'event_name', 'date', 'sequence_id', 'unique_code', 'custom_tag', 'creator_name',
-              'cancelled', 'msr_url']   # cancelled: date it was marked; msr_url: its MotorsportReg page, set by a person
+              'cancelled', 'msr_url', 'former_codes']   # cancelled: date it was marked; msr_url: its MotorsportReg page, set by a person;
+# former_codes: codes it had before (space separated), so a QuickBooks project still named with one keeps matching
+_LAST = chr(64 + len(EVENT_COLS))      # the Events tab's last column letter
 CACHE_SECONDS = 15
 
 
@@ -221,7 +223,7 @@ class SheetStore:
         # Page views read the shared local copy; anything that may write the list back (create, edit, delete
         # read, change and write the whole list) passes fresh=True, so another worker's write is never undone.
         try:
-            rows = self._records('Events!A:J', fresh=fresh)
+            rows = self._records(f'Events!A:{_LAST}', fresh=fresh)
             self._state.degraded = False
             return [{k: (r.get(k) or '') for k in EVENT_COLS} for r in rows if r.get('id')]
         except Exception as e:
@@ -241,11 +243,11 @@ class SheetStore:
             ws.add_rows(len(rows) + 1 - ws.row_count + 50)
         if ws.col_count < len(EVENT_COLS):
             ws.add_cols(len(EVENT_COLS) - ws.col_count)
-        ws.update([EVENT_COLS], 'A1:J1', value_input_option='RAW')   # the header grows with EVENT_COLS
+        ws.update([EVENT_COLS], f'A1:{_LAST}1', value_input_option='RAW')   # the header grows with EVENT_COLS
         if rows:
-            ws.update(rows, f"A2:J{len(rows) + 1}", value_input_option='RAW')
+            ws.update(rows, f"A2:{_LAST}{len(rows) + 1}", value_input_option='RAW')
         if ws.row_count > len(rows) + 1:
-            ws.batch_clear([f"A{len(rows) + 2}:J{ws.row_count}"])
+            ws.batch_clear([f"A{len(rows) + 2}:{_LAST}{ws.row_count}"])
         self._invalidate()
         self.files.save_events(events)
 

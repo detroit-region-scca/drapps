@@ -2,7 +2,8 @@
 the change is carried to every record that names it: the budget and its lines, next year's "last year" link, the
 plan line, board ballots, funds requests, money received and invoices. The budget's Drive folder is renamed too.
 Cells are changed only where they hold exactly the old code (or a ballot key ending in it); notes and other free
-text are left as written. QuickBooks is not touched: it is read nightly and matches on whatever the code is then."""
+text are left as written. QuickBooks is not changed: the event keeps its old code in former_codes, so a project still
+named with it goes on matching, and the nightly sync lists it on the Treasurer page to be renamed."""
 import logging
 import os
 import re
@@ -12,7 +13,7 @@ from storage import DRIVE, sheets_client, worksheet
 
 # (sheet setting, tabs) that can hold an event code
 PLACES = [
-    ('BUDGETS_SHEET_ID', ['Budgets', 'Lines']),
+    ('BUDGETS_SHEET_ID', ['Budgets', 'Lines', 'QBO Actuals']),      # QBO Actuals: so the numbers show before the nightly sync
     ('PLAN_SHEET_ID', ['Plan', 'Ballots']),
     ('FUNDS_SHEET_ID', ['Requests', 'Money received']),
     ('INVOICES_SHEET_ID', ['Invoices']),

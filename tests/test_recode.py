@@ -39,3 +39,19 @@ def test_move_changes_only_cells_that_are_the_code(monkeypatch):
     assert done == {'Budgets': 2, 'Ballots': 1}
     assert {u['range']: u['values'][0][0] for u in tabs['Budgets'].updates} == {'A2': '#DRK7M', 'C3': '#DRK7M'}
     assert tabs['Ballots'].updates[0] == {'range': 'B2', 'values': [['budget:2027:#DRK7M']]}
+
+
+def test_a_quickbooks_project_with_an_old_code_still_matches():
+    import qbo_logic as Q
+    projects = [{'code': '#DRQER', 'project': '2027 RY Son of Sno*Drift XXIX #DRQER'}, {'code': '#DRABC', 'project': 'x #DRABC'}]
+    events = [{'unique_code': '#DR4F5', 'custom_tag': '', 'former_codes': '#DRQER'}]
+    assert Q.current_codes(projects, events) == [('2027 RY Son of Sno*Drift XXIX #DRQER', '#DRQER', '#DR4F5')]
+    assert [p['code'] for p in projects] == ['#DR4F5', '#DRABC']
+
+
+def test_a_code_change_remembers_the_old_code():
+    import app
+    ev = {'unique_code': '#DR4F5', 'custom_tag': '', 'former_codes': '#DRAAA'}
+    app._remember_code(ev, '#DRQER')
+    app._remember_code(ev, '#DRQER')
+    assert ev['former_codes'] == '#DRAAA #DRQER'

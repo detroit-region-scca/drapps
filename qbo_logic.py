@@ -130,6 +130,21 @@ def match_funds(requests, payments):
     return out
 
 
+def current_codes(projects, events):
+    """QuickBooks projects still named with an event's former code are counted under its code now. Changes the
+    projects in place and returns [(project, old code, new code)] for the ones that should be renamed."""
+    now = {}
+    for e in events:
+        for c in (e.get('former_codes') or '').split():
+            now[c] = e.get('custom_tag') or e.get('unique_code')
+    out = []
+    for p in projects:
+        if p.get('code') in now:
+            out.append((p['project'], p['code'], now[p['code']]))
+            p['code'] = now[p['code']]
+    return out
+
+
 def exceptions(requests, payments, events, projects, today, since=None):
     """Things the treasurer should look at, as rows: key, kind, date, name, amount, detail, link.
 

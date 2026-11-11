@@ -609,6 +609,7 @@ def edit_event(event_id):
         
         if not event_to_edit.get('unique_code') or event_to_edit.get('unique_code') == original_event.get('custom_tag'):
              event_to_edit['unique_code'] = generate_unique_code(event_to_edit['program_code'], events)
+        _remember_code(event_to_edit, original_event.get('custom_tag') or original_event.get('unique_code'))
         
         save_events(events)
         
@@ -624,6 +625,13 @@ def edit_event(event_id):
     return redirect(url_for('bud.detail', code=event_to_edit.get('custom_tag') or event_to_edit['unique_code']))
 
 
+def _remember_code(ev, old):
+    """Keep the code an event had before, so a QuickBooks project still named with it goes on matching."""
+    now = ev.get('custom_tag') or ev.get('unique_code')
+    if old and old != now:
+        ev['former_codes'] = ' '.join(dict.fromkeys((ev.get('former_codes') or '').split() + [old]))
+
+
 def _carry_code(old, new):
     """An event's code changed: its budget, plan line, ballots, funds requests and invoices follow it."""
     if not old or not new or old == new:
@@ -634,8 +642,9 @@ def _carry_code(old, new):
     moved = recode.move(old, new)
     recode.rename_folder(url, old, new)
     log_audit_event('EVENT_CODE_CHANGED', _signed_in_name(), {'from': old, 'to': new, 'records': moved})
-    flash(f'The code is now {new}. Everything that used {old} has moved to it. If it is already on MotorsportReg or in '
-          f'QuickBooks, change it there too.', 'info')
+    flash(f'The code is now {new}. Everything in the apps that used {old} has moved to it. If {old} is in a QuickBooks '
+          f'project name or on MotorsportReg, change it there too. QuickBooks keeps matching meanwhile, and the Treasurer '
+          f'page lists the project until it is renamed.', 'info')
 
 
 @app.route('/edit/<event_id>/new-code', methods=['POST'])
@@ -650,6 +659,7 @@ def new_event_code(event_id):
             return redirect(url_for('bud.home'))
         old = ev.get('custom_tag') or ev.get('unique_code')
         ev['unique_code'], ev['custom_tag'] = generate_unique_code(ev['program_code'], events), ''
+        _remember_code(ev, old)
         save_events(events)
         log_audit_event('EVENT_EDITED', _signed_in_name(), {'event_id': event_id, 'new_code': ev['unique_code']})
         _carry_code(old, ev['unique_code'])

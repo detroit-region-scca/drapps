@@ -47,6 +47,7 @@ def main():
     today = date.fromisoformat(as_of)
     say = []
 
+    renamed = Q.current_codes(data['projects'], load_events())      # a project still named with an old event code
     events_rows = [[p['code'], p['project'], ln['section'], ln['account'], ln['amount'], as_of] for p in data['projects'] for ln in p['lines']]
     program_rows = [[y['year'], Q.program_of(ln['account']), ln['section'], ln['account'], ln['amount'], as_of]
                     for y in data['programs'] for ln in y['lines']]
@@ -88,6 +89,9 @@ def main():
 
     events = load_events()
     exc += Q.exceptions(reqs, data['payments'], events, data['projects'], today)
+    for name, old, new in renamed:
+        exc.append({'key': f'oldcode:{old}', 'kind': 'QuickBooks project has an old event code', 'date': as_of, 'name': name,
+                    'amount': None, 'link': '', 'detail': f'The event is {new} now. Rename the project in QuickBooks: {name.replace(old, new)}'})
     if P.enabled():
         link, ask = P.plan_matches(events, P._snapshot()[0])
         for e, ln in link:
