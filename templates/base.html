@@ -53,7 +53,8 @@
 
         .card { background: var(--surface); border-color: var(--border); border-radius: 8px; color: var(--text); }
         .stat .label { color: var(--muted); font-size: .85rem; }
-        .stat .value { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+        .stat .value { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+        .stat .value .h6 { line-height: 1.3; }
         .form-control, .form-select { background-color: #fff; color: var(--text); border-color: var(--border); }
         .form-control:focus, .form-select:focus { background-color: #fff; color: var(--text); border-color: var(--link); box-shadow: 0 0 0 .15rem rgba(29,63,184,.15); }
         .form-control::placeholder { color: #6b7280; }   /* 4.8:1 on white */
@@ -118,7 +119,7 @@
         .site-top a { color: var(--muted, #555); text-decoration: none; }
         .site-top a:hover { color: #d2232a; }
         {% block style %}{% endblock %}
-        .drive-icon { vertical-align: -2px; margin-right: 2px; flex: none; }
+        .drive-icon { vertical-align: -2px; margin-right: .3em; flex: none; }
 </style>
 </head>
 <body class="{% block body_class %}{% endblock %}">

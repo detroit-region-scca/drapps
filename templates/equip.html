@@ -155,8 +155,8 @@
 
     {% if view == 'home' %}
     <h1 class="visually-hidden">Operations</h1>
-    <p class="text-muted mb-3">What needs doing: to-dos, bills, missing documents and gear due for replacement.
-        <span class="no-print"><a href="{{ url_for('equip.report_pdf') }}" target="_blank">Operations report (PDF)</a>{% if root %} · <a href="{{ root }}" target="_blank" rel="noopener">{{ drive_icon }}Committee files</a>{% endif %}</span></p>
+    <p class="text-muted mb-1">What needs doing: to-dos, bills, missing documents and gear due for replacement.</p>
+    <div class="d-flex flex-wrap column-gap-3 row-gap-1 mb-3 no-print"><a class="text-nowrap" href="{{ url_for('equip.report_pdf') }}" target="_blank">Operations report (PDF)</a>{% if root %}<a class="text-nowrap" href="{{ root }}" target="_blank" rel="noopener">{{ drive_icon }}Committee files</a>{% endif %}</div>
     <div class="row g-3 mb-4">
         <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.tasks') }}"><div class="label">To do</div>
             <div class="value">{{ n_due }} <span class="h6 text-muted">in the next 90 days</span></div>
