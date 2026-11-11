@@ -35,7 +35,8 @@ def _ctx(**kw):
     kw.setdefault('page_title', PAGE_TITLES.get(kw.get('view'), ''))      # the browser tab: the page's or the record's name
     return dict(title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Operations", editor=session.get('equip_editor'),
                 categories=E.CATEGORIES, statuses=E.STATUSES, cost_categories=E.COST_CATEGORIES, every_label=E.every_label, accounts=E.ACCOUNTS, budget_year=budget_year(),
-                qbo_words=E.QBO_WORDS, qbo_split=E.qbo_split, about_url=_about_url, gear_views=GEAR_VIEWS, **kw)
+                qbo_words=E.QBO_WORDS, qbo_split=E.qbo_split, about_url=_about_url, gear_views=GEAR_VIEWS,
+                drive_url=os.environ.get('OPERATIONS_DOCS_FOLDER_URL', ''), **kw)
 
 
 def _key(name):

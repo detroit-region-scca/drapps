@@ -6,6 +6,7 @@
     {{ tab('equip.tasks', 'To do', request.endpoint == 'equip.tasks' or (request.endpoint == 'equip.task' and not bill)) }}
     {{ tab('equip.items', 'Gear', request.endpoint in ('equip.items', 'equip.item', 'equip.place')) }}
     {{ tab('equip.money', 'Money', request.endpoint in ('equip.money', 'equip.purchases', 'equip.reserve') or (request.endpoint == 'equip.task' and bill)) }}
+    {% if drive_url %}<li class="nav-item"><a class="nav-link" href="{{ drive_url }}" target="_blank" rel="noopener">Google Drive ↗</a></li>{% endif %}
 {% endblock %}
 {% macro due_badge(t) -%}
     {% if not t.due and t.last_done %}<span class="badge rounded-pill text-bg-secondary">Done {{ t.last_done|nice_date }}</span>

@@ -144,6 +144,7 @@ def test_overview_lists_missing_documents_with_the_page_that_takes_them(ops):
     ed, lou, state = ops
     page = _main(_page(ed, f'{O}/'))
     assert 'Committee files' in page and 'folders/rootfolder' in page
+    assert 'Google Drive' in _page(ed, f'{O}/items') and 'Google Drive' in _page(lou, f'{O}/')     # every Operations page, everyone
     gaps = page.split('Missing documents')[1]
     assert f'href="{O}/items/EQ-001#add-document">Upload' in gaps and 'Missing registration' in gaps       # has a row, one of two there
     assert f'href="{O}/items/EQ-002#add-document">Upload' in gaps and 'Missing title, registration' in gaps  # no row yet: what a trailer needs
