@@ -73,6 +73,8 @@
     <div class="list-group">
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('treasurer_report') }}">
             <span>Treasurer's report<div class="small text-muted">This month's report for the board, ready to print</div></span><span class="text-muted">›</span></a>
+        <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('treports.home') }}">
+            <span>Monthly report to the board<div class="small text-muted">The page shown at the meeting and the script, kept in Drive</div></span><span class="text-muted">›</span></a>
         {% if jobs.pay is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('fr.home') }}">
             <span>Funds requests ready to pay<div class="small text-muted">All approvals in; card purchases only need recording</div></span><span class="fw-semibold">{{ jobs.pay[0] }}{% if jobs.pay[0] %} · {{ money(jobs.pay[1]) }}{% endif %}</span></a>
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('fr.home') }}">

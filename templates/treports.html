@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block app_name %}Treasurer{% endblock %}
+{% block content %}
+<div class="small mb-2"><a href="{{ url_for('treasurer') }}">Treasurer</a> / {% if view == 'month' %}<a href="{{ url_for('treports.home') }}">Treasurer's reports</a> / {{ label }}{% else %}Treasurer's reports{% endif %}</div>
+{% if view == 'list' %}
+<h1 class="page-title">Treasurer's reports</h1>
+<p class="text-muted">The monthly report to the board: a page to show the board, and a script to read. Both are Google Docs, kept in Drive. No bank balances.{% if folder_url %} <a class="text-nowrap" href="{{ folder_url }}" target="_blank" rel="noopener">{{ drive_icon }}Reports folder</a>{% endif %}</p>
+<form method="post" action="{{ url_for('treports.new') }}" class="d-flex flex-wrap align-items-end gap-2 mb-4 no-print">
+    <div><label class="form-label small mb-1">Month</label><input type="month" name="month" class="form-control" value="{{ next_month }}" required></div>
+    <button class="btn btn-accent">Start a report</button>
+    <span class="small text-muted">Drafts both from the apps: results by program, funds requests, what is waiting for the board.</span>
+</form>
+<div class="card"><ul class="list-group list-group-flush">
+    {% for m, rep in have.items() %}<li class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <a href="{{ url_for('treports.month', month=m) }}">{{ m }}</a>
+        <span class="d-flex flex-wrap gap-3 small">{% for k, kl in kinds.items() %}{% if rep[k] %}<a class="text-nowrap" href="{{ rep[k].webViewLink }}" target="_blank" rel="noopener">{{ drive_icon }}{{ kl }}</a>{% endif %}{% endfor %}</span></li>
+    {% else %}<li class="list-group-item text-muted">No reports yet.</li>{% endfor %}
+</ul></div>
+{% else %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="page-title m-0">Treasurer's report, {{ label }}</h1>
+    <div class="d-flex flex-wrap gap-2 no-print">
+        <a class="btn btn-accent" href="{{ url_for('treports.month', month=month, show='board', present=1) }}" target="_blank">Show the board</a>
+        {% if rep[kind] %}<a class="btn btn-outline-light" href="{{ rep[kind].webViewLink }}" target="_blank" rel="noopener">{{ drive_icon }}Edit {{ kinds[kind]|lower }}</a>{% endif %}
+    </div>
+</div>
+<ul class="nav nav-tabs mb-3 no-print">{% for k, kl in kinds.items() %}<li class="nav-item"><a class="nav-link {{ 'active' if k == kind }}" href="{{ url_for('treports.month', month=month, show=k) }}">{{ kl }}</a></li>{% endfor %}</ul>
+<div class="card p-4 report-doc">{{ body }}</div>
+<style>.report-doc h2 { font-size: 1.4rem; } .report-doc h3 { font-size: 1.1rem; margin-top: 1.2rem; } .report-doc ul { margin-bottom: .75rem; }</style>
+{% endif %}
+{% endblock %}

@@ -121,6 +121,8 @@ import groups  # noqa: E402
 app.register_blueprint(groups.bp)
 import hassles  # noqa: E402
 app.register_blueprint(hassles.bp)
+import treasurer_reports  # noqa: E402
+app.register_blueprint(treasurer_reports.bp)
 app.config['MAX_CONTENT_LENGTH'] = 40 * 1024 * 1024  # funds request receipts
 
 # Mandatory Secret Key in Production
