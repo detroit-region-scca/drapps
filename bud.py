@@ -168,7 +168,7 @@ def _money_warnings(e, b, past):
         return [('No budget' if past else 'No budget yet', 'budget')]
     if past and not any(ln.get('actual') is not None for ln in b.get('lines', [])):
         return [('The event is over: enter its reported results', 'results')]
-    if not past and not b.get('approved'):   # spending on it goes to the board as a motion until then
+    if not past and not b.get('approved') and not b.get('no_vote'):   # spending on it goes to the board as a motion until then
         return [('Budget is still a draft' if b.get('draft') else 'Budget not approved yet', 'approval')]
     return []
 
@@ -319,7 +319,8 @@ def detail(code):
                                               msr_link=msr_link, msr_info=msr.cached(msr_link[0]),
                                               q=q, plan=plan,
                                               status=_status(b), today=date.today().isoformat(), programs=load_programs(),
-                                              open_lines=_open_lines(e), ballot=_ballot(code)))
+                                              open_lines=_open_lines(e), ballot=_ballot(code),
+                                              is_admin='admin' in set((auth.user() or {}).get('perms') or ())))
 
 
 def _cancel_ballots(item, who, undecided_only=False):
@@ -363,6 +364,43 @@ def to_draft(code):
         _cancel_ballots(f"budget:{str(b.get('date', ''))[:4]}:{code}", who)
         log_audit_event('BUDGET_DRAFT', who, {'event_code': code, 'was_approved': b.get('approved', '')})
         flash('Back in draft. It is off the board\'s list until you mark it ready.', 'info')
+    return redirect(url_for('bud.detail', code=code))
+
+
+@bp.route('/event/<path:code>/no-vote', methods=['POST'])
+@login_required
+def no_vote(code):
+    """Admin only: take a budget off the board's list for good (it counts as approved for spending), for example one
+    turned in after its season had started, or put it back on the list."""
+    if (g := _guard()):
+        return g
+    if 'admin' not in set((auth.user() or {}).get('perms') or ()):
+        return auth.refuse('Only the admin can say a budget needs no board vote.', url_for('bud.detail', code=code))
+    b = B.get(code) if B.enabled() else None
+    who = _who()
+    if not b:
+        flash('That budget has not been saved yet.', 'warning')
+        return redirect(url_for('bud.detail', code=code))
+    if request.form.get('action') == 'clear':
+        note = ''
+    else:
+        why = ' '.join((request.form.get('why') or '').split())[:200]
+        if not why:
+            flash('Say why the board need not vote on it.', 'warning')
+            return redirect(url_for('bud.detail', code=code))
+        note = f"{date.today().isoformat()} by {who}: {why}"
+    try:
+        B.set_no_vote(code, note)
+    except ValueError as e:      # its row was deleted from the sheet by hand
+        flash(str(e), 'warning')
+        return redirect(url_for('bud.detail', code=code))
+    if note:
+        _cancel_ballots(f"budget:{str(b.get('date', ''))[:4]}:{code}", who)
+        log_audit_event('BUDGET_NO_VOTE', who, {'event_code': code, 'why': note})
+        flash("No board vote needed. It is off the board's list, and any open vote on it is cancelled.", 'success')
+    else:
+        log_audit_event('BUDGET_NO_VOTE_CLEARED', who, {'event_code': code})
+        flash("Back on the board's list.", 'info')
     return redirect(url_for('bud.detail', code=code))
 
 
@@ -504,7 +542,7 @@ def _pending_rows(year, only=''):
         plan = {k: v for k, v in plan.items() if k == only}
     plan_by_code = {ln['event_code']: ln['net'] for x in plan.values() for ln in x['lines'] if ln['event_code']}
     rows = [{'b': b, 'status': _status(b), 'surplus': ((b['totals'].get('budget') or {}).get('surplus')), 'plan': plan_by_code.get(code)}
-            for code, b in B.budgets().items() if str(b.get('date', '')).startswith(year) and _status(b) not in ('approved', 'draft')
+            for code, b in B.budgets().items() if str(b.get('date', '')).startswith(year) and _status(b) not in ('approved', 'draft', 'no_vote')
             and (not only or b.get('program') == only)]
     rows.sort(key=lambda r: (r['b'].get('program', ''), r['b'].get('date', '')))
     if not only or only == 'OPS':
@@ -553,7 +591,7 @@ def record_budgets(year, picked, approved, how):
 
 def pending_years():
     """Years with a budget not approved yet (event budgets, and the Operations budget in its plan)."""
-    ys = {str(b.get('date', ''))[:4] for b in B.budgets().values() if str(b.get('date', ''))[:4].isdigit() and _status(b) != 'approved'}
+    ys = {str(b.get('date', ''))[:4] for b in B.budgets().values() if str(b.get('date', ''))[:4].isdigit() and _status(b) not in ('approved', 'no_vote')}
     this = date.today().year
     ys |= {str(y) for y in range(this - 1, this + 3) if ops_budget_row(str(y))}
     return sorted(ys)

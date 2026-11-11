@@ -198,3 +198,42 @@ def test_vote_links_last_as_long_as_the_vote():
     import board
     import shortlinks
     assert board.VOTE_DAYS > BL.OPEN_DAYS and shortlinks.DAYS == 7
+
+
+def test_no_vote_budget_is_off_the_boards_list_and_counts_as_approved(monkeypatch):
+    monkeypatch.setattr(bud.P, 'enabled', lambda: False)
+    buds = {'#A': {'event_code': '#A', 'date': '2026-05-01', 'program': 'RY', 'approved': '', 'draft': '',
+                   'no_vote': '2026-11-11 by Pat: turned in after the season started', 'totals': {'budget': {'surplus': 10}}},
+            '#B': {'event_code': '#B', 'date': '2026-05-02', 'program': 'RY', 'approved': '', 'draft': '',
+                   'totals': {'budget': {'surplus': 20}}}}
+    monkeypatch.setattr(B, 'budgets', lambda: buds)
+    assert bud._status(buds['#A']) == 'no_vote'
+    assert [r['b']['event_code'] for r in bud._pending_rows('2026')] == ['#B']
+    assert not bud._money_warnings({}, buds['#A'], past=False)
+
+
+def test_only_the_admin_can_say_no_vote_needed(monkeypatch):
+    import auth
+    from app import app
+    calls, perms = [], {'events'}
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Pat', 'level': 'official', 'roles': ['Director'],
+                                                   'perms': perms} if e else None)
+    monkeypatch.setattr(bud, '_guard', lambda: None)
+    monkeypatch.setattr(B, 'enabled', lambda: True)
+    monkeypatch.setattr(B, 'get', lambda code: {'event_code': '#C', 'date': '2026-01-09', 'approved': ''})
+    monkeypatch.setattr(B, 'set_no_vote', lambda code, note: calls.append((code, note)))
+    monkeypatch.setattr(bud, '_cancel_ballots', lambda item, who: calls.append(item))
+    monkeypatch.setattr(bud, 'log_audit_event', lambda *a, **k: None)
+    app.config['TESTING'] = True
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s.update(authenticated=True, email='pat@example.org', who='Pat')
+    c.post('/events/event/%23C/no-vote', data={'why': 'late'})
+    assert calls == []
+    perms.add('admin')
+    c.post('/events/event/%23C/no-vote', data={'why': ''})
+    assert calls == []                                  # a reason is required
+    c.post('/events/event/%23C/no-vote', data={'why': 'turned in after the season started'})
+    assert calls[0][0] == '#C' and calls[0][1].endswith('by Pat: turned in after the season started') and calls[1] == 'budget:2026:#C'
+    c.post('/events/event/%23C/no-vote', data={'action': 'clear'})
+    assert calls[2] == ('#C', '')

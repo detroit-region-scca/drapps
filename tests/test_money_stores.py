@@ -200,7 +200,7 @@ def test_recording_approval_fingerprints_the_lines_and_widens_the_tab(monkeypatc
     tabs = _book(monkeypatch, B, _budget_tabs(approved=''), tmp_path, 'SAVE_LOCK')
     assert B.status(B.get('#DRAAA')) == 'budget'          # a tab without the new column still reads
     B.set_approved('#DRAAA', '2026-11-09', 'Pat (board meeting)')
-    assert tabs['Budgets'].col_count == 15 and tabs['Budgets'].rows[0][14] == 'approved_hash'
+    assert tabs['Budgets'].col_count == 16 and tabs['Budgets'].rows[0][14:16] == ['approved_hash', 'no_vote']
     assert B.get('#DRAAA')['approved_hash'] == B.lines_hash(_lines()) and B.status(B.get('#DRAAA')) == 'approved'
     B.save(HEADER, _lines(site=900.0))                    # edited on the approval day
     assert B.status(B.get('#DRAAA')) == 'changed' and B.get('#DRAAA')['approved'] == '2026-11-09'

@@ -103,6 +103,7 @@
                     {% if pb_status == 'approved' %}<span class="badge rounded-pill text-bg-success">Board approved {{ (pb.approved or '')|nice_date }}</span>
                     {% elif pb_status == 'changed' %}<span class="badge rounded-pill text-bg-warning">Changed since approved {{ (pb.approved or '')|nice_date }}</span>
                     {% elif pb_status == 'draft' %}<span class="badge rounded-pill text-bg-secondary">Draft</span>
+                    {% elif pb_status == 'no_vote' %}<span class="badge rounded-pill text-bg-success">No board vote needed</span>
                     {% elif pb %}<span class="badge rounded-pill text-bg-primary">Not board approved yet</span>
                     {% else %}<span class="badge rounded-pill text-bg-warning">None yet</span>{% endif %}
                     {% if pb and pb.totals.budget %} {{ money(pb.totals.budget.surplus) }}{% endif %}</div>{% endif %}

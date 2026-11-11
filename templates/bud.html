@@ -99,6 +99,7 @@
                 <div class="small mt-2">{% if status == 'draft' %}<span class="badge rounded-pill text-bg-secondary">Budget in draft</span> not on the board's list yet
                     {% elif status == 'approved' %}<span class="badge rounded-pill text-bg-success">Budget board approved {{ (b.approved or '')|nice_date }}</span>
                     {% elif status == 'changed' %}<span class="badge rounded-pill text-bg-warning">Budget changed since approved {{ (b.approved or '')|nice_date }}</span>
+                    {% elif status == 'no_vote' %}<span class="badge rounded-pill text-bg-success">Budget: no board vote needed</span>
                     {% elif b %}<a href="{{ url_for('bud.approve_many', year=(b.date or '')[:4]) }}" class="badge rounded-pill text-bg-primary text-decoration-none">Budget not board approved yet</a>
                     {% endif %}</div>
                 {% if e.program_budget %}<div class="small mt-1 text-muted">The program's spending and income that is not one event. Funds requests not tied to an event are paid against this budget once the board approves it.</div>{% endif %}
@@ -250,6 +251,11 @@
             <input type="hidden" name="approved" value=""><input type="hidden" name="who" value="{{ who }}">
             <button class="btn btn-sm btn-outline-secondary ms-auto" onclick="return confirm('Clear the board approval?')">Clear approval</button>
         </form>
+        {% elif status == 'no_vote' %}
+        <form method="post" action="{{ url_for('bud.no_vote', code=code) }}" class="d-flex flex-wrap gap-2 align-items-center">
+            <span><b>No board vote needed</b> (set {{ (b.no_vote or '')[:10]|nice_date }}{{ (b.no_vote or '')[10:] }}). It counts as approved for spending.</span>
+            {% if is_admin %}<input type="hidden" name="action" value="clear"><button class="btn btn-sm btn-outline-secondary ms-auto">Put back on the board's list</button>{% endif %}
+        </form>
         {% else %}
         <p class="mb-2"><b>Not approved yet.</b>{% if ballot and ballot.status == 'open' %} The board is voting on it by email until {{ (ballot.closes or '')|nice_date }}. <a href="{{ url_for('board.home') }}">See the vote</a>{% endif %}</p>
         {% if officer %}
@@ -260,6 +266,12 @@
             <div class="col-12 col-md-4"><button class="btn btn-sm btn-accent w-100">Record board approval</button></div>
         </form>
         {% else %}<div class="small text-muted">After the board approves this budget, the RE, ARE, secretary or treasurer records it here.</div>{% endif %}
+        {% if is_admin %}
+        <form method="post" action="{{ url_for('bud.no_vote', code=code) }}" class="row g-2 align-items-end mt-1" onsubmit="return confirm('Take this budget off the board\'s list for good? It will count as approved for spending, and any open board vote on it is cancelled.')">
+            <div class="col-12 col-md-8"><label class="form-label small mb-0" for="why">No board vote needed (admin): why</label>
+                <input class="form-control form-control-sm" id="why" name="why" maxlength="200" required placeholder="For example: turned in after the season started"></div>
+            <div class="col-12 col-md-4"><button class="btn btn-sm btn-outline-secondary w-100">No vote needed</button></div>
+        </form>{% endif %}
         {% endif %}
         {% if status != 'draft' and (officer or not b.approved or directs_budget(code, b)) %}
         <form method="post" action="{{ url_for('bud.to_draft', code=code) }}" class="mt-2" onsubmit="return confirm({{ ('Put this budget back into draft?' ~ (' This clears the board approval of ' ~ (b.approved or '')|nice_date ~ '.' if b.approved else '') ~ ' Any open board vote on it is cancelled.')|tojson|forceescape }})">

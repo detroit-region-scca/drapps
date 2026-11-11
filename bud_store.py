@@ -19,9 +19,11 @@ from storage import DATA_DIR, drive_folder, drive_upload, worksheet
 import sheet_cache as C
 
 BUD_COLS = ['event_code', 'event_name', 'program', 'date', 'chair', 'location', 'updated', 'updated_by', 'notes', 'files_url',
-            'approved', 'approved_by', 'last_year_event', 'draft', 'approved_hash']
+            'approved', 'approved_by', 'last_year_event', 'draft', 'approved_hash', 'no_vote']
 # approved_hash (added last, 2026-11): a fingerprint of the budget lines the board approved (lines_hash). A row
 # approved before it existed has none, and status() falls back to comparing the days.
+# no_vote ('YYYY-MM-DD by Name: why'): the admin took it off the board's list for good, e.g. a budget turned in after
+# its season started. It counts as approved for spending.
 LINE_COLS = ['event_code', 'section', 'description', 'last_year', 'budget', 'actual', 'sort']
 AMOUNTS = ('last_year', 'budget', 'actual')
 # The Lines tab is rewritten whole on every save, so saves must not overlap across gunicorn workers.
@@ -158,13 +160,16 @@ def changed_since_approved(row, now_hash):
 
 def status(b):
     """The one answer to where a budget stands: 'draft' (pulled back, not on the board's list), 'approved', 'changed'
-    (its numbers were edited after the board approved it), 'budget' (saved, waiting for the board) or None."""
+    (its numbers were edited after the board approved it), 'no_vote' (the admin said the board need not vote on it),
+    'budget' (saved, waiting for the board) or None."""
     if not b:
         return None
     if b.get('draft'):
         return 'draft'
     if b.get('approved'):
         return 'changed' if changed_since_approved(b, lines_hash(b.get('lines') or [])) else 'approved'
+    if b.get('no_vote'):
+        return 'no_vote'
     return 'budget'
 
 
@@ -220,7 +225,7 @@ def save(header, lines, files=(), actuals_only=False):
         header = dict(header, updated=old['updated'] if same else date.today().isoformat(), files_url=(old or {}).get('files_url', ''),
                       approved=(old or {}).get('approved', ''), approved_by=(old or {}).get('approved_by', ''),
                       draft=header['draft'] if 'draft' in header else (old or {}).get('draft', ''),
-                      approved_hash=(old or {}).get('approved_hash', ''))
+                      approved_hash=(old or {}).get('approved_hash', ''), no_vote=(old or {}).get('no_vote', ''))
         if old and old.get('approved') and not old.get('approved_hash') and not changed_since_approved(old, ''):
             # Approved before fingerprints were kept and not edited since: what is saved now is what the board
             # approved, so fingerprint that. From here on a change shows as "changed" even on the approval day.
@@ -296,6 +301,19 @@ def set_approved(codes, approved, who):
                                                         if approved and edited.get(c, '') <= str(approved) else '']]}]
         if upd:
             ws.batch_update(upd, value_input_option='RAW')
+        refresh()
+
+
+def set_no_vote(code, note):
+    """Mark one budget as needing no board vote (note = 'YYYY-MM-DD by Name: why'), or with note='' put it back on the
+    board's list."""
+    with FileLock(SAVE_LOCK), _lock:
+        ws = _ws('Budgets')
+        _heading(ws)
+        col = ws.col_values(1)
+        if code not in col:
+            raise ValueError('That budget has not been saved yet.')
+        ws.batch_update([{'range': f'P{col.index(code) + 1}', 'values': [[note]]}], value_input_option='RAW')
         refresh()
 
 

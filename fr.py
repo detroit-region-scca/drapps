@@ -117,7 +117,7 @@ class Approvals:
         status, expense = None, None
         if b:
             st = B.status(b)
-            status = st if st in ('approved', 'changed') else 'budget'
+            status = 'approved' if st == 'no_vote' else st if st in ('approved', 'changed') else 'budget'
             expense = (b['totals'].get('budget') or {}).get('expense')
         if code:
             q = self.qbo.get(code) or {}
