@@ -145,8 +145,10 @@
                 <div class="col-6 col-md-3"><label class="form-label small">Registered by</label><input name="your_name" class="form-control" value="{{ e.creator_name }}" required></div>
                 <div class="col-md-6"><label class="form-label small">MotorsportReg link (only if its name cannot carry {{ code }})</label><input name="msr_url" class="form-control" value="{{ e.msr_url or '' }}" placeholder="https://www.motorsportreg.com/events/..."></div>
                 <div class="col-md-6 d-flex align-items-end gap-2"><button class="btn btn-accent">Save event</button>
+                    <button class="btn btn-outline-light" form="newCode" title="For a code that reads badly. The budget, plan line and everything else move to the new code.">New code</button>
                     <button type="button" class="btn btn-outline-danger ms-auto" data-bs-toggle="collapse" data-bs-target="#deleteEvent">Delete event</button></div>
             </form>
+            <form method="post" action="{{ url_for('new_event_code', event_id=e.id) }}" id="newCode" onsubmit="return confirm('Give {{ code }} a new code? Its budget, plan line and records move to it. Change it on MotorsportReg too if it is already there.')"></form>
             <form method="post" action="{{ url_for('delete_event', event_id=e.id) }}" class="collapse mt-3" id="deleteEvent">
                 <div class="small mb-1">Type <b>{{ e.event_name }}</b> to delete this event. Its budget and plan line stay.</div>
                 <div class="d-flex flex-wrap gap-2"><input type="hidden" name="delete_user_name" value="{{ session.get('who', '') }}">

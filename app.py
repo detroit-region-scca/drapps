@@ -617,9 +617,43 @@ def edit_event(event_id):
             'original': original_event,
             'updated': event_to_edit
         })
+        _carry_code(original_event.get('custom_tag') or original_event.get('unique_code'),
+                    event_to_edit.get('custom_tag') or event_to_edit['unique_code'])
     
     flash('Event updated.', 'success')
     return redirect(url_for('bud.detail', code=event_to_edit.get('custom_tag') or event_to_edit['unique_code']))
+
+
+def _carry_code(old, new):
+    """An event's code changed: its budget, plan line, ballots, funds requests and invoices follow it."""
+    if not old or not new or old == new:
+        return
+    import recode
+    import bud_store as B
+    url = (B.get(old) or {}).get('files_url', '') if B.enabled() else ''
+    moved = recode.move(old, new)
+    recode.rename_folder(url, old, new)
+    log_audit_event('EVENT_CODE_CHANGED', _signed_in_name(), {'from': old, 'to': new, 'records': moved})
+    flash(f'The code is now {new}. Everything that used {old} has moved to it. If it is already on MotorsportReg or in '
+          f'QuickBooks, change it there too.', 'info')
+
+
+@app.route('/edit/<event_id>/new-code', methods=['POST'])
+@login_required
+def new_event_code(event_id):
+    """Give an event a fresh generated code, for one that reads badly. Its records move with it."""
+    with FileLock(DATA_LOCK_FILE):
+        events = load_events()
+        ev = next((e for e in events if e.get('id') == event_id), None)
+        if not ev:
+            flash('Event not found.', 'warning')
+            return redirect(url_for('bud.home'))
+        old = ev.get('custom_tag') or ev.get('unique_code')
+        ev['unique_code'], ev['custom_tag'] = generate_unique_code(ev['program_code'], events), ''
+        save_events(events)
+        log_audit_event('EVENT_EDITED', _signed_in_name(), {'event_id': event_id, 'new_code': ev['unique_code']})
+        _carry_code(old, ev['unique_code'])
+    return redirect(url_for('bud.detail', code=ev['unique_code']))
 
 @app.route('/export')
 @login_required

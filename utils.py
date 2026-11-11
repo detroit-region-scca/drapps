@@ -77,6 +77,16 @@ def is_tag_unique(tag, existing_events, exclude_event_id=None):
         for e in existing_events if e.get("id") != exclude_event_id
     )
 
+# Generated codes have no vowels, so they can't spell or sound like a word (#DRQER once did), and no 0/O, 1/I or L
+# to mix up when read aloud or typed into MotorsportReg.
+CODE_CHARS = 'BCDFGHJKMNPQRSTVWXZ' + '23456789'
+_BAD = {'KKK', 'FCK', 'FKN', 'FKR', 'FGT', 'SHT', 'STD', 'WTF', 'CNT', 'DCK', 'PNS', 'NGR', 'NGG', 'XXX', 'BJ', 'KK'}
+
+
+def _reads_ok(suffix):
+    return not any(b in suffix for b in _BAD)
+
+
 def generate_unique_code(program_code, existing_events):
     event_code_prefix = os.environ.get("EVENT_CODE_PREFIX", "SCCA")
     existing_tags = {tag for e in existing_events for tag in (e.get("unique_code"), e.get("custom_tag")) if tag}
@@ -84,9 +94,9 @@ def generate_unique_code(program_code, existing_events):
     k = 3
     attempts = 0
     while True:
-        suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=k))
+        suffix = ''.join(random.choices(CODE_CHARS, k=k))
         code = f"#{event_code_prefix}{suffix}"
-        if code not in existing_tags:
+        if code not in existing_tags and _reads_ok(suffix):
             return code
         attempts += 1
         if attempts > 100:
