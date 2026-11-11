@@ -7,6 +7,7 @@
 //   outstanding  checks since PAYMENTS_SINCE the bank has not cleared yet (QuickBooks "Clr" blank; voided $0 checks left out)
 //   deposits  deposit lines since PAYMENTS_SINCE (date, amount, description, payer), to match against open invoices
 //   balance_sheet  today's balance sheet to two levels; receivables  every invoice still owed
+//   pnl       the profit and loss statement for the last full month and the year to date, every line, for the board report
 // Runs on the machine that holds the QuickBooks connection (the qbo-mcp install and its token
 // store); the web app never talks to QuickBooks. QBO_MCP_DIR points at that install. Read only (writes are qbo_write.mjs).
 const dir = process.env.QBO_MCP_DIR || `${process.env.HOME}/.mcp-servers/qbo-mcp`;
@@ -144,4 +145,21 @@ const receivables = (await query('Invoice', "WHERE Balance > '0'")).map(i => ({
   number: i.DocNumber || '', date: i.TxnDate, due: i.DueDate || '', customer: i.CustomerRef?.name || '', total: i.TotalAmt, balance: i.Balance,
 }));
 
-console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding, deposits, balance_sheet, receivables }));
+// The profit and loss statement for the board: the last full month and the year to date through it, every line of
+// QuickBooks' report (headings, accounts, subtotals). In January the last full month is December of last year.
+const lastEnd = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1, 0));
+const pm = lastEnd.toISOString().slice(0, 7), pmEnd = lastEnd.toISOString().slice(0, 10);
+const pnlRep = await get(`reports/ProfitAndLoss?start_date=${pm.slice(0, 4)}-01-01&end_date=${pmEnd}&accounting_method=Accrual&summarize_column_by=Month`);
+const pnl = [];
+const amt = (cols) => [parseFloat(cols.at(-2)?.value || '0') || 0, parseFloat(cols.at(-1)?.value || '0') || 0];   // [last month, total]
+const pwalk = (rows, depth) => {
+  for (const r of rows || []) {
+    if (r.Header) pnl.push({ period: pm, kind: 'head', depth, label: r.Header.ColData[0].value, month: null, ytd: null });
+    if (r.ColData) { const [m, y] = amt(r.ColData); pnl.push({ period: pm, kind: 'line', depth, label: r.ColData[0].value, month: m, ytd: y }); }
+    if (r.Rows) pwalk(r.Rows.Row, depth + 1);
+    if (r.Summary) { const [m, y] = amt(r.Summary.ColData); pnl.push({ period: pm, kind: 'total', depth, label: r.Summary.ColData[0].value, month: m, ytd: y }); }
+  }
+};
+pwalk(pnlRep.Rows?.Row, 0);
+
+console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding, deposits, balance_sheet, receivables, pnl }));

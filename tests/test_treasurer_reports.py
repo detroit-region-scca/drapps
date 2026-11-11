@@ -21,13 +21,13 @@ def box(monkeypatch):
     monkeypatch.setattr(auth, 'lookup', lambda e: dict(people[e], email=e) if e in people else None)
     docs = {}
 
-    def create(month, kind, html):
-        docs.setdefault(month, {})[kind] = {'id': f'{month}-{kind}', 'webViewLink': f'https://docs.google.com/{month}-{kind}', 'html': html}
-        return docs[month][kind]
+    def create(month, html):
+        docs[month] = {'id': month, 'webViewLink': f'https://docs.google.com/{month}', 'html': html}
+        return docs[month]
     monkeypatch.setattr(T, 'reports', lambda: dict(sorted(docs.items(), reverse=True)))
     monkeypatch.setattr(T, 'create', create)
     monkeypatch.setattr(T, 'shown', lambda fid: T.Markup('<h2>shown ' + fid + '</h2>'))
-    monkeypatch.setattr(T, 'draft', lambda m: ('<h1>board</h1>', '<h1>script</h1>'))
+    monkeypatch.setattr(T, 'draft', lambda m: '<h1>board</h1>')
     monkeypatch.setattr(T, 'log_audit_event', lambda *a, **k: None)
     from app import app
     app.config['TESTING'] = True
@@ -45,12 +45,13 @@ def test_start_show_and_present(box):
     ada = as_('ada@example.org')
     assert b'No reports yet' in ada.get('/treasurer/reports/').data
     r = ada.post('/treasurer/reports/new', data={'month': '2026-11'})
-    assert r.status_code == 302 and set(docs['2026-11']) == {'board', 'script'}
-    ada.post('/treasurer/reports/new', data={'month': '2026-11'})          # running it again makes nothing new
-    assert len(docs['2026-11']) == 2
-    page = ada.get('/treasurer/reports/2026-11?show=script').data
-    assert b'shown 2026-11-script' in page and b'Show the board' in page
-    assert b'shown 2026-11-board' in ada.get('/treasurer/reports/2026-11?present=1').data
+    assert r.status_code == 302 and docs['2026-11']['html'] == '<h1>board</h1>'
+    docs['2026-11']['html'] = 'edited'
+    ada.post('/treasurer/reports/new', data={'month': '2026-11'})          # running it again never overwrites it
+    assert docs['2026-11']['html'] == 'edited'
+    page = ada.get('/treasurer/reports/2026-11').data
+    assert b'shown 2026-11' in page and b'Show the board' in page
+    assert b'shown 2026-11' in ada.get('/treasurer/reports/2026-11?present=1').data
 
 
 def test_only_the_treasurer_role_starts_one(box):
@@ -59,3 +60,13 @@ def test_only_the_treasurer_role_starts_one(box):
     assert pat.get('/treasurer/reports/').status_code == 200            # looking is never gated for officials
     pat.post('/treasurer/reports/new', data={'month': '2026-11'})
     assert '2026-11' not in docs
+
+
+def test_the_statement_table():
+    rows = [{'kind': 'head', 'depth': 0, 'label': 'Income', 'month': 0, 'ytd': 0},
+            {'kind': 'line', 'depth': 1, 'label': 'Club RX Rallycross Revenue', 'month': 1200.0, 'ytd': 27265.0},
+            {'kind': 'total', 'depth': 0, 'label': 'Net Income', 'month': -50.5, 'ytd': 46514.55}]
+    html = T.pnl_html(rows, '2026-10')
+    assert '<th>October</th><th>Year to date</th>' in html
+    assert '\u00a0' * 4 + 'Club RX Rallycross Revenue</td><td>1,200.00</td><td>27,265.00</td>' in html
+    assert '<b>(50.50)</b>' in html and T.prior('2027-01') == '2026-12'

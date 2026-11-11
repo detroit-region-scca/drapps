@@ -1,8 +1,8 @@
-"""Monthly treasurer's reports to the board. Each month has two Google Docs in the DRSCCA Apps shared drive, under
-Treasurer > Treasurer's reports: "YYYY-MM Treasurer's report (board)", the page shown to the board, and
-"YYYY-MM Treasurer's report (script)", what the treasurer says. They are edited in Google Docs; the app lists them,
-shows them, and starts next month's pair with a draft from the apps. Bank balances are never in them (the region
-does not state its balances in the report)."""
+"""Monthly treasurer's reports to the board. Each month is one Google Doc in the DRSCCA Apps shared drive, under
+Treasurer > Treasurer's reports: "YYYY-MM Treasurer's report", the page shown to the board, with the profit and loss
+statement for the month before and the year to date. It is edited in Google Docs; the app lists the reports, shows
+them, and starts a month with a draft from the apps. Bank balances are never in it (the region does not state its
+balances in the report)."""
 import json
 import re
 from datetime import date
@@ -16,8 +16,7 @@ from utils import log_audit_event, login_required
 
 bp = Blueprint('treports', __name__, url_prefix='/treasurer/reports')
 FOLDER = "Treasurer's reports"
-KINDS = {'board': 'For the board', 'script': 'Script'}
-NAME = re.compile(r"^(\d{4}-\d{2}) Treasurer's report \((board|script)\)$")
+NAME = re.compile(r"^(\d{4}-\d{2}) Treasurer's report(?: \(board\))?$")
 _folder_id = {}
 
 
@@ -50,19 +49,19 @@ def folder():
 
 
 def reports():
-    """{'YYYY-MM': {'board': file, 'script': file}}, newest first."""
+    """{'YYYY-MM': Drive file}, newest first."""
     out = {}
     for f in _q(_session(), f"'{folder()}' in parents and trashed = false"):
         m = NAME.match(f['name'])
         if m:
-            out.setdefault(m[1], {})[m[2]] = f
+            out[m[1]] = f
     return dict(sorted(out.items(), reverse=True))
 
 
-def create(month, kind, html):
+def create(month, html):
     """A Google Doc made from html in the reports folder. Returns the Drive file."""
     from storage import UPLOAD
-    meta = {'name': f"{month} Treasurer's report ({kind})", 'parents': [folder()], 'mimeType': 'application/vnd.google-apps.document'}
+    meta = {'name': f"{month} Treasurer's report", 'parents': [folder()], 'mimeType': 'application/vnd.google-apps.document'}
     files = {'metadata': ('metadata', json.dumps(meta), 'application/json'), 'file': ('report.html', html.encode(), 'text/html')}
     r = _session().post(UPLOAD, params={'uploadType': 'multipart', 'supportsAllDrives': 'true', 'fields': 'id,name,webViewLink'},
                         files=files, timeout=110)
@@ -134,51 +133,74 @@ def _money(v):
     return f"${abs(v):,.0f}"
 
 
+def _amt(v):
+    if v is None:
+        return ''
+    return f"({abs(v):,.2f})" if v < 0 else f"{v:,.2f}"
+
+
+def pnl_html(rows, period):
+    """QuickBooks' profit and loss as a table: the month, and the year to date through it."""
+    if not rows:
+        return '<p>The profit and loss statement is not in the apps yet (the nightly QuickBooks sync brings it).</p>'
+    mlabel = date(int(period[:4]), int(period[5:]), 1).strftime('%B')
+    out = [f'<table><tr><th>Account</th><th>{mlabel}</th><th>Year to date</th></tr>']
+    for r in rows:
+        label = '\u00a0' * 4 * r['depth'] + escape(r['label'])
+        if r['kind'] == 'head':
+            out.append(f'<tr><td><b>{label}</b></td><td></td><td></td></tr>')
+        elif r['kind'] == 'total':
+            out.append(f'<tr><td><b>{label}</b></td><td><b>{_amt(r["month"])}</b></td><td><b>{_amt(r["ytd"])}</b></td></tr>')
+        else:
+            out.append(f'<tr><td>{label}</td><td>{_amt(r["month"])}</td><td>{_amt(r["ytd"])}</td></tr>')
+    return ''.join(out) + '</table>'
+
+
+def prior(month):
+    y, m = int(month[:4]), int(month[5:])
+    return f'{y - 1}-12' if m == 1 else f'{y}-{m - 1:02d}'
+
+
 def draft(month):
-    """(board html, script html) for a month, from the apps: profit by program this year, funds requests waiting, and
-    what is waiting for the board. The treasurer adds the month's story in Google Docs."""
+    """The board page for a month, from the apps: the profit and loss for the month before and the year to date,
+    profit by program, funds requests waiting, and what is waiting for the board. The treasurer adds the month's story
+    in Google Docs."""
     import bud_store as B
     import fr_store as F
     import plan as plan_view
     import plan_store as P
-    year = month[:4]
+    year, period = month[:4], prior(month)
     label = date(int(year), int(month[5:]), 1).strftime('%B %Y')
-    rows, tot, as_of = [], {}, ''
-    if P.enabled():
-        rows, tot = plan_view.summary(year)
-        as_of = P.actuals(year)[1] or ''
-    progs = [r for r in rows if r['actual'] not in (None, 0)]
+    plabel = date(int(period[:4]), int(period[5:]), 1).strftime('%B')
+    pnl = [r for r in (P.pnl() if P.enabled() else []) if r['period'] == period]
+    # Each program's profit from January through the report's month, so it agrees with the statement below.
+    by_month = P.monthly(period[:4]) if P.enabled() else {}
+    progs = [{'name': name, 'actual': round(sum(by_month[code][:int(period[5:])]), 2)}
+             for code, name in plan_view._programs() if code in by_month and round(sum(by_month[code][:int(period[5:])]), 2)]
     waiting = [r for r in (F.requests() if F.enabled() else []) if r['status'] == 'Submitted']
     board = []
     if B.enabled():
         for code, b in B.budgets().items():
             if B.status(b) in ('budget', 'changed'):
                 board.append(f"{b.get('event_name') or code} ({code})")
-    as_of_txt = f' through {as_of}' if as_of else ''
 
     def li(items):
         return '<ul>' + ''.join(f'<li>{escape(i)}</li>' for i in items) + '</ul>'
 
-    prog_lines = [f"{r['name']}: {'up' if r['actual'] >= 0 else 'down'} {_money(r['actual'])}"
-                  + (f" (plan {'+' if r['plan'] >= 0 else '-'}{_money(r['plan'])})" if r['plan'] is not None else '') for r in progs]
-    board_html = (f"<h1>Treasurer's report, {label}</h1>"
-                  f"<h2>Year to date{as_of_txt}</h2>"
-                  + (li(prog_lines + [f"All programs: {'up' if tot.get('actual', 0) >= 0 else 'down'} {_money(tot.get('actual', 0))}"])
-                     if progs else '<p>No results yet.</p>')
-                  + '<h2>Funds requests</h2>'
-                  + (li([f"{r['id']} {r.get('payee_name', '')}: {_money(r.get('net') or 0)}" for r in waiting]) if waiting
-                     else '<p>Nothing waiting. Every request has been approved and paid.</p>')
-                  + '<h2>Waiting on the board</h2>' + (li(board) if board else '<p>Nothing.</p>')
-                  + '<h2>Housekeeping</h2><p></p>')
-    script_html = (f"<h1>Treasurer's report script, {label}</h1>"
-                   "<p>Good evening. Here's the money picture.</p>"
-                   f"<p><b>Year to date{as_of_txt}.</b> "
-                   + ' '.join(f"{r['name']} is {'up' if r['actual'] >= 0 else 'down'} {_money(r['actual'])}." for r in progs)
-                   + f" Altogether we are {'up' if tot.get('actual', 0) >= 0 else 'down'} {_money(tot.get('actual', 0))}.</p>"
-                   + '<p><b>Funds requests.</b> ' + (f"{len(waiting)} waiting." if waiting else 'Nothing is waiting.') + '</p>'
-                   + '<p><b>Waiting on the board.</b> ' + ('; '.join(board) + '.' if board else 'Nothing.') + '</p>'
-                   + "<p><b>Housekeeping.</b></p><p>That's it. Any questions?</p>")
-    return board_html, script_html
+    def updown(v):
+        return f"{'up' if v >= 0 else 'down'} {_money(v)}"
+
+    net = next((r for r in pnl if r['kind'] == 'total' and r['label'] == 'Net Income'), None)
+    return (f"<h1>Treasurer's report, {label}</h1>"
+            + (f"<p><b>Net for {plabel}: {updown(net['month'])}. Year to date: {updown(net['ytd'])}.</b></p>" if net else '')
+            + f"<h2>By program, January through {plabel}</h2>"
+            + (li([f"{r['name']}: {updown(r['actual'])}" for r in progs]) if progs else '<p>No results in QuickBooks yet.</p>')
+            + '<h2>Funds requests</h2>'
+            + (li([f"{r['id']} {r.get('payee_name', '')}: {_money(r.get('net') or 0)}" for r in waiting]) if waiting
+               else '<p>Nothing waiting. Every request has been approved and paid.</p>')
+            + '<h2>Waiting on the board</h2>' + (li(board) if board else '<p>Nothing.</p>')
+            + '<h2>Housekeeping</h2><p></p>'
+            + f'<h2>Profit and loss, {plabel} and year to date</h2>' + pnl_html(pnl, period))
 
 
 @bp.route('/')
@@ -192,7 +214,7 @@ def home():
     today = date.today()
     nxt = today.strftime('%Y-%m')
     return render_template('treports.html', title="Treasurer's reports", page_title="Treasurer's reports", view='list',
-                           have=have, next_month=nxt, kinds=KINDS,
+                           have=have, next_month=nxt,
                            folder_url=f"https://drive.google.com/drive/folders/{_folder_id['id']}" if 'id' in _folder_id else '')
 
 
@@ -204,13 +226,12 @@ def month(month):
     rep = reports().get(month)
     if not rep:
         abort(404)
-    kind = request.args.get('show', 'board') if request.args.get('show') in KINDS else 'board'
-    body = shown(rep[kind]['id']) if kind in rep else Markup('<p>Not made yet.</p>')
+    body = shown(rep['id'])
     label = date(int(month[:4]), int(month[5:]), 1).strftime('%B %Y')
     if request.args.get('present'):
         return render_template('treports_present.html', body=body, title=f"Treasurer's report {label}")
     return render_template('treports.html', title=f"Treasurer's report {label}", page_title="Treasurer's reports", view='month',
-                           month=month, label=label, rep=rep, kind=kind, body=body, kinds=KINDS)
+                           month=month, label=label, rep=rep, body=body)
 
 
 @bp.route('/new', methods=['POST'])
@@ -220,12 +241,9 @@ def new():
     if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', month):
         flash('Pick a month.', 'warning')
         return redirect(url_for('treports.home'))
-    have = reports().get(month, {})
-    board, script = draft(month)
-    for kind, html in (('board', board), ('script', script)):
-        if kind not in have:
-            create(month, kind, html)
+    if month not in reports():
+        create(month, draft(month))
     import auth
     log_audit_event('TREASURER_REPORT_STARTED', (auth.user() or {}).get('name', ''), {'month': month})
-    flash('Started. Edit both in Google Docs; this page shows what they say.', 'success')
+    flash('Started. Edit it in Google Docs; this page shows what it says.', 'success')
     return redirect(url_for('treports.month', month=month))

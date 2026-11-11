@@ -449,6 +449,18 @@ def _mirror(title, cols, nums):
     return rows
 
 
+PNL_COLS = ['period', 'kind', 'depth', 'label', 'month', 'ytd', 'as_of']
+
+
+def pnl():
+    """QuickBooks' profit and loss for the last full month and the year to date through it, as of the last sync:
+    [{period: 'YYYY-MM', kind: head|line|total, depth, label, month, ytd}] in the report's order."""
+    rows = _mirror('QBO P&L', PNL_COLS, {'month', 'ytd', 'depth'})
+    for r in rows:
+        r['depth'] = int(r['depth'] or 0)
+    return rows
+
+
 def balance_sheet():
     """Today's QuickBooks balance sheet as of the last sync, to two levels: [{depth, name, amount, as_of}]."""
     rows = _mirror('QBO Balance Sheet', ['depth', 'name', 'amount', 'as_of'], {'amount', 'depth'})
