@@ -1,6 +1,6 @@
 """Monthly treasurer's reports to the board. Each month is one Google Doc in the DRSCCA Apps shared drive, under
-Treasurer > Treasurer's reports: "YYYY-MM Treasurer's report", the page shown to the board, with the profit and loss
-statement for the month before and the year to date. It is edited in Google Docs; the app lists the reports, shows
+Treasurer > Treasurer's reports: "YYYY-MM Treasurer's report", the page shown to the board, current to the day it
+was started, with the profit and loss statement for the year to date. It is edited in Google Docs; the app lists the reports, shows
 them, and starts a month with a draft from the apps. Bank balances are never in it (the region does not state its
 balances in the report)."""
 import json
@@ -78,8 +78,8 @@ def replace(file_id, html):
 
 
 class _Clean(HTMLParser):
-    """Google's HTML export cut down to plain structure: headings, paragraphs, lists, tables, bold, links, and the
-    chart (a PNG kept inside the Doc)."""
+    """Google's HTML export cut down to plain structure: headings, paragraphs, lists, tables, bold, links, text and
+    cell colors, and the chart (a PNG kept inside the Doc)."""
     KEEP = {'h1': 'h2', 'h2': 'h3', 'h3': 'h4', 'h4': 'h5', 'p': 'p', 'ul': 'ul', 'ol': 'ol', 'li': 'li', 'table': 'table',
             'tr': 'tr', 'td': 'td', 'th': 'th', 'b': 'b', 'strong': 'b', 'i': 'i', 'em': 'i', 'br': 'br'}
 
@@ -93,10 +93,12 @@ class _Clean(HTMLParser):
             self.skip += 1
             return
         if tag == 'span':
-            bold = re.search(r'font-weight:\s*(700|bold)', a.get('style') or '')
-            self.stack.append('b' if bold else None)
-            if bold:
-                self.out.append('<b>')
+            st = a.get('style') or ''
+            bold = re.search(r'font-weight:\s*(700|bold)', st)
+            color = re.search(r'(?<![-\w])color:\s*(#[0-9a-fA-F]{6})', st)
+            color = color[1] if color and color[1].lower() != '#000000' else ''
+            self.stack.append(('<b>' if bold else '') + (f'<span style="color:{color}">' if color else ''))
+            self.out.append(self.stack[-1])
         elif tag == 'a' and (a.get('href') or '').startswith(('http://', 'https://')):
             href = re.sub(r'^https://www\.google\.com/url\?q=([^&]+).*$', lambda m: __import__('urllib.parse').parse.unquote(m[1]), a['href'])
             self.out.append(f'<a href="{escape(href)}" target="_blank" rel="noopener">')
@@ -104,14 +106,17 @@ class _Clean(HTMLParser):
             self.out.append(f'<img src="{a["src"]}" alt="{escape(a.get("alt") or "Chart")}" style="max-width: 100%; height: auto;">')
         elif tag in self.KEEP:
             t = self.KEEP[tag]
-            self.out.append(f'<{t} class="table table-sm">' if t == 'table' else f'<{t}>')
+            bg = re.search(r'background-color:\s*(#[0-9a-fA-F]{6})', a.get('style') or '') if t in ('td', 'th') else None
+            bg = bg[1] if bg and bg[1].lower() != '#ffffff' else ''
+            self.out.append(f'<{t} class="table table-sm">' if t == 'table' else f'<{t} style="background-color:{bg}">' if bg else f'<{t}>')
 
     def handle_endtag(self, tag):
         if tag in ('style', 'script', 'head', 'title'):
             self.skip -= 1
         elif tag == 'span':
-            if self.stack and self.stack.pop():
-                self.out.append('</b>')
+            if self.stack:
+                opened = self.stack.pop()
+                self.out.append(('</span>' if '<span' in opened else '') + ('</b>' if '<b>' in opened else ''))
         elif tag == 'a':
             self.out.append('</a>')
         elif tag in self.KEEP and tag != 'br':
@@ -163,7 +168,8 @@ def collapse(rows):
 
 
 def chart_png(year, through, plan_months, actual_months, history):
-    """A PNG of net income added up month by month: the annual plan, this year through the month `through`, and the
+    """A PNG of net income added up month by month: the annual plan, this year through the month `through` (the last
+    one may be part of a month), and the
     average of the years in `history` ({year: [12 months]}). Returns base64 text, or '' if there is nothing to draw."""
     import base64
     import io
@@ -244,59 +250,75 @@ def chart_html(year, through):
             'alt="Net income added up month by month: actual, annual plan and five-year average">')
 
 
+SECTION_BG = {'income': '#e6f4ea', 'cost': '#fdecea', 'net': '#eceff1'}
+GOOD, BAD = '#1b7f3b', '#c62828'
+NETS = ('Gross Profit', 'Net Operating Income', 'Net Other Income', 'Net Income')
+
+
+def _nice(d):
+    return date.fromisoformat(d).strftime('%b %-d, %Y')
+
+
 def pnl_html(rows, period):
-    """QuickBooks' profit and loss as a table: the month, the year to date through it, and the average of the same
-    months over the five years before, with the difference."""
+    """QuickBooks' profit and loss as a table, current to the day `period` (YYYY-MM-DD): this month so far, the year
+    to date, the average of the same dates over the five years before, and the difference. Colored: income green,
+    costs red, net lines gray; a difference is green when it is good for the region (more income, less cost)."""
     if not rows:
         return '<p>The profit and loss statement is not in the apps yet (the nightly QuickBooks sync brings it).</p>'
-    y, m = int(period[:4]), int(period[5:])
-    mlabel = date(y, m, 1).strftime('%B')
-    out = [f'<table><tr><th>Account</th><th>{mlabel}</th><th>Year to date</th><th>Average {y - 5} to {y - 1}</th>'
+    d = date.fromisoformat(period)
+    y = d.year
+    out = [f'<table><tr><th>Account</th><th>{d.strftime("%B")} so far</th><th>Year to date</th><th>Average {y - 5} to {y - 1}</th>'
            '<th>Difference</th></tr>']
-    short = False
+    short, section = False, 'income'
     for r in rows:
+        if r['depth'] == 0 and r['kind'] == 'head':
+            section = 'income' if 'Income' in r['label'] else 'cost'
+        kind = 'net' if r['kind'] == 'total' and r['label'] in NETS else section
+        bg = f' style="background-color:{SECTION_BG[kind]}"' if r['depth'] == 0 else ''
         label = '\u00a0' * 4 * r['depth'] + escape(r['label'])
         if r['kind'] == 'head':
-            out.append(f'<tr><td><b>{label}</b></td><td></td><td></td><td></td><td></td></tr>')
+            out.append(f'<tr><td{bg}><b>{label}</b></td>' + f'<td{bg}></td>' * 4 + '</tr>')
             continue
         avg = r.get('avg5')
         n = r.get('avg_years') or 0
         mark = '*' if avg is not None and n < 5 else ''
         short = short or bool(mark)
         diff = None if avg is None else round(r['ytd'] - avg, 2)
-        cells = [_amt(r['month']), _amt(r['ytd']), (_amt(avg) + mark) if avg is not None else '', _amt(diff)]
+        dtxt = _amt(diff)
+        if diff:
+            good = diff > 0 if kind in ('income', 'net') else diff < 0
+            dtxt = f'<span style="color:{GOOD if good else BAD}">{dtxt}</span>'
+        cells = [_amt(r['month']), _amt(r['ytd']), (_amt(avg) + mark) if avg is not None else '', dtxt]
         if r['kind'] == 'total':
-            out.append(f'<tr><td><b>{label}</b></td>' + ''.join(f'<td><b>{c}</b></td>' for c in cells) + '</tr>')
+            out.append(f'<tr><td{bg}><b>{label}</b></td>' + ''.join(f'<td{bg}><b>{c}</b></td>' for c in cells) + '</tr>')
         else:
             out.append(f'<tr><td>{label}</td>' + ''.join(f'<td>{c}</td>' for c in cells) + '</tr>')
-    note = (f'<p>Average: January to {mlabel} of each of the five years before. Difference: year to date less the average.'
+    note = (f'<p>Through {_nice(period)}. Average: January 1 to {d.strftime("%B %-d")} of each of the five years before. '
+            f'Difference: year to date less the average, <span style="color:{GOOD}">green</span> when it is better for the '
+            f'region, <span style="color:{BAD}">red</span> when worse.'
             + (' * Fewer than five years: the account did not exist in all of them (the accounts were reorganized in 2022).'
                if short else '') + '</p>')
     return ''.join(out) + '</table>' + note
 
 
-def prior(month):
-    y, m = int(month[:4]), int(month[5:])
-    return f'{y - 1}-12' if m == 1 else f'{y}-{m - 1:02d}'
-
-
 def draft(month):
-    """The board page for a month, from the apps: the profit and loss for the month before and the year to date (sub-
-    accounts folded into their group), a chart of net income against the plan and the five years before, profit by program, funds requests waiting, and what is waiting for the board. The treasurer adds the month's story
-    in Google Docs."""
+    """The board page, current to the day of the last QuickBooks sync (normally today): net so far this month and this
+    year, profit by program, funds requests waiting, what is waiting for the board, a chart of net income against the
+    plan and the five years before, and the profit and loss (sub-accounts folded into their group). The treasurer adds
+    the month's story in Google Docs."""
     import bud_store as B
     import fr_store as F
     import plan as plan_view
     import plan_store as P
-    year, period = month[:4], prior(month)
-    label = date(int(year), int(month[5:]), 1).strftime('%B %Y')
-    plabel = date(int(period[:4]), int(period[5:]), 1).strftime('%B')
-    full = [r for r in (P.pnl() if P.enabled() else []) if r['period'] == period]
+    label = date(int(month[:4]), int(month[5:]), 1).strftime('%B %Y')
+    full = P.pnl() if P.enabled() else []
+    period = full[0]['period'][:10] if full else date.today().isoformat()
+    year, mon = int(period[:4]), int(period[5:7])
     pnl = collapse(full)
-    # Each program's profit from January through the report's month, so it agrees with the statement below.
-    by_month = P.monthly(period[:4]) if P.enabled() else {}
-    progs = [{'name': name, 'actual': round(sum(by_month[code][:int(period[5:])]), 2)}
-             for code, name in plan_view._programs() if code in by_month and round(sum(by_month[code][:int(period[5:])]), 2)]
+    # Each program's profit from January through this month so far, so it agrees with the statement below.
+    by_month = P.monthly(str(year)) if P.enabled() else {}
+    progs = [{'name': name, 'actual': round(sum(by_month[code][:mon]), 2)}
+             for code, name in plan_view._programs() if code in by_month and round(sum(by_month[code][:mon]), 2)]
     waiting = [r for r in (F.requests() if F.enabled() else []) if r['status'] == 'Submitted']
     board = []
     if B.enabled():
@@ -311,17 +333,18 @@ def draft(month):
         return f"{'up' if v >= 0 else 'down'} {_money(v)}"
 
     net = next((r for r in full if r['kind'] == 'total' and r['label'] == 'Net Income'), None)
-    return (f"<h1>Treasurer's report, {label}</h1>"
-            + (f"<p><b>Net for {plabel}: {updown(net['month'])}. Year to date: {updown(net['ytd'])}.</b></p>" if net else '')
-            + f"<h2>By program, January through {plabel}</h2>"
+    mname = date(year, mon, 1).strftime('%B')
+    return (f"<h1>Treasurer's report, {label}</h1><p>Current to {_nice(period)}.</p>"
+            + (f"<p><b>Net for {mname} so far: {updown(net['month'])}. Year to date: {updown(net['ytd'])}.</b></p>" if net else '')
+            + f"<h2>By program, year to date</h2>"
             + (li([f"{r['name']}: {updown(r['actual'])}" for r in progs]) if progs else '<p>No results in QuickBooks yet.</p>')
             + '<h2>Funds requests</h2>'
             + (li([f"{r['id']} {r.get('payee_name', '')}: {_money(r.get('net') or 0)}" for r in waiting]) if waiting
                else '<p>Nothing waiting. Every request has been approved and paid.</p>')
             + '<h2>Waiting on the board</h2>' + (li(board) if board else '<p>Nothing.</p>')
             + '<h2>Housekeeping</h2><p></p>'
-            + chart_html(period[:4], int(period[5:]))
-            + f'<h2>Profit and loss, {plabel} and year to date</h2>' + pnl_html(pnl, period))
+            + chart_html(year, mon)
+            + f'<h2>Profit and loss, year to date</h2>' + pnl_html(pnl, period))
 
 
 @bp.route('/')

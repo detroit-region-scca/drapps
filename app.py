@@ -236,62 +236,9 @@ def treasurer():
 @app.route('/treasurer/report')
 @login_required
 def treasurer_report():
-    """The monthly treasurer's report for the board (Region policy II.A.4: budgets go to the board each month):
-    balances, plan against actual by program, budgets for approval, funds requests, outstanding checks, books check."""
-    import fr
-    import fr_logic
-    import plan as plan_view
-    today = datetime.now().date()
-    month = request.args.get('month') or today.strftime('%Y-%m')
-    if not (len(month) == 7 and month[:4].isdigit() and month[5:].isdigit()):
-        month = today.strftime('%Y-%m')
-    year = month[:4]
-    ctx = {'month': month, 'year': year, 'today': today.isoformat()}
-    if plan_store.enabled():
-        ctx['balances'] = plan_store.status()
-        ctx['rows'], ctx['tot'] = plan_view.summary(year)
-        ctx['as_of'] = plan_store.actuals(year)[1]
-        ctx['outstanding'] = plan_store.outstanding()
-        ctx['balance_sheet'] = plan_store.balance_sheet()
-        ctx['receivables'] = plan_store.receivables()
-        kinds = {}
-        for e in plan_store.exceptions():
-            kinds[e['kind']] = kinds.get(e['kind'], 0) + 1
-        ctx['books'] = sorted(kinds.items(), key=lambda kv: -kv[1])
-    events = [e for e in load_events() if e.get('date', '').startswith(year)]
-    if bud_store.enabled():
-        buds, qbo = bud_store.budgets(), bud_store.qbo_actuals()
-        soon = (today + timedelta(days=60)).isoformat()
-        board, missing = [], []
-        for e in sorted(events, key=lambda e: e['date']):
-            code = e.get('custom_tag') or e.get('unique_code')
-            b = buds.get(code)
-            if bud_store.status(b) in ('budget', 'changed'):
-                board.append({'e': e, 'code': code, 'changed': bud_store.status(b) == 'changed', 'budget': (b['totals'].get('budget') or {}).get('surplus'),
-                              'actual': ((qbo.get(code) or {}).get('totals') or {}).get('surplus')})
-            elif not b and today.isoformat() <= e['date'] <= soon:
-                missing.append({'e': e, 'code': code})
-        import bud
-        for pc in load_programs():
-            code = bud.program_code(pc, year)
-            b = buds.get(code)
-            if bud_store.status(b) in ('budget', 'changed'):
-                board.append({'e': bud._event(code), 'code': code, 'changed': bud_store.status(b) == 'changed',
-                              'budget': (b['totals'].get('budget') or {}).get('surplus'),
-                              'actual': ((bud.program_actuals(pc, year) or {}).get('totals') or {}).get('surplus')})
-        ctx['board'], ctx['missing'] = board, missing
-    if fr_store.enabled():
-        a = fr.Approvals()
-        # Someone who sees only their own funds requests (Admin > Roles) sees only their own here too.
-        reqs = [r for r in a.reqs if auth.owns_request(r)] if auth.limited('funds') else a.reqs
-        ctx['paid'] = sorted((r for r in reqs if r['status'] == 'Paid' and str(r['paid_date']).startswith(month)), key=lambda r: r['paid_date'])
-        ctx['open'] = [dict(r, waiting=fr_logic.waiting_on(a.items(r))) for r in reqs if r['status'] == 'Submitted']
-    import inv_store
-    if inv_store.enabled():
-        ctx['invoices_open'] = [r for r in inv_store.invoices() if r['status'] == 'Open'
-                                and (not auth.limited('invoices') or auth.owns_invoice(r))]
-    region = os.environ.get('SCCA_REGION_NAME', 'SCCA')
-    return render_template('report.html', title=f"{region} Treasurer's Report {month}", region=region, **ctx)
+    """The old printable report: replaced by the monthly report to the board; owed to the region and outstanding checks
+    are on Books check."""
+    return redirect(url_for('treports.home'))
 
 
 @app.route('/name', methods=['GET', 'POST'])

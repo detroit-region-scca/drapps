@@ -7,8 +7,8 @@
 //   outstanding  checks since PAYMENTS_SINCE the bank has not cleared yet (QuickBooks "Clr" blank; voided $0 checks left out)
 //   deposits  deposit lines since PAYMENTS_SINCE (date, amount, description, payer), to match against open invoices
 //   balance_sheet  today's balance sheet to two levels; receivables  every invoice still owed
-//   pnl       the profit and loss statement for the last full month and the year to date, every line, with each line's
-//             average for the same months of the five years before, for the board report
+//   pnl       the profit and loss statement for this month so far and the year to date, every line, with each line's
+//             average for the same dates of the five years before, for the board report
 //   net_months  net income by month, this year and the five before, for the board report's chart
 // Runs on the machine that holds the QuickBooks connection (the qbo-mcp install and its token
 // store); the web app never talks to QuickBooks. QBO_MCP_DIR points at that install. Read only (writes are qbo_write.mjs).
@@ -147,27 +147,29 @@ const receivables = (await query('Invoice', "WHERE Balance > '0'")).map(i => ({
   number: i.DocNumber || '', date: i.TxnDate, due: i.DueDate || '', customer: i.CustomerRef?.name || '', total: i.TotalAmt, balance: i.Balance,
 }));
 
-// The profit and loss statement for the board: the last full month and the year to date through it, every line of
-// QuickBooks' report (headings, accounts, subtotals). In January the last full month is December of last year.
-const lastEnd = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1, 0));
-const pm = lastEnd.toISOString().slice(0, 7), pmEnd = lastEnd.toISOString().slice(0, 10);
+// The profit and loss statement for the board, current to the day: this month so far and the year to date through
+// today (the region's day, Detroit time), every line of QuickBooks' report (headings, accounts, subtotals).
+const pEnd = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Detroit' });
+const pm = pEnd.slice(0, 7), pmEnd = pEnd;
 const pnlRep = await get(`reports/ProfitAndLoss?start_date=${pm.slice(0, 4)}-01-01&end_date=${pmEnd}&accounting_method=Accrual&summarize_column_by=Month`);
 const pnl = [];
 const amt = (cols) => [parseFloat(cols.at(-2)?.value || '0') || 0, parseFloat(cols.at(-1)?.value || '0') || 0];   // [last month, total]
 const pwalk = (rows, depth) => {
   for (const r of rows || []) {
-    if (r.Header) pnl.push({ period: pm, kind: 'head', depth, label: r.Header.ColData[0].value, month: null, ytd: null });
-    if (r.ColData) { const [m, y] = amt(r.ColData); pnl.push({ period: pm, kind: 'line', depth, label: r.ColData[0].value, month: m, ytd: y }); }
+    if (r.Header) pnl.push({ period: pEnd, kind: 'head', depth, label: r.Header.ColData[0].value, month: null, ytd: null });
+    if (r.ColData) { const [m, y] = amt(r.ColData); pnl.push({ period: pEnd, kind: 'line', depth, label: r.ColData[0].value, month: m, ytd: y }); }
     if (r.Rows) pwalk(r.Rows.Row, depth + 1);
-    if (r.Summary) { const [m, y] = amt(r.Summary.ColData); pnl.push({ period: pm, kind: 'total', depth, label: r.Summary.ColData[0].value, month: m, ytd: y }); }
+    if (r.Summary) { const [m, y] = amt(r.Summary.ColData); pnl.push({ period: pEnd, kind: 'total', depth, label: r.Summary.ColData[0].value, month: m, ytd: y }); }
   }
 };
 pwalk(pnlRep.Rows?.Row, 0);
-// The same months of each of the five years before, for comparison: each line's average over the years it existed
+// The same dates (January 1 to today's month and day) of each of the five years before, for comparison: each line's average over the years it existed
 // (the accounts were reorganized in 2022, so older years only share the totals).
 const past = {};
 for (let k = 1; k <= 5; k++) {
-  const y = Number(pm.slice(0, 4)) - k, end = new Date(Date.UTC(y, Number(pm.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  // the same dates in that year (Feb 29 becomes Feb 28)
+  const y = Number(pm.slice(0, 4)) - k, last = new Date(Date.UTC(y, Number(pm.slice(5, 7)), 0)).getUTCDate();
+  const end = `${y}-${pm.slice(5, 7)}-${String(Math.min(Number(pEnd.slice(8, 10)), last)).padStart(2, '0')}`;
   const rep = await get(`reports/ProfitAndLoss?start_date=${y}-01-01&end_date=${end}&accounting_method=Accrual`);
   const w = rows => { for (const r of rows || []) {
     const cd = r.ColData || r.Summary?.ColData;
@@ -177,7 +179,7 @@ for (let k = 1; k <= 5; k++) {
   } };
   w(rep.Rows?.Row);
 }
-// Net income by month, this year through the last full month and each of the five years before, for the chart of
+// Net income by month, this year through today and each of the five years before, for the chart of
 // the year so far against the plan and the five-year average.
 const netRow = (rep) => {      // the month columns only (a report also ends with a Total column)
   const n = (rep.Columns?.Column || []).filter(c => c.ColTitle && c.ColTitle !== 'Total').length;

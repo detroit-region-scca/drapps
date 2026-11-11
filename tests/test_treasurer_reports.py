@@ -67,13 +67,16 @@ def test_the_statement_table():
             {'kind': 'line', 'depth': 1, 'label': 'Club RX Rallycross Revenue', 'month': 1200.0, 'ytd': 27265.0, 'avg5': 25000.0, 'avg_years': 4},
             {'kind': 'line', 'depth': 1, 'label': 'New account', 'month': 5.0, 'ytd': 5.0, 'avg5': None, 'avg_years': 0},
             {'kind': 'total', 'depth': 0, 'label': 'Net Income', 'month': -50.5, 'ytd': 46514.55, 'avg5': 59076.23, 'avg_years': 5}]
-    html = T.pnl_html(rows, '2026-10')
-    assert '<th>October</th><th>Year to date</th><th>Average 2021 to 2025</th><th>Difference</th>' in html
+    html = T.pnl_html(rows, '2026-11-11')
+    assert '<th>November so far</th><th>Year to date</th><th>Average 2021 to 2025</th><th>Difference</th>' in html
     assert ('\u00a0' * 4 + 'Club RX Rallycross Revenue</td><td>1,200.00</td><td>27,265.00</td><td>25,000.00*</td>'
-            '<td>2,265.00</td>') in html
+            f'<td><span style="color:{T.GOOD}">2,265.00</span></td>') in html            # more income: good
     assert 'New account</td><td>5.00</td><td>5.00</td><td></td><td></td>' in html
-    assert '<td><b>59,076.23</b></td><td><b>(12,561.68)</b></td>' in html and 'Fewer than five years' in html
-    assert T.prior('2027-01') == '2026-12'
+    assert f'<b><span style="color:{T.BAD}">(12,561.68)</span></b>' in html and 'Fewer than five years' in html
+    assert 'Through Nov 11, 2026' in html and 'January 1 to November 11' in html
+    cost = T.pnl_html([{'kind': 'head', 'depth': 0, 'label': 'Cost of Goods Sold'},
+                       {'kind': 'line', 'depth': 1, 'label': 'Site Rental', 'month': 0, 'ytd': 10.0, 'avg5': 4.0, 'avg_years': 5}], '2026-11-11')
+    assert f'<span style="color:{T.BAD}">6.00</span>' in cost and T.SECTION_BG['cost'] in cost      # more cost: bad
 
 
 def test_sub_accounts_fold_into_their_group():
@@ -100,3 +103,11 @@ def test_the_chart_draws():
     c = T._Clean()
     c.feed(f'<p><img src="data:image/png;base64,{png[:20]}" alt="x"><img src="https://evil.example/x.png"></p>')
     assert ''.join(c.out).count('<img') == 1
+
+
+def test_colors_survive_the_trip_through_google_docs():
+    c = T._Clean()
+    c.feed('<table><tr><td style="border:1pt;background-color:#e6f4ea"><p><span style="color:#000000;font-weight:700">Income</span></p></td>'
+           '<td style="background-color:#ffffff"><p><span style="color:#c62828;font-weight:400">(5.00)</span></p></td></tr></table>')
+    assert ''.join(c.out) == ('<table class="table table-sm"><tr><td style="background-color:#e6f4ea"><p><b>Income</b></p></td>'
+                              '<td><p><span style="color:#c62828">(5.00)</span></p></td></tr></table>')

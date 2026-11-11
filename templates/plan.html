@@ -284,6 +284,17 @@
         </td></tr>{% endfor %}</tbody>
     </table></div></div>
     {% else %}<div class="card p-4 text-center text-muted">Nothing to look at. The books match the apps.</div>{% endfor %}
+    {% if receivables %}<h2 class="h6 text-muted mt-4">Owed to the region in QuickBooks ({{ receivables|length }}, {{ money(receivables|sum(attribute='balance')) }})</h2>
+    <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <thead class="visually-hidden"><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Due</th><th>Balance</th></tr></thead>
+        <tbody>{% for r in receivables %}<tr><td class="ps-3 text-nowrap">{{ r.number }}</td><td>{{ r.customer }}</td><td class="text-nowrap">{{ (r.date or '')|nice_date }}</td>
+            <td class="text-nowrap small{{ ' text-danger' if r.due and r.due < today }}">{{ ('due ' ~ (r.due or '')|nice_date) if r.due }}</td><td class="num pe-3">{{ money(r.balance) }}</td></tr>{% endfor %}</tbody>
+    </table></div></div>{% endif %}
+    <h2 class="h6 text-muted mt-4">Outstanding checks ({{ outstanding|length }}, {{ money(outstanding|sum(attribute='amount')) }})</h2>
+    {% if outstanding %}<div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
+        <thead class="visually-hidden"><tr><th>Check</th><th>Date</th><th>Payee</th><th>Amount</th></tr></thead>
+        <tbody>{% for o in outstanding %}<tr><td class="ps-3">{{ o.number }}</td><td class="text-nowrap">{{ (o.date or '')|nice_date }}</td><td>{{ o.payee }}</td><td class="num pe-3">{{ money(o.amount) }}</td></tr>{% endfor %}</tbody>
+    </table></div></div>{% else %}<p class="text-muted small">None.</p>{% endif %}
     {% if reviewed %}<details class="mt-4"><summary class="text-muted small">Hidden ({{ reviewed|length }})</summary>
         <ul class="small text-muted mt-2">{% for e in reviewed %}<li>{{ e.kind }}: {{ e.detail }} · {{ e.reviewed.by }} {{ (e.reviewed.reviewed or '')|nice_date }}{% if e.reviewed.note %}: {{ e.reviewed.note }}{% endif %}</li>{% endfor %}</ul></details>{% endif %}
 {% endif %}

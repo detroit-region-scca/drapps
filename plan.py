@@ -461,4 +461,5 @@ def checks():
             kinds.append(e['kind'])
     reviewed = [e for e in P.exceptions(include_reviewed=True) if e['reviewed']]
     return render_template('plan.html', **_ctx(view='checks', groups=[(k, [e for e in exc if e['kind'] == k]) for k in kinds],
-                                               reviewed=reviewed, as_of=next((e['as_of'] for e in exc), '')))
+                                               reviewed=reviewed, as_of=next((e['as_of'] for e in exc), ''),
+                                               receivables=P.receivables(), outstanding=P.outstanding(), today=date.today().isoformat()))

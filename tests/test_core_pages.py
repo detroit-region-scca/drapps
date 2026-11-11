@@ -85,32 +85,9 @@ def test_event_deleted_is_not_shown_as_an_error(app_, monkeypatch):
         assert s['_flashes'] == [('success', 'Event deleted.')]
 
 
-def test_treasurer_report_shows_a_limited_person_only_their_own_requests(app_, monkeypatch):
-    import access
-    import app as A
-    import fr
-    import inv_store
-
-    class Approvals:
-        reqs = [{'id': 'FR-1', 'status': 'Submitted', 'net': 50.0, 'submitter_email': 'rx@example.org', 'entered_by': 'Rae Director',
-                 'payee_name': 'Cone Shop', 'paid_date': ''},
-                {'id': 'FR-2', 'status': 'Submitted', 'net': 75.0, 'submitter_email': 'sam@example.org', 'entered_by': 'Sam Other',
-                 'payee_name': 'Secret Payee', 'paid_date': ''}]
-
-        def items(self, r):
-            return []
-    access.save('Director', access.EVERYDAY_DEFAULT - {'funds_all', 'invoices_all'})
-    monkeypatch.setattr(fr, 'Approvals', Approvals)
-    for mod, on in ((A.fr_store, True), (A.plan_store, False), (A.bud_store, False), (inv_store, True)):
-        monkeypatch.setattr(mod, 'enabled', lambda on=on: on)
-    monkeypatch.setattr(inv_store, 'invoices', lambda: [
-        {'id': 'INV-1', 'status': 'Open', 'created_by': 'Sam Other', 'bill_name': 'Secret Sponsor', 'total': 10.0, 'due': ''},
-        {'id': 'INV-2', 'status': 'Open', 'created_by': 'Rae Director', 'bill_name': 'Tire Shop', 'total': 20.0, 'due': ''}])
-    monkeypatch.setattr(A, 'load_events', lambda: [])
-    mine = _as(app_, 'rx@example.org').get('/treasurer/report').data
-    assert b'Cone Shop' in mine and b'Secret Payee' not in mine and b'Tire Shop' in mine and b'Secret Sponsor' not in mine
-    every = _as(app_, 'treasurer@example.org').get('/treasurer/report').data
-    assert b'Secret Payee' in every and b'Secret Sponsor' in every
+def test_the_old_treasurer_report_goes_to_the_monthly_reports(app_):
+    r = _as(app_, 'treasurer@example.org').get('/treasurer/report')
+    assert r.status_code == 302 and r.headers['Location'].endswith('/treasurer/reports/')
 
 
 # ---------- audit log lines ----------

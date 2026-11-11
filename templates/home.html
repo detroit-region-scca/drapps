@@ -71,10 +71,8 @@
     {% elif view == 'treasurer' %}
     <h1 class="visually-hidden">Treasurer</h1>
     <div class="list-group">
-        <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('treasurer_report') }}">
-            <span>Treasurer's report<div class="small text-muted">This month's report for the board, ready to print</div></span><span class="text-muted">›</span></a>
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('treports.home') }}">
-            <span>Monthly report to the board<div class="small text-muted">The page shown at the meeting and the script, kept in Drive</div></span><span class="text-muted">›</span></a>
+            <span>Treasurer's report<div class="small text-muted">The monthly report to the board, current to the day, kept in Drive</div></span><span class="text-muted">›</span></a>
         {% if jobs.pay is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('fr.home') }}">
             <span>Funds requests ready to pay<div class="small text-muted">All approvals in; card purchases only need recording</div></span><span class="fw-semibold">{{ jobs.pay[0] }}{% if jobs.pay[0] %} · {{ money(jobs.pay[1]) }}{% endif %}</span></a>
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('fr.home') }}">
@@ -88,7 +86,7 @@
             {% if not q.pending %}<form method="post" action="{{ url_for('bud.qbo_refresh') }}" class="m-0 no-print"><input type="hidden" name="next" value="{{ request.path }}">
                 <button class="btn btn-sm btn-accent text-nowrap">Sync now</button></form>{% endif %}</div>
         {% if jobs.books is defined %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('plan.checks') }}">
-            <span>Books check<div class="small text-muted">What the nightly QuickBooks sync found</div></span><span class="fw-semibold">{{ jobs.books }}</span></a>{% endif %}
+            <span>Books check<div class="small text-muted">What the nightly QuickBooks sync found, money owed to the region, outstanding checks</div></span><span class="fw-semibold">{{ jobs.books }}</span></a>{% endif %}
         {% if jobs.invoices %}<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('inv.home') }}">
             <span>Invoices waiting to be paid<div class="small text-muted">{{ jobs.invoices[1] }} overdue</div></span><span class="fw-semibold">{{ jobs.invoices[0] }}{% if jobs.invoices[0] %} · {{ money(jobs.invoices[2]) }}{% endif %}</span></a>{% endif %}
         <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="{{ url_for('equip.home') }}">
