@@ -1,5 +1,5 @@
-"""Suggestion box: anyone signed in (officials and volunteers) posts an idea for the apps, everyone sees them all and
-gives a thumbs up to the ones they want. The admin marks each one Planned, Done or Not doing, with a short note.
+"""Hassles: anyone signed in (officials and volunteers) posts something that is a hassle, in the apps or in how the
+region does things; everyone sees them all and gives a thumbs up to the ones that bother them too. The admin marks each one Planned, Done or Not doing, with a short note.
 
 Kept in data/suggestions.json as {'next': n, 'items': [...]}; each item has id, title, details, by (name), by_email,
 created, votes (emails), status and note.
@@ -15,10 +15,10 @@ import auth
 from storage import DATA_DIR
 from utils import log_audit_event, login_required
 
-bp = Blueprint('ideas', __name__, url_prefix='/suggestions')
+bp = Blueprint('hassles', __name__, url_prefix='/hassles')
 PATH = os.path.join(DATA_DIR, 'suggestions.json')
-STATUSES = ['Open', 'Planned', 'Done', 'Not doing']
-CLOSED = ('Done', 'Not doing')
+STATUSES = ['Open', 'Planned', 'Fixed', 'Not doing']
+CLOSED = ('Fixed', 'Not doing')
 
 
 def _load():
@@ -65,7 +65,7 @@ def home():
     items = _load()['items']
     # Open ideas first, most thumbs up first, then newest; finished ones at the bottom.
     items.sort(key=lambda s: (s['status'] in CLOSED, -len(s['votes']), -s['id']))
-    return render_template('suggestions.html', title='DR Apps suggestion box', page_title='Suggestions', items=items,
+    return render_template('hassles.html', title='DR Apps hassles', page_title='Hassles', items=items,
                            me=email, is_admin=is_admin, statuses=STATUSES, closed=CLOSED)
 
 
@@ -76,8 +76,8 @@ def new():
     title = _clean(request.form.get('title'), 120)
     details = (request.form.get('details') or '').strip()[:2000]
     if not title:
-        flash('Give your suggestion a short title.', 'warning')
-        return redirect(url_for('ideas.home'))
+        flash('Say in a few words what the hassle is.', 'warning')
+        return redirect(url_for('hassles.home'))
 
     def add(doc):
         sid = doc['next']
@@ -87,8 +87,8 @@ def new():
         return sid
     sid = _change(add)
     log_audit_event('SUGGESTION_ADDED', name, {'id': sid, 'title': title})
-    flash('Thanks! Your suggestion is on the list.', 'success')
-    return redirect(url_for('ideas.home') + f'#s{sid}')
+    flash('Thanks! It is on the list.', 'success')
+    return redirect(url_for('hassles.home') + f'#s{sid}')
 
 
 @bp.route('/<int:sid>/vote', methods=['POST'])
@@ -108,7 +108,7 @@ def vote(sid):
         else:
             s['votes'].append(email)
     _change(toggle)
-    return redirect(url_for('ideas.home') + f'#s{sid}')
+    return redirect(url_for('hassles.home') + f'#s{sid}')
 
 
 @bp.route('/<int:sid>/status', methods=['POST'])
@@ -116,7 +116,7 @@ def vote(sid):
 def status(sid):
     email, name, is_admin = _me()
     if not is_admin:
-        return auth.refuse('Only the admin marks suggestions planned or done.', url_for('ideas.home'))
+        return auth.refuse('Only the admin marks hassles planned or fixed.', url_for('hassles.home'))
     st = request.form.get('status')
     if st not in STATUSES:
         abort(400)
@@ -129,7 +129,7 @@ def status(sid):
         s['status'], s['note'] = st, note
     _change(mark)
     log_audit_event('SUGGESTION_STATUS', name, {'id': sid, 'status': st, 'note': note})
-    return redirect(url_for('ideas.home') + f'#s{sid}')
+    return redirect(url_for('hassles.home') + f'#s{sid}')
 
 
 @bp.route('/<int:sid>/delete', methods=['POST'])
@@ -149,5 +149,5 @@ def delete(sid):
     title = _change(drop)
     if title:
         log_audit_event('SUGGESTION_DELETED', name, {'id': sid, 'title': title})
-        flash('Suggestion deleted.', 'info')
-    return redirect(url_for('ideas.home'))
+        flash('Deleted.', 'info')
+    return redirect(url_for('hassles.home'))

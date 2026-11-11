@@ -57,7 +57,7 @@ This is `/opt/drscca/app/data/` on the server. "Off-server copy" means the file 
 | `records.db` | The Records database (results back to 1982), built off the server by `tools/records/` | No (rebuilt off the server) | Records shows nothing until it is copied in again; see "Records" |
 | `records-base.db`, `records-base.json` | A copy of `records.db` as it arrived, before corrections, and which corrections it may already hold. Undo on the Corrections page rebuilds from it | No | Safe to delete: it is remade from the current database on the next page view |
 | `role-access.json` | Admin > Roles settings | Yes | Roles fall back to defaults; redo them in Admin > Roles |
-| `suggestions.json` | The suggestion box: ideas, thumbs up, status. The only copy | Yes | The suggestions are gone unless restored |
+| `suggestions.json` | Hassles: what people posted, thumbs up, status. The only copy | Yes | The hassles are gone unless restored |
 | `short_links.json` | Short links in emails (votes, approvals) | Yes | Emailed links not yet used stop working; send them again |
 | `invoices-issued.json` | Invoice numbers already given out, and New invoice pages already used | Yes | A number could be reused after the newest invoice is deleted; a double click could make two invoices |
 | `points-saves.json` | Worker points review pages already saved | Yes | An old review page left open could be saved a second time |
