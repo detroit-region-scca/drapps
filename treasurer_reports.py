@@ -260,14 +260,16 @@ def _nice(d):
 
 
 def pnl_html(rows, period):
-    """QuickBooks' profit and loss as a table, current to the day `period` (YYYY-MM-DD): this month so far, the year
+    """QuickBooks' profit and loss as a table, current to the day `period` (YYYY-MM-DD): the past month to that day, the year
     to date, the average of the same dates over the five years before, and the difference. Colored: income green,
     costs red, net lines gray; a difference is green when it is good for the region (more income, less cost)."""
     if not rows:
         return '<p>The profit and loss statement is not in the apps yet (the nightly QuickBooks sync brings it).</p>'
     d = date.fromisoformat(period)
     y = d.year
-    out = [f'<table><tr><th>Account</th><th>{d.strftime("%B")} so far</th><th>Year to date</th><th>Average {y - 5} to {y - 1}</th>'
+    frm = (rows[0].get('from') or '')[:10]
+    since = f'Since {date.fromisoformat(frm).strftime("%b %-d")}' if frm else 'Past month'
+    out = [f'<table><tr><th>Account</th><th>{since}</th><th>Year to date</th><th>Average {y - 5} to {y - 1}</th>'
            '<th>Difference</th></tr>']
     short, section = False, 'income'
     for r in rows:
@@ -302,7 +304,7 @@ def pnl_html(rows, period):
 
 
 def draft(month):
-    """The board page, current to the day of the last QuickBooks sync (normally today): net so far this month and this
+    """The board page, current to the day of the last QuickBooks sync (normally today): net for the past month and this
     year, profit by program, funds requests waiting, what is waiting for the board, a chart of net income against the
     plan and the five years before, and the profit and loss (sub-accounts folded into their group). The treasurer adds
     the month's story in Google Docs."""
@@ -333,9 +335,10 @@ def draft(month):
         return f"{'up' if v >= 0 else 'down'} {_money(v)}"
 
     net = next((r for r in full if r['kind'] == 'total' and r['label'] == 'Net Income'), None)
-    mname = date(year, mon, 1).strftime('%B')
+    frm = (full[0].get('from') or '')[:10] if full else ''
+    past = f"since {date.fromisoformat(frm).strftime('%b %-d')}" if frm else 'the past month'
     return (f"<h1>Treasurer's report, {label}</h1><p>Current to {_nice(period)}.</p>"
-            + (f"<p><b>Net for {mname} so far: {updown(net['month'])}. Year to date: {updown(net['ytd'])}.</b></p>" if net else '')
+            + (f"<p><b>Net {past}: {updown(net['month'])}. Year to date: {updown(net['ytd'])}.</b></p>" if net else '')
             + f"<h2>By program, year to date</h2>"
             + (li([f"{r['name']}: {updown(r['actual'])}" for r in progs]) if progs else '<p>No results in QuickBooks yet.</p>')
             + '<h2>Funds requests</h2>'
