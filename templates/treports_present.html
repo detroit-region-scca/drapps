@@ -2,12 +2,13 @@
 <title>{{ title }}</title>
 <style>
 body { margin: 0; background: #fff; color: #111; font: 1.35rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { max-width: 52rem; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+main { max-width: 64rem; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
 h2 { font-size: 2.2rem; margin: 0 0 1.5rem; border-bottom: 4px solid #d0021b; padding-bottom: .5rem; }
 h3 { font-size: 1.5rem; margin: 2rem 0 .5rem; }
 ul { padding-left: 1.4rem; } li { margin: .25rem 0; }
 table { border-collapse: collapse; font-size: 1rem; font-variant-numeric: tabular-nums; } td, th { padding: .15rem .75rem; border-bottom: 1px solid #eee; text-align: left; }
-td:not(:first-child), th:not(:first-child) { text-align: right; white-space: nowrap; } td p, th p { margin: 0; }
+td:not(:first-child), th:not(:first-child) { text-align: right; white-space: nowrap; } td:first-child { white-space: nowrap; }
+@media (max-width: 700px) { td:first-child { white-space: normal; } } td p, th p { margin: 0; }
 @media (max-width: 600px) { body { font-size: 1.1rem; } h2 { font-size: 1.6rem; } }
 </style></head>
 <body><main>{{ body }}</main></body></html>

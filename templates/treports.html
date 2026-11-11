@@ -27,6 +27,6 @@
 <div class="card p-4 report-doc">{{ body }}</div>
 <style>.report-doc h2 { font-size: 1.4rem; } .report-doc h3 { font-size: 1.1rem; margin-top: 1.2rem; } .report-doc ul { margin-bottom: .75rem; }
 .report-doc table { width: auto; font-variant-numeric: tabular-nums; } .report-doc td, .report-doc th { padding: .15rem .75rem; } .report-doc td:not(:first-child), .report-doc th:not(:first-child) { text-align: right; white-space: nowrap; }
-.report-doc td p, .report-doc th p { margin: 0; }</style>
+.report-doc td p, .report-doc th p { margin: 0; } .report-doc td:first-child { white-space: nowrap; } .report-doc { overflow-x: auto; }</style>
 {% endif %}
 {% endblock %}

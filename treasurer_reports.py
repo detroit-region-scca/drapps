@@ -146,7 +146,7 @@ def pnl_html(rows, period):
         return '<p>The profit and loss statement is not in the apps yet (the nightly QuickBooks sync brings it).</p>'
     y, m = int(period[:4]), int(period[5:])
     mlabel, through = date(y, m, 1).strftime('%B'), date(y, m, 1).strftime('%b')
-    out = [f'<table><tr><th>Account</th><th>{mlabel}</th><th>Year to date</th><th>{y - 5} to {y - 1} average, Jan to {through}</th>'
+    out = [f'<table><tr><th>Account</th><th>{mlabel}</th><th>Year to date</th><th>Average {y - 5} to {y - 1}</th>'
            '<th>Difference</th></tr>']
     short = False
     for r in rows:
@@ -164,8 +164,9 @@ def pnl_html(rows, period):
             out.append(f'<tr><td><b>{label}</b></td>' + ''.join(f'<td><b>{c}</b></td>' for c in cells) + '</tr>')
         else:
             out.append(f'<tr><td>{label}</td>' + ''.join(f'<td>{c}</td>' for c in cells) + '</tr>')
-    note = ('<p>* Average of fewer than five years: the account did not exist in all of them (the accounts were '
-            'reorganized in 2022).</p>' if short else '')
+    note = (f'<p>Average: January to {through} of each of the five years before. Difference: year to date less the average.'
+            + (' * Fewer than five years: the account did not exist in all of them (the accounts were reorganized in 2022).'
+               if short else '') + '</p>')
     return ''.join(out) + '</table>' + note
 
 
