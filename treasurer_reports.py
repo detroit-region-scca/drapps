@@ -304,12 +304,20 @@ def deck(d):
         sh.line.fill.background()
         return sh
 
-    def page(sub, n):
+    def page(sub, n, compact=False):
+        """A slide with the header and foot; compact (the statement) gives the header less room."""
         sl = prs.slides.add_slide(blank)
-        sl.shapes.add_picture(LOGO, Inches(0.55), Inches(0.28), height=Inches(0.86))
-        text(sl, 2.0, 0.3, 10.8, 0.8, [(d['title'], 30, True, None)], MSO_ANCHOR.MIDDLE)
-        rect(sl, 0.55, 1.24, 12.23, 0.06, 'red')
-        text(sl, 0.55, 1.36, 12.23, 0.5, [(sub, 20, True, 'blue')])
+        if compact:
+            sl.shapes.add_picture(LOGO, Inches(0.55), Inches(0.18), height=Inches(0.5))
+            text(sl, 1.45, 0.16, 6.2, 0.55, [(d['title'], 20, True, None)], MSO_ANCHOR.MIDDLE)
+            sub_box = text(sl, 7.6, 0.16, 5.18, 0.55, [(sub, 16, True, 'blue')], MSO_ANCHOR.MIDDLE)
+            sub_box.paragraphs[0].alignment = PP_ALIGN.RIGHT
+            rect(sl, 0.55, 0.76, 12.23, 0.04, 'red')
+        else:
+            sl.shapes.add_picture(LOGO, Inches(0.55), Inches(0.28), height=Inches(0.86))
+            text(sl, 2.0, 0.3, 10.8, 0.8, [(d['title'], 30, True, None)], MSO_ANCHOR.MIDDLE)
+            rect(sl, 0.55, 1.24, 12.23, 0.06, 'red')
+            text(sl, 0.55, 1.36, 12.23, 0.5, [(sub, 20, True, 'blue')])
         # The foot: a checkered strip and a black band with the region's name and the slide number.
         sl.shapes.add_picture(io.BytesIO(checker), 0, Inches(7.06), width=prs.slide_width, height=Inches(0.12))
         rect(sl, 0, 7.18, 13.333, 0.32, 'ink')
@@ -340,15 +348,15 @@ def deck(d):
         sl.shapes.add_picture(io.BytesIO(d['chart']), Inches(1.2), Inches(1.95), height=Inches(5.0))
 
     # 3. Profit and loss
-    sl = page('Profit and loss, year to date', 3)
+    sl = page('Profit and loss, year to date', 3, compact=True)
     rows = d['pnl']
     y = int(d['period'][:4])
     heads = ['Account', d['since'], 'Year to date', f'Average {y - 5} to {y - 1}', 'Difference']
     widths = [3.9, 1.8, 1.9, 2.4, 1.8]
-    top, bottom = 1.9, 6.62                          # the note sits between the table and the foot
-    rh = min(0.19, (bottom - top) / (len(rows) + 1))
+    top, bottom = 0.95, 6.62                         # the note sits between the table and the foot
+    rh = min(0.21, (bottom - top) / (len(rows) + 1))
     tbl = sl.shapes.add_table(len(rows) + 1, 5, Inches(0.55), Inches(top), Inches(sum(widths)), Inches(rh * (len(rows) + 1))).table
-    size = Pt(9 if rh >= 0.16 else 7)
+    size = Pt(10 if rh >= 0.2 else 9 if rh >= 0.16 else 7)
     for i, wd in enumerate(widths):
         tbl.columns[i].width = Inches(wd)
 
