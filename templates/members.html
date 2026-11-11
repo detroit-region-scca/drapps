@@ -18,7 +18,7 @@
     <div class="mt-2">If the region pays a bill when points are used, file a funds request for the payment as usual.</div>
     <div class="mt-3 d-flex flex-column gap-1">
         <a href="{{ url_for('static', filename='worker-points-form.xlsx') }}" download>Worker points form (template)</a>
-        {% if keeper %}<a href="{{ ledger_url }}" target="_blank" rel="noopener">Ledger (Google Sheets)</a>{% endif %}
+        {% if keeper %}<a href="{{ ledger_url }}" target="_blank" rel="noopener">{{ drive_icon }}Ledger (Google Sheets)</a>{% endif %}
         <a href="{{ url_for('members.log') }}">Log: who added and spent points</a>
     </div>
 </div>
@@ -99,7 +99,7 @@
     <div class="d-flex flex-wrap gap-2 align-items-center">
         <span class="small">Download the Member List from <a href="{{ scca_reports }}">my.scca.com › Region Reporting</a>, then:</span>
         <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" aria-label="Member List file" required><button class="btn btn-sm btn-accent">Load list</button>
-        <a class="small ms-auto" href="{{ list_url }}">past lists</a></div></form>
+        <a class="small ms-auto" href="{{ list_url }}">{{ drive_icon }}past lists</a></div></form>
 
 <input id="find" class="form-control mb-2" type="search" aria-label="Find a member" placeholder="Find a member by name or SCCA number" autocomplete="off" style="max-width: 30rem" value="{{ find }}">
 <div class="card"><div class="card-body p-0 table-responsive" style="max-height: 60vh; overflow-y: auto;">
@@ -131,7 +131,7 @@
         <div class="col-md-2"><button class="btn btn-sm btn-outline-secondary w-100">Add</button></div>
     </form>
 </details>
-<p class="small mt-3"><a href="{{ sheet_url }}">Open the Members sheet</a></p>
+<p class="small mt-3"><a href="{{ sheet_url }}">{{ drive_icon }}Open the Members sheet</a></p>
 <script>
     (function () {
         // Everything the find box and the sorting need is read from the row's own cells (rows arrive sorted by last name).
@@ -457,7 +457,7 @@
     </ol>
     <div class="d-flex flex-wrap gap-2 align-items-center">
         <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" aria-label="Member List file" required><button class="btn btn-sm btn-accent">Load list</button>
-        <a class="small ms-auto" href="{{ list_url }}">past lists</a></div>
+        <a class="small ms-auto" href="{{ list_url }}">{{ drive_icon }}past lists</a></div>
 </form>
 {% macro groups(g) %}<div class="row g-3">{% for y in (g.keys()|reject('equalto', 0)|sort(reverse=true)|list) + ([0] if 0 in g else []) %}
     <div class="col-6 col-md-4"><div class="small fw-semibold text-muted text-uppercase">{{ 'New members' if y == 0 else y ~ ' years' }}</div>
@@ -474,7 +474,7 @@
 </div></div>
 <details><summary class="small">Edit names by hand</summary>
     <form method="post" class="card card-body mt-2"><input type="hidden" name="month" value="{{ month }}">
-        <p class="small text-muted">One name per line. Saving replaces {{ month_label }} with exactly this; empty boxes remove it. You can also edit the <a href="{{ public_url }}">website's sheet</a> directly.</p>
+        <p class="small text-muted">One name per line. Saving replaces {{ month_label }} with exactly this; empty boxes remove it. You can also edit the <a href="{{ public_url }}">{{ drive_icon }}website's sheet</a> directly.</p>
         {% set cur = published or proposed %}
         <div class="row g-2">{% for y in anniv_years %}{% if y in cur or y <= 25 %}<div class="col-6 col-md-3"><label class="form-label small fw-semibold">{{ 'New members' if y == 0 else y ~ ' years' }}</label>
             <textarea class="form-control form-control-sm" name="y{{ y }}" rows="{{ [ (cur.get(y, [])|length) + 1, 2 ]|max }}">{{ cur.get(y, [])|join('\n') }}</textarea></div>{% endif %}{% endfor %}</div>

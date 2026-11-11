@@ -128,7 +128,7 @@
                         {% if e.id %}<li><button class="dropdown-item" type="button" data-bs-toggle="collapse" data-bs-target="#editEvent">Edit event</button></li>
                         <li><form method="post" action="{{ url_for('bud.cancel', code=code) }}"{% if not e.cancelled %} onsubmit="return confirm('Mark this event cancelled?')"{% endif %}>{% if e.cancelled %}<input type="hidden" name="undo" value="1"><button class="dropdown-item">Not cancelled after all</button>{% else %}<button class="dropdown-item">Mark cancelled</button>{% endif %}</form></li>
                         <li><button class="dropdown-item" type="button" data-copy="{{ qbo_name }}" onclick="copyText(this)" title="{{ qbo_name }}">Copy QuickBooks name</button></li>{% endif %}
-                        {% if b and b.files_url %}<li><a class="dropdown-item" href="{{ b.files_url }}" target="_blank" rel="noopener">Files</a></li>{% endif %}
+                        {% if b and b.files_url %}<li><a class="dropdown-item" href="{{ b.files_url }}" target="_blank" rel="noopener">{{ drive_icon }}Files</a></li>{% endif %}
                         {% if b %}<li><button class="dropdown-item" type="button" onclick="window.print()">Print</button></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><button type="button" class="dropdown-item text-danger" data-bs-toggle="collapse" data-bs-target="#deleteBudget">Delete budget</button></li>{% endif %}

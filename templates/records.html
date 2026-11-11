@@ -116,7 +116,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
   </div>
 </form>
 {% if waiting %}<div class="section-label">Waiting for the next update ({{ waiting|length }})</div>
-<div class="list-group" style="max-width: 44rem;">{% for f in waiting %}<a class="list-group-item list-group-item-action" href="{{ f.webViewLink }}">{{ f.name }} <span class="text-muted small">{{ (f.description or '').split('Added in DRSCCA Apps by ')[-1].rstrip('.') }}, {{ nice_date(f.createdTime[:10]) }}</span></a>{% endfor %}</div>
+<div class="list-group" style="max-width: 44rem;">{% for f in waiting %}<a class="list-group-item list-group-item-action" href="{{ f.webViewLink }}">{{ drive_icon }}{{ f.name }} <span class="text-muted small">{{ (f.description or '').split('Added in DRSCCA Apps by ')[-1].rstrip('.') }}, {{ nice_date(f.createdTime[:10]) }}</span></a>{% endfor %}</div>
 {% elif waiting is not none %}<p class="text-muted">Nothing waiting.</p>{% endif %}
 
 {% elif view == 'hall' %}
@@ -174,14 +174,14 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
 <div class="table-responsive"><table class="table table-sm"><thead><tr><th class="num">Place</th><th>Name</th><th class="num">Score</th></tr></thead><tbody>
 {% for s in ss %}<tr><td class="num">{{ s.place }}</td><td>{% if s.person_id %}<a href="{{ url_for('records.person', pid=s.person_id) }}">{{ s.name }}</a>{% else %}{{ s.name }}{% endif %}</td><td class="num">{{ '%g'|format(s.score) if s.score is not none else '' }}</td></tr>{% endfor %}
 </tbody></table></div></details>{% endfor %}{% endif %}
-{% if sheets %}<div class="section-label mt-4">Points sheets</div>{% for f in sheets %}<a class="badge-soft" href="{{ f.drive_url }}">{{ f.name }}</a>{% endfor %}{% endif %}
+{% if sheets %}<div class="section-label mt-4">Points sheets</div>{% for f in sheets %}<a class="badge-soft" href="{{ f.drive_url }}">{{ drive_icon }}{{ f.name }}</a>{% endfor %}{% endif %}
 
 {% elif view == 'event' %}
 <div class="crumbs"><a href="{{ url_for('records.home') }}">Records</a> / <a href="{{ url_for('records.program', prog=slug(e.program)) }}">{{ e.program }}</a>{% if e.year %} / <a href="{{ url_for('records.season', prog=slug(e.program), year=e.year) }}">{{ e.year }}</a>{% endif %}</div>
 <h1 class="page-title">{{ e.name }}</h1>
 <p class="text-muted mb-2">{{ nice_date(e.date) or e.year }}{% if n_people %} &middot; {{ n_people }} {{ 'crews' if e.program == 'Rally' else 'drivers' }}{% endif %}{% if can_edit %} &middot; <a href="{{ url_for('records.event_edit', eid=e.id) }}">Correct this event</a>{% endif %}</p>
 {% if files %}<details class="mb-3 small"><summary class="text-muted">Original file{{ 's' if files|length > 1 }} ({{ files|length }})</summary>
-<div class="mt-1">{% for f in files %}<a class="badge-soft" href="{{ f.drive_url }}" target="_blank" rel="noopener">{{ f.label }}</a>{% endfor %}</div></details>{% endif %}
+<div class="mt-1">{% for f in files %}<a class="badge-soft" href="{{ f.drive_url }}" target="_blank" rel="noopener">{{ drive_icon }}{{ f.label }}</a>{% endfor %}</div></details>{% endif %}
 {% if sheets %}
 {% if chooser %}
 <div class="mb-3" style="max-width:24rem"><label class="form-label small text-muted" for="sheetPick">Session</label>
@@ -200,7 +200,7 @@ details summary { color: var(--link); cursor: pointer; margin: .35rem 0; }
   {% for r in rs %}<tr>{% for lab, k in cols %}<td class="{{ 'num' if k in ('total', 'raw_time', 'pax_time', 'laps', 'best_lap', 'class_place') }} {{ 'd-none d-md-table-cell' if k in ('vehicle', 'best_lap', 'laps') }}">{% if k == 'driver' and r.crew %}{% for pid, nm in r.crew %}{% if pid %}<a href="{{ url_for('records.person', pid=pid) }}">{{ nm }}</a>{% else %}{{ nm }}{% endif %}{{ ' & ' if not loop.last }}{% endfor %}{% elif k == 'driver' %}{% if r.person_id %}<a href="{{ url_for('records.person', pid=r.person_id) }}">{{ r.driver }}</a>{% else %}{{ r.driver }}{% endif %}{% if r.vehicle %}<div class="small text-muted d-md-none">{{ r.vehicle }}</div>{% endif %}{% else %}{{ r[k] or '' }}{% endif %}</td>{% endfor %}</tr>{% endfor %}
   </tbody></table></div>{% endfor %}
 </div>{% endfor %}</div>
-{% else %}<p class="text-muted">{% if files and files[0].ocr and files[0].ocr.startswith('needs transcription') %}The results for this event are being transcribed from the original sheet{% else %}The results for this event are only in the original {{ 'scan' if files and files[0].ocr else 'file' }}, which could not be read reliably{% endif %}{% if files %}: <a href="{{ files[0].drive_url }}" target="_blank" rel="noopener">open the original</a>{% endif %}.</p>{% endif %}
+{% else %}<p class="text-muted">{% if files and files[0].ocr and files[0].ocr.startswith('needs transcription') %}The results for this event are being transcribed from the original sheet{% else %}The results for this event are only in the original {{ 'scan' if files and files[0].ocr else 'file' }}, which could not be read reliably{% endif %}{% if files %}: <a href="{{ files[0].drive_url }}" target="_blank" rel="noopener">{{ drive_icon }}open the original</a>{% endif %}.</p>{% endif %}
 {% if sheets and scanned %}<p class="small text-muted">Read from a scanned sheet by OCR: check the original before relying on a time or a place.</p>{% endif %}
 
 {% elif view in ('event_edit', 'season_edit') %}

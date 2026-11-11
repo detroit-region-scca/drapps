@@ -6,7 +6,7 @@
     {{ tab('equip.tasks', 'To do', request.endpoint == 'equip.tasks' or (request.endpoint == 'equip.task' and not bill)) }}
     {{ tab('equip.items', 'Gear', request.endpoint in ('equip.items', 'equip.item', 'equip.place')) }}
     {{ tab('equip.money', 'Money', request.endpoint in ('equip.money', 'equip.purchases', 'equip.reserve') or (request.endpoint == 'equip.task' and bill)) }}
-    {% if drive_url %}<li class="nav-item"><a class="nav-link" href="{{ drive_url }}" target="_blank" rel="noopener">Google Drive ↗</a></li>{% endif %}
+    {% if drive_url %}<li class="nav-item"><a class="nav-link" href="{{ drive_url }}" target="_blank" rel="noopener">{{ drive_icon }}Google Drive</a></li>{% endif %}
 {% endblock %}
 {% macro due_badge(t) -%}
     {% if not t.due and t.last_done %}<span class="badge rounded-pill text-bg-secondary">Done {{ t.last_done|nice_date }}</span>
@@ -70,12 +70,12 @@
 {%- endmacro %}
 {% macro docs_box(d, heading='Documents', dom_id='documents') -%}
     {% if d %}<div class="card p-3 mb-3" id="{{ dom_id }}">
-        <div class="d-flex justify-content-between flex-wrap gap-2"><h2 class="h6 m-0">{{ heading }}</h2>{% if d.folder %}<a class="small" href="{{ d.folder }}" target="_blank" rel="noopener">Open the Drive folder</a>{% endif %}</div>
+        <div class="d-flex justify-content-between flex-wrap gap-2"><h2 class="h6 m-0">{{ heading }}</h2>{% if d.folder %}<a class="small" href="{{ d.folder }}" target="_blank" rel="noopener">{{ drive_icon }}Open the Drive folder</a>{% endif %}</div>
         {% if d.error %}<div class="small text-warning mt-2">Couldn't read Drive just now.</div>{% endif %}
         <ul class="small mb-2 mt-2 list-unstyled">
-            {% for doc, files in d.have %}<li><span class="text-success">✓</span> {{ doc }}: {% for f in files %}<a href="{{ f.webViewLink }}" target="_blank" rel="noopener">{{ f.name }}</a>{{ ', ' if not loop.last }}{% endfor %}</li>{% endfor %}
+            {% for doc, files in d.have %}<li><span class="text-success">✓</span> {{ doc }}: {% for f in files %}<a href="{{ f.webViewLink }}" target="_blank" rel="noopener">{{ drive_icon }}{{ f.name }}</a>{{ ', ' if not loop.last }}{% endfor %}</li>{% endfor %}
             {% for doc in d.missing %}<li><span class="text-warning">✗</span> {{ doc }}: <span class="text-warning">missing</span></li>{% endfor %}
-            {% for f in d.others %}<li><span class="text-muted">·</span> <a href="{{ f.webViewLink }}" target="_blank" rel="noopener">{{ f.name }}</a></li>{% endfor %}
+            {% for f in d.others %}<li><span class="text-muted">·</span> <a href="{{ f.webViewLink }}" target="_blank" rel="noopener">{{ drive_icon }}{{ f.name }}</a></li>{% endfor %}
         </ul>
         {% if d.notes %}<div class="small text-muted mb-2">{{ d.notes }}</div>{% endif %}
         {% if editor %}<div class="border-top pt-2"{% if dom_id == 'documents' %} id="add-document"{% endif %}><div class="small fw-semibold mb-1">Add a document</div>{{ add_doc_form(d) }}</div>{% endif %}
@@ -156,7 +156,7 @@
     {% if view == 'home' %}
     <h1 class="visually-hidden">Operations</h1>
     <p class="text-muted mb-3">What needs doing: to-dos, bills, missing documents and gear due for replacement.
-        <span class="no-print"><a href="{{ url_for('equip.report_pdf') }}" target="_blank">Operations report (PDF)</a>{% if root %} · <a href="{{ root }}" target="_blank" rel="noopener">Committee files</a>{% endif %}</span></p>
+        <span class="no-print"><a href="{{ url_for('equip.report_pdf') }}" target="_blank">Operations report (PDF)</a>{% if root %} · <a href="{{ root }}" target="_blank" rel="noopener">{{ drive_icon }}Committee files</a>{% endif %}</span></p>
     <div class="row g-3 mb-4">
         <div class="col-6 col-md-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('equip.tasks') }}"><div class="label">To do</div>
             <div class="value">{{ n_due }} <span class="h6 text-muted">in the next 90 days</span></div>

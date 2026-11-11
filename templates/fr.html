@@ -160,7 +160,7 @@
             <tr><td class="ps-3" colspan="3">Total{% if r.advances %}, less {{ money(r.advances) }} paid in advance{% endif %}</td><td class="num pe-3 fw-semibold">{{ money(r.net) }}</td></tr></tbody>
         </table>
     </div></div>
-    <div class="mb-3 d-flex flex-wrap align-items-center gap-2">{% if r.receipts_url %}<a class="btn btn-sm btn-outline-light" href="{{ r.receipts_url }}" target="_blank" rel="noopener">Open receipts in Drive</a>{% else %}<span class="text-muted">No receipts attached.</span>{% endif %}
+    <div class="mb-3 d-flex flex-wrap align-items-center gap-2">{% if r.receipts_url %}<a class="btn btn-sm btn-outline-light" href="{{ r.receipts_url }}" target="_blank" rel="noopener">{{ drive_icon }}Open receipts in Drive</a>{% else %}<span class="text-muted">No receipts attached.</span>{% endif %}
         <form method="post" action="{{ url_for('fr.receipts', req_id=r.id) }}" enctype="multipart/form-data" class="d-flex gap-2 no-print">
             <input type="file" name="receipts" multiple class="form-control form-control-sm" accept="image/*,.pdf,.xls,.xlsx,.xlsm,.doc,.docx" aria-label="Add receipts">
             <button class="btn btn-sm btn-outline-light text-nowrap">Add</button></form>
@@ -329,7 +329,7 @@
         <div>Held by {{ r.held_by }}{% if r.status == 'Received' %} until it is deposited{% endif %}.</div>
         {% if r.notes %}<div class="mt-1"><span class="text-muted">Notes:</span> {{ r.notes }}</div>{% endif %}
     </div>
-    <div class="mb-3 d-flex flex-wrap align-items-center gap-2">{% if r.files_url %}<a class="btn btn-sm btn-outline-light" href="{{ r.files_url }}" target="_blank" rel="noopener">Open photos in Drive</a>{% else %}<span class="text-muted">No photos attached.</span>{% endif %}
+    <div class="mb-3 d-flex flex-wrap align-items-center gap-2">{% if r.files_url %}<a class="btn btn-sm btn-outline-light" href="{{ r.files_url }}" target="_blank" rel="noopener">{{ drive_icon }}Open photos in Drive</a>{% else %}<span class="text-muted">No photos attached.</span>{% endif %}
         <form method="post" action="{{ url_for('fr.in_files', rid=r.id) }}" enctype="multipart/form-data" class="d-flex gap-2 no-print">
             <input type="file" name="files" multiple class="form-control form-control-sm" accept="image/*,.pdf" aria-label="Add photos">
             <button class="btn btn-sm btn-outline-light text-nowrap">Add</button></form>
@@ -364,7 +364,7 @@
         <div class="text-muted mb-2">Pay {{ r.payee_name }} ({{ r.method }}), asked by {{ r.submitter_name }} on {{ (r.submitted or '')|nice_date }}</div>
         <div class="mb-2">{{ r.event_name or ('Program ' ~ r.program) }} <span class="text-muted">{{ r.event_code }}</span></div>
         <ul class="small mb-2">{% for ln in r.lines %}<li>{{ ln.description }}: {{ money(ln.amount) }}</li>{% endfor %}</ul>
-        {% if r.receipts_url %}<div class="mb-3"><a href="{{ r.receipts_url }}" target="_blank" rel="noopener">Receipts</a></div>{% endif %}
+        {% if r.receipts_url %}<div class="mb-3"><a href="{{ r.receipts_url }}" target="_blank" rel="noopener">{{ drive_icon }}Receipts</a></div>{% endif %}
         {% endif %}
         {% if msg %}<div class="alert alert-info mb-0">{{ msg }}</div>
         {% else %}

@@ -120,7 +120,7 @@
     {% for d in days %}
     <div class="card mb-3"><div class="card-body">
         <div class="d-flex flex-wrap justify-content-between gap-2"><div class="fw-semibold">{{ (d.date or '')|nice_date }}</div>
-            <div class="small">{% if d.minutes %}<a href="{{ d.minutes.webViewLink }}" target="_blank" rel="noopener">Minutes</a>{% else %}<span class="text-muted">No minutes posted for this date</span>{% endif %}</div></div>
+            <div class="small">{% if d.minutes %}<a href="{{ d.minutes.webViewLink }}" target="_blank" rel="noopener">{{ drive_icon }}Minutes</a>{% else %}<span class="text-muted">No minutes posted for this date</span>{% endif %}</div></div>
         <ul class="mb-0 mt-2">{% for i in d['items'] %}<li id="{{ i.id }}"><a href="{{ i.link }}">{{ i.what }}</a>:
             {{ 'approved' if i.kind == 'budget' else i.result }}{% if i.how %}, {{ i.how }}{% endif %}{% if i.vote %}, {{ i.vote }}{% endif %}
             {% if i.rollcall %}<details><summary class="small text-muted">Roll call</summary>{{ rollcall(i.rollcall) }}</details>{% endif %}</li>{% endfor %}</ul>

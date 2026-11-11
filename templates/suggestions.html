@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block app_name %}Suggestions{% endblock %}
+{% block style %}
+        .idea { display: flex; gap: .9rem; align-items: flex-start; }
+        .idea .thumbs { flex: none; min-width: 3.6rem; text-align: center; }
+        .idea .thumbs button, .idea .thumbs span.box { display: block; width: 100%; border: 1px solid var(--border); border-radius: 10px;
+                    background: var(--surface); color: var(--text); padding: .3rem .2rem; font-size: .95rem; line-height: 1.2; }
+        .idea .thumbs button.on { border-color: #3ecf8e; background: rgba(62, 207, 142, .15); }
+        .idea .thumbs .n { display: block; font-weight: 600; }
+        .idea.closed { opacity: .7; }
+        .idea .details { white-space: pre-line; }
+{% endblock %}
+{% block content %}
+    <h1 class="page-title">Suggestion box</h1>
+    <p class="text-muted">Ideas for DR Apps. Everyone who signs in can see them. Give a thumbs up to the ones you'd like most, so the
+        popular ones get done first.</p>
+
+    <form method="post" action="{{ url_for('ideas.new') }}" class="card p-3 mb-4">
+        <div class="section-label">Add a suggestion</div>
+        <div class="mb-2"><label class="form-label small" for="title">What would you like?</label>
+            <input class="form-control" id="title" name="title" maxlength="120" required placeholder="For example: show the event map on the event page"></div>
+        <div class="mb-2"><label class="form-label small" for="details">More detail (optional)</label>
+            <textarea class="form-control" id="details" name="details" rows="3" maxlength="2000"></textarea></div>
+        <div><button class="btn btn-accent">Post it</button></div>
+    </form>
+
+    {% if not items %}<div class="card p-3 text-muted">No suggestions yet. Be the first!</div>{% endif %}
+    <div class="list-group">{% for s in items %}{% set closed_one = s.status in closed %}
+        <div class="list-group-item py-3 idea{{ ' closed' if closed_one }}" id="s{{ s.id }}">
+            <div class="thumbs">
+                {% if s.by_email == me or closed_one %}<span class="box" title="{{ 'Your suggestion' if s.by_email == me else s.status }}">👍<span class="n">{{ s.votes|length }}</span></span>
+                {% else %}<form method="post" action="{{ url_for('ideas.vote', sid=s.id) }}" class="m-0">
+                    <button class="{{ 'on' if me in s.votes }}" aria-pressed="{{ 'true' if me in s.votes else 'false' }}" title="{{ 'Take back your thumbs up' if me in s.votes else 'Thumbs up' }}">👍<span class="n">{{ s.votes|length }}</span></button></form>{% endif %}
+            </div>
+            <div class="flex-grow-1">
+                <div class="fw-semibold">{{ s.title }}
+                    {% if s.status != 'Open' %}<span class="badge rounded-pill {{ {'Planned': 'text-bg-primary', 'Done': 'text-bg-success', 'Not doing': 'text-bg-secondary'}[s.status] }}">{{ s.status }}</span>{% endif %}</div>
+                {% if s.details %}<div class="details small mt-1">{{ s.details }}</div>{% endif %}
+                {% if s.note %}<div class="small mt-1"><b>Admin:</b> {{ s.note }}</div>{% endif %}
+                <div class="small text-muted mt-1">{{ s.by }} · {{ s.created|nice_date }}
+                    {% if s.by_email == me or is_admin %} · <form method="post" action="{{ url_for('ideas.delete', sid=s.id) }}" class="d-inline" onsubmit="return confirm('Delete this suggestion?')"><button class="btn btn-link btn-sm p-0 align-baseline">Delete</button></form>{% endif %}</div>
+                {% if is_admin %}
+                <form method="post" action="{{ url_for('ideas.status', sid=s.id) }}" class="d-flex flex-wrap gap-2 mt-2 no-print">
+                    <select name="status" class="form-select form-select-sm w-auto" aria-label="Status">{% for st in statuses %}<option{{ ' selected' if st == s.status }}>{{ st }}</option>{% endfor %}</select>
+                    <input name="note" class="form-control form-control-sm" style="max-width: 24rem" maxlength="300" value="{{ s.note }}" placeholder="Note (optional)" aria-label="Note">
+                    <button class="btn btn-sm btn-outline-secondary">Save</button>
+                </form>{% endif %}
+            </div>
+        </div>{% endfor %}
+    </div>
+{% endblock %}
