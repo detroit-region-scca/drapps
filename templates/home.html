@@ -1,15 +1,16 @@
 {% extends 'base.html' %}
 {% from '_ui.html' import money, nice_time with context %}
 {% block page_title %}{{ {'code': 'Check your email', 'access': 'App access', 'name': 'Your name', 'officials': 'Region officials', 'treasurer': 'Treasurer'}.get(view) or ('Apps' if session.get('authenticated') else 'Sign in') }}{% endblock %}
-{# One home tile; the caller is its icon's paths. A tile the person's role cannot use is left out. #}
-{% macro tile(on, href, color, name, what) %}{% if on %}
-        <div class="col">
-            <a class="app-tile" href="{{ href }}" style="--tile: {{ color }};">
+{# One home tile; the caller is its icon's paths. A tile the person's role cannot use is grayed out, not hidden. #}
+{% macro tile(on, href, color, name, what) %}
+        <div class="col">{% if on %}
+            <a class="app-tile" href="{{ href }}" style="--tile: {{ color }};">{% else %}
+            <div class="app-tile off" role="link" aria-disabled="true" title="Not part of your role" style="--tile: {{ color }};">{% endif %}
                 <svg viewBox="0 0 24 24" fill="none" stroke="{{ color }}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ caller() }}</svg>
                 <div class="name">{{ name }}</div>
                 <div class="what">{{ what }}</div>
-            </a>
-        </div>{% endif %}{% endmacro %}
+            {% if on %}</a>{% else %}</div>{% endif %}
+        </div>{% endmacro %}
 {% block style %}
         .app-tile { display: block; text-decoration: none; color: var(--text); background: var(--surface); border: 1px solid var(--border);
                     border-radius: 14px; padding: 1.1rem .9rem; text-align: center; transition: border-color .15s, transform .15s; height: 100%; }
@@ -17,6 +18,8 @@
         .app-tile svg { width: 40px; height: 40px; margin-bottom: .5rem; }
         .app-tile .name { font-size: 1.05rem; font-weight: 600; }
         .app-tile .what { color: var(--muted); font-size: .8rem; margin-top: .25rem; line-height: 1.3; }
+        .app-tile.off { opacity: .45; filter: grayscale(1); cursor: default; }
+        .app-tile.off:hover { border-color: var(--border); transform: none; box-shadow: none; }
 {% endblock %}
 {% block content %}
     {% if view == 'code' %}

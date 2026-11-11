@@ -158,3 +158,10 @@ def test_describe_never_raises(app_):
         for log in odd:
             assert str(audit_view.describe(log))
             assert isinstance(audit_view.app_of(log.get('action')), tuple)
+
+
+def test_home_grays_out_tiles_outside_the_role(app_):
+    html = _as(app_, 'rx@example.org').get('/').get_data(as_text=True)
+    # a director has no Treasurer or Admin powers: the tiles show, grayed out and not links
+    assert html.count('app-tile off') >= 2 and 'Not part of your role' in html
+    assert 'href="/admin' not in html
