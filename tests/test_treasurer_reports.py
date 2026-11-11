@@ -1,82 +1,50 @@
-"""Monthly treasurer's reports: two Google Docs a month in Drive (here an in-memory stand-in), shown in the app."""
+"""Monthly treasurer's reports: one Google Slides deck a month in Drive (here an in-memory stand-in), three slides."""
+import base64
+import io
+
 import pytest
 
 import treasurer_reports as T
 
-
-def test_google_export_is_cut_to_plain_structure():
-    c = T._Clean()
-    c.feed('<html><head><style>.c1{color:red}</style></head><body><h1 class="c3"><span>Report</span></h1>'
-           '<p><span style="font-weight:700">Year to date.</span><span> Up $5.</span></p><ul><li><span>RX</span></li></ul>'
-           '<p><a href="https://www.google.com/url?q=https://drscca.org/&amp;sa=D">site</a></p><script>x()</script></body></html>')
-    assert ''.join(c.out) == ('<h2>Report</h2><p><b>Year to date.</b> Up $5.</p><ul><li>RX</li></ul>'
-                              '<p><a href="https://drscca.org/" target="_blank" rel="noopener">site</a></p>')
+ROWS = [{'kind': 'head', 'depth': 0, 'label': 'Income', 'month': 0, 'ytd': 0, 'avg5': None, 'avg_years': 0, 'from': '2026-10-01'},
+        {'kind': 'line', 'depth': 1, 'label': 'RX Rallycross Revenue', 'month': 1200.0, 'ytd': 27265.0, 'avg5': 25000.0, 'avg_years': 4},
+        {'kind': 'total', 'depth': 0, 'label': 'Total Income', 'month': 1200.0, 'ytd': 27265.0, 'avg5': 25000.0, 'avg_years': 5},
+        {'kind': 'head', 'depth': 0, 'label': 'Cost of Goods Sold', 'month': 0, 'ytd': 0, 'avg5': None, 'avg_years': 0},
+        {'kind': 'line', 'depth': 1, 'label': 'RX Rallycross Expense', 'month': 300.0, 'ytd': 10.0, 'avg5': 4.0, 'avg_years': 5},
+        {'kind': 'total', 'depth': 0, 'label': 'Net Income', 'month': -50.5, 'ytd': 46514.55, 'avg5': 59076.23, 'avg_years': 5}]
 
 
-@pytest.fixture()
-def box(monkeypatch):
-    import auth
-    people = {'ada@example.org': {'name': 'Ada', 'level': 'officer', 'roles': ['Treasurer'], 'perms': {'pay'}},
-              'pat@example.org': {'name': 'Pat', 'level': 'official', 'roles': ['Director'], 'perms': {'events'}}}
-    monkeypatch.setattr(auth, 'lookup', lambda e: dict(people[e], email=e) if e in people else None)
-    docs = {}
-
-    def create(month, html):
-        docs[month] = {'id': month, 'webViewLink': f'https://docs.google.com/{month}', 'html': html}
-        return docs[month]
-    monkeypatch.setattr(T, 'reports', lambda: dict(sorted(docs.items(), reverse=True)))
-    monkeypatch.setattr(T, 'create', create)
-    monkeypatch.setattr(T, 'shown', lambda fid: T.Markup('<h2>shown ' + fid + '</h2>'))
-    monkeypatch.setattr(T, 'draft', lambda m: '<h1>board</h1>')
-    monkeypatch.setattr(T, 'log_audit_event', lambda *a, **k: None)
-    from app import app
-    app.config['TESTING'] = True
-
-    def as_(email):
-        c = app.test_client()
-        with c.session_transaction() as s:
-            s.update(authenticated=True, email=email, who=people[email]['name'])
-        return c
-    return as_, docs
+def _data(**kw):
+    d = {'title': "Treasurer's report, November 2026", 'period': '2026-11-11', 'since': 'Since Oct 1', 'net': ROWS[-1],
+         'programs': [('RallyCross', -855.0)], 'waiting': [], 'board': ['Michigan Winter Rally IV (#DRA9S)'],
+         'housekeeping': ['Old checks'], 'chart': base64.b64decode(T.chart_png(2026, 11, [100.0] * 12, [50.0] * 11 + [0], {2025: [10.0] * 12})),
+         'pnl': ROWS}
+    d.update(kw)
+    return d
 
 
-def test_start_show_and_present(box):
-    as_, docs = box
-    ada = as_('ada@example.org')
-    assert b'No reports yet' in ada.get('/treasurer/reports/').data
-    r = ada.post('/treasurer/reports/new', data={'month': '2026-11'})
-    assert r.status_code == 302 and docs['2026-11']['html'] == '<h1>board</h1>'
-    docs['2026-11']['html'] = 'edited'
-    ada.post('/treasurer/reports/new', data={'month': '2026-11'})          # running it again never overwrites it
-    assert docs['2026-11']['html'] == 'edited'
-    page = ada.get('/treasurer/reports/2026-11').data
-    assert b'shown 2026-11' in page and b'Show the board' in page
-    assert b'shown 2026-11' in ada.get('/treasurer/reports/2026-11?present=1').data      # one slide: no chart or table
+def test_the_deck_has_three_slides_with_the_summary_chart_and_statement():
+    from pptx import Presentation
+    prs = Presentation(io.BytesIO(T.deck(_data())))
+    assert len(prs.slides) == 3
+    texts = ['\n'.join(sh.text_frame.text for sh in s.shapes if sh.has_text_frame) for s in prs.slides]
+    assert 'Since Oct 1: down $50. Year to date: up $46,515.' in texts[0] and 'RallyCross: down $855' in texts[0]
+    assert 'Nothing waiting' in texts[0] and 'Michigan Winter Rally IV (#DRA9S)' in texts[0] and 'Old checks' in texts[0]
+    assert 'Net income through the year' in texts[1] and any(sh.shape_type == 13 for sh in prs.slides[1].shapes)   # a picture
+    tbl = next(sh for sh in prs.slides[2].shapes if sh.has_table).table
+    assert [c.text for c in tbl.rows[0].cells] == ['Account', 'Since Oct 1', 'Year to date', 'Average 2021 to 2025', 'Difference']
+    assert [c.text for c in tbl.rows[2].cells] == ['    RX Rallycross Revenue', '1,200.00', '27,265.00', '25,000.00*', '2,265.00']
+    color = lambda r, c: str(tbl.cell(r, c).text_frame.paragraphs[0].runs[0].font.color.rgb)      # noqa: E731
+    assert color(2, 4) == T.GOOD and color(5, 4) == T.BAD and color(6, 4) == T.BAD          # more income good, more cost bad
+    assert str(tbl.cell(1, 0).fill.fore_color.rgb) == T.SECTION_BG['income']
+    assert 'Fewer than five years' in texts[2]
 
 
-def test_only_the_treasurer_role_starts_one(box):
-    as_, docs = box
-    pat = as_('pat@example.org')
-    assert pat.get('/treasurer/reports/').status_code == 200            # looking is never gated for officials
-    pat.post('/treasurer/reports/new', data={'month': '2026-11'})
-    assert '2026-11' not in docs
-
-
-def test_the_statement_table():
-    rows = [{'kind': 'head', 'depth': 0, 'label': 'Income', 'month': 0, 'ytd': 0, 'avg5': None, 'avg_years': 0, 'from': '2026-10-01'},
-            {'kind': 'line', 'depth': 1, 'label': 'Club RX Rallycross Revenue', 'month': 1200.0, 'ytd': 27265.0, 'avg5': 25000.0, 'avg_years': 4},
-            {'kind': 'line', 'depth': 1, 'label': 'New account', 'month': 5.0, 'ytd': 5.0, 'avg5': None, 'avg_years': 0},
-            {'kind': 'total', 'depth': 0, 'label': 'Net Income', 'month': -50.5, 'ytd': 46514.55, 'avg5': 59076.23, 'avg_years': 5}]
-    html = T.pnl_html(rows, '2026-11-11')
-    assert '<th>Since Oct 1</th><th>Year to date</th><th>Average 2021 to 2025</th><th>Difference</th>' in html
-    assert ('\u00a0' * 4 + 'Club RX Rallycross Revenue</td><td>1,200.00</td><td>27,265.00</td><td>25,000.00*</td>'
-            f'<td><span style="color:{T.GOOD}">2,265.00</span></td>') in html            # more income: good
-    assert 'New account</td><td>5.00</td><td>5.00</td><td></td><td></td>' in html
-    assert f'<b><span style="color:{T.BAD}">(12,561.68)</span></b>' in html and 'Fewer than five years' in html
-    assert 'Through Nov 11, 2026. Average:' in html and 'January 1 to November 11' in html
-    cost = T.pnl_html([{'kind': 'head', 'depth': 0, 'label': 'Cost of Goods Sold'},
-                       {'kind': 'line', 'depth': 1, 'label': 'Site Rental', 'month': 0, 'ytd': 10.0, 'avg5': 4.0, 'avg_years': 5}], '2026-11-11')
-    assert f'<span style="color:{T.BAD}">6.00</span>' in cost and T.SECTION_BG['cost'] in cost      # more cost: bad
+def test_an_empty_month_still_makes_a_deck():
+    from pptx import Presentation
+    prs = Presentation(io.BytesIO(T.deck(_data(net=None, programs=[], board=[], housekeeping=[], chart=b'', pnl=[]))))
+    assert len(prs.slides) == 3 and 'No results in QuickBooks yet.' in prs.slides[0].shapes[0].text_frame.text + ''.join(
+        sh.text_frame.text for sh in prs.slides[0].shapes if sh.has_text_frame)
 
 
 def test_sub_accounts_fold_into_their_group():
@@ -100,23 +68,54 @@ def test_the_chart_draws():
     png = T.chart_png(2026, 10, [100.0] * 12, [50.0] * 10 + [0, 0], {2024: [10.0] * 12, 2025: [-10.0] * 12})
     assert base64.b64decode(png)[:8] == b'\x89PNG\r\n\x1a\n'
     assert T.chart_png(2026, 0, [0.0] * 12, [], {}) == ''
-    c = T._Clean()
-    c.feed(f'<p><img src="data:image/png;base64,{png[:20]}" alt="x"><img src="https://evil.example/x.png"></p>')
-    assert ''.join(c.out).count('<img') == 1
 
 
-def test_colors_survive_the_trip_through_google_docs():
-    c = T._Clean()
-    c.feed('<table><tr><td style="border:1pt;background-color:#e6f4ea"><p><span style="color:#000000;font-weight:700">Income</span></p></td>'
-           '<td style="background-color:#ffffff"><p><span style="color:#c62828;font-weight:400">(5.00)</span></p></td></tr></table>')
-    assert ''.join(c.out) == ('<table class="table table-sm"><tr><td style="background-color:#e6f4ea"><p><b>Income</b></p></td>'
-                              '<td><p><span style="color:#c62828">(5.00)</span></p></td></tr></table>')
+@pytest.fixture()
+def box(monkeypatch):
+    import auth
+    people = {'ada@example.org': {'name': 'Ada', 'level': 'officer', 'roles': ['Treasurer'], 'perms': {'pay'}},
+              'pat@example.org': {'name': 'Pat', 'level': 'official', 'roles': ['Director'], 'perms': {'events'}}}
+    monkeypatch.setattr(auth, 'lookup', lambda e: dict(people[e], email=e) if e in people else None)
+    decks = {}
+
+    def create(month, pptx):
+        decks[month] = {'id': f'id{month}', 'webViewLink': f'https://docs.google.com/presentation/d/id{month}/edit', 'pptx': pptx}
+        return decks[month]
+    monkeypatch.setattr(T, 'reports', lambda: dict(sorted(decks.items(), reverse=True)))
+    monkeypatch.setattr(T, 'create', create)
+    monkeypatch.setattr(T, 'data', lambda m: {'month': m})
+    monkeypatch.setattr(T, 'deck', lambda d: b'PPTX ' + d['month'].encode())
+    monkeypatch.setattr(T, 'pdf', lambda fid: b'%PDF ' + fid.encode())
+    monkeypatch.setattr(T, 'log_audit_event', lambda *a, **k: None)
+    from app import app
+    app.config['TESTING'] = True
+
+    def as_(email):
+        c = app.test_client()
+        with c.session_transaction() as s:
+            s.update(authenticated=True, email=email, who=people[email]['name'])
+        return c
+    return as_, decks
 
 
-def test_the_report_splits_into_three_slides():
-    body = T.Markup('<h2>Treasurer\'s report</h2><p>Net</p><h3>Funds</h3><p>x</p><h3><b>Net income through the year</b></h3><img src="data:image/png;base64,AA">'
-                    '<h3>Profit and loss, year to date</h3><table></table>')
-    s = T.slides(body)
-    assert len(s) == 3 and all(str(x).startswith("<h2>Treasurer's report</h2>") for x in s)
-    assert '<h3>Funds</h3>' in s[0] and '<img' in s[1] and '<table>' in s[2]
-    assert len(T.slides(T.Markup('<h2>Only</h2><p>text</p>'))) == 1
+def test_start_and_show(box):
+    as_, decks = box
+    ada = as_('ada@example.org')
+    assert b'No reports yet' in ada.get('/treasurer/reports/').data
+    r = ada.post('/treasurer/reports/new', data={'month': '2026-11'})
+    assert r.status_code == 302 and decks['2026-11']['pptx'] == b'PPTX 2026-11'
+    decks['2026-11']['pptx'] = b'edited'
+    ada.post('/treasurer/reports/new', data={'month': '2026-11'})          # running it again never overwrites it
+    assert decks['2026-11']['pptx'] == b'edited'
+    page = ada.get('/treasurer/reports/2026-11').data
+    assert b'https://docs.google.com/presentation/d/id2026-11/present' in page and b'Edit in Google Slides' in page
+    assert ada.get('/treasurer/reports/2026-11.pdf').data == b'%PDF id2026-11'
+    assert ada.get('/treasurer/reports/2026-12').status_code == 404
+
+
+def test_only_the_treasurer_role_starts_one(box):
+    as_, decks = box
+    pat = as_('pat@example.org')
+    assert pat.get('/treasurer/reports/').status_code == 200            # looking is never gated for officials
+    pat.post('/treasurer/reports/new', data={'month': '2026-11'})
+    assert '2026-11' not in decks
