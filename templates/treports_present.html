@@ -1,14 +1,45 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ title }}</title>
 <style>
-body { margin: 0; background: #fff; color: #111; font: 1.35rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { max-width: 64rem; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
-h2 { font-size: 2.2rem; margin: 0 0 1.5rem; border-bottom: 4px solid #d0021b; padding-bottom: .5rem; }
-h3 { font-size: 1.5rem; margin: 2rem 0 .5rem; }
-ul { padding-left: 1.4rem; } li { margin: .25rem 0; }
-table { border-collapse: collapse; font-size: 1rem; font-variant-numeric: tabular-nums; } td, th { padding: .15rem .75rem; border-bottom: 1px solid #eee; text-align: left; }
-td:not(:first-child), th:not(:first-child) { text-align: right; white-space: nowrap; } td:first-child { white-space: nowrap; }
-@media (max-width: 700px) { td:first-child { white-space: normal; } } td p, th p { margin: 0; }
-@media (max-width: 600px) { body { font-size: 1.1rem; } h2 { font-size: 1.6rem; } }
+html, body { margin: 0; height: 100%; background: #fff; color: #111; font: 1.35rem/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+.slide { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; padding: 2.5vh 4vw 6vh; box-sizing: border-box; }
+.slide.on { display: flex; }
+.fit { transform-origin: center center; width: 60rem; max-width: none; }
+h2 { font-size: 2.2rem; margin: 0 0 1rem; border-bottom: 4px solid #d0021b; padding-bottom: .4rem; }
+h3 { font-size: 1.5rem; margin: 1.2rem 0 .4rem; }
+p { margin: .4rem 0; } ul { padding-left: 1.4rem; margin: .3rem 0 .6rem; } li { margin: .15rem 0; }
+img { display: block; max-width: 100%; height: auto; margin: .5rem auto 0; }
+table { border-collapse: collapse; font-size: 1rem; font-variant-numeric: tabular-nums; margin: 0 auto; } td, th { padding: .12rem .75rem; border-bottom: 1px solid #eee; text-align: left; }
+td:not(:first-child), th:not(:first-child) { text-align: right; white-space: nowrap; } td:first-child { white-space: nowrap; } td p, th p { margin: 0; }
+.bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: center; align-items: center; gap: 1rem; padding: .5rem; font-size: .9rem; color: #666; }
+.bar button { font: inherit; border: 1px solid #ccc; background: #fff; border-radius: 6px; padding: .2rem .8rem; cursor: pointer; }
+@media print { html, body { overflow: visible; height: auto; } .slide { position: relative; display: flex !important; height: 100vh; page-break-after: always; } .bar { display: none; } }
 </style></head>
-<body><main>{{ body }}</main></body></html>
+<body>
+{% for s in slides %}<section class="slide{{ ' on' if loop.first }}" aria-label="Slide {{ loop.index }} of {{ slides|length }}"><div class="fit">{{ s }}</div></section>{% endfor %}
+<div class="bar"><button type="button" id="prev" aria-label="Previous slide">‹</button><span id="pos"></span><button type="button" id="next" aria-label="Next slide">›</button></div>
+<script>
+(() => {
+    const S = [...document.querySelectorAll('.slide')], pos = document.getElementById('pos');
+    let i = 0;
+    // Each slide's content is scaled to fill the screen without scrolling.
+    const fit = () => S.forEach(s => {
+        const f = s.querySelector('.fit'), on = s.classList.contains('on');
+        s.style.display = 'flex'; f.style.transform = 'none';
+        const w = s.clientWidth * .92, h = s.clientHeight * .9;
+        const k = Math.min(w / f.scrollWidth, h / f.scrollHeight, 2.2);
+        f.style.transform = `scale(${k})`; s.style.display = on ? '' : 'none';
+    });
+    const go = n => { i = Math.max(0, Math.min(S.length - 1, n)); S.forEach((s, j) => s.classList.toggle('on', j === i)); pos.textContent = `${i + 1} of ${S.length}`; };
+    document.getElementById('prev').onclick = () => go(i - 1);
+    document.getElementById('next').onclick = () => go(i + 1);
+    addEventListener('keydown', e => {
+        if (['ArrowRight', 'PageDown', ' ', 'Enter'].includes(e.key)) { e.preventDefault(); go(i + 1); }
+        if (['ArrowLeft', 'PageUp', 'Backspace'].includes(e.key)) { e.preventDefault(); go(i - 1); }
+        if (e.key === 'Home') go(0); if (e.key === 'End') go(S.length - 1);
+    });
+    document.querySelectorAll('img').forEach(im => im.complete || im.addEventListener('load', fit));
+    addEventListener('resize', fit); fit(); go(0);
+})();
+</script>
+</body></html>

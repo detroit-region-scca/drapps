@@ -51,7 +51,7 @@ def test_start_show_and_present(box):
     assert docs['2026-11']['html'] == 'edited'
     page = ada.get('/treasurer/reports/2026-11').data
     assert b'shown 2026-11' in page and b'Show the board' in page
-    assert b'shown 2026-11' in ada.get('/treasurer/reports/2026-11?present=1').data
+    assert b'shown 2026-11' in ada.get('/treasurer/reports/2026-11?present=1').data      # one slide: no chart or table
 
 
 def test_only_the_treasurer_role_starts_one(box):
@@ -111,3 +111,12 @@ def test_colors_survive_the_trip_through_google_docs():
            '<td style="background-color:#ffffff"><p><span style="color:#c62828;font-weight:400">(5.00)</span></p></td></tr></table>')
     assert ''.join(c.out) == ('<table class="table table-sm"><tr><td style="background-color:#e6f4ea"><p><b>Income</b></p></td>'
                               '<td><p><span style="color:#c62828">(5.00)</span></p></td></tr></table>')
+
+
+def test_the_report_splits_into_three_slides():
+    body = T.Markup('<h2>Treasurer\'s report</h2><p>Net</p><h3>Funds</h3><p>x</p><h3><b>Net income through the year</b></h3><img src="data:image/png;base64,AA">'
+                    '<h3>Profit and loss, year to date</h3><table></table>')
+    s = T.slides(body)
+    assert len(s) == 3 and all(str(x).startswith("<h2>Treasurer's report</h2>") for x in s)
+    assert '<h3>Funds</h3>' in s[0] and '<img' in s[1] and '<table>' in s[2]
+    assert len(T.slides(T.Markup('<h2>Only</h2><p>text</p>'))) == 1

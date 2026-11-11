@@ -137,6 +137,18 @@ def shown(file_id):
     return Markup(re.sub(r'<p>\s*</p>', '', ''.join(c.out)))
 
 
+def slides(body):
+    """The report cut into the slides shown at the meeting: the summary, then the chart, then the profit and loss.
+    A part the Doc does not have is left out; the title goes on top of every slide."""
+    html = str(body)
+    title = re.match(r'\s*(<h2>.*?</h2>)', html, re.S)
+    head = title[1] if title else ''
+    rest = html[len(title[0]):] if title else html
+    cuts = [m.start() for m in re.finditer(r'<h3>(?:<b>)?\s*(?:Net income through the year|Profit and loss)', rest)]
+    parts = [rest[a:b] for a, b in zip([0] + cuts, cuts + [len(rest)])]
+    return [Markup(head + p) for p in parts if p.strip()] or [Markup(html)]
+
+
 def _money(v):
     return f"${abs(v):,.0f}"
 
@@ -376,7 +388,7 @@ def month(month):
     body = shown(rep['id'])
     label = date(int(month[:4]), int(month[5:]), 1).strftime('%B %Y')
     if request.args.get('present'):
-        return render_template('treports_present.html', body=body, title=f"Treasurer's report {label}")
+        return render_template('treports_present.html', slides=slides(body), title=f"Treasurer's report {label}")
     return render_template('treports.html', title=f"Treasurer's report {label}", page_title="Treasurer's reports", view='month',
                            month=month, label=label, rep=rep, body=body)
 
