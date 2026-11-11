@@ -178,7 +178,7 @@ for (const r of pnl) {
 }
 // The same dates (January 1 to today's month and day) of each of the five years before, for comparison: each line's average over the years it existed
 // (the accounts were reorganized in 2022, so older years only share the totals).
-const past = {};
+const past = {}, prior = {};      // prior: the same dates last year alone, for the slide against last year
 for (let k = 1; k <= 5; k++) {
   // the same dates in that year (Feb 29 becomes Feb 28)
   const y = Number(pm.slice(0, 4)) - k, last = new Date(Date.UTC(y, Number(pm.slice(5, 7)), 0)).getUTCDate();
@@ -186,9 +186,9 @@ for (let k = 1; k <= 5; k++) {
   const rep = await get(`reports/ProfitAndLoss?start_date=${y}-01-01&end_date=${end}&accounting_method=Accrual`);
   const w = rows => { for (const r of rows || []) {
     const cd = r.ColData || r.Summary?.ColData;
-    if (r.ColData) (past[`line|${cd[0].value}`] ||= []).push(parseFloat(cd[1]?.value || '0') || 0);
+    if (r.ColData) { const v = parseFloat(cd[1]?.value || '0') || 0; (past[`line|${cd[0].value}`] ||= []).push(v); if (k === 1) prior[`line|${cd[0].value}`] = v; }
     if (r.Rows) w(r.Rows.Row);
-    if (r.Summary) (past[`total|${r.Summary.ColData[0].value}`] ||= []).push(parseFloat(r.Summary.ColData[1]?.value || '0') || 0);
+    if (r.Summary) { const v = parseFloat(r.Summary.ColData[1]?.value || '0') || 0; (past[`total|${r.Summary.ColData[0].value}`] ||= []).push(v); if (k === 1) prior[`total|${r.Summary.ColData[0].value}`] = v; }
   } };
   w(rep.Rows?.Row);
 }
@@ -208,6 +208,7 @@ for (const r of pnl) {
   const v = past[`${r.kind}|${r.label}`];
   r.avg5 = v ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 100) / 100 : null;
   r.avg_years = v ? v.length : 0;
+  r.prior = r.kind === 'head' ? '' : (prior[`${r.kind}|${r.label}`] ?? '');     // '': the account did not exist last year
 }
 
 console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding, deposits, balance_sheet, receivables, pnl, net_months }));

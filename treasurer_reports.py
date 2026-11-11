@@ -1,6 +1,6 @@
 """Monthly treasurer's reports to the board. Each month is a Google Slides deck in the DRSCCA Apps shared drive, under
-Treasurer > Treasurer's reports: "YYYY-MM Treasurer's report", three slides shown at the meeting: the summary, a chart
-of net income, and the profit and loss for the year to date, current to the day it was started; and beside it the
+Treasurer > Treasurer's reports: "YYYY-MM Treasurer's report", four slides shown at the meeting: the summary, a chart
+of net income, and the profit and loss for the year to date against the five-year average and against last year, current to the day it was started; and beside it the
 same as a PDF, "YYYY-MM Treasurer's report.pdf". Every month is built the same way, from the apps and QuickBooks, and
 starts with the previous report's Housekeeping notes to edit. The treasurer edits the deck in Google Slides and
 updates the PDF from it. Bank balances are never in it (the region does not state its balances in the report)."""
@@ -268,8 +268,8 @@ def _checker(cols=160, rows=2, px=12):
 
 
 def deck(d):
-    """The report as a three-slide PowerPoint (16:9) in the region's look: the logo, red, blue and black, and a
-    checkered foot. The slides: the summary, the chart, the profit and loss."""
+    """The report as a four-slide PowerPoint (16:9) in the region's look: the logo, red, blue and black, and a
+    checkered foot. The slides: the summary, the chart, the profit and loss against the five-year average, and against last year."""
     from pptx import Presentation
     from pptx.dml.color import RGBColor
     from pptx.enum.shapes import MSO_SHAPE
@@ -322,12 +322,71 @@ def deck(d):
         sl.shapes.add_picture(io.BytesIO(checker), 0, Inches(7.06), width=prs.slide_width, height=Inches(0.12))
         rect(sl, 0, 7.18, 13.333, 0.32, 'ink')
         text(sl, 0.55, 7.18, 8, 0.32, [('Detroit Region SCCA  ·  Treasurer\'s report', 11, True, 'FFFFFF')], MSO_ANCHOR.MIDDLE)
-        foot = text(sl, 10.8, 7.18, 2.0, 0.32, [(f'{n} of 3', 11, False, 'FFFFFF')], MSO_ANCHOR.MIDDLE)
+        foot = text(sl, 10.8, 7.18, 2.0, 0.32, [(f'{n} of 4', 11, False, 'FFFFFF')], MSO_ANCHOR.MIDDLE)
         foot.paragraphs[0].alignment = PP_ALIGN.RIGHT
         return sl
 
     def updown(v):
         return f"{'up' if v >= 0 else 'down'} {_money(v)}"
+
+    def statement(n, key, head, versus):
+        """The profit and loss against `key`: avg5 (the five-year average) or prior (the same dates last year)."""
+        sl = page(f'Profit and loss, year to date vs {versus}', n, compact=True)
+        rows = d['pnl']
+        heads = ['Account', d['since'], 'Year to date', head, 'Difference']
+        widths = [3.9, 1.8, 1.9, 2.4, 1.8]
+        top, bottom = 0.95, 6.62                         # the note sits between the table and the foot
+        rh = min(0.21, (bottom - top) / (len(rows) + 1))
+        tbl = sl.shapes.add_table(len(rows) + 1, 5, Inches(0.55), Inches(top), Inches(sum(widths)), Inches(rh * (len(rows) + 1))).table
+        size = Pt(10 if rh >= 0.2 else 9 if rh >= 0.16 else 7)
+        for i, wd in enumerate(widths):
+            tbl.columns[i].width = Inches(wd)
+
+        def cell(r, c, t, bold=False, fill=None, color=None):
+            ce = tbl.cell(r, c)
+            ce.margin_top = ce.margin_bottom = Inches(0.01)
+            ce.margin_left = ce.margin_right = Inches(0.06)
+            ce.fill.solid()
+            ce.fill.fore_color.rgb = rgb(fill or 'FFFFFF')
+            p = ce.text_frame.paragraphs[0]
+            p.alignment = PP_ALIGN.LEFT if c == 0 else PP_ALIGN.RIGHT
+            p.font.size = size                       # an empty cell otherwise takes Slides' default size and a taller row
+            run = p.add_run()
+            run.text, run.font.size, run.font.bold, run.font.name = t or ' ', size, bold, FONT
+            run.font.color.rgb = rgb(color or 'ink')
+        for c, h in enumerate(heads):
+            cell(0, c, h, bold=True, fill='ink', color='FFFFFF')
+        short, section = False, 'income'
+        for i, r in enumerate(rows, 1):
+            tbl.rows[i].height = Inches(rh)
+            if r['depth'] == 0 and r['kind'] == 'head':
+                section = 'income' if 'Income' in r['label'] else 'cost'
+            kind = 'net' if r['kind'] == 'total' and r['label'] in NETS else section
+            fill = SECTION_BG[kind] if r['depth'] == 0 else None
+            bold = r['kind'] != 'line'
+            cell(i, 0, '    ' * r['depth'] + r['label'], bold, fill)
+            if r['kind'] == 'head':
+                for c in range(1, 5):
+                    cell(i, c, '', fill=fill)
+                continue
+            base = r.get(key)
+            mark = '*' if key == 'avg5' and base is not None and (r.get('avg_years') or 0) < 5 else ''
+            short = short or bool(mark)
+            diff = None if base is None else round(r['ytd'] - base, 2)
+            good = diff is not None and ((diff > 0) if kind in ('income', 'net') else (diff < 0))
+            cell(i, 1, _amt(r['month']), bold, fill)
+            cell(i, 2, _amt(r['ytd']), bold, fill)
+            cell(i, 3, (_amt(base) + mark) if base is not None else '', bold, fill)
+            cell(i, 4, _amt(diff), bold, fill, (GOOD if good else BAD) if diff else None)
+        tbl.rows[0].height = Inches(rh)
+        if key == 'avg5':
+            note = (f"Through {_nice(d['period'])}. Average: January 1 to {day} of each of the five years before. "
+                    'Difference: year to date less the average; green is better for the region, red worse.'
+                    + (' * Fewer than five years: the account did not exist in all of them (accounts reorganized in 2022).' if short else ''))
+        else:
+            note = (f"Through {_nice(d['period'])}. {y - 1}: January 1 to {day}, {y - 1}. Difference: year to date less "
+                    f'{y - 1}; green is better for the region, red worse. Blank: the account did not exist in {y - 1}.')
+        text(sl, 0.55, top + rh * (len(rows) + 1) + 0.05, 12.23, 0.4, [(note, 9, False, 'gray')])
 
     # 1. Summary
     net = d['net']
@@ -347,60 +406,11 @@ def deck(d):
     if d['chart']:
         sl.shapes.add_picture(io.BytesIO(d['chart']), Inches(1.2), Inches(1.95), height=Inches(5.0))
 
-    # 3. Profit and loss
-    sl = page('Profit and loss, year to date', 3, compact=True)
-    rows = d['pnl']
+    # 3 and 4. Profit and loss: against the five-year average, then against last year
     y = int(d['period'][:4])
-    heads = ['Account', d['since'], 'Year to date', f'Average {y - 5} to {y - 1}', 'Difference']
-    widths = [3.9, 1.8, 1.9, 2.4, 1.8]
-    top, bottom = 0.95, 6.62                         # the note sits between the table and the foot
-    rh = min(0.21, (bottom - top) / (len(rows) + 1))
-    tbl = sl.shapes.add_table(len(rows) + 1, 5, Inches(0.55), Inches(top), Inches(sum(widths)), Inches(rh * (len(rows) + 1))).table
-    size = Pt(10 if rh >= 0.2 else 9 if rh >= 0.16 else 7)
-    for i, wd in enumerate(widths):
-        tbl.columns[i].width = Inches(wd)
-
-    def cell(r, c, t, bold=False, fill=None, color=None):
-        ce = tbl.cell(r, c)
-        ce.margin_top = ce.margin_bottom = Inches(0.01)
-        ce.margin_left = ce.margin_right = Inches(0.06)
-        ce.fill.solid()
-        ce.fill.fore_color.rgb = rgb(fill or 'FFFFFF')
-        p = ce.text_frame.paragraphs[0]
-        p.alignment = PP_ALIGN.LEFT if c == 0 else PP_ALIGN.RIGHT
-        p.font.size = size                       # an empty cell otherwise takes Slides' default size and a taller row
-        run = p.add_run()
-        run.text, run.font.size, run.font.bold, run.font.name = t or ' ', size, bold, FONT
-        run.font.color.rgb = rgb(color or 'ink')
-    for c, h in enumerate(heads):
-        cell(0, c, h, bold=True, fill='ink', color='FFFFFF')
-    short, section = False, 'income'
-    for i, r in enumerate(rows, 1):
-        tbl.rows[i].height = Inches(rh)
-        if r['depth'] == 0 and r['kind'] == 'head':
-            section = 'income' if 'Income' in r['label'] else 'cost'
-        kind = 'net' if r['kind'] == 'total' and r['label'] in NETS else section
-        fill = SECTION_BG[kind] if r['depth'] == 0 else None
-        bold = r['kind'] != 'line'
-        cell(i, 0, '    ' * r['depth'] + r['label'], bold, fill)
-        if r['kind'] == 'head':
-            for c in range(1, 5):
-                cell(i, c, '', fill=fill)
-            continue
-        avg, n = r.get('avg5'), r.get('avg_years') or 0
-        mark = '*' if avg is not None and n < 5 else ''
-        short = short or bool(mark)
-        diff = None if avg is None else round(r['ytd'] - avg, 2)
-        good = diff is not None and ((diff > 0) if kind in ('income', 'net') else (diff < 0))
-        cell(i, 1, _amt(r['month']), bold, fill)
-        cell(i, 2, _amt(r['ytd']), bold, fill)
-        cell(i, 3, (_amt(avg) + mark) if avg is not None else '', bold, fill)
-        cell(i, 4, _amt(diff), bold, fill, (GOOD if good else BAD) if diff else None)
-    tbl.rows[0].height = Inches(rh)
-    note = (f"Through {_nice(d['period'])}. Average: January 1 to {date.fromisoformat(d['period']).strftime('%B %-d')} of each of "
-            'the five years before. Difference: year to date less the average; green is better for the region, red worse.'
-            + (' * Fewer than five years: the account did not exist in all of them (accounts reorganized in 2022).' if short else ''))
-    text(sl, 0.55, top + rh * (len(rows) + 1) + 0.05, 12.23, 0.4, [(note, 9, False, 'gray')])
+    day = date.fromisoformat(d['period']).strftime('%B %-d') if d['period'] else ''
+    statement(3, 'avg5', f'Average {y - 5} to {y - 1}', 'five-year average')
+    statement(4, 'prior', f'{y - 1} same dates', 'prior year')
     buf = io.BytesIO()
     prs.save(buf)
     return buf.getvalue()

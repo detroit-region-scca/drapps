@@ -449,18 +449,20 @@ def _mirror(title, cols, nums):
     return rows
 
 
-PNL_COLS = ['period', 'kind', 'depth', 'label', 'month', 'ytd', 'avg5', 'avg_years', 'from', 'as_of']
+PNL_COLS = ['period', 'kind', 'depth', 'label', 'month', 'ytd', 'avg5', 'avg_years', 'from', 'as_of', 'prior']
 
 
 def pnl():
     """QuickBooks' profit and loss, as of the last sync:
     [{period: 'YYYY-MM-DD', kind: head|line|total, depth, label, month, ytd, avg5, avg_years, from}] in the report's
     order. month runs from `from` (the first of last month) to period. avg5
-    is the line's average for the same months of the five years before, over the avg_years it existed (None: never)."""
+    is the line's average for the same months of the five years before, over the avg_years it existed (None: never);
+    prior is the same dates last year alone (None: the account did not exist then, or the sync predates it)."""
     rows = _mirror('QBO P&L', PNL_COLS, {'month', 'ytd', 'depth', 'avg_years'})
     for r in rows:
         r['depth'], r['avg_years'] = int(r['depth'] or 0), int(r['avg_years'] or 0)
         r['avg5'] = _num(r['avg5']) if r['kind'] != 'head' and r['avg_years'] else None
+        r['prior'] = _num(r['prior']) if r['kind'] != 'head' and str(r['prior']).strip() != '' else None
     return rows
 
 

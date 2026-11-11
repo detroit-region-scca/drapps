@@ -7,10 +7,10 @@ import pytest
 import treasurer_reports as T
 
 ROWS = [{'kind': 'head', 'depth': 0, 'label': 'Income', 'month': 0, 'ytd': 0, 'avg5': None, 'avg_years': 0, 'from': '2026-10-01'},
-        {'kind': 'line', 'depth': 1, 'label': 'RX Rallycross Revenue', 'month': 1200.0, 'ytd': 27265.0, 'avg5': 25000.0, 'avg_years': 4},
+        {'kind': 'line', 'depth': 1, 'label': 'RX Rallycross Revenue', 'month': 1200.0, 'ytd': 27265.0, 'avg5': 25000.0, 'avg_years': 4, 'prior': 26000.0},
         {'kind': 'total', 'depth': 0, 'label': 'Total Income', 'month': 1200.0, 'ytd': 27265.0, 'avg5': 25000.0, 'avg_years': 5},
         {'kind': 'head', 'depth': 0, 'label': 'Cost of Goods Sold', 'month': 0, 'ytd': 0, 'avg5': None, 'avg_years': 0},
-        {'kind': 'line', 'depth': 1, 'label': 'RX Rallycross Expense', 'month': 300.0, 'ytd': 10.0, 'avg5': 4.0, 'avg_years': 5},
+        {'kind': 'line', 'depth': 1, 'label': 'RX Rallycross Expense', 'month': 300.0, 'ytd': 10.0, 'avg5': 4.0, 'avg_years': 5, 'prior': None},
         {'kind': 'total', 'depth': 0, 'label': 'Net Income', 'month': -50.5, 'ytd': 46514.55, 'avg5': 59076.23, 'avg_years': 5}]
 
 
@@ -23,10 +23,10 @@ def _data(**kw):
     return d
 
 
-def test_the_deck_has_three_slides_with_the_summary_chart_and_statement():
+def test_the_deck_has_four_slides_with_the_summary_chart_and_statements():
     from pptx import Presentation
     prs = Presentation(io.BytesIO(T.deck(_data())))
-    assert len(prs.slides) == 3
+    assert len(prs.slides) == 4
     texts = ['\n'.join(sh.text_frame.text for sh in s.shapes if sh.has_text_frame) for s in prs.slides]
     assert 'Since Oct 1: down $50. Year to date: up $46,515.' in texts[0] and 'RallyCross: down $855' in texts[0]
     assert 'Nothing waiting' in texts[0] and 'Michigan Winter Rally IV (#DRA9S)' in texts[0] and 'Old checks' in texts[0]
@@ -37,14 +37,18 @@ def test_the_deck_has_three_slides_with_the_summary_chart_and_statement():
     color = lambda r, c: str(tbl.cell(r, c).text_frame.paragraphs[0].runs[0].font.color.rgb)      # noqa: E731
     assert color(2, 4) == T.GOOD and color(5, 4) == T.BAD and color(6, 4) == T.BAD          # more income good, more cost bad
     assert str(tbl.cell(1, 0).fill.fore_color.rgb) == T.SECTION_BG['income']
-    assert 'Fewer than five years' in texts[2] and all('Detroit Region SCCA' in t for t in texts) and '3 of 3' in texts[2]
+    assert 'Fewer than five years' in texts[2] and all('Detroit Region SCCA' in t for t in texts) and '3 of 4' in texts[2]
+    last = next(sh for sh in prs.slides[3].shapes if sh.has_table).table           # the same against last year
+    assert [c.text for c in last.rows[0].cells][3] == '2025 same dates' and 'vs prior year' in texts[3]
+    assert [c.text for c in last.rows[2].cells] == ['    RX Rallycross Revenue', '1,200.00', '27,265.00', '26,000.00', '1,265.00']
+    assert [c.text for c in last.rows[5].cells][3:] == [' ', ' '] and 'did not exist in 2025' in texts[3]   # no account last year
     assert all(sum(sh.shape_type == 13 for sh in s.shapes) >= 2 for s in prs.slides)        # the logo and the checkered foot
 
 
 def test_an_empty_month_still_makes_a_deck():
     from pptx import Presentation
     prs = Presentation(io.BytesIO(T.deck(_data(net=None, programs=[], board=[], housekeeping=[], chart=b'', pnl=[]))))
-    assert len(prs.slides) == 3 and 'No results in QuickBooks yet.' in ''.join(
+    assert len(prs.slides) == 4 and 'No results in QuickBooks yet.' in ''.join(
         sh.text_frame.text for sh in prs.slides[0].shapes if sh.has_text_frame)
 
 

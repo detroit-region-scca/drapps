@@ -3,7 +3,7 @@
 {% block content %}
 <div class="small mb-2"><a href="{{ url_for('treasurer') }}">Treasurer</a> / Treasurer's reports</div>
 <h1 class="page-title">Treasurer's reports</h1>
-<p class="text-muted">The monthly report to the board: three slides (the summary, a chart of net income, the profit and loss), current to the day it is started, kept in Drive as a Google Slides deck and a PDF. Each month is built the same way and starts with the last report's Housekeeping notes. No bank balances.{% if folder_url %} <a class="text-nowrap" href="{{ folder_url }}" target="_blank" rel="noopener">{{ drive_icon }}Reports folder</a>{% endif %}</p>
+<p class="text-muted">The monthly report to the board: four slides (the summary, a chart of net income, the profit and loss against the five-year average and against last year), current to the day it is started, kept in Drive as a Google Slides deck and a PDF. Each month is built the same way and starts with the last report's Housekeeping notes. No bank balances.{% if folder_url %} <a class="text-nowrap" href="{{ folder_url }}" target="_blank" rel="noopener">{{ drive_icon }}Reports folder</a>{% endif %}</p>
 <form method="post" action="{{ url_for('treports.new') }}" class="d-flex flex-wrap align-items-end gap-2 mb-4 no-print">
     <div><label class="form-label small mb-1">Month</label><input type="month" name="month" class="form-control" value="{{ next_month }}" required></div>
     <button class="btn btn-accent">Start a report</button>
