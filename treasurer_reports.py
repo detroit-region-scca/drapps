@@ -258,8 +258,9 @@ def chart_html(year, through):
                     {y: v for y, v in nets.items() if int(year) - 5 <= y < int(year)})
     if not png:
         return ''
-    return (f'<h2>Net income through the year</h2><img src="data:image/png;base64,{png}" width="640" height="320" '
-            'alt="Net income added up month by month: actual, annual plan and five-year average">')
+    # The picture in its own paragraph: Google Docs otherwise puts it into the next heading.
+    return (f'<h2>Net income through the year</h2><p><img src="data:image/png;base64,{png}" width="640" height="320" '
+            'alt="Net income added up month by month: actual, annual plan and five-year average"></p>')
 
 
 SECTION_BG = {'income': '#e6f4ea', 'cost': '#fdecea', 'net': '#eceff1'}
