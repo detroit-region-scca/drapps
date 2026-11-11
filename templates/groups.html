@@ -3,7 +3,7 @@
 {% block content %}
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
         <h1 class="page-title">Email groups</h1>
-        {% if is_admin %}<form method="post" action="{{ url_for('groups.refresh') }}"><button class="btn btn-sm btn-outline-secondary"{{ ' disabled' if refreshing }}>{{ 'Refreshing…' if refreshing else 'Refresh from Google' }}</button></form>{% endif %}
+        <form method="post" action="{{ url_for('groups.refresh') }}"><button class="btn btn-sm btn-outline-secondary"{{ ' disabled' if refreshing }}>{{ 'Refreshing…' if refreshing else 'Refresh from Google' }}</button></form>
     </div>
     <p class="text-muted small">Every drscca.org email address. Each one forwards to the people listed, at their own email. Members are changed at admin.google.com.{% if updated %} As of {{ updated }}.{% endif %}</p>
     {% if refreshing %}<meta http-equiv="refresh" content="15">{% endif %}

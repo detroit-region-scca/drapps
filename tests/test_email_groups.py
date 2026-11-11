@@ -37,14 +37,14 @@ def test_groups_table(client):
     assert 'Also receives: old@example.org' in html and 'retired addresses' in html and 'Refresh from Google' in html
 
 
-def test_a_volunteer_sees_the_list_but_cannot_refresh(client, tmp_path, monkeypatch):
+def test_a_volunteer_sees_the_list_and_can_refresh(client, tmp_path, monkeypatch):
     import groups
     monkeypatch.setattr(groups, 'GROUPS_REFRESH', str(tmp_path / 'groups-refresh'))
     client.store.update(perms={'invoices'}, level='volunteer')
     html = client.get('/email-groups/').get_data(as_text=True)
-    assert 'autocross@example.org' in html and 'Refresh from Google' not in html
+    assert 'autocross@example.org' in html and 'Refresh from Google' in html
     client.post('/email-groups/refresh')
-    assert not (tmp_path / 'groups-refresh').exists()
+    assert (tmp_path / 'groups-refresh').exists()
 
 
 def test_refresh_asks_the_server(client, tmp_path, monkeypatch):

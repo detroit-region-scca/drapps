@@ -1,6 +1,6 @@
 """Email groups: every drscca.org address and who it reaches, for anyone signed in.
 
-When an admin presses Refresh, the server reads the groups from Google (tools/groups_pull.py, drscca-groups.path)
+When anyone signed in presses Refresh, the server reads the groups from Google (tools/groups_pull.py, drscca-groups.path)
 into data/email-groups.json. Google is the only place the groups live; the apps never change them.
 """
 import json
@@ -8,7 +8,7 @@ import os
 import re
 from datetime import datetime
 
-from flask import Blueprint, abort, redirect, render_template, url_for
+from flask import Blueprint, redirect, render_template, url_for
 
 import auth
 import officials
@@ -46,17 +46,15 @@ def home():
                          empty=EMPTY_NOTE.get(local, 'Nobody (the admin account only)')))
     refreshing = os.path.exists(GROUPS_REFRESH) and os.path.getmtime(GROUPS_REFRESH) > (
         os.path.getmtime(GROUPS_FILE) if os.path.exists(GROUPS_FILE) else 0)
-    is_admin = 'admin' in ((auth.user() or {}).get('perms') or [])
     return render_template('groups.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Email groups", rows=rows,
-                           refreshing=refreshing, is_admin=is_admin, updated=_nice_time(doc.get('updated', '')))
+                           refreshing=refreshing, updated=_nice_time(doc.get('updated', '')))
 
 
 @bp.route('/refresh', methods=['POST'])
 @login_required
 def refresh():
-    """Admins only: the server re-reads the groups from Google (drscca-groups.path watches this file)."""
-    if 'admin' not in ((auth.user() or {}).get('perms') or []):
-        abort(404)
+    """Anyone signed in: the server re-reads the groups from Google (drscca-groups.path watches this file). It only
+    reads, so it is safe for everyone."""
     with open(GROUPS_REFRESH, 'w') as f:
         f.write(datetime.now().isoformat())
     return redirect(url_for('groups.home'))
