@@ -25,6 +25,7 @@ def test_defaults_and_per_role_permissions():
 def test_home_apps_always_follow_permissions():
     assert {'show_operations', 'show_treasurer'} <= access.perms('Treasurer')
     assert 'show_operations' in access.perms('Equipment') and 'show_operations' not in access.perms('Director')
+    assert 'show_plan' in access.perms('Equipment')       # the Operations budget lives in the annual plan
     assert access.perms('Volunteer') & APPS == {'show_members', 'show_funds', 'show_invoices'}
     access.save('Director', set(access.EVERYDAY_DEFAULT) | {'show_operations'})     # a tile can't be set by hand
     assert 'show_operations' not in access.perms('Director')

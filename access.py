@@ -59,7 +59,8 @@ def _apps_for(p, volunteer=False):
         'show_board': not volunteer and bool(p & {'board_ask', 'board', 'minutes'}),
         'show_funds': bool(p & {'funds', 'funds_all', 'pay'}),
         'show_invoices': bool(p & {'invoices', 'invoices_all', 'pay'}),
-        'show_plan': not volunteer and bool(p & {'plan_own', 'plan_all', 'board', 'pay'}),
+        # Operations people see it too: the Operations budget lives in the annual plan.
+        'show_plan': not volunteer and bool(p & {'plan_own', 'plan_all', 'board', 'pay', 'ops'}),
         'show_operations': not volunteer and bool(p & {'ops', 'board', 'pay'}),
         'show_treasurer': not volunteer and bool(p & {'pay', 'audit'}),
         'show_volunteers': not volunteer and 'access' in p,
