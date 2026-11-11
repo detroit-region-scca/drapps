@@ -24,11 +24,11 @@ td:not(:first-child), th:not(:first-child) { text-align: right; white-space: now
     let i = 0;
     // Each slide's content is scaled to fill the screen without scrolling.
     const fit = () => S.forEach(s => {
-        const f = s.querySelector('.fit'), on = s.classList.contains('on');
-        s.style.display = 'flex'; f.style.transform = 'none';
+        const f = s.querySelector('.fit');
+        s.style.display = 'flex'; f.style.transform = 'none';          // shown for a moment to be measured
         const w = s.clientWidth * .92, h = s.clientHeight * .9;
         const k = Math.min(w / f.scrollWidth, h / f.scrollHeight, 2.2);
-        f.style.transform = `scale(${k})`; s.style.display = on ? '' : 'none';
+        f.style.transform = `scale(${k})`; s.style.display = '';      // back to the class deciding what shows
     });
     const go = n => { i = Math.max(0, Math.min(S.length - 1, n)); S.forEach((s, j) => s.classList.toggle('on', j === i)); pos.textContent = `${i + 1} of ${S.length}`; };
     document.getElementById('prev').onclick = () => go(i - 1);
