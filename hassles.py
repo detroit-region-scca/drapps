@@ -1,4 +1,4 @@
-"""Hassles: anyone signed in (officials and volunteers) posts something that is a hassle, in the apps or in how the
+"""Hassles: anyone with the hassles_post permission (every role, volunteers too, by default) posts something that is a hassle, in the apps or in how the
 region does things. Everyone sees them all, gives a thumbs up to the ones that bother them too, and can reply. Whoever
 has the hassles permission (the officers by default) marks each Open, Planned, Fixed or Not doing, with a short note. admin@ is emailed about each new hassle and
 each reply. Stored in the Registry sheet (hassles_store)."""
@@ -50,11 +50,12 @@ def home():
     if (g := _guard()):
         return g
     email, _, is_admin = _me()
+    can_post = 'hassles_post' in set((auth.user() or {}).get('perms') or ())
     items = S.hassles()
     # Open ones first, most thumbs up first, then newest; finished ones at the bottom.
     items.sort(key=lambda s: (s['status'] in CLOSED, -len(s['votes']), -s['id']))
     return render_template('hassles.html', title='DR Apps hassles', page_title='Hassles', items=items,
-                           me=email, is_admin=is_admin, statuses=STATUSES, closed=CLOSED)
+                           me=email, is_admin=is_admin, can_post=can_post, statuses=STATUSES, closed=CLOSED)
 
 
 @bp.route('/new', methods=['POST'])

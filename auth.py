@@ -146,6 +146,7 @@ ENDPOINT_PERMS = {
     'inv.new': 'invoices',
     'members.enter': 'points_enter',
     'board.motions': 'board_ask',
+    'hassles.new': 'hassles_post', 'hassles.vote': 'hassles_post', 'hassles.reply': 'hassles_post',
 }
 
 
@@ -223,6 +224,8 @@ def gate():
     set_session(u)
     if u['level'] == 'volunteer' and ep not in VOLUNTEER_ENDPOINTS:
         return refuse('That part of the apps is for region officials.')
+    if u['level'] == 'volunteer' and ep.startswith('hassles.') and not set(u.get('perms') or ()) & {'hassles_post', 'hassles'}:
+        return refuse('Hassles is not part of your access. Ask the admin if you need it.')
     need = ENDPOINT_PERMS.get(ep)
     if need and (request.method == 'POST' or ep in ('index', 'fr.new', 'fr.in_new', 'inv.new', 'members.enter', 'bud.edit')) \
             and need not in (u.get('perms') or ()):

@@ -25,6 +25,7 @@ EVERYDAY = {
     'plan_all': "Write any program's annual plan",
     'points_enter': 'Enter worker points for an event',
     'board_ask': 'Send items to the board and propose motions',
+    'hassles_post': 'See Hassles, post, thumbs up and reply',
 }
 EXTRA = {
     'board': 'Record board decisions (budget approvals, votes, motions)',
@@ -50,6 +51,7 @@ APPS = {
     'show_operations': 'Operations',
     'show_treasurer': 'Treasurer',
     'show_volunteers': 'App access',
+    'show_hassles': 'Hassles',
 }
 PERMS = {**EVERYDAY, **EXTRA}            # what Admin > Roles sets
 
@@ -66,6 +68,7 @@ def _apps_for(p, volunteer=False):
         'show_operations': not volunteer and bool(p & {'ops', 'board', 'pay'}),
         'show_treasurer': not volunteer and bool(p & {'pay', 'audit'}),
         'show_volunteers': not volunteer and 'access' in p,
+        'show_hassles': bool(p & {'hassles_post', 'hassles'}),
     }
     return {k for k, v in show.items() if v}
 # The order roles are listed in everywhere (Users, Roles, the Drive copy); roles added later follow alphabetically.
@@ -82,7 +85,7 @@ OFFICERS = {'RE', 'ARE', 'Secretary', 'Treasurer', 'Admin'}      # bylaws Art. I
 DEFAULTS = {'Equipment': {'ops'}, 'Points Keeper': {'points'}}
 EVERYDAY_DEFAULT = set(EVERYDAY) - {'plan_own'}            # what every official could do before roles had settings
 VOLUNTEER = 'Volunteer'
-VOLUNTEER_DEFAULT = {'funds', 'invoices', 'points_enter'}
+VOLUNTEER_DEFAULT = {'funds', 'invoices', 'points_enter', 'hassles_post'}
 
 _lock = threading.Lock()
 _cache = {}

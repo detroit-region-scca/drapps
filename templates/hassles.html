@@ -17,6 +17,7 @@
     <p class="text-muted">Something a hassle? In the apps or in how the region does things. Everyone who signs in can see the list.
         Every one gets looked at. Give a thumbs up to the ones that bother you too.</p>
 
+    {% if can_post %}
     <form method="post" action="{{ url_for('hassles.new') }}" class="card p-3 mb-4">
         <div class="section-label">Add a hassle</div>
         <div class="mb-2"><label class="form-label small" for="title">What's the hassle?</label>
@@ -25,12 +26,13 @@
             <textarea class="form-control" id="details" name="details" rows="3" maxlength="2000"></textarea></div>
         <div><button class="btn btn-accent">Post it</button></div>
     </form>
+    {% else %}<div class="small text-muted mb-3">Posting here is not part of your role. Ask the admin if you need it.</div>{% endif %}
 
     {% if not items %}<div class="card p-3 text-muted">No hassles yet. Lucky us!</div>{% endif %}
     <div class="list-group">{% for s in items %}{% set closed_one = s.status in closed %}
         <div class="list-group-item py-3 idea{{ ' closed' if closed_one }}" id="s{{ s.id }}">
             <div class="thumbs">
-                {% if s.by_email == me or closed_one %}<span class="box" title="{{ 'You posted this' if s.by_email == me else s.status }}">👍<span class="n">{{ s.votes|length }}</span></span>
+                {% if s.by_email == me or closed_one or not can_post %}<span class="box" title="{{ 'You posted this' if s.by_email == me else s.status if closed_one else 'Thumbs up' }}">👍<span class="n">{{ s.votes|length }}</span></span>
                 {% else %}<form method="post" action="{{ url_for('hassles.vote', sid=s.id) }}" class="m-0">
                     <button class="{{ 'on' if me in s.votes }}" aria-pressed="{{ 'true' if me in s.votes else 'false' }}" title="{{ 'Take back your thumbs up' if me in s.votes else 'Thumbs up' }}">👍<span class="n">{{ s.votes|length }}</span></button></form>{% endif %}
             </div>
@@ -41,7 +43,7 @@
                 {% if s.note %}<div class="small mt-1"><b>Admin:</b> {{ s.note }}</div>{% endif %}
                 <div class="small text-muted mt-1">{{ s.by }} · {{ s.created|nice_date }}{% if s.replies %} · {{ s.replies|length }} repl{{ 'y' if s.replies|length == 1 else 'ies' }}{% endif %}
                     {% if s.by_email == me or is_admin %} · <form method="post" action="{{ url_for('hassles.delete', sid=s.id) }}" class="d-inline" onsubmit="return confirm('Delete this?')"><button class="btn btn-link btn-sm p-0 align-baseline">Delete</button></form>{% endif %}</div>
-                <details class="mt-2"{{ ' open' if s.replies|length and s.replies|length <= 3 }}>
+                {% if s.replies or can_post %}<details class="mt-2"{{ ' open' if s.replies|length and s.replies|length <= 3 }}>
                     <summary class="small text-muted">{{ 'Replies' if s.replies else 'Reply' }}</summary>
                     {% for r in s.replies %}<div class="reply small mt-2">
                         <div class="details">{{ r.text }}</div>
@@ -50,11 +52,11 @@
                                 <input type="hidden" name="at" value="{{ r.at }}"><input type="hidden" name="by_email" value="{{ r.by_email }}">
                                 <button class="btn btn-link btn-sm p-0 align-baseline">Delete</button></form>{% endif %}</div>
                     </div>{% endfor %}
-                    <form method="post" action="{{ url_for('hassles.reply', sid=s.id) }}" class="d-flex gap-2 mt-2">
+                    {% if can_post %}<form method="post" action="{{ url_for('hassles.reply', sid=s.id) }}" class="d-flex gap-2 mt-2">
                         <textarea name="text" class="form-control form-control-sm" rows="1" maxlength="2000" required placeholder="Write a reply" aria-label="Reply"></textarea>
                         <button class="btn btn-sm btn-outline-secondary align-self-start">Reply</button>
-                    </form>
-                </details>
+                    </form>{% endif %}
+                </details>{% endif %}
                 {% if is_admin %}
                 <form method="post" action="{{ url_for('hassles.status', sid=s.id) }}" class="d-flex flex-wrap gap-2 mt-2 no-print">
                     <select name="status" class="form-select form-select-sm w-auto" aria-label="Status">{% for st in statuses %}<option{{ ' selected' if st == s.status }}>{{ st }}</option>{% endfor %}</select>

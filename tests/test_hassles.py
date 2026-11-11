@@ -58,9 +58,9 @@ class FakeStore:
 def box(monkeypatch):
     import auth
     import hassles
-    people = {'pat@example.org': {'name': 'Pat', 'level': 'official', 'roles': ['Director'], 'perms': {'events'}},
-              'vic@example.org': {'name': 'Vic', 'level': 'volunteer', 'roles': [], 'perms': {'invoices'}},
-              'ada@example.org': {'name': 'Ada', 'level': 'officer', 'roles': ['Treasurer'], 'perms': {'hassles'}}}
+    people = {'pat@example.org': {'name': 'Pat', 'level': 'official', 'roles': ['Director'], 'perms': {'events', 'hassles_post'}},
+              'vic@example.org': {'name': 'Vic', 'level': 'volunteer', 'roles': [], 'perms': {'invoices', 'hassles_post'}},
+              'ada@example.org': {'name': 'Ada', 'level': 'officer', 'roles': ['Treasurer'], 'perms': {'hassles', 'hassles_post'}}}
     monkeypatch.setattr(auth, 'lookup', lambda e: dict(people[e], email=e) if e in people else None)
     store, sent = FakeStore(), []
     monkeypatch.setattr(hassles, 'S', store)
@@ -136,3 +136,20 @@ def test_store_reads_the_sheet(monkeypatch):
     hs = HS.hassles()
     assert [h['id'] for h in hs] == [1, 2] and hs[0]['votes'] == ['a@x.org', 'b@x.org'] and hs[0]['by_email'] == 'pat@example.org'
     assert hs[1]['status'] == 'Open' and [r['text'] for r in hs[0]['replies']] == ['first', 'later'] and hs[1]['replies'] == []
+
+
+def test_the_permission_switches_hassles_off(box):
+    import auth
+    as_, S, _ = box
+    as_('pat@example.org').post('/hassles/new', data={'title': 'Dark mode'})
+    people = {'pat@example.org': {'events'}, 'vic@example.org': {'invoices'}}
+    auth.lookup = (lambda old: lambda e: dict(old(e), perms=people[e]) if e in people else old(e))(auth.lookup)
+    pat, vic = as_('pat@example.org'), as_('vic@example.org')
+    pat.post('/hassles/new', data={'title': 'Another'})
+    pat.post('/hassles/1/reply', data={'text': 'hi'})
+    assert len(S.hassles()) == 1 and S.get(1)['replies'] == []          # an official without it can look, not post
+    page = pat.get('/hassles/').get_data(as_text=True)
+    assert 'Dark mode' in page and 'Post it' not in page and 'not part of your role' in page
+    assert vic.get('/hassles/').status_code == 302                      # a volunteer without it can't open it
+    pat.post('/hassles/1/delete')
+    assert S.hassles() == []                                             # your own post can always be deleted

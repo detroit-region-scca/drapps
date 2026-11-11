@@ -12,7 +12,7 @@ def test_defaults_and_per_role_permissions():
     assert core('Treasurer') == (set(access.EVERYDAY) | set(access.EXTRA)) - {'plan_own'}
     assert core('Director') == EVERY
     assert core('Equipment') == EVERY | {'ops'} and core('Points Keeper') == EVERY | {'points'}
-    assert core('Volunteer') == {'funds', 'invoices', 'points_enter'}
+    assert core('Volunteer') == {'funds', 'invoices', 'points_enter', 'hassles_post'}
     access.save('Director', {'funds', 'plan_own', 'events'})
     assert core('Director') == {'funds', 'plan_own', 'events'}
     access.save('Treasurer', {'pay', 'audit', 'plan_all', 'plan_own'})
@@ -28,7 +28,8 @@ def test_home_apps_always_follow_permissions():
     assert 'show_plan' in access.perms('Equipment')       # the Operations budget lives in the annual plan
     assert 'no_vote' in access.perms('Treasurer') & access.perms('RE') and 'no_vote' not in access.perms('Director')
     assert 'hassles' in access.perms('Secretary') & access.perms('ARE') and 'hassles' not in access.perms('Equipment')
-    assert access.perms('Volunteer') & APPS == {'show_members', 'show_funds', 'show_invoices'}
+    assert access.perms('Volunteer') & APPS == {'show_members', 'show_funds', 'show_invoices', 'show_hassles'}
+    assert all('hassles_post' in access.perms(r) for r in ('Director', 'Equipment', 'RE', 'Volunteer'))
     access.save('Director', set(access.EVERYDAY_DEFAULT) | {'show_operations'})     # a tile can't be set by hand
     assert 'show_operations' not in access.perms('Director')
     access.save('Director', set(access.EVERYDAY_DEFAULT) | {'ops'})                 # it follows the permission
