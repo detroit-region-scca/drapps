@@ -132,6 +132,8 @@ def main():
         P.write_tab('QBO Monthly', ['year', 'program', 'month', 'net', 'as_of'], monthly_rows)
         P.write_tab('QBO Status', ['item', 'amount', 'as_of'], status_rows)
         P.write_tab('QBO Exceptions', P.EXC_COLS, [[e[c] if c != 'as_of' else as_of for c in P.EXC_COLS] for e in exc])
+        P.write_tab('QBO Net by Month', ['year', 'month', 'net', 'as_of'],
+                    [[n['year'], i + 1, v, as_of] for n in data.get('net_months', []) for i, v in enumerate(n['months'])])
         P.write_tab('QBO P&L', P.PNL_COLS, [[r[c] if c != 'as_of' else as_of for c in P.PNL_COLS] for r in data.get('pnl', [])])
         P.write_tab('QBO Balance Sheet', ['depth', 'name', 'amount', 'as_of'],
                     [[b['depth'], b['name'], b['amount'], as_of] for b in data.get('balance_sheet', [])])

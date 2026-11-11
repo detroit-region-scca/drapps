@@ -78,7 +78,8 @@ def replace(file_id, html):
 
 
 class _Clean(HTMLParser):
-    """Google's HTML export cut down to plain structure: headings, paragraphs, lists, tables, bold, links."""
+    """Google's HTML export cut down to plain structure: headings, paragraphs, lists, tables, bold, links, and the
+    chart (a PNG kept inside the Doc)."""
     KEEP = {'h1': 'h2', 'h2': 'h3', 'h3': 'h4', 'h4': 'h5', 'p': 'p', 'ul': 'ul', 'ol': 'ol', 'li': 'li', 'table': 'table',
             'tr': 'tr', 'td': 'td', 'th': 'th', 'b': 'b', 'strong': 'b', 'i': 'i', 'em': 'i', 'br': 'br'}
 
@@ -99,6 +100,8 @@ class _Clean(HTMLParser):
         elif tag == 'a' and (a.get('href') or '').startswith(('http://', 'https://')):
             href = re.sub(r'^https://www\.google\.com/url\?q=([^&]+).*$', lambda m: __import__('urllib.parse').parse.unquote(m[1]), a['href'])
             self.out.append(f'<a href="{escape(href)}" target="_blank" rel="noopener">')
+        elif tag == 'img' and (a.get('src') or '').startswith('data:image/png;base64,'):
+            self.out.append(f'<img src="{a["src"]}" alt="{escape(a.get("alt") or "Chart")}" style="max-width: 100%; height: auto;">')
         elif tag in self.KEEP:
             t = self.KEEP[tag]
             self.out.append(f'<{t} class="table table-sm">' if t == 'table' else f'<{t}>')
@@ -139,6 +142,108 @@ def _amt(v):
     return f"({abs(v):,.2f})" if v < 0 else f"{v:,.2f}"
 
 
+def collapse(rows):
+    """The statement with sub-accounts folded into their group: the top-level sections and totals, and one line per
+    group or account under them (each program's expenses, Operations, interest)."""
+    out, tot_other = [], None
+    for r in rows:
+        if r['depth'] == 0:
+            if r['kind'] == 'total' and r['label'] == 'Total Other Income':
+                tot_other = r['ytd']
+            if r['kind'] == 'total' and r['label'] == 'Net Other Income' and r['ytd'] == tot_other:
+                continue                # the same number again
+            out.append(r)
+        elif r['depth'] == 1 and r['kind'] == 'line':
+            out.append(r)
+        elif r['depth'] == 1 and r['kind'] == 'total':
+            out.append(dict(r, kind='line', label=r['label'].removeprefix('Total ')))
+    for r in out:
+        r['label'] = r['label'].removeprefix('Club ')
+    return out
+
+
+def chart_png(year, through, plan_months, actual_months, history):
+    """A PNG of net income added up month by month: the annual plan, this year through the month `through`, and the
+    average of the years in `history` ({year: [12 months]}). Returns base64 text, or '' if there is nothing to draw."""
+    import base64
+    import io
+    from PIL import Image, ImageDraw, ImageFont
+
+    def cum(xs):
+        out, t = [], 0.0
+        for x in xs:
+            t += x
+            out.append(t)
+        return out
+    past = [v for v in history.values() if len(v) == 12]
+    series = []
+    if past:
+        series.append((f'Average {min(history)} to {max(history)}', cum([sum(v[i] for v in past) / len(past) for i in range(12)]), (150, 150, 150), 5))
+    if any(plan_months):
+        series.append(('Annual plan', cum(plan_months), (29, 63, 184), 5))
+    if through:
+        series.append((f'{year} actual', cum(actual_months[:through]), (208, 2, 27), 8))
+    if not series:
+        return ''
+    W, H, L, R, T, B = 1600, 800, 170, 60, 110, 90
+    im = Image.new('RGB', (W, H), 'white')
+    d = ImageDraw.Draw(im)
+    try:
+        font, small = ImageFont.load_default(size=30), ImageFont.load_default(size=26)
+    except TypeError:
+        font = small = ImageFont.load_default()
+    vals = [v for _, ys, _, _ in series for v in ys] + [0]
+    lo, hi = min(vals), max(vals)
+    step = next(s for s in (1000, 2500, 5000, 10000, 20000, 25000, 50000, 100000, 250000) if (hi - lo) / s <= 8)
+    lo, hi = (lo // step) * step, -((-hi) // step) * step
+    x = lambda i: L + (W - L - R) * i / 11            # noqa: E731
+    y = lambda v: T + (H - T - B) * (hi - v) / ((hi - lo) or 1)      # noqa: E731
+    v = lo
+    while v <= hi:
+        d.line([(L, y(v)), (W - R, y(v))], fill=(225, 225, 225) if v else (120, 120, 120), width=2)
+        lab = f"{'-' if v < 0 else ''}${abs(v) / 1000:,.0f}k"
+        d.text((L - 15, y(v)), lab, fill=(80, 80, 80), font=small, anchor='rm')
+        v += step
+    for i, mname in enumerate('JFMAMJJASOND'):
+        d.text((x(i), H - B + 20), mname, fill=(80, 80, 80), font=small, anchor='mt')
+    for name, ys, color, width in series:
+        pts = [(x(i), y(v)) for i, v in enumerate(ys)]
+        if len(pts) > 1:
+            d.line(pts, fill=color, width=width, joint='curve')
+        for p in pts[-1:]:
+            d.ellipse([p[0] - width, p[1] - width, p[0] + width, p[1] + width], fill=color)
+    lx = L
+    for name, _, color, width in reversed(series):
+        d.line([(lx, 50), (lx + 50, 50)], fill=color, width=width)
+        d.text((lx + 62, 50), name, fill=(30, 30, 30), font=font, anchor='lm')
+        lx += 90 + d.textlength(name, font=font)
+    buf = io.BytesIO()
+    im.save(buf, 'PNG', optimize=True)
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def chart_html(year, through):
+    """The chart for the report, from the plan and the QuickBooks figures in the apps."""
+    import plan_store as P
+    if not P.enabled():
+        return ''
+    plan_m = [0.0] * 12
+    for p in P.plan(str(year)).values():
+        for ln in p['lines']:
+            if ln['month']:
+                plan_m[ln['month'] - 1] += ln['net'] or 0
+            else:
+                for i in range(12):
+                    plan_m[i] += (ln['net'] or 0) / 12
+    nets = P.net_by_month()
+    png = chart_png(year, through, plan_m, nets.get(int(year), [0.0] * 12),
+                    {y: v for y, v in nets.items() if int(year) - 5 <= y < int(year)})
+    if not png:
+        return ''
+    return (f'<h2>Net income through the year</h2><img src="data:image/png;base64,{png}" width="640" height="320" '
+            'alt="Net income added up month by month: actual, annual plan and five-year average">')
+
+
 def pnl_html(rows, period):
     """QuickBooks' profit and loss as a table: the month, the year to date through it, and the average of the same
     months over the five years before, with the difference."""
@@ -176,8 +281,8 @@ def prior(month):
 
 
 def draft(month):
-    """The board page for a month, from the apps: the profit and loss for the month before and the year to date,
-    profit by program, funds requests waiting, and what is waiting for the board. The treasurer adds the month's story
+    """The board page for a month, from the apps: the profit and loss for the month before and the year to date (sub-
+    accounts folded into their group), a chart of net income against the plan and the five years before, profit by program, funds requests waiting, and what is waiting for the board. The treasurer adds the month's story
     in Google Docs."""
     import bud_store as B
     import fr_store as F
@@ -186,7 +291,8 @@ def draft(month):
     year, period = month[:4], prior(month)
     label = date(int(year), int(month[5:]), 1).strftime('%B %Y')
     plabel = date(int(period[:4]), int(period[5:]), 1).strftime('%B')
-    pnl = [r for r in (P.pnl() if P.enabled() else []) if r['period'] == period]
+    full = [r for r in (P.pnl() if P.enabled() else []) if r['period'] == period]
+    pnl = collapse(full)
     # Each program's profit from January through the report's month, so it agrees with the statement below.
     by_month = P.monthly(period[:4]) if P.enabled() else {}
     progs = [{'name': name, 'actual': round(sum(by_month[code][:int(period[5:])]), 2)}
@@ -204,7 +310,7 @@ def draft(month):
     def updown(v):
         return f"{'up' if v >= 0 else 'down'} {_money(v)}"
 
-    net = next((r for r in pnl if r['kind'] == 'total' and r['label'] == 'Net Income'), None)
+    net = next((r for r in full if r['kind'] == 'total' and r['label'] == 'Net Income'), None)
     return (f"<h1>Treasurer's report, {label}</h1>"
             + (f"<p><b>Net for {plabel}: {updown(net['month'])}. Year to date: {updown(net['ytd'])}.</b></p>" if net else '')
             + f"<h2>By program, January through {plabel}</h2>"
@@ -214,6 +320,7 @@ def draft(month):
                else '<p>Nothing waiting. Every request has been approved and paid.</p>')
             + '<h2>Waiting on the board</h2>' + (li(board) if board else '<p>Nothing.</p>')
             + '<h2>Housekeeping</h2><p></p>'
+            + chart_html(period[:4], int(period[5:]))
             + f'<h2>Profit and loss, {plabel} and year to date</h2>' + pnl_html(pnl, period))
 
 

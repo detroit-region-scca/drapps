@@ -9,6 +9,7 @@
 //   balance_sheet  today's balance sheet to two levels; receivables  every invoice still owed
 //   pnl       the profit and loss statement for the last full month and the year to date, every line, with each line's
 //             average for the same months of the five years before, for the board report
+//   net_months  net income by month, this year and the five before, for the board report's chart
 // Runs on the machine that holds the QuickBooks connection (the qbo-mcp install and its token
 // store); the web app never talks to QuickBooks. QBO_MCP_DIR points at that install. Read only (writes are qbo_write.mjs).
 const dir = process.env.QBO_MCP_DIR || `${process.env.HOME}/.mcp-servers/qbo-mcp`;
@@ -176,10 +177,22 @@ for (let k = 1; k <= 5; k++) {
   } };
   w(rep.Rows?.Row);
 }
+// Net income by month, this year through the last full month and each of the five years before, for the chart of
+// the year so far against the plan and the five-year average.
+const netRow = (rep) => {      // the month columns only (a report also ends with a Total column)
+  const n = (rep.Columns?.Column || []).filter(c => c.ColTitle && c.ColTitle !== 'Total').length;
+  let out = null; const w = rows => { for (const r of rows || []) { if (r.Rows) w(r.Rows.Row);
+    if (r.Summary?.ColData?.[0]?.value === 'Net Income') out = r.Summary.ColData.slice(1, 1 + n).map(d => parseFloat(d.value || '0') || 0); } };
+  w(rep.Rows?.Row); return out || []; };
+const net_months = [{ year: Number(pm.slice(0, 4)), months: netRow(pnlRep) }];
+for (let k = 1; k <= 5; k++) {
+  const y = Number(pm.slice(0, 4)) - k;
+  net_months.push({ year: y, months: netRow(await get(`reports/ProfitAndLoss?start_date=${y}-01-01&end_date=${y}-12-31&accounting_method=Accrual&summarize_column_by=Month`)) });
+}
 for (const r of pnl) {
   const v = past[`${r.kind}|${r.label}`];
   r.avg5 = v ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 100) / 100 : null;
   r.avg_years = v ? v.length : 0;
 }
 
-console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding, deposits, balance_sheet, receivables, pnl }));
+console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding, deposits, balance_sheet, receivables, pnl, net_months }));

@@ -74,3 +74,29 @@ def test_the_statement_table():
     assert 'New account</td><td>5.00</td><td>5.00</td><td></td><td></td>' in html
     assert '<td><b>59,076.23</b></td><td><b>(12,561.68)</b></td>' in html and 'Fewer than five years' in html
     assert T.prior('2027-01') == '2026-12'
+
+
+def test_sub_accounts_fold_into_their_group():
+    rows = [{'kind': 'head', 'depth': 0, 'label': 'Income'},
+            {'kind': 'line', 'depth': 1, 'label': 'Club AX Autocross Revenue', 'ytd': 5},
+            {'kind': 'total', 'depth': 0, 'label': 'Total Income', 'ytd': 5},
+            {'kind': 'head', 'depth': 0, 'label': 'Cost of Goods Sold'},
+            {'kind': 'head', 'depth': 1, 'label': 'Club AX Autocross Expense'},
+            {'kind': 'line', 'depth': 2, 'label': 'Club AX Autocross Site Rental', 'ytd': 3},
+            {'kind': 'total', 'depth': 1, 'label': 'Total Club AX Autocross Expense', 'ytd': 3},
+            {'kind': 'total', 'depth': 0, 'label': 'Total Other Income', 'ytd': 7},
+            {'kind': 'total', 'depth': 0, 'label': 'Net Other Income', 'ytd': 7},
+            {'kind': 'total', 'depth': 0, 'label': 'Net Income', 'ytd': 9}]
+    assert [(r['kind'], r['label']) for r in T.collapse(rows)] == [
+        ('head', 'Income'), ('line', 'AX Autocross Revenue'), ('total', 'Total Income'), ('head', 'Cost of Goods Sold'),
+        ('line', 'AX Autocross Expense'), ('total', 'Total Other Income'), ('total', 'Net Income')]
+
+
+def test_the_chart_draws():
+    import base64
+    png = T.chart_png(2026, 10, [100.0] * 12, [50.0] * 10 + [0, 0], {2024: [10.0] * 12, 2025: [-10.0] * 12})
+    assert base64.b64decode(png)[:8] == b'\x89PNG\r\n\x1a\n'
+    assert T.chart_png(2026, 0, [0.0] * 12, [], {}) == ''
+    c = T._Clean()
+    c.feed(f'<p><img src="data:image/png;base64,{png[:20]}" alt="x"><img src="https://evil.example/x.png"></p>')
+    assert ''.join(c.out).count('<img') == 1

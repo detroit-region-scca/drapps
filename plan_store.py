@@ -463,6 +463,15 @@ def pnl():
     return rows
 
 
+def net_by_month():
+    """{year: [net income for Jan..Dec]} from QuickBooks: this year through the last full month, and the five before."""
+    out = {}
+    for r in _mirror('QBO Net by Month', ['year', 'month', 'net', 'as_of'], {'year', 'month', 'net'}):
+        if r['month']:
+            out.setdefault(int(r['year']), [0.0] * 12)[int(r['month']) - 1] = r['net']
+    return out
+
+
 def balance_sheet():
     """Today's QuickBooks balance sheet as of the last sync, to two levels: [{depth, name, amount, as_of}]."""
     rows = _mirror('QBO Balance Sheet', ['depth', 'name', 'amount', 'as_of'], {'amount', 'depth'})
