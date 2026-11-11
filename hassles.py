@@ -13,12 +13,13 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 
 import auth
 from storage import DATA_DIR
-from utils import log_audit_event, login_required
+from utils import log_audit_event, login_required, send_mail
 
 bp = Blueprint('hassles', __name__, url_prefix='/hassles')
 PATH = os.path.join(DATA_DIR, 'suggestions.json')
 STATUSES = ['Open', 'Planned', 'Fixed', 'Not doing']
 CLOSED = ('Fixed', 'Not doing')
+ADMIN = os.environ.get('HASSLES_EMAIL', 'admin@drscca.org')      # told about each new hassle
 
 
 def _load():
@@ -87,6 +88,9 @@ def new():
         return sid
     sid = _change(add)
     log_audit_event('SUGGESTION_ADDED', name, {'id': sid, 'title': title})
+    link = url_for('hassles.home', _external=True) + f'#s{sid}'
+    send_mail(f'New hassle: {title}', f"{name} posted a hassle in DR Apps:\n\n{title}\n\n"
+              + (f"{details}\n\n" if details else '') + link, ADMIN, reply_to=email or None)
     flash('Thanks! It is on the list.', 'success')
     return redirect(url_for('hassles.home') + f'#s{sid}')
 

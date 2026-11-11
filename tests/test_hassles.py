@@ -12,6 +12,8 @@ def box(monkeypatch, tmp_path):
     monkeypatch.setattr(auth, 'lookup', lambda e: dict(people[e], email=e) if e in people else None)
     monkeypatch.setattr(suggestions, 'PATH', str(tmp_path / 'suggestions.json'))
     monkeypatch.setattr(suggestions, 'log_audit_event', lambda *a, **k: None)
+    sent = []
+    monkeypatch.setattr(suggestions, 'send_mail', lambda subject, body, to, **k: sent.append((subject, body, to)))
     from app import app
     app.config['TESTING'] = True
 
@@ -20,6 +22,7 @@ def box(monkeypatch, tmp_path):
         with c.session_transaction() as s:
             s.update(authenticated=True, email=email, who=people[email]['name'])
         return c
+    as_.sent = sent
     return as_, suggestions
 
 
@@ -29,6 +32,7 @@ def test_post_vote_and_status(box):
     pat.post('/hassles/new', data={'title': 'Dark mode', 'details': 'Easier at night'})
     vic.post('/hassles/new', data={'title': 'Event map'})
     s1, s2 = S._load()['items']
+    assert as_.sent[0][0] == 'New hassle: Dark mode' and 'Pat posted' in as_.sent[0][1] and as_.sent[0][2] == 'admin@drscca.org'
     pat.post(f"/hassles/{s1['id']}/vote")                     # not on your own
     vic.post(f"/hassles/{s1['id']}/vote")                     # a volunteer can vote
     ada.post(f"/hassles/{s1['id']}/vote")
