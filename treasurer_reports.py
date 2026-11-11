@@ -162,9 +162,9 @@ def chart_png(year, through, plan_months, actual_months, history):
     if past:
         series.append((f'Average {min(history)} to {max(history)}', cum([sum(v[i] for v in past) / len(past) for i in range(12)]), (150, 150, 150), 5))
     if any(plan_months):
-        series.append(('Annual plan', cum(plan_months), (29, 63, 184), 5))
+        series.append(('Annual plan', cum(plan_months), (29, 63, 184), 5))      # the region's blue
     if through:
-        series.append((f'{year} actual', cum(actual_months[:through]), (208, 2, 27), 8))
+        series.append((f'{year} actual', cum(actual_months[:through]), (210, 35, 42), 8))     # the region's red
     if not series:
         return ''
     W, H, L, R, T, B = 1600, 800, 170, 60, 110, 90
@@ -248,39 +248,74 @@ def data(month, housekeeping=()):
             'pnl': collapse(full)}
 
 
+LOGO = __import__('os').path.join(__import__('os').path.dirname(__import__('os').path.abspath(__file__)), 'static', 'drscca-logo.png')
+BRAND = {'red': 'D2232A', 'blue': '1D3FB8', 'ink': '111111', 'gray': '666666'}
+FONT = 'Arial'
+
+
+def _checker(cols=160, rows=2, px=12):
+    """A black and white checkered strip (PNG bytes), the region's flag, for the foot of each slide."""
+    from PIL import Image, ImageDraw
+    im = Image.new('RGB', (cols * px, rows * px), 'white')
+    d = ImageDraw.Draw(im)
+    for r in range(rows):
+        for c in range(cols):
+            if (r + c) % 2 == 0:
+                d.rectangle([c * px, r * px, c * px + px - 1, r * px + px - 1], fill='black')
+    buf = io.BytesIO()
+    im.save(buf, 'PNG')
+    return buf.getvalue()
+
+
 def deck(d):
-    """The report as a three-slide PowerPoint (16:9): the summary, the chart, the profit and loss."""
+    """The report as a three-slide PowerPoint (16:9) in the region's look: the logo, red, blue and black, and a
+    checkered foot. The slides: the summary, the chart, the profit and loss."""
     from pptx import Presentation
     from pptx.dml.color import RGBColor
     from pptx.enum.shapes import MSO_SHAPE
-    from pptx.enum.text import PP_ALIGN
+    from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
     from pptx.util import Inches, Pt
 
     prs = Presentation()
     prs.slide_width, prs.slide_height = Inches(13.333), Inches(7.5)
     blank = prs.slide_layouts[6]
-    RED, GRAY, INK = RGBColor(0xD0, 0x02, 0x1B), RGBColor(0x66, 0x66, 0x66), RGBColor(0x11, 0x11, 0x11)
+    rgb = lambda k: RGBColor.from_string(BRAND.get(k, k))       # noqa: E731
+    checker = _checker()
 
-    def text(slide, x, y, w, h, paras):
-        """paras: [(text, size, bold, color or None)]"""
-        tf = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h)).text_frame
+    def text(slide, x, y, w, h, paras, anchor=None):
+        """paras: [(text, size, bold, color key or hex or None)]"""
+        box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+        tf = box.text_frame
         tf.word_wrap = True
+        if anchor:
+            tf.vertical_anchor = anchor
         for i, (t, size, bold, color) in enumerate(paras):
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             r = p.add_run()
-            r.text, r.font.size, r.font.bold = t, Pt(size), bold
-            r.font.color.rgb = color or INK
+            r.text, r.font.size, r.font.bold, r.font.name = t, Pt(size), bold, FONT
+            r.font.color.rgb = rgb(color or 'ink')
             p.space_after = Pt(4 if size < 16 else 6)
         return tf
 
-    def page(sub):
+    def rect(slide, x, y, w, h, color):
+        sh = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
+        sh.fill.solid()
+        sh.fill.fore_color.rgb = rgb(color)
+        sh.line.fill.background()
+        return sh
+
+    def page(sub, n):
         sl = prs.slides.add_slide(blank)
-        text(sl, 0.6, 0.35, 12.1, 0.7, [(d['title'], 30, True, None)])
-        bar = sl.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(1.08), Inches(12.1), Inches(0.05))
-        bar.fill.solid()
-        bar.fill.fore_color.rgb = RED
-        bar.line.fill.background()
-        text(sl, 0.6, 1.2, 12.1, 0.5, [(sub, 20, True, None)])
+        sl.shapes.add_picture(LOGO, Inches(0.55), Inches(0.28), height=Inches(0.86))
+        text(sl, 2.0, 0.3, 10.8, 0.8, [(d['title'], 30, True, None)], MSO_ANCHOR.MIDDLE)
+        rect(sl, 0.55, 1.24, 12.23, 0.06, 'red')
+        text(sl, 0.55, 1.36, 12.23, 0.5, [(sub, 20, True, 'blue')])
+        # The foot: a checkered strip and a black band with the region's name and the slide number.
+        sl.shapes.add_picture(io.BytesIO(checker), 0, Inches(7.06), width=prs.slide_width, height=Inches(0.12))
+        rect(sl, 0, 7.18, 13.333, 0.32, 'ink')
+        text(sl, 0.55, 7.18, 8, 0.32, [('Detroit Region SCCA  ·  Treasurer\'s report', 11, True, 'FFFFFF')], MSO_ANCHOR.MIDDLE)
+        foot = text(sl, 10.8, 7.18, 2.0, 0.32, [(f'{n} of 3', 11, False, 'FFFFFF')], MSO_ANCHOR.MIDDLE)
+        foot.paragraphs[0].alignment = PP_ALIGN.RIGHT
         return sl
 
     def updown(v):
@@ -288,31 +323,32 @@ def deck(d):
 
     # 1. Summary
     net = d['net']
-    sl = page(f"{d['since']}: {updown(net['month'])}. Year to date: {updown(net['ytd'])}." if net else 'No results in QuickBooks yet.')
-    text(sl, 0.6, 1.75, 12.1, 0.4, [(f"Current to {_nice(d['period'])}.", 14, False, GRAY)])
-    left = [('By program, year to date', 18, True, None)] + [(f"•  {n}: {updown(v)}", 16, False, None) for n, v in d['programs']]
-    text(sl, 0.6, 2.3, 5.6, 4.9, left)
-    right = [('Funds requests', 18, True, None)]
+    sl = page(f"{d['since']}: {updown(net['month'])}. Year to date: {updown(net['ytd'])}." if net else 'No results in QuickBooks yet.', 1)
+    text(sl, 0.55, 1.85, 12.23, 0.4, [(f"Current to {_nice(d['period'])}.", 14, False, 'gray')])
+    left = [('By program, year to date', 18, True, 'red')] + [(f"•  {n}: {updown(v)}", 16, False, None) for n, v in d['programs']]
+    text(sl, 0.55, 2.35, 5.6, 4.6, left)
+    right = [('Funds requests', 18, True, 'red')]
     right += [(f'•  {w}', 15, False, None) for w in d['waiting']] or [('Nothing waiting. Every request has been approved and paid.', 15, False, None)]
-    right += [('Waiting on the board', 18, True, None)]
+    right += [('Waiting on the board', 18, True, 'red')]
     right += [(f'•  {b}', 15, False, None) for b in d['board']] or [('Nothing.', 15, False, None)]
-    right += [('Housekeeping', 18, True, None)] + [(f'•  {h}', 15, False, None) for h in d['housekeeping']]
-    text(sl, 6.6, 2.3, 6.1, 4.9, right)
+    right += [('Housekeeping', 18, True, 'red')] + [(f'•  {h}', 15, False, None) for h in d['housekeeping']]
+    text(sl, 6.6, 2.35, 6.2, 4.6, right)
 
     # 2. Chart
-    sl = page('Net income through the year')
+    sl = page('Net income through the year', 2)
     if d['chart']:
-        sl.shapes.add_picture(io.BytesIO(d['chart']), Inches(0.9), Inches(1.85), width=Inches(11.5))
+        sl.shapes.add_picture(io.BytesIO(d['chart']), Inches(1.2), Inches(1.95), height=Inches(5.0))
 
     # 3. Profit and loss
-    sl = page('Profit and loss, year to date')
+    sl = page('Profit and loss, year to date', 3)
     rows = d['pnl']
     y = int(d['period'][:4])
     heads = ['Account', d['since'], 'Year to date', f'Average {y - 5} to {y - 1}', 'Difference']
     widths = [3.9, 1.8, 1.9, 2.4, 1.8]
-    rh = min(0.19, 5.1 / (len(rows) + 1))            # the whole statement fits above the note
-    tbl = sl.shapes.add_table(len(rows) + 1, 5, Inches(0.6), Inches(1.7), Inches(sum(widths)), Inches(rh * (len(rows) + 1))).table
-    size = Pt(9 if rh >= 0.17 else 7)
+    top, bottom = 1.9, 6.62                          # the note sits between the table and the foot
+    rh = min(0.19, (bottom - top) / (len(rows) + 1))
+    tbl = sl.shapes.add_table(len(rows) + 1, 5, Inches(0.55), Inches(top), Inches(sum(widths)), Inches(rh * (len(rows) + 1))).table
+    size = Pt(9 if rh >= 0.16 else 7)
     for i, wd in enumerate(widths):
         tbl.columns[i].width = Inches(wd)
 
@@ -321,15 +357,15 @@ def deck(d):
         ce.margin_top = ce.margin_bottom = Inches(0.01)
         ce.margin_left = ce.margin_right = Inches(0.06)
         ce.fill.solid()
-        ce.fill.fore_color.rgb = RGBColor.from_string(fill or 'FFFFFF')
+        ce.fill.fore_color.rgb = rgb(fill or 'FFFFFF')
         p = ce.text_frame.paragraphs[0]
         p.alignment = PP_ALIGN.LEFT if c == 0 else PP_ALIGN.RIGHT
         p.font.size = size                       # an empty cell otherwise takes Slides' default size and a taller row
         run = p.add_run()
-        run.text, run.font.size, run.font.bold = t or ' ', size, bold
-        run.font.color.rgb = RGBColor.from_string(color or '111111')
+        run.text, run.font.size, run.font.bold, run.font.name = t or ' ', size, bold, FONT
+        run.font.color.rgb = rgb(color or 'ink')
     for c, h in enumerate(heads):
-        cell(0, c, h, bold=True, color='555555')
+        cell(0, c, h, bold=True, fill='ink', color='FFFFFF')
     short, section = False, 'income'
     for i, r in enumerate(rows, 1):
         tbl.rows[i].height = Inches(rh)
@@ -356,7 +392,7 @@ def deck(d):
     note = (f"Through {_nice(d['period'])}. Average: January 1 to {date.fromisoformat(d['period']).strftime('%B %-d')} of each of "
             'the five years before. Difference: year to date less the average; green is better for the region, red worse.'
             + (' * Fewer than five years: the account did not exist in all of them (accounts reorganized in 2022).' if short else ''))
-    text(sl, 0.6, 1.7 + rh * (len(rows) + 1) + 0.1, 12.1, 0.4, [(note, 9, False, GRAY)])
+    text(sl, 0.55, top + rh * (len(rows) + 1) + 0.05, 12.23, 0.4, [(note, 9, False, 'gray')])
     buf = io.BytesIO()
     prs.save(buf)
     return buf.getvalue()

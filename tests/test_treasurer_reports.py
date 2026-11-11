@@ -37,13 +37,14 @@ def test_the_deck_has_three_slides_with_the_summary_chart_and_statement():
     color = lambda r, c: str(tbl.cell(r, c).text_frame.paragraphs[0].runs[0].font.color.rgb)      # noqa: E731
     assert color(2, 4) == T.GOOD and color(5, 4) == T.BAD and color(6, 4) == T.BAD          # more income good, more cost bad
     assert str(tbl.cell(1, 0).fill.fore_color.rgb) == T.SECTION_BG['income']
-    assert 'Fewer than five years' in texts[2]
+    assert 'Fewer than five years' in texts[2] and all('Detroit Region SCCA' in t for t in texts) and '3 of 3' in texts[2]
+    assert all(sum(sh.shape_type == 13 for sh in s.shapes) >= 2 for s in prs.slides)        # the logo and the checkered foot
 
 
 def test_an_empty_month_still_makes_a_deck():
     from pptx import Presentation
     prs = Presentation(io.BytesIO(T.deck(_data(net=None, programs=[], board=[], housekeeping=[], chart=b'', pnl=[]))))
-    assert len(prs.slides) == 3 and 'No results in QuickBooks yet.' in prs.slides[0].shapes[0].text_frame.text + ''.join(
+    assert len(prs.slides) == 3 and 'No results in QuickBooks yet.' in ''.join(
         sh.text_frame.text for sh in prs.slides[0].shapes if sh.has_text_frame)
 
 
