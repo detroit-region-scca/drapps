@@ -92,6 +92,8 @@ def main():
     for name, old, new in renamed:
         exc.append({'key': f'oldcode:{old}', 'kind': 'QuickBooks project has an old event code', 'date': as_of, 'name': name,
                     'amount': None, 'link': '', 'detail': f'The event is {new} now. Rename the project in QuickBooks: {name.replace(old, new)}'})
+    if renamed and not DRY:
+        tell_old_codes(renamed, say)
     if P.enabled():
         link, ask = P.plan_matches(events, P._snapshot()[0])
         for e, ln in link:
@@ -193,6 +195,35 @@ def main():
     # Parts that did not work; the rest of the sync still ran. A receipt QuickBooks would not take is left out: it is
     # retried every night and already shows on the Books check, so it must not email admin@ nightly.
     return [m for m in say if ' failed' in m and not m.startswith('QuickBooks attach ')]
+
+
+OLD_CODES = os.path.join(ROOT, 'data', 'qbo-old-codes.json')   # [project names the treasurer was already emailed about]
+
+
+def tell_old_codes(renamed, say):
+    """Email the treasurer once about each QuickBooks project still named with an event's old code."""
+    try:
+        with open(OLD_CODES) as f:
+            told = set(json.load(f))
+    except (OSError, ValueError):
+        told = set()
+    new = [(n, o, c) for n, o, c in renamed if n not in told]
+    if not new:
+        return
+    body = ['These QuickBooks projects are named with an event code that has since changed. The apps still count them '
+            'under the new code, but please rename them in QuickBooks so MotorsportReg payouts and new entries match:', '']
+    body += [f'  {n}\n    rename to: {n.replace(o, c)}' for n, o, c in new]
+    body += ['', 'They are also listed on the Treasurer page until renamed: https://drapps.drscca.org/treasurer']
+    try:
+        send_mail('QuickBooks project to rename: event code changed', '\n'.join(body))
+        told |= {n for n, _, _ in new}
+        tmp = OLD_CODES + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(sorted(told), f)
+        os.replace(tmp, OLD_CODES)
+        say.append(f'emailed the treasurer about {len(new)} project(s) with an old event code')
+    except Exception as e:
+        say.append(f'could not email about old event codes: {e}')
 
 
 ATTACHED = os.path.join(ROOT, 'data', 'qbo-attached.json')   # {request id: [Drive file ids already sent]}

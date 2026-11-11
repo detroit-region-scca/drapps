@@ -55,3 +55,17 @@ def test_a_code_change_remembers_the_old_code():
     app._remember_code(ev, '#DRQER')
     app._remember_code(ev, '#DRQER')
     assert ev['former_codes'] == '#DRAAA #DRQER'
+
+
+def test_the_treasurer_is_emailed_once_about_an_old_code(monkeypatch, tmp_path):
+    import importlib.util, pathlib
+    spec = importlib.util.spec_from_file_location('qn', pathlib.Path(__file__).parent.parent / 'tools' / 'qbo_nightly.py')
+    qn = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(qn)
+    sent = []
+    monkeypatch.setattr(qn, 'send_mail', lambda subject, body, *a, **k: sent.append(body))
+    monkeypatch.setattr(qn, 'OLD_CODES', str(tmp_path / 'told.json'))
+    renamed = [('2027 RY Son of Sno*Drift XXIX #DRQER', '#DRQER', '#DR4F5')]
+    qn.tell_old_codes(renamed, [])
+    qn.tell_old_codes(renamed, [])
+    assert len(sent) == 1 and 'rename to: 2027 RY Son of Sno*Drift XXIX #DR4F5' in sent[0]
