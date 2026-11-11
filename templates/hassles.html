@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_ui.html' import nice_time with context %}
 {% block app_name %}Hassles{% endblock %}
 {% block style %}
         .idea { display: flex; gap: .9rem; align-items: flex-start; }
@@ -9,6 +10,7 @@
         .idea .thumbs .n { display: block; font-weight: 600; }
         .idea.closed { opacity: .7; }
         .idea .details { white-space: pre-line; }
+        .idea .reply { border-left: 3px solid var(--border); padding-left: .6rem; }
 {% endblock %}
 {% block content %}
     <h1 class="page-title">Hassles</h1>
@@ -37,8 +39,22 @@
                     {% if s.status != 'Open' %}<span class="badge rounded-pill {{ {'Planned': 'text-bg-primary', 'Fixed': 'text-bg-success', 'Not doing': 'text-bg-secondary'}[s.status] }}">{{ s.status }}</span>{% endif %}</div>
                 {% if s.details %}<div class="details small mt-1">{{ s.details }}</div>{% endif %}
                 {% if s.note %}<div class="small mt-1"><b>Admin:</b> {{ s.note }}</div>{% endif %}
-                <div class="small text-muted mt-1">{{ s.by }} · {{ s.created|nice_date }}
+                <div class="small text-muted mt-1">{{ s.by }} · {{ s.created|nice_date }}{% if s.replies %} · {{ s.replies|length }} repl{{ 'y' if s.replies|length == 1 else 'ies' }}{% endif %}
                     {% if s.by_email == me or is_admin %} · <form method="post" action="{{ url_for('hassles.delete', sid=s.id) }}" class="d-inline" onsubmit="return confirm('Delete this?')"><button class="btn btn-link btn-sm p-0 align-baseline">Delete</button></form>{% endif %}</div>
+                <details class="mt-2"{{ ' open' if s.replies|length and s.replies|length <= 3 }}>
+                    <summary class="small text-muted">{{ 'Replies' if s.replies else 'Reply' }}</summary>
+                    {% for r in s.replies %}<div class="reply small mt-2">
+                        <div class="details">{{ r.text }}</div>
+                        <div class="text-muted">{{ r.by }} · {{ nice_time(r.at) }}{% if r.by_email == me or is_admin %} ·
+                            <form method="post" action="{{ url_for('hassles.delete_reply', sid=s.id) }}" class="d-inline" onsubmit="return confirm('Delete this reply?')">
+                                <input type="hidden" name="at" value="{{ r.at }}"><input type="hidden" name="by_email" value="{{ r.by_email }}">
+                                <button class="btn btn-link btn-sm p-0 align-baseline">Delete</button></form>{% endif %}</div>
+                    </div>{% endfor %}
+                    <form method="post" action="{{ url_for('hassles.reply', sid=s.id) }}" class="d-flex gap-2 mt-2">
+                        <textarea name="text" class="form-control form-control-sm" rows="1" maxlength="2000" required placeholder="Write a reply" aria-label="Reply"></textarea>
+                        <button class="btn btn-sm btn-outline-secondary align-self-start">Reply</button>
+                    </form>
+                </details>
                 {% if is_admin %}
                 <form method="post" action="{{ url_for('hassles.status', sid=s.id) }}" class="d-flex flex-wrap gap-2 mt-2 no-print">
                     <select name="status" class="form-select form-select-sm w-auto" aria-label="Status">{% for st in statuses %}<option{{ ' selected' if st == s.status }}>{{ st }}</option>{% endfor %}</select>

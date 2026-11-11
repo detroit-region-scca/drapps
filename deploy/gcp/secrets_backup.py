@@ -51,7 +51,6 @@ STATE = [
     'qbo-attached.json',        # receipts already attached in QuickBooks
     'programs.json',            # only used when the registry sheet is not
     'officials-done.json',      # results of officials changes
-    'suggestions.json',         # Hassles: the only copy
 ]
 
 API = 'https://www.googleapis.com/drive/v3/files'

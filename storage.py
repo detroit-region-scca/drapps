@@ -9,6 +9,7 @@ The Sheets layout (one spreadsheet, REGISTRY_SHEET_ID):
   Events    id | program_code | event_name | date | sequence_id | unique_code | custom_tag | creator_name | cancelled | msr_url
   Audit     timestamp | action | user | details (JSON)
   Programs  code | name
+  Volunteers, Hassles, Hassle replies: see auth.py and hassles_store.py
 """
 import json
 import logging

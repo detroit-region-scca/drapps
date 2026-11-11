@@ -1,49 +1,19 @@
 """Hassles: anyone signed in (officials and volunteers) posts something that is a hassle, in the apps or in how the
-region does things; everyone sees them all and gives a thumbs up to the ones that bother them too. The admin marks each one Planned, Done or Not doing, with a short note.
-
-Kept in data/suggestions.json as {'next': n, 'items': [...]}; each item has id, title, details, by (name), by_email,
-created, votes (emails), status and note.
-"""
-import json
+region does things. Everyone sees them all, gives a thumbs up to the ones that bother them too, and can reply. The
+admin marks each Open, Planned, Fixed or Not doing, with a short note. admin@ is emailed about each new hassle and
+each reply. Stored in the Registry sheet (hassles_store)."""
 import os
-from datetime import date
 
-from filelock import FileLock
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 import auth
-from storage import DATA_DIR
+import hassles_store as S
 from utils import log_audit_event, login_required, send_mail
 
 bp = Blueprint('hassles', __name__, url_prefix='/hassles')
-PATH = os.path.join(DATA_DIR, 'suggestions.json')
-STATUSES = ['Open', 'Planned', 'Fixed', 'Not doing']
+STATUSES = S.STATUSES
 CLOSED = ('Fixed', 'Not doing')
-ADMIN = os.environ.get('HASSLES_EMAIL', 'admin@drscca.org')      # told about each new hassle
-
-
-def _load():
-    try:
-        with open(PATH) as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {'next': 1, 'items': []}
-
-
-def _write(doc):
-    tmp = f'{PATH}.{os.getpid()}.tmp'
-    with open(tmp, 'w') as f:
-        json.dump(doc, f, indent=1)
-    os.replace(tmp, PATH)
-
-
-def _change(fn):
-    """Read, change and write as one step (the app runs several workers)."""
-    with FileLock(PATH + '.lock', timeout=10):
-        doc = _load()
-        out = fn(doc)
-        _write(doc)
-        return out
+ADMIN = os.environ.get('HASSLES_EMAIL', 'admin@drscca.org')      # told about each new hassle and reply
 
 
 def _me():
@@ -51,20 +21,37 @@ def _me():
     return (u.get('email') or '').lower(), u.get('name') or u.get('email') or 'Someone', 'admin' in set(u.get('perms') or ())
 
 
-def _find(doc, sid):
-    return next((s for s in doc['items'] if s['id'] == sid), None)
-
-
 def _clean(text, n):
     return ' '.join((text or '').split())[:n]
+
+
+def _guard():
+    if not S.enabled():
+        flash("Hassles isn't set up on this server yet. Ask admin@drscca.org.", 'warning')
+        return redirect(url_for('home'))
+    return None
+
+
+def _back(hid=None):
+    return redirect(url_for('hassles.home') + (f'#s{hid}' if hid else ''))
+
+
+def _tell_admin(subject, body, reply_to):
+    try:
+        send_mail(subject, body, ADMIN, reply_to=reply_to or None)
+    except Exception:          # the post is saved either way; a mail problem must not lose it
+        import logging
+        logging.exception('Hassles: could not email the admin')
 
 
 @bp.route('/')
 @login_required
 def home():
+    if (g := _guard()):
+        return g
     email, _, is_admin = _me()
-    items = _load()['items']
-    # Open ideas first, most thumbs up first, then newest; finished ones at the bottom.
+    items = S.hassles()
+    # Open ones first, most thumbs up first, then newest; finished ones at the bottom.
     items.sort(key=lambda s: (s['status'] in CLOSED, -len(s['votes']), -s['id']))
     return render_template('hassles.html', title='DR Apps hassles', page_title='Hassles', items=items,
                            me=email, is_admin=is_admin, statuses=STATUSES, closed=CLOSED)
@@ -73,85 +60,105 @@ def home():
 @bp.route('/new', methods=['POST'])
 @login_required
 def new():
+    if (g := _guard()):
+        return g
     email, name, _ = _me()
     title = _clean(request.form.get('title'), 120)
     details = (request.form.get('details') or '').strip()[:2000]
     if not title:
         flash('Say in a few words what the hassle is.', 'warning')
-        return redirect(url_for('hassles.home'))
-
-    def add(doc):
-        sid = doc['next']
-        doc['next'] = sid + 1
-        doc['items'].append({'id': sid, 'title': title, 'details': details, 'by': name, 'by_email': email,
-                             'created': date.today().isoformat(), 'votes': [], 'status': 'Open', 'note': ''})
-        return sid
-    sid = _change(add)
-    log_audit_event('SUGGESTION_ADDED', name, {'id': sid, 'title': title})
-    link = url_for('hassles.home', _external=True) + f'#s{sid}'
-    send_mail(f'New hassle: {title}', f"{name} posted a hassle in DR Apps:\n\n{title}\n\n"
-              + (f"{details}\n\n" if details else '') + link, ADMIN, reply_to=email or None)
+        return _back()
+    hid = S.add(title, details, name, email)
+    log_audit_event('HASSLE_ADDED', name, {'id': hid, 'title': title})
+    _tell_admin(f'New hassle: {title}', f"{name} posted a hassle in DR Apps:\n\n{title}\n\n" + (f"{details}\n\n" if details else '')
+                + url_for('hassles.home', _external=True) + f'#s{hid}', email)
     flash('Thanks! It is on the list.', 'success')
-    return redirect(url_for('hassles.home') + f'#s{sid}')
+    return _back(hid)
 
 
 @bp.route('/<int:sid>/vote', methods=['POST'])
 @login_required
 def vote(sid):
-    """Thumbs up, or take it back. Not on your own suggestion."""
+    """Thumbs up, or take it back. Not on your own, and not once it is fixed or closed."""
+    if (g := _guard()):
+        return g
     email, _, _ = _me()
+    h = S.get(sid)
+    if not h:
+        abort(404)
+    if h['by_email'] != email and h['status'] not in CLOSED:
+        S.toggle_vote(sid, email)
+    return _back(sid)
 
-    def toggle(doc):
-        s = _find(doc, sid)
-        if not s:
-            abort(404)
-        if s['by_email'] == email or s['status'] in CLOSED:
-            return
-        if email in s['votes']:
-            s['votes'].remove(email)
-        else:
-            s['votes'].append(email)
-    _change(toggle)
-    return redirect(url_for('hassles.home') + f'#s{sid}')
+
+@bp.route('/<int:sid>/reply', methods=['POST'])
+@login_required
+def reply(sid):
+    """Anyone signed in can reply."""
+    if (g := _guard()):
+        return g
+    email, name, is_admin = _me()
+    text = (request.form.get('text') or '').strip()[:2000]
+    h = S.get(sid)
+    if not h:
+        abort(404)
+    if not text:
+        flash('Write a reply first.', 'warning')
+        return _back(sid)
+    S.reply(sid, text, name, email)
+    log_audit_event('HASSLE_REPLY', name, {'id': sid})
+    if not is_admin:
+        _tell_admin(f"Reply on hassle: {h['title']}", f"{name} replied:\n\n{text}\n\n"
+                    + url_for('hassles.home', _external=True) + f'#s{sid}', email)
+    return _back(sid)
+
+
+@bp.route('/<int:sid>/reply/delete', methods=['POST'])
+@login_required
+def delete_reply(sid):
+    """Whoever wrote the reply, or the admin."""
+    if (g := _guard()):
+        return g
+    email, name, is_admin = _me()
+    at, author = request.form.get('at', ''), (request.form.get('by_email') or '').lower()
+    if not (is_admin or author == email):
+        abort(403)
+    S.delete_reply(sid, at, author)
+    log_audit_event('HASSLE_REPLY_DELETED', name, {'id': sid, 'at': at})
+    return _back(sid)
 
 
 @bp.route('/<int:sid>/status', methods=['POST'])
 @login_required
 def status(sid):
-    email, name, is_admin = _me()
+    if (g := _guard()):
+        return g
+    _, name, is_admin = _me()
     if not is_admin:
         return auth.refuse('Only the admin marks hassles planned or fixed.', url_for('hassles.home'))
     st = request.form.get('status')
     if st not in STATUSES:
         abort(400)
     note = _clean(request.form.get('note'), 300)
-
-    def mark(doc):
-        s = _find(doc, sid)
-        if not s:
-            abort(404)
-        s['status'], s['note'] = st, note
-    _change(mark)
-    log_audit_event('SUGGESTION_STATUS', name, {'id': sid, 'status': st, 'note': note})
-    return redirect(url_for('hassles.home') + f'#s{sid}')
+    if not S.update(sid, status=st, note=note):
+        abort(404)
+    log_audit_event('HASSLE_STATUS', name, {'id': sid, 'status': st, 'note': note})
+    return _back(sid)
 
 
 @bp.route('/<int:sid>/delete', methods=['POST'])
 @login_required
 def delete(sid):
     """Whoever posted it, or the admin."""
+    if (g := _guard()):
+        return g
     email, name, is_admin = _me()
-
-    def drop(doc):
-        s = _find(doc, sid)
-        if not s:
-            return None
-        if not (is_admin or s['by_email'] == email):
-            abort(403)
-        doc['items'].remove(s)
-        return s['title']
-    title = _change(drop)
-    if title:
-        log_audit_event('SUGGESTION_DELETED', name, {'id': sid, 'title': title})
-        flash('Deleted.', 'info')
-    return redirect(url_for('hassles.home'))
+    h = S.get(sid)
+    if not h:
+        return _back()
+    if not (is_admin or h['by_email'] == email):
+        abort(403)
+    S.delete(sid)
+    log_audit_event('HASSLE_DELETED', name, {'id': sid, 'title': h['title']})
+    flash('Deleted.', 'info')
+    return _back()
