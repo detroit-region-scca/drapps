@@ -63,12 +63,12 @@ def test_only_the_treasurer_role_starts_one(box):
 
 
 def test_the_statement_table():
-    rows = [{'kind': 'head', 'depth': 0, 'label': 'Income', 'month': 0, 'ytd': 0, 'avg5': None, 'avg_years': 0, 'from': '2026-10-12'},
+    rows = [{'kind': 'head', 'depth': 0, 'label': 'Income', 'month': 0, 'ytd': 0, 'avg5': None, 'avg_years': 0, 'from': '2026-10-01'},
             {'kind': 'line', 'depth': 1, 'label': 'Club RX Rallycross Revenue', 'month': 1200.0, 'ytd': 27265.0, 'avg5': 25000.0, 'avg_years': 4},
             {'kind': 'line', 'depth': 1, 'label': 'New account', 'month': 5.0, 'ytd': 5.0, 'avg5': None, 'avg_years': 0},
             {'kind': 'total', 'depth': 0, 'label': 'Net Income', 'month': -50.5, 'ytd': 46514.55, 'avg5': 59076.23, 'avg_years': 5}]
     html = T.pnl_html(rows, '2026-11-11')
-    assert '<th>Since Oct 12</th><th>Year to date</th><th>Average 2021 to 2025</th><th>Difference</th>' in html
+    assert '<th>Since Oct 1</th><th>Year to date</th><th>Average 2021 to 2025</th><th>Difference</th>' in html
     assert ('\u00a0' * 4 + 'Club RX Rallycross Revenue</td><td>1,200.00</td><td>27,265.00</td><td>25,000.00*</td>'
             f'<td><span style="color:{T.GOOD}">2,265.00</span></td>') in html            # more income: good
     assert 'New account</td><td>5.00</td><td>5.00</td><td></td><td></td>' in html

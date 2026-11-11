@@ -260,7 +260,7 @@ def _nice(d):
 
 
 def pnl_html(rows, period):
-    """QuickBooks' profit and loss as a table, current to the day `period` (YYYY-MM-DD): the past month to that day, the year
+    """QuickBooks' profit and loss as a table, current to the day `period` (YYYY-MM-DD): from the first of last month to that day, the year
     to date, the average of the same dates over the five years before, and the difference. Colored: income green,
     costs red, net lines gray; a difference is green when it is good for the region (more income, less cost)."""
     if not rows:
@@ -304,7 +304,7 @@ def pnl_html(rows, period):
 
 
 def draft(month):
-    """The board page, current to the day of the last QuickBooks sync (normally today): net for the past month and this
+    """The board page, current to the day of the last QuickBooks sync (normally today): net since the first of last month and this
     year, profit by program, funds requests waiting, what is waiting for the board, a chart of net income against the
     plan and the five years before, and the profit and loss (sub-accounts folded into their group). The treasurer adds
     the month's story in Google Docs."""

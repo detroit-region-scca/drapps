@@ -455,7 +455,7 @@ PNL_COLS = ['period', 'kind', 'depth', 'label', 'month', 'ytd', 'avg5', 'avg_yea
 def pnl():
     """QuickBooks' profit and loss, as of the last sync:
     [{period: 'YYYY-MM-DD', kind: head|line|total, depth, label, month, ytd, avg5, avg_years, from}] in the report's
-    order. month is the past month, from `from` to period. avg5
+    order. month runs from `from` (the first of last month) to period. avg5
     is the line's average for the same months of the five years before, over the avg_years it existed (None: never)."""
     rows = _mirror('QBO P&L', PNL_COLS, {'month', 'ytd', 'depth', 'avg_years'})
     for r in rows:

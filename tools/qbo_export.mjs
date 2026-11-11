@@ -7,7 +7,7 @@
 //   outstanding  checks since PAYMENTS_SINCE the bank has not cleared yet (QuickBooks "Clr" blank; voided $0 checks left out)
 //   deposits  deposit lines since PAYMENTS_SINCE (date, amount, description, payer), to match against open invoices
 //   balance_sheet  today's balance sheet to two levels; receivables  every invoice still owed
-//   pnl       the profit and loss statement for the past month up to today and the year to date, every line, with each line's
+//   pnl       the profit and loss statement from the first of last month through today, and the year to date, every line, with each line's
 //             average for the same dates of the five years before, for the board report
 //   net_months  net income by month, this year and the five before, for the board report's chart
 // Runs on the machine that holds the QuickBooks connection (the qbo-mcp install and its token
@@ -163,11 +163,8 @@ const pwalk = (rows, depth) => {
   }
 };
 pwalk(pnlRep.Rows?.Row, 0);
-// The month column is the past month up to today (Oct 12 to Nov 11 for a report on Nov 11), not the calendar month.
-const pStart = (() => { const y = Number(pEnd.slice(0, 4)), m = Number(pEnd.slice(5, 7)), d = Number(pEnd.slice(8, 10));
-  const last = new Date(Date.UTC(y, m - 1, 0)).getUTCDate();          // days in the month before
-  const from = new Date(Date.UTC(y, m - 2, Math.min(d, last) + 1));    // the day after the same date last month
-  return from.toISOString().slice(0, 10); })();
+// The month column runs from the first of last month through today (Oct 1 to Nov 11 for a report on Nov 11).
+const pStart = new Date(Date.UTC(Number(pEnd.slice(0, 4)), Number(pEnd.slice(5, 7)) - 2, 1)).toISOString().slice(0, 10);
 const recent = {};
 const rwalk = rows => { for (const r of rows || []) {
   if (r.ColData) recent[`line|${r.ColData[0].value}`] = parseFloat(r.ColData[1]?.value || '0') || 0;
