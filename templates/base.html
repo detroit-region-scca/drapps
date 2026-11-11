@@ -120,9 +120,9 @@
         .site-top a:hover { color: #d2232a; }
         {% block style %}{% endblock %}
         .drive-icon { vertical-align: -2px; margin-right: .3em; flex: none; }
-        /* A Drive link alone in a table cell: a long file name wraps beside the icon, not under it. */
-        td > a:has(> .drive-icon) { display: inline-flex; align-items: flex-start; }
-        td > a > .drive-icon { margin-top: .2em; }
+        /* A Drive link alone in a table cell or chip: a long file name wraps beside the icon, not under it. */
+        td > a:has(> .drive-icon), a.badge-soft:has(> .drive-icon) { display: inline-flex; align-items: flex-start; }
+        td > a > .drive-icon, a.badge-soft > .drive-icon { margin-top: .2em; }
 </style>
 </head>
 <body class="{% block body_class %}{% endblock %}">
