@@ -1,0 +1,7 @@
+[Unit]
+Description=DRSCCA apps: nightly Email groups refresh from Google
+[Timer]
+OnCalendar=*-*-* 02:15 America/Detroit
+Persistent=true
+[Install]
+WantedBy=timers.target

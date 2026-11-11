@@ -1,7 +1,7 @@
 """Email groups: every drscca.org address and who it reaches, for anyone signed in.
 
-When anyone signed in presses Refresh, the server reads the groups from Google (tools/groups_pull.py, drscca-groups.path)
-into data/email-groups.json. Google is the only place the groups live; the apps never change them.
+Every night at 2:15 (drscca-groups.timer), and when anyone signed in presses Refresh (drscca-groups.path), the
+server reads the groups from Google (tools/groups_pull.py) into data/email-groups.json. Google is the only place the groups live; the apps never change them.
 """
 import json
 import os

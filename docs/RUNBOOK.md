@@ -144,7 +144,7 @@ sends nothing, and if the email itself cannot be sent the only trace is on the s
 | Sheet backup | 02:45 nightly | `drscca-backup.timer` | `.xlsx` copies into `data/backups/`, each sheet by itself, and a dated copy of `records-edits.json` |
 | App state copy | 03:00 nightly | `drscca-state-backup.timer` | `deploy/gcp/secrets_backup.py --state` updates "drapps app state (nightly).tar.gz" in the admin-only Account Recovery folder: the files marked "Off-server copy" in the `data/` table |
 | Officials changes | When the admin saves a person in Admin > Users | `drscca-officials.path` | Updates `officials.json` (never the Google Groups), then its readable copy in Drive |
-| Email groups list | When an admin presses Refresh on the Email groups page | `drscca-groups.path` | `tools/groups_pull.py` reads every drscca.org group with GAM (read only) into `data/email-groups.json` |
+| Email groups list | Nightly at 2:15, and when anyone presses Refresh on the Email groups page | `drscca-groups.timer`, `drscca-groups.path` | `tools/groups_pull.py` reads every drscca.org group with GAM (read only) into `data/email-groups.json` |
 | Software updates | Sundays 04:30 | `drscca-update.timer` | `deploy/gcp/update.sh`: newest Caddy, nginx and SFTP images; drapps rebuilt on the newest Python base image, tested inside the new image, started, and rolled back to the previous image if it does not start; newest GAM and Python libraries for the host jobs. The libraries inside the drapps image change only when the Python base image or `requirements.txt` changed, because Docker reuses that build step otherwise |
 | System updates | daily | `unattended-upgrades` | Debian, Docker, Node and Google packages; reboots at 04:00 only when an update needs it |
 | Secrets copy | Sundays 05:00 | `drscca-secrets-backup.timer` | Updates "drapps server secrets (weekly).tar.gz" in the admin-only Account Recovery folder (Drive keeps earlier versions). Fails, after saving, if anyone but admin@ can open the file |
@@ -209,7 +209,7 @@ under a file lock on a fresh read, so two people sending the same names for an e
 | Restart the app | `sudo docker compose restart drapps` |
 | Caddy (HTTPS, certificates) | `sudo docker logs --since 1h caddy` |
 | Live timing uploads and pages | `sudo journalctl CONTAINER_NAME=livetiming-sftp --since today` (the SFTP container logs to the journal), `sudo docker logs --since 1h livetiming-web` |
-| A job's last run | `sudo journalctl -u drscca-qbo -n 50`. The jobs: `drscca-qbo` (nightly sync), `drscca-qbo-refresh` (Sync now), `drscca-backup` (sheets), `drscca-state-backup` (app files to Drive), `drscca-secrets-backup`, `drscca-site-backup`, `drscca-officials`, `drscca-groups` (Email groups Refresh), `drscca-update` (weekly update) |
+| A job's last run | `sudo journalctl -u drscca-qbo -n 50`. The jobs: `drscca-qbo` (nightly sync), `drscca-qbo-refresh` (Sync now), `drscca-backup` (sheets), `drscca-state-backup` (app files to Drive), `drscca-secrets-backup`, `drscca-site-backup`, `drscca-officials`, `drscca-groups` (Email groups, nightly and Refresh), `drscca-update` (weekly update) |
 | Alert emails that were sent or failed | `sudo journalctl -u 'drscca-alert@*' -n 30` |
 | System updates | `/var/log/unattended-upgrades/unattended-upgrades.log` |
 | Blocked live timing addresses | `sudo fail2ban-client status livetiming-sftp` |

@@ -133,7 +133,7 @@ seconds. On the host, `tools/handover.py` does the same from the command line. N
 `--apply`.
 
 The apps never change the drscca.org Google Groups. Members are changed only at admin.google.com; the Email
-groups page reads them (Refresh, admins only, runs `tools/groups_pull.py` with GAM, read only).
+groups page reads them (nightly at 2:15 and on Refresh by anyone signed in; runs `tools/groups_pull.py` with GAM, read only).
 
     python3 tools/handover.py hand "Autocross Director" new@example.com "New Person" [--from old@example.com] [--apply]
 
