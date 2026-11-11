@@ -1,34 +1,24 @@
 {% extends 'base.html' %}
 {% block app_name %}Treasurer{% endblock %}
 {% block content %}
-<div class="small mb-2"><a href="{{ url_for('treasurer') }}">Treasurer</a> / {% if view == 'month' %}<a href="{{ url_for('treports.home') }}">Treasurer's reports</a> / {{ label }}{% else %}Treasurer's reports{% endif %}</div>
-{% if view == 'list' %}
+<div class="small mb-2"><a href="{{ url_for('treasurer') }}">Treasurer</a> / Treasurer's reports</div>
 <h1 class="page-title">Treasurer's reports</h1>
-<p class="text-muted">The monthly report to the board: three slides (the summary, a chart of net income, the profit and loss), current to the day it is started. Each is a Google Slides deck, kept in Drive. No bank balances.{% if folder_url %} <a class="text-nowrap" href="{{ folder_url }}" target="_blank" rel="noopener">{{ drive_icon }}Reports folder</a>{% endif %}</p>
+<p class="text-muted">The monthly report to the board: three slides (the summary, a chart of net income, the profit and loss), current to the day it is started, kept in Drive as a Google Slides deck and a PDF. Each month is built the same way and starts with the last report's Housekeeping notes. No bank balances.{% if folder_url %} <a class="text-nowrap" href="{{ folder_url }}" target="_blank" rel="noopener">{{ drive_icon }}Reports folder</a>{% endif %}</p>
 <form method="post" action="{{ url_for('treports.new') }}" class="d-flex flex-wrap align-items-end gap-2 mb-4 no-print">
     <div><label class="form-label small mb-1">Month</label><input type="month" name="month" class="form-control" value="{{ next_month }}" required></div>
     <button class="btn btn-accent">Start a report</button>
-    <span class="small text-muted">Makes the deck from the apps and QuickBooks as of today. Add the month's notes in Google Slides.</span>
+    <span class="small text-muted">Makes the deck and its PDF from the apps and QuickBooks as of today.</span>
 </form>
 <div class="card"><ul class="list-group list-group-flush">
     {% for m, rep in have.items() %}<li class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <a href="{{ url_for('treports.month', month=m) }}">{{ m }}</a>
-        <span class="d-flex flex-wrap gap-3 small"><a class="text-nowrap" href="{{ present_url(rep.id) }}" target="_blank" rel="noopener">Show the board</a>
-            <a class="text-nowrap" href="{{ rep.webViewLink }}" target="_blank" rel="noopener">{{ drive_icon }}Google Slides</a></span></li>
+        <span class="fw-semibold">{{ m }}</span>
+        <span class="d-flex flex-wrap align-items-center gap-3 small">
+            <a class="text-nowrap" href="{{ present_url(rep.deck.id) }}" target="_blank" rel="noopener">Show the board</a>
+            <a class="text-nowrap" href="{{ rep.deck.webViewLink }}" target="_blank" rel="noopener">{{ drive_icon }}Google Slides</a>
+            {% if rep.pdf %}<a class="text-nowrap" href="{{ rep.pdf.webViewLink }}" target="_blank" rel="noopener">{{ drive_icon }}PDF</a>{% endif %}
+            <form method="post" action="{{ url_for('treports.update_pdf', month=m) }}" class="m-0 no-print"><button class="btn btn-sm btn-outline-light py-0" title="After editing the slides, save them as the PDF again">{{ 'Update PDF' if rep.pdf else 'Make PDF' }}</button></form>
+        </span></li>
     {% else %}<li class="list-group-item text-muted">No reports yet.</li>{% endfor %}
 </ul></div>
-{% else %}
-<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-    <h1 class="page-title m-0">Treasurer's report, {{ label }}</h1>
-    <div class="d-flex flex-wrap gap-2 no-print">
-        <a class="btn btn-accent" href="{{ present }}" target="_blank" rel="noopener">Show the board</a>
-        <a class="btn btn-outline-light" href="{{ rep.webViewLink }}" target="_blank" rel="noopener">{{ drive_icon }}Edit in Google Slides</a>
-    </div>
-</div>
-<div class="card p-4">
-    <p class="mb-2">Three slides: the summary, a chart of net income through the year, and the profit and loss for the year to date.</p>
-    <p class="mb-0"><a href="{{ url_for('treports.month_pdf', month=month) }}" target="_blank" rel="noopener">Open as a PDF</a> to read or print it without Google Slides.</p>
-</div>
-<p class="small text-muted mt-2">"Show the board" opens the deck in Google Slides, full screen. It needs a Google account with access to the DRSCCA Apps shared drive.</p>
-{% endif %}
+<p class="small text-muted mt-2">"Show the board" opens the deck in Google Slides, full screen. It needs a Google account with access to the DRSCCA Apps shared drive; anyone else can open the PDF.</p>
 {% endblock %}

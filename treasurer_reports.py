@@ -1,20 +1,21 @@
-"""Monthly treasurer's reports to the board. Each month is one Google Slides deck in the DRSCCA Apps shared drive, under
+"""Monthly treasurer's reports to the board. Each month is a Google Slides deck in the DRSCCA Apps shared drive, under
 Treasurer > Treasurer's reports: "YYYY-MM Treasurer's report", three slides shown at the meeting: the summary, a chart
-of net income, and the profit and loss for the year to date. It is current to the day it was started. The app builds
-the deck (as PowerPoint, which Drive turns into Google Slides), lists the reports and shows them; the treasurer edits
-the deck in Google Slides. Bank balances are never in it (the region does not state its balances in the report)."""
+of net income, and the profit and loss for the year to date, current to the day it was started; and beside it the
+same as a PDF, "YYYY-MM Treasurer's report.pdf". Every month is built the same way, from the apps and QuickBooks, and
+starts with the previous report's Housekeeping notes to edit. The treasurer edits the deck in Google Slides and
+updates the PDF from it. Bank balances are never in it (the region does not state its balances in the report)."""
 import io
 import json
 import re
 from datetime import date
 
-from flask import Blueprint, Response, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 from utils import log_audit_event, login_required
 
 bp = Blueprint('treports', __name__, url_prefix='/treasurer/reports')
 FOLDER = "Treasurer's reports"
-NAME = re.compile(r"^(\d{4}-\d{2}) Treasurer's report$")
+NAME = re.compile(r"^(\d{4}-\d{2}) Treasurer's report(\.pdf)?$")
 SLIDES = 'application/vnd.google-apps.presentation'
 PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 _folder_id = {}
@@ -49,13 +50,13 @@ def folder():
 
 
 def reports():
-    """{'YYYY-MM': the month's Google Slides deck}, newest first."""
+    """{'YYYY-MM': {'deck': the Google Slides file, 'pdf': the PDF file or None}}, newest first."""
     out = {}
-    for f in _q(_session(), f"'{folder()}' in parents and mimeType = '{SLIDES}' and trashed = false"):
+    for f in _q(_session(), f"'{folder()}' in parents and trashed = false and (mimeType = '{SLIDES}' or mimeType = 'application/pdf')"):
         m = NAME.match(f['name'])
-        if m:
-            out[m[1]] = f
-    return dict(sorted(out.items(), reverse=True))
+        if m and (f['mimeType'] == SLIDES) != bool(m[2]):
+            out.setdefault(m[1], {'deck': None, 'pdf': None})['pdf' if m[2] else 'deck'] = f
+    return {k: v for k, v in sorted(out.items(), reverse=True) if v['deck']}
 
 
 def create(month, pptx):
@@ -69,12 +70,43 @@ def create(month, pptx):
     return r.json()
 
 
-def pdf(file_id):
-    """The deck as a PDF, for the preview on the app's page."""
+def _export(file_id, mime):
     from storage import DRIVE
-    r = _session().get(f'{DRIVE}/{file_id}/export', params={'mimeType': 'application/pdf'}, timeout=110)
+    r = _session().get(f'{DRIVE}/{file_id}/export', params={'mimeType': mime}, timeout=110)
     r.raise_for_status()
     return r.content
+
+
+def save_pdf(month):
+    """Save the month's deck, as it is now, as a PDF beside it in Drive (replacing the one there). Returns the file."""
+    from storage import UPLOAD
+    rep = reports()[month]
+    body = _export(rep['deck']['id'], 'application/pdf')
+    s = _session()
+    if rep['pdf']:
+        r = s.patch(f"{UPLOAD}/{rep['pdf']['id']}", params={'uploadType': 'media', 'supportsAllDrives': 'true', 'fields': 'id,webViewLink'},
+                    data=body, headers={'Content-Type': 'application/pdf'}, timeout=110)
+    else:
+        meta = {'name': f"{month} Treasurer's report.pdf", 'parents': [folder()], 'mimeType': 'application/pdf'}
+        r = s.post(UPLOAD, params={'uploadType': 'multipart', 'supportsAllDrives': 'true', 'fields': 'id,webViewLink'},
+                   files={'metadata': ('metadata', json.dumps(meta), 'application/json'), 'file': ('report.pdf', body, 'application/pdf')},
+                   timeout=110)
+    r.raise_for_status()
+    return r.json()
+
+
+def notes_from(deck_id):
+    """The Housekeeping notes in a deck, as edited in Google Slides, to start the next month with."""
+    text = _export(deck_id, 'text/plain').decode('utf-8', 'replace')
+    lines = text.splitlines()
+    if 'Housekeeping' not in lines:
+        return []
+    out = []
+    for ln in lines[lines.index('Housekeeping') + 1:]:
+        if not ln.strip():
+            break
+        out.append(ln.strip().lstrip('•').strip())
+    return [n for n in out if n]
 
 
 def present_url(file_id):
@@ -343,30 +375,15 @@ def home():
                            folder_url=f"https://drive.google.com/drive/folders/{_folder_id['id']}" if 'id' in _folder_id else '')
 
 
-def _report(month):
-    if not re.fullmatch(r'\d{4}-\d{2}', month):
-        abort(404)
-    rep = reports().get(month)
-    if not rep:
-        abort(404)
-    return rep
-
-
-@bp.route('/<month>')
+@bp.route('/<month>/pdf', methods=['POST'])
 @login_required
-def month(month):
-    rep = _report(month)
-    label = date(int(month[:4]), int(month[5:]), 1).strftime('%B %Y')
-    return render_template('treports.html', title=f"Treasurer's report {label}", page_title="Treasurer's reports", view='month',
-                           month=month, label=label, rep=rep, present=present_url(rep['id']))
-
-
-@bp.route('/<month>.pdf')
-@login_required
-def month_pdf(month):
-    rep = _report(month)
-    return Response(pdf(rep['id']), mimetype='application/pdf',
-                    headers={'Content-Disposition': f'inline; filename="{month} Treasurer\'s report.pdf"'})
+def update_pdf(month):
+    """Save the deck as it is now (after edits in Google Slides) as the month's PDF in Drive."""
+    if month not in reports():
+        abort(404)
+    save_pdf(month)
+    flash(f'The PDF for {month} now matches the deck.', 'success')
+    return redirect(url_for('treports.home'))
 
 
 @bp.route('/new', methods=['POST'])
@@ -376,9 +393,15 @@ def new():
     if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', month):
         flash('Pick a month.', 'warning')
         return redirect(url_for('treports.home'))
-    if month not in reports():
-        create(month, deck(data(month)))
-    import auth
-    log_audit_event('TREASURER_REPORT_STARTED', (auth.user() or {}).get('name', ''), {'month': month})
-    flash('Started. Edit it in Google Slides; this page shows what it says.', 'success')
-    return redirect(url_for('treports.month', month=month))
+    have = reports()
+    if month not in have:
+        # The report before this one is the template: its Housekeeping notes start this month's.
+        before = next((r for m, r in have.items() if m < month), None)
+        create(month, deck(data(month, notes_from(before['deck']['id']) if before else ())))
+        save_pdf(month)
+        import auth
+        log_audit_event('TREASURER_REPORT_STARTED', (auth.user() or {}).get('name', ''), {'month': month})
+        flash(f'Started {month}. Edit it in Google Slides, then Update PDF.', 'success')
+    else:
+        flash(f'{month} is already started.', 'info')
+    return redirect(url_for('treports.home'))

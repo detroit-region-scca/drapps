@@ -76,16 +76,22 @@ def box(monkeypatch):
     people = {'ada@example.org': {'name': 'Ada', 'level': 'officer', 'roles': ['Treasurer'], 'perms': {'pay'}},
               'pat@example.org': {'name': 'Pat', 'level': 'official', 'roles': ['Director'], 'perms': {'events'}}}
     monkeypatch.setattr(auth, 'lookup', lambda e: dict(people[e], email=e) if e in people else None)
-    decks = {}
+    reps, made = {}, []
 
     def create(month, pptx):
-        decks[month] = {'id': f'id{month}', 'webViewLink': f'https://docs.google.com/presentation/d/id{month}/edit', 'pptx': pptx}
-        return decks[month]
-    monkeypatch.setattr(T, 'reports', lambda: dict(sorted(decks.items(), reverse=True)))
+        reps[month] = {'deck': {'id': f'id{month}', 'webViewLink': f'https://docs.google.com/presentation/d/id{month}/edit', 'pptx': pptx},
+                       'pdf': None}
+        return reps[month]['deck']
+
+    def save_pdf(month):
+        reps[month]['pdf'] = {'id': f'pdf{month}', 'webViewLink': f'https://drive.google.com/file/d/pdf{month}/view',
+                              'from': reps[month]['deck']['pptx']}
+    monkeypatch.setattr(T, 'reports', lambda: dict(sorted(reps.items(), reverse=True)))
     monkeypatch.setattr(T, 'create', create)
-    monkeypatch.setattr(T, 'data', lambda m: {'month': m})
+    monkeypatch.setattr(T, 'save_pdf', save_pdf)
+    monkeypatch.setattr(T, 'notes_from', lambda deck_id: [f'note from {deck_id}'])
+    monkeypatch.setattr(T, 'data', lambda m, notes=(): made.append((m, list(notes))) or {'month': m})
     monkeypatch.setattr(T, 'deck', lambda d: b'PPTX ' + d['month'].encode())
-    monkeypatch.setattr(T, 'pdf', lambda fid: b'%PDF ' + fid.encode())
     monkeypatch.setattr(T, 'log_audit_event', lambda *a, **k: None)
     from app import app
     app.config['TESTING'] = True
@@ -95,27 +101,44 @@ def box(monkeypatch):
         with c.session_transaction() as s:
             s.update(authenticated=True, email=email, who=people[email]['name'])
         return c
-    return as_, decks
+    return as_, reps, made
 
 
-def test_start_and_show(box):
-    as_, decks = box
+def test_start_a_month_from_the_last_one_with_its_pdf(box):
+    as_, reps, made = box
     ada = as_('ada@example.org')
     assert b'No reports yet' in ada.get('/treasurer/reports/').data
-    r = ada.post('/treasurer/reports/new', data={'month': '2026-11'})
-    assert r.status_code == 302 and decks['2026-11']['pptx'] == b'PPTX 2026-11'
-    decks['2026-11']['pptx'] = b'edited'
-    ada.post('/treasurer/reports/new', data={'month': '2026-11'})          # running it again never overwrites it
-    assert decks['2026-11']['pptx'] == b'edited'
-    page = ada.get('/treasurer/reports/2026-11').data
-    assert b'https://docs.google.com/presentation/d/id2026-11/present' in page and b'Edit in Google Slides' in page
-    assert ada.get('/treasurer/reports/2026-11.pdf').data == b'%PDF id2026-11'
-    assert ada.get('/treasurer/reports/2026-12').status_code == 404
+    assert ada.post('/treasurer/reports/new', data={'month': '2026-11'}).status_code == 302
+    assert reps['2026-11']['pdf']['from'] == b'PPTX 2026-11' and made == [('2026-11', [])]     # the first has no notes to carry
+    ada.post('/treasurer/reports/new', data={'month': '2026-12'})
+    assert made[-1] == ('2026-12', ['note from id2026-11'])                                   # the last report is the template
+    reps['2026-12']['deck']['pptx'] = b'edited'
+    ada.post('/treasurer/reports/new', data={'month': '2026-12'})          # running it again never overwrites it
+    assert reps['2026-12']['deck']['pptx'] == b'edited' and len(made) == 2
+    ada.post('/treasurer/reports/2026-12/pdf')
+    assert reps['2026-12']['pdf']['from'] == b'edited'                     # the PDF follows the edited deck
+    page = ada.get('/treasurer/reports/').data
+    for want in (b'https://docs.google.com/presentation/d/id2026-12/present', b'https://docs.google.com/presentation/d/id2026-12/edit',
+                 b'https://drive.google.com/file/d/pdf2026-12/view', b'Update PDF'):
+        assert want in page
+    assert ada.get('/treasurer/reports/2026-12').status_code == 404        # no page per report
 
 
-def test_only_the_treasurer_role_starts_one(box):
-    as_, decks = box
+def test_only_the_treasurer_role_starts_one_or_updates_the_pdf(box):
+    as_, reps, made = box
+    as_('ada@example.org').post('/treasurer/reports/new', data={'month': '2026-11'})
+    reps['2026-11']['deck']['pptx'] = b'edited'
     pat = as_('pat@example.org')
     assert pat.get('/treasurer/reports/').status_code == 200            # looking is never gated for officials
-    pat.post('/treasurer/reports/new', data={'month': '2026-11'})
-    assert '2026-11' not in decks
+    pat.post('/treasurer/reports/new', data={'month': '2026-12'})
+    pat.post('/treasurer/reports/2026-11/pdf')
+    assert '2026-12' not in reps and reps['2026-11']['pdf']['from'] == b'PPTX 2026-11'
+
+
+def test_housekeeping_notes_are_read_back_from_the_deck(monkeypatch):
+    text = ("Treasurer's report, November 2026\nFunds requests\nNothing waiting.\nHousekeeping\n"
+            "•  Reserve set up.\n•  Old checks.\n\nTreasurer's report, November 2026\nNet income through the year\n")
+    monkeypatch.setattr(T, '_export', lambda fid, mime: text.encode())
+    assert T.notes_from('x') == ['Reserve set up.', 'Old checks.']
+    monkeypatch.setattr(T, '_export', lambda fid, mime: b'no notes here')
+    assert T.notes_from('x') == []
