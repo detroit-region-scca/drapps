@@ -320,7 +320,7 @@ def detail(code):
                                               q=q, plan=plan,
                                               status=_status(b), today=date.today().isoformat(), programs=load_programs(),
                                               open_lines=_open_lines(e), ballot=_ballot(code),
-                                              is_admin='admin' in set((auth.user() or {}).get('perms') or ())))
+                                              may_no_vote='no_vote' in set((auth.user() or {}).get('perms') or ())))
 
 
 def _cancel_ballots(item, who, undecided_only=False):
@@ -370,12 +370,12 @@ def to_draft(code):
 @bp.route('/event/<path:code>/no-vote', methods=['POST'])
 @login_required
 def no_vote(code):
-    """Admin only: take a budget off the board's list for good (it counts as approved for spending), for example one
+    """For roles with the no_vote permission (the treasurer by default): take a budget off the board's list for good (it counts as approved for spending), for example one
     turned in after its season had started, or put it back on the list."""
     if (g := _guard()):
         return g
-    if 'admin' not in set((auth.user() or {}).get('perms') or ()):
-        return auth.refuse('Only the admin can say a budget needs no board vote.', url_for('bud.detail', code=code))
+    if 'no_vote' not in set((auth.user() or {}).get('perms') or ()):
+        return auth.refuse("Your role can't take a budget off the board's list. Ask the admin if you need it.", url_for('bud.detail', code=code))
     b = B.get(code) if B.enabled() else None
     who = _who()
     if not b:

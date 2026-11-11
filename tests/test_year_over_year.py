@@ -212,7 +212,7 @@ def test_no_vote_budget_is_off_the_boards_list_and_counts_as_approved(monkeypatc
     assert not bud._money_warnings({}, buds['#A'], past=False)
 
 
-def test_only_the_admin_can_say_no_vote_needed(monkeypatch):
+def test_only_the_no_vote_permission_can_say_no_vote_needed(monkeypatch):
     import auth
     from app import app
     calls, perms = [], {'events'}
@@ -231,6 +231,9 @@ def test_only_the_admin_can_say_no_vote_needed(monkeypatch):
     c.post('/events/event/%23C/no-vote', data={'why': 'late'})
     assert calls == []
     perms.add('admin')
+    c.post('/events/event/%23C/no-vote', data={'why': 'late'})
+    assert calls == []                                  # admin alone is not enough
+    perms.add('no_vote')
     c.post('/events/event/%23C/no-vote', data={'why': ''})
     assert calls == []                                  # a reason is required
     c.post('/events/event/%23C/no-vote', data={'why': 'turned in after the season started'})

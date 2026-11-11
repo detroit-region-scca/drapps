@@ -22,7 +22,7 @@ BUD_COLS = ['event_code', 'event_name', 'program', 'date', 'chair', 'location', 
             'approved', 'approved_by', 'last_year_event', 'draft', 'approved_hash', 'no_vote']
 # approved_hash (added last, 2026-11): a fingerprint of the budget lines the board approved (lines_hash). A row
 # approved before it existed has none, and status() falls back to comparing the days.
-# no_vote ('YYYY-MM-DD by Name: why'): the admin took it off the board's list for good, e.g. a budget turned in after
+# no_vote ('YYYY-MM-DD by Name: why'): someone with the no_vote permission took it off the board's list for good, e.g. a budget turned in after
 # its season started. It counts as approved for spending.
 LINE_COLS = ['event_code', 'section', 'description', 'last_year', 'budget', 'actual', 'sort']
 AMOUNTS = ('last_year', 'budget', 'actual')

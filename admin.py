@@ -38,7 +38,8 @@ def _ctx(**kw):
 
 VOL_PERMS = {'funds', 'invoices', 'points_enter'}    # volunteers only reach these pages
 EXTRA_SHORT = {'board': 'board decisions', 'pay': 'mark paid', 'minutes': 'minutes', 'points': 'worker points', 'ops': 'Operations',
-               'access': 'volunteers', 'audit': 'audit log', 'admin': 'admin'}
+               'access': 'volunteers', 'audit': 'audit log', 'admin': 'admin',
+               'no_vote': 'no vote needed'}
 
 
 def users():
