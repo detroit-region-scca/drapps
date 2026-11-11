@@ -63,10 +63,14 @@ def test_only_the_treasurer_role_starts_one(box):
 
 
 def test_the_statement_table():
-    rows = [{'kind': 'head', 'depth': 0, 'label': 'Income', 'month': 0, 'ytd': 0},
-            {'kind': 'line', 'depth': 1, 'label': 'Club RX Rallycross Revenue', 'month': 1200.0, 'ytd': 27265.0},
-            {'kind': 'total', 'depth': 0, 'label': 'Net Income', 'month': -50.5, 'ytd': 46514.55}]
+    rows = [{'kind': 'head', 'depth': 0, 'label': 'Income', 'month': 0, 'ytd': 0, 'avg5': None, 'avg_years': 0},
+            {'kind': 'line', 'depth': 1, 'label': 'Club RX Rallycross Revenue', 'month': 1200.0, 'ytd': 27265.0, 'avg5': 25000.0, 'avg_years': 4},
+            {'kind': 'line', 'depth': 1, 'label': 'New account', 'month': 5.0, 'ytd': 5.0, 'avg5': None, 'avg_years': 0},
+            {'kind': 'total', 'depth': 0, 'label': 'Net Income', 'month': -50.5, 'ytd': 46514.55, 'avg5': 59076.23, 'avg_years': 5}]
     html = T.pnl_html(rows, '2026-10')
-    assert '<th>October</th><th>Year to date</th>' in html
-    assert '\u00a0' * 4 + 'Club RX Rallycross Revenue</td><td>1,200.00</td><td>27,265.00</td>' in html
-    assert '<b>(50.50)</b>' in html and T.prior('2027-01') == '2026-12'
+    assert '<th>October</th><th>Year to date</th><th>2021 to 2025 average, Jan to Oct</th><th>Difference</th>' in html
+    assert ('\u00a0' * 4 + 'Club RX Rallycross Revenue</td><td>1,200.00</td><td>27,265.00</td><td>25,000.00*</td>'
+            '<td>2,265.00</td>') in html
+    assert 'New account</td><td>5.00</td><td>5.00</td><td></td><td></td>' in html
+    assert '<td><b>59,076.23</b></td><td><b>(12,561.68)</b></td>' in html and 'fewer than five years' in html
+    assert T.prior('2027-01') == '2026-12'

@@ -140,20 +140,33 @@ def _amt(v):
 
 
 def pnl_html(rows, period):
-    """QuickBooks' profit and loss as a table: the month, and the year to date through it."""
+    """QuickBooks' profit and loss as a table: the month, the year to date through it, and the average of the same
+    months over the five years before, with the difference."""
     if not rows:
         return '<p>The profit and loss statement is not in the apps yet (the nightly QuickBooks sync brings it).</p>'
-    mlabel = date(int(period[:4]), int(period[5:]), 1).strftime('%B')
-    out = [f'<table><tr><th>Account</th><th>{mlabel}</th><th>Year to date</th></tr>']
+    y, m = int(period[:4]), int(period[5:])
+    mlabel, through = date(y, m, 1).strftime('%B'), date(y, m, 1).strftime('%b')
+    out = [f'<table><tr><th>Account</th><th>{mlabel}</th><th>Year to date</th><th>{y - 5} to {y - 1} average, Jan to {through}</th>'
+           '<th>Difference</th></tr>']
+    short = False
     for r in rows:
         label = '\u00a0' * 4 * r['depth'] + escape(r['label'])
         if r['kind'] == 'head':
-            out.append(f'<tr><td><b>{label}</b></td><td></td><td></td></tr>')
-        elif r['kind'] == 'total':
-            out.append(f'<tr><td><b>{label}</b></td><td><b>{_amt(r["month"])}</b></td><td><b>{_amt(r["ytd"])}</b></td></tr>')
+            out.append(f'<tr><td><b>{label}</b></td><td></td><td></td><td></td><td></td></tr>')
+            continue
+        avg = r.get('avg5')
+        n = r.get('avg_years') or 0
+        mark = '*' if avg is not None and n < 5 else ''
+        short = short or bool(mark)
+        diff = None if avg is None else round(r['ytd'] - avg, 2)
+        cells = [_amt(r['month']), _amt(r['ytd']), (_amt(avg) + mark) if avg is not None else '', _amt(diff)]
+        if r['kind'] == 'total':
+            out.append(f'<tr><td><b>{label}</b></td>' + ''.join(f'<td><b>{c}</b></td>' for c in cells) + '</tr>')
         else:
-            out.append(f'<tr><td>{label}</td><td>{_amt(r["month"])}</td><td>{_amt(r["ytd"])}</td></tr>')
-    return ''.join(out) + '</table>'
+            out.append(f'<tr><td>{label}</td>' + ''.join(f'<td>{c}</td>' for c in cells) + '</tr>')
+    note = ('<p>* Average of fewer than five years: the account did not exist in all of them (the accounts were '
+            'reorganized in 2022).</p>' if short else '')
+    return ''.join(out) + '</table>' + note
 
 
 def prior(month):

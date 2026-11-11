@@ -7,7 +7,8 @@
 //   outstanding  checks since PAYMENTS_SINCE the bank has not cleared yet (QuickBooks "Clr" blank; voided $0 checks left out)
 //   deposits  deposit lines since PAYMENTS_SINCE (date, amount, description, payer), to match against open invoices
 //   balance_sheet  today's balance sheet to two levels; receivables  every invoice still owed
-//   pnl       the profit and loss statement for the last full month and the year to date, every line, for the board report
+//   pnl       the profit and loss statement for the last full month and the year to date, every line, with each line's
+//             average for the same months of the five years before, for the board report
 // Runs on the machine that holds the QuickBooks connection (the qbo-mcp install and its token
 // store); the web app never talks to QuickBooks. QBO_MCP_DIR points at that install. Read only (writes are qbo_write.mjs).
 const dir = process.env.QBO_MCP_DIR || `${process.env.HOME}/.mcp-servers/qbo-mcp`;
@@ -161,5 +162,24 @@ const pwalk = (rows, depth) => {
   }
 };
 pwalk(pnlRep.Rows?.Row, 0);
+// The same months of each of the five years before, for comparison: each line's average over the years it existed
+// (the accounts were reorganized in 2022, so older years only share the totals).
+const past = {};
+for (let k = 1; k <= 5; k++) {
+  const y = Number(pm.slice(0, 4)) - k, end = new Date(Date.UTC(y, Number(pm.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  const rep = await get(`reports/ProfitAndLoss?start_date=${y}-01-01&end_date=${end}&accounting_method=Accrual`);
+  const w = rows => { for (const r of rows || []) {
+    const cd = r.ColData || r.Summary?.ColData;
+    if (r.ColData) (past[`line|${cd[0].value}`] ||= []).push(parseFloat(cd[1]?.value || '0') || 0);
+    if (r.Rows) w(r.Rows.Row);
+    if (r.Summary) (past[`total|${r.Summary.ColData[0].value}`] ||= []).push(parseFloat(r.Summary.ColData[1]?.value || '0') || 0);
+  } };
+  w(rep.Rows?.Row);
+}
+for (const r of pnl) {
+  const v = past[`${r.kind}|${r.label}`];
+  r.avg5 = v ? Math.round(v.reduce((a, b) => a + b, 0) / v.length * 100) / 100 : null;
+  r.avg_years = v ? v.length : 0;
+}
 
 console.log(JSON.stringify({ as_of: today, projects, programs, monthly, balances, payments, outstanding, deposits, balance_sheet, receivables, pnl }));
