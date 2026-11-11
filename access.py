@@ -78,9 +78,7 @@ def role_key(role):
 # Roles the region always needs someone in: none can be left empty.
 NEEDED = ('RE', 'ARE', 'Secretary', 'Treasurer', 'Admin', 'Director', 'Financial Director', 'Points Keeper')
 OFFICERS = {'RE', 'ARE', 'Secretary', 'Treasurer', 'Admin'}      # bylaws Art. IV 4.2, plus the admin account
-DEFAULTS = {'Equipment': {'ops'}, 'Points Keeper': {'points'}, 'Treasurer': {'no_vote'}}
-# Extra powers the other officers do not get by default (each role can still be given them in Admin > Roles).
-OFFICER_OPT_IN = {'no_vote'}
+DEFAULTS = {'Equipment': {'ops'}, 'Points Keeper': {'points'}}
 EVERYDAY_DEFAULT = set(EVERYDAY) - {'plan_own'}            # what every official could do before roles had settings
 VOLUNTEER = 'Volunteer'
 VOLUNTEER_DEFAULT = {'funds', 'invoices', 'points_enter'}
@@ -108,9 +106,7 @@ def _load():
 def _default(role):
     if role == VOLUNTEER:
         return set(VOLUNTEER_DEFAULT)
-    if role in OFFICERS:
-        return ((set(EVERYDAY) | set(EXTRA)) - {'plan_own'} - OFFICER_OPT_IN) | set(DEFAULTS.get(role, ()))
-    return EVERYDAY_DEFAULT | set(DEFAULTS.get(role, ()))
+    return (set(EVERYDAY) | set(EXTRA)) - {'plan_own'} if role in OFFICERS else EVERYDAY_DEFAULT | set(DEFAULTS.get(role, ()))
 
 
 def perms(role):

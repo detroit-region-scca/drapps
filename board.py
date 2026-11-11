@@ -289,6 +289,8 @@ def home():
             flash(f"{'Urgent vote request' if urgent else 'Vote request'} sent to the board ({board_email()}): {n} item{'s' if n != 1 else ''}"
                   + (f", with a personal voting link to each of {len(people)} directors." if bids else '.'), 'success')
             return redirect(url_for('board.home'))
+        if f.get('action') == 'no_vote':
+            return _no_vote(bcodes)
         off = officer_current()
         if not off:
             flash('Recording a board decision is for the RE, ARE, secretary or treasurer.', 'warning')
@@ -320,8 +322,40 @@ def home():
     for m in open_m:
         m['ballot'] = views.get(f"motion:{m['id']}")
     return render_template('board.html', **_ctx(view='waiting', rows=rows, motions=open_m, needed=BL.needed(), BL=BL,
+                                                  may_no_vote='no_vote' in set((_me().get('perms') or ())),
                                                   prefill=dict(title=request.args.get('title', ''), amount=request.args.get('amount', ''),
                                                                link=request.args.get('link', ''), details=request.args.get('details', ''))))
+
+
+def _no_vote(bcodes):
+    """Take the ticked budgets off the board's list with no vote (the no_vote permission). The Operations budget always
+    needs the board, so it is left alone, as are motions (they have Withdraw)."""
+    if 'no_vote' not in set((_me().get('perms') or ())):
+        flash("Your role can't take a budget off the board's list.", 'warning')
+        return redirect(url_for('board.home'))
+    why = ' '.join((request.form.get('why') or '').split())[:200]
+    if not why:
+        flash('Say why the board need not vote on them.', 'warning')
+        return redirect(url_for('board.home'))
+    import bud
+    who = session.get('who', '')
+    note = f"{date.today().isoformat()} by {who}: {why}"
+    done = []
+    with FileLock(RECORD_LOCK, timeout=60):
+        for y, codes in sorted(_still_waiting(bcodes).items()):
+            for code in codes:
+                b = B.get(code)
+                if code == 'OPS' or not b:
+                    continue
+                B.set_no_vote(code, note)
+                bud._cancel_ballots(f"budget:{y}:{code}", who)
+                log_audit_event('BUDGET_NO_VOTE', who, {'event_code': code, 'why': note})
+                done.append(b.get('event_name') or code)
+    if done:
+        flash("No board vote needed, off the list: " + '; '.join(done) + '.', 'success')
+    else:
+        flash('Tick at least one budget. The Operations budget and motions are not taken off this way.', 'warning')
+    return redirect(url_for('board.home'))
 
 
 @bp.route('/motions', methods=['GET', 'POST'])

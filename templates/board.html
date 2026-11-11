@@ -87,6 +87,13 @@
             <div class="col-6 col-md-2"><button name="action" value="record" class="btn btn-sm btn-accent w-100">Record</button></div>
         </div></div>
         {% endif %}
+        {% if may_no_vote and rows %}
+        <div class="card p-3 mt-2"><div class="section-label">No board vote needed</div>
+            <div class="small text-muted mb-2">Tick budgets above to take them off this list for good, for example one turned in after its season started. They count as approved for spending, and any open vote on them is cancelled. The Operations budget always goes to the board.</div><div class="row g-2 align-items-end">
+            <div class="col-12 col-md-10"><label class="form-label small" for="why">Why</label><input class="form-control form-control-sm" id="why" name="why" maxlength="200" placeholder="For example: turned in after the season started"></div>
+            <div class="col-12 col-md-2"><button name="action" value="no_vote" class="btn btn-sm btn-outline-secondary w-100" onclick="return confirm('Take the ticked budgets off the board\'s list with no vote?')">No vote needed</button></div>
+        </div></div>
+        {% endif %}
     </form>
     {% for m in motions %}{% if officer or m.proposed_by == who %}<form id="w{{ loop.index }}" method="post" action="{{ url_for('board.withdraw', mid=m.id) }}" class="d-none"></form>{% endif %}{% endfor %}
     {% for r in rows %}{{ ballot_forms(r.ballot) }}{% endfor %}{% for m in motions %}{{ ballot_forms(m.ballot) }}{% endfor %}

@@ -44,3 +44,30 @@ def test_request_email_vote_can_be_marked_urgent(monkeypatch):
     c.post('/board/', data={'action': 'ask', 'item': 'motion:M-2026-009'})
     assert sent[0][0] == 'URGENT Board vote: Buy a trailer' and sent[0][1].startswith('URGENT: please vote')
     assert sent[1][0] == 'Board vote: Buy a trailer' and 'URGENT' not in sent[1][1]
+
+
+def test_no_vote_needed_from_the_board_page(monkeypatch):
+    import app as A
+    import auth
+    import board
+    import bud
+    calls, perms = [], {'board_ask'}
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Pat', 'level': 'officer', 'roles': ['Treasurer'], 'perms': perms})
+    monkeypatch.setattr(board, '_me', lambda: {'level': 'officer', 'perms': perms})
+    monkeypatch.setattr(board.M, 'enabled', lambda: True)
+    monkeypatch.setattr(board.M, 'motions', lambda: [])
+    monkeypatch.setattr(board, '_still_waiting', lambda bc: bc)
+    monkeypatch.setattr(board.B, 'get', lambda code: {'event_code': code, 'event_name': 'Road Rally program budget 2026'})
+    monkeypatch.setattr(board.B, 'set_no_vote', lambda code, note: calls.append((code, note)))
+    monkeypatch.setattr(bud, '_cancel_ballots', lambda item, who: calls.append(item))
+    monkeypatch.setattr(board, 'log_audit_event', lambda *a, **k: None)
+    c = A.app.test_client()
+    with c.session_transaction() as s:
+        s.update(authenticated=True, email='pat@example.org', who='Pat')
+    c.post('/board/', data={'action': 'no_vote', 'item': 'budget:2026:RY-2026', 'why': 'late'})
+    assert calls == []                                       # the role lacks it
+    perms.add('no_vote')
+    c.post('/board/', data={'action': 'no_vote', 'item': 'budget:2026:RY-2026', 'why': ''})
+    assert calls == []                                       # a reason is required
+    c.post('/board/', data={'action': 'no_vote', 'item': ['budget:2026:RY-2026', 'budget:2027:OPS'], 'why': 'late'})
+    assert calls == [('RY-2026', calls[0][1]), 'budget:2026:RY-2026'] and calls[0][1].endswith('by Pat: late')
