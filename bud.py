@@ -323,9 +323,10 @@ def detail(code):
                                               may_no_vote='no_vote' in set((auth.user() or {}).get('perms') or ())))
 
 
-def _cancel_ballots(item, who, undecided_only=False):
+def _cancel_ballots(item, who, undecided_only=False, why=''):
     """Cancel the board's email vote on this item, if there is one, so it can be asked again later. Returns True when
-    one was cancelled. undecided_only: leave a vote whose result is already recorded (or that ran out) alone."""
+    one was cancelled. undecided_only: leave a vote whose result is already recorded (or that ran out) alone. A vote
+    whose result is not recorded yet is withdrawn: the board is told, with why, so nobody votes on it for nothing."""
     try:
         import ballots_store as BS
         if not BS.enabled():
@@ -333,9 +334,16 @@ def _cancel_ballots(item, who, undecided_only=False):
         b = BS.current(item)
         if b and b['status'] != 'cancelled' and not (undecided_only and b['status'] in ('recorded', 'expired')):
             BS.update(b['id'], status='cancelled', recorded_by=who)
+            if b['status'] in ('open', 'passed', 'failed'):
+                from board import board_email
+                send_mail(f"Vote withdrawn: {b['title']}",
+                          f"The board's email vote on {b['title']} is withdrawn{(': ' + why) if why else ''}. No need to vote on it."
+                          f"\n\n{who}\n\nEverything waiting for the board:\n{url_for('board.home', _external=True)}",
+                          board_email(), reply_to=board_email())
             return True
     except Exception:
-        pass
+        import logging
+        logging.exception('Could not cancel the vote on %s', item)
     return False
 
 
@@ -361,8 +369,9 @@ def to_draft(code):
         except ValueError as e:      # its row was deleted from the sheet by hand
             flash(str(e), 'warning')
             return redirect(url_for('bud.detail', code=code))
-        _cancel_ballots(f"budget:{str(b.get('date', ''))[:4]}:{code}", who)
+        _cancel_ballots(f"budget:{str(b.get('date', ''))[:4]}:{code}", who, why=f'{who} put the budget back into draft')
         log_audit_event('BUDGET_DRAFT', who, {'event_code': code, 'was_approved': b.get('approved', '')})
+        tell_director('draft', [b], who=who)
         flash('Back in draft. It is off the board\'s list until you mark it ready.', 'info')
     return redirect(url_for('bud.detail', code=code))
 
@@ -395,8 +404,9 @@ def no_vote(code):
         flash(str(e), 'warning')
         return redirect(url_for('bud.detail', code=code))
     if note:
-        _cancel_ballots(f"budget:{str(b.get('date', ''))[:4]}:{code}", who)
+        _cancel_ballots(f"budget:{str(b.get('date', ''))[:4]}:{code}", who, why=f'{who} marked it as needing no board vote ({why})')
         log_audit_event('BUDGET_NO_VOTE', who, {'event_code': code, 'why': note})
+        tell_director('no_vote', [b], who=who, why=why)
         flash("No board vote needed. It is off the board's list, and any open vote on it is cancelled.", 'success')
     else:
         log_audit_event('BUDGET_NO_VOTE_CLEARED', who, {'event_code': code})
@@ -573,43 +583,73 @@ def budget_vote_lines(year, codes):
     return lines, rows
 
 
-def approved_email(codes, approved, how):
-    """[(to, subject, body)]: one email per program telling its director (the role's group address) that the board
-    approved these budgets, so whoever turned them in hears it."""
+# What the program's director is told when something happens to a budget: (subject word, opening line, closing line).
+# {what}: "the budget" or "2 budgets"; {it}: "it" or "them"; {on}: " on Nov 11, 2026 (board meeting, 7-0)"; {who}, {why}.
+NEWS = {
+    'approved': ('approved', 'The board approved {what}{on}:', 'Funds requests for {it} can go ahead. If a budget changes, it goes back to the board.'),
+    'failed': ('not approved', 'The board did not approve {what}{on}:', 'It stays on the board\'s list. Revise it if needed and ask the board again.'),
+    'no_vote': ('needs no board vote', '{who} marked {what} as not needing a board vote ({why}):', 'Funds requests for {it} can go ahead.'),
+    'draft': ('back in draft', '{who} put {what} back into draft:', 'It is off the board\'s list until it is marked ready again.'),
+    'unapproved': ('approval cleared', '{who} cleared the board approval of {what}:', 'It is back on the board\'s list.'),
+    'deleted': ('deleted', '{who} deleted {what}:', 'Its files, if any, are still in Drive.'),
+}
+
+
+def director_emails(kind, buds, when='', how='', who='', why=''):
+    """[(to, subject, body)]: one email per program telling its director (the role's group address, never a person's
+    own) what happened to these budgets (dicts). The director's own doings are not reported back to them, except the
+    board's decisions."""
     from app import nice_date
+    word, opening, closing = NEWS[kind]
     by = {}
-    for c in codes:
-        if (b := B.get(c)):
-            by.setdefault(b.get('program', ''), []).append(b)
+    for b in buds:
+        by.setdefault(b.get('program', ''), []).append(b)
     out = []
-    for prog, buds in by.items():
+    for prog, bs in by.items():
         name, to = O.director(prog)
-        if not to:
+        if not to or (kind in ('draft', 'unapproved', 'deleted') and name and name == who):
             continue
-        what = f'{len(buds)} budgets' if len(buds) > 1 else 'the budget'
+        many = len(bs) > 1
         lines = []
-        for b in buds:
-            when = '' if str(b.get('date', ''))[:4] in b['event_name'] and b['event_code'][:1] != '#' else f", {nice_date(b.get('date', ''))}"
-            lines.append(f"- {b['event_name']} ({b['event_code']}){when}\n  {url_for('bud.detail', code=b['event_code'], _external=True)}")
-        subject = (f"Budget approved: {buds[0]['event_name']}" if len(buds) == 1 else
-                   f"{len(buds)} budgets approved: " + ', '.join(b['event_name'] for b in buds))
-        body = '\n'.join([f"Hi{(' ' + name.split()[0]) if name else ''},", '',
-                           f"The board approved {what} on {nice_date(approved)}{f' ({how})' if how else ''}:", '', *lines, '',
-                           (f'Funds requests for them can go ahead. If a budget changes, it goes back to the board.' if len(buds) > 1 else
-                            'Funds requests for it can go ahead. If the budget changes, it goes back to the board.'), '',
-                           'Detroit Region SCCA'])
+        for b in bs:
+            day = '' if str(b.get('date', ''))[:4] in b['event_name'] and b['event_code'][:1] != '#' else f", {nice_date(b.get('date', ''))}"
+            link = '' if kind == 'deleted' else f"\n  {url_for('bud.detail', code=b['event_code'], _external=True)}"
+            lines.append(f"- {b['event_name']} ({b['event_code']}){day}{link}")
+        fill = dict(what=f'{len(bs)} budgets' if many else 'the budget', it='them' if many else 'it', who=who or 'Someone', why=why,
+                    on=(f' on {nice_date(when)}' if when else '') + (f' ({how})' if how else ''))
+        subject = (f"{len(bs)} budgets {word}: " + ', '.join(b['event_name'] for b in bs)) if many else f"Budget {word}: {bs[0]['event_name']}"
+        body = '\n'.join([f"Hi{(' ' + name.split()[0]) if name else ''},", '', opening.format(**fill), '', *lines, '',
+                           closing.format(**fill), '', 'Detroit Region SCCA'])
         out.append((to, subject, body))
     return out
 
 
-def tell_approved(codes, approved, how):
-    """Email each program's director about budgets the board just approved. A mail problem never undoes the approval."""
+def tell_director(kind, buds, **kw):
+    """Email each program's director what happened to these budgets. A mail problem never undoes what was done."""
     try:
-        for to, subject, body in approved_email(codes, approved, how):
+        for to, subject, body in director_emails(kind, [b for b in buds if b], **kw):
             send_mail(subject, body, to)
     except Exception:
         import logging
-        logging.exception('Could not email the budget approval')
+        logging.exception('Could not email the director about %s budgets', kind)
+
+
+def approved_email(codes, approved, how):
+    return director_emails('approved', [B.get(c) for c in codes if B.get(c)], when=approved, how=how)
+
+
+def tell_approved(codes, approved, how):
+    tell_director('approved', [B.get(c) for c in codes], when=approved, how=how)
+
+
+def record_not_approved(codes, decided, how):
+    """The board voted these budgets down: they stay on its list. Logged against each budget, and the director told."""
+    who = officer_current()['name']
+    buds = [b for c in codes if c != 'OPS' and (b := B.get(c))]
+    for b in buds:
+        log_audit_event('BUDGET_NOT_APPROVED', who, {'event_code': b['event_code'], 'decided': decided, 'how': how})
+    tell_director('failed', buds, when=decided, how=how)
+    return len(buds)
 
 
 def record_budgets(year, picked, approved, how):
@@ -668,9 +708,10 @@ def approve_many():
 def approve(code):
     if (g := _guard()):
         return g
-    if not B.get(code):
+    if not (before := B.get(code)):
         flash('There is no budget to approve.', 'warning')
         return redirect(url_for('bud.detail', code=code))
+    was = str(before.get('approved') or '')
     who = officer_current()['name']
     approved = request.form.get('approved', '').strip()
     if approved:
@@ -682,8 +723,10 @@ def approve(code):
     how = _how_vote(request.form) if approved else ''
     B.set_approved(code, approved, f"{who} ({how})" if how else who)
     log_audit_event('BUDGET_APPROVED' if approved else 'BUDGET_UNAPPROVED', who, {'event_code': code, 'approved': approved, 'how': how})
-    if approved:
+    if approved and approved != was:                 # not again for a correction of how the vote went
         tell_approved([code], approved, how)
+    elif not approved and was:
+        tell_director('unapproved', [before], who=who)
     from app import nice_date
     flash(f'Board approval recorded: {nice_date(approved)}.' if approved else 'Board approval cleared.', 'success')
     return redirect(url_for('bud.detail', code=code))
@@ -705,6 +748,7 @@ def delete(code):
         return redirect(url_for('bud.detail', code=code))
     who = (officer_current() or {}).get('name') or session.get('who', '') or 'Unknown'
     B.delete(code)
+    tell_director('deleted', [b], who=who)
     log_audit_event('BUDGET_DELETED', who, {'event_code': code, 'approved': b.get('approved', ''),
                                             'surplus': (b['totals'].get('budget') or {}).get('surplus'), 'lines': len(b['lines'])})
     flash('Budget deleted. Its files, if any, are still in Drive.', 'success')
@@ -831,7 +875,8 @@ def edit(code):
         flash('Budget saved.', 'success')
         # The board votes on numbers: if they changed while an email vote is open, that vote is about the old ones.
         if b and B.lines_hash(b['lines']) != B.lines_hash(lines) and \
-                _cancel_ballots(f"budget:{str(b.get('date', ''))[:4]}:{code}", who, undecided_only=True):
+                _cancel_ballots(f"budget:{str(b.get('date', ''))[:4]}:{code}", who, undecided_only=True,
+                                why=f'{who} changed the budget\'s numbers, so the vote was on the old ones'):
             log_audit_event('BALLOT_CANCELLED', who, {'event_code': code, 'why': 'budget numbers changed during the vote'})
             flash("The numbers changed, so the board's email vote on this budget was cancelled. Ask for the vote again.", 'warning')
         return redirect(url_for('bud.detail', code=code))

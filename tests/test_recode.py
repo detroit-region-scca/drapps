@@ -108,3 +108,37 @@ def test_the_director_hears_when_the_board_approves_their_budgets(monkeypatch):
     assert to == 'rally@example.org' and subject.startswith('2 budgets approved')
     assert 'Hi Pat,' in body and 'approved 2 budgets on Nov 11, 2026 (board meeting, 7-0)' in body
     assert '- Winter Rally (#DRA9S), Feb 20, 2027' in body and '- Road Rally program budget 2027 (RY-2027)\n' in body
+
+
+def test_the_director_hears_every_change_to_their_budgets_but_not_their_own_doings(monkeypatch):
+    import bud
+    import officials
+    monkeypatch.setattr(officials, 'director', lambda p: {'RY': ('Pat Rally', 'rally@example.org')}.get(p, ('', '')))
+    b = {'event_code': '#DRA9S', 'event_name': 'Winter Rally', 'program': 'RY', 'date': '2027-02-20'}
+    from app import app
+    with app.test_request_context('/'):
+        m = lambda kind, **kw: bud.director_emails(kind, [b], **kw)          # noqa: E731
+        (to, subject, body), = m('failed', when='2026-11-11', how='board meeting, 3-4')
+        assert subject == 'Budget not approved: Winter Rally' and 'did not approve the budget on Nov 11, 2026 (board meeting, 3-4)' in body
+        (_, subject, body), = m('no_vote', who='Sam Treasurer', why='turned in after the season started')
+        assert 'Sam Treasurer marked the budget as not needing a board vote (turned in after the season started)' in body and 'can go ahead' in body
+        (_, subject, body), = m('deleted', who='Sam Treasurer')
+        assert subject == 'Budget deleted: Winter Rally' and 'http' not in body
+        assert m('draft', who='Pat Rally') == [] and m('unapproved', who='Pat Rally') == [] and m('deleted', who='Pat Rally') == []
+        assert len(m('draft', who='Sam Treasurer')) == 1
+
+
+def test_a_withdrawn_board_vote_is_announced_to_the_board(monkeypatch):
+    import bud
+    import ballots_store as BS
+    sent, upd = [], []
+    monkeypatch.setattr(BS, 'enabled', lambda: True)
+    monkeypatch.setattr(BS, 'current', lambda item: {'id': 'B-1', 'status': 'open', 'title': 'Budget: Winter Rally'})
+    monkeypatch.setattr(BS, 'update', lambda bid, **kw: upd.append(kw))
+    monkeypatch.setattr(bud, 'send_mail', lambda s, b, to, reply_to=None: sent.append((s, b, to)))
+    from app import app
+    with app.test_request_context('/'):
+        assert bud._cancel_ballots('budget:2027:#DRA9S', 'Sam', why='Sam put the budget back into draft')
+    assert upd == [{'status': 'cancelled', 'recorded_by': 'Sam'}]
+    (s, body, to), = sent
+    assert s == 'Vote withdrawn: Budget: Winter Rally' and 'withdrawn: Sam put the budget back into draft. No need to vote' in body

@@ -181,7 +181,7 @@ def budget(monkeypatch):
     monkeypatch.setattr(B, 'qbo_actuals', lambda: {})
     monkeypatch.setattr(B, 'save', lambda header, lines, files=(), actuals_only=False: state['saved'].append((header, lines)))
     monkeypatch.setattr(B, 'set_draft', lambda code, d: state['draft'].append(d))
-    monkeypatch.setattr(bud, '_cancel_ballots', lambda item, who, undecided_only=False: state['cancelled'].append(item) or True)
+    monkeypatch.setattr(bud, '_cancel_ballots', lambda item, who, undecided_only=False, **kw: state['cancelled'].append(item) or True)
     monkeypatch.setattr(bud, 'log_audit_event', lambda action, who, d: state['log'].append((action, who)))
     return state
 

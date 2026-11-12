@@ -155,7 +155,7 @@ def test_back_to_draft_after_approval_needs_an_officer(monkeypatch):
     monkeypatch.setattr(B, 'enabled', lambda: True)
     monkeypatch.setattr(B, 'get', lambda code: {'event_code': '#C', 'date': '2027-01-09', 'approved': '2026-11-01'})
     monkeypatch.setattr(B, 'set_draft', lambda code, d: calls.append((code, d)))
-    monkeypatch.setattr(bud, '_cancel_ballots', lambda item, who: calls.append(item))
+    monkeypatch.setattr(bud, '_cancel_ballots', lambda item, who, **kw: calls.append(item))
     monkeypatch.setattr(bud, 'log_audit_event', lambda *a, **k: None)
     app.config['TESTING'] = True
     c = app.test_client()
@@ -179,7 +179,7 @@ def test_own_director_can_put_an_approved_budget_back_to_draft(monkeypatch):
     monkeypatch.setattr(B, 'enabled', lambda: True)
     monkeypatch.setattr(B, 'get', lambda code: {'event_code': '#C', 'date': '2027-01-09', 'approved': '2026-11-01', 'program': 'AX'})
     monkeypatch.setattr(B, 'set_draft', lambda code, d: calls.append((code, d)))
-    monkeypatch.setattr(bud, '_cancel_ballots', lambda item, who: calls.append(item))
+    monkeypatch.setattr(bud, '_cancel_ballots', lambda item, who, **kw: calls.append(item))
     monkeypatch.setattr(bud, 'log_audit_event', lambda *a, **k: None)
     app.config['TESTING'] = True
     c = app.test_client()
@@ -222,7 +222,7 @@ def test_only_the_no_vote_permission_can_say_no_vote_needed(monkeypatch):
     monkeypatch.setattr(B, 'enabled', lambda: True)
     monkeypatch.setattr(B, 'get', lambda code: {'event_code': '#C', 'date': '2026-01-09', 'approved': ''})
     monkeypatch.setattr(B, 'set_no_vote', lambda code, note: calls.append((code, note)))
-    monkeypatch.setattr(bud, '_cancel_ballots', lambda item, who: calls.append(item))
+    monkeypatch.setattr(bud, '_cancel_ballots', lambda item, who, **kw: calls.append(item))
     monkeypatch.setattr(bud, 'log_audit_event', lambda *a, **k: None)
     app.config['TESTING'] = True
     c = app.test_client()

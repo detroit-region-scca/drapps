@@ -300,7 +300,7 @@ def to_draft(year, program):
     else:
         P.set_draft(year, program)
         from bud import _cancel_ballots
-        _cancel_ballots(f'budget:{year}:{program}', who)
+        _cancel_ballots(f'budget:{year}:{program}', who, why=f'{who} put the budget back into draft')
         log_audit_event('PLAN_DRAFT', who, {'year': year, 'program': program, 'was_approved': info.get('approved', '')})
         flash('Back in draft. Turn it in again when it is ready.', 'info')
     return redirect(url_for('plan.detail', year=year, program=program))
@@ -378,7 +378,7 @@ def edit(year, program):
         # is about the old ones.
         if program == OPS and P.lines_hash(P.saved_lines(before.get('lines', []))) != P.lines_hash(lines):
             from bud import _cancel_ballots
-            if _cancel_ballots(f'budget:{year}:{program}', who, undecided_only=True):
+            if _cancel_ballots(f'budget:{year}:{program}', who, undecided_only=True, why=f'{who} changed the budget\'s numbers, so the vote was on the old ones'):
                 log_audit_event('BALLOT_CANCELLED', who, {'year': year, 'program': program, 'why': 'budget numbers changed during the vote'})
                 flash("The numbers changed, so the board's email vote on this budget was cancelled. Ask for the vote again.", 'warning')
         total = round(sum(ln['net'] or 0 for ln in lines), 2)

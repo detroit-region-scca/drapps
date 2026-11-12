@@ -59,7 +59,7 @@ def test_no_vote_needed_from_the_board_page(monkeypatch):
     monkeypatch.setattr(board, '_still_waiting', lambda bc: bc)
     monkeypatch.setattr(board.B, 'get', lambda code: {'event_code': code, 'event_name': 'Road Rally program budget 2026'})
     monkeypatch.setattr(board.B, 'set_no_vote', lambda code, note: calls.append((code, note)))
-    monkeypatch.setattr(bud, '_cancel_ballots', lambda item, who: calls.append(item))
+    monkeypatch.setattr(bud, '_cancel_ballots', lambda item, who, **kw: calls.append(item))
     monkeypatch.setattr(board, 'log_audit_event', lambda *a, **k: None)
     c = A.app.test_client()
     with c.session_transaction() as s:

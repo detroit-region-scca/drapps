@@ -191,6 +191,7 @@ def _record(bcodes, ms, decided, result, how, vote, off):
         n = sum(bud.record_budgets(y, codes, decided, how_text) for y, codes in bcodes.items())
         said.append(f"{n} budget{'s' if n != 1 else ''} approved")
     elif bcodes:
+        sum(bud.record_not_approved(codes, decided, how_text) for codes in bcodes.values())
         said.append('budgets left waiting (a budget is only recorded when the board approves it; ask the director to revise it)')
     for m in ms:
         M.update(m['id'], status=result, decided=decided, how=M.HOW.get(how, ''), vote=vote, recorded_by=off['name'])
@@ -348,9 +349,10 @@ def _no_vote(bcodes):
                 if code == 'OPS' or not b:
                     continue
                 B.set_no_vote(code, note)
-                bud._cancel_ballots(f"budget:{y}:{code}", who)
+                bud._cancel_ballots(f"budget:{y}:{code}", who, why=f'{who} marked it as needing no board vote ({why})')
                 log_audit_event('BUDGET_NO_VOTE', who, {'event_code': code, 'why': note})
                 done.append(b.get('event_name') or code)
+                bud.tell_director('no_vote', [b], who=who, why=why)
     if done:
         flash("No board vote needed, off the list: " + '; '.join(done) + '.', 'success')
     else:
