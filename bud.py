@@ -595,7 +595,8 @@ def approved_email(codes, approved, how):
                    f"{len(buds)} budgets approved: " + ', '.join(b['event_name'] for b in buds))
         body = '\n'.join([f"Hi{(' ' + name.split()[0]) if name else ''},", '',
                            f"The board approved {what} on {nice_date(approved)}{f' ({how})' if how else ''}:", '', *lines, '',
-                           'Funds requests for it can go ahead. If the budget changes, it goes back to the board.', '',
+                           (f'Funds requests for them can go ahead. If a budget changes, it goes back to the board.' if len(buds) > 1 else
+                            'Funds requests for it can go ahead. If the budget changes, it goes back to the board.'), '',
                            'Detroit Region SCCA'])
         out.append((to, subject, body))
     return out
