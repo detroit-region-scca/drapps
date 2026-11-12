@@ -395,7 +395,7 @@ def detail(req_id):
         return g
     r = F.get(req_id)
     if not r:
-        flash('Funds request not found.', 'warning')
+        flash(f'There is no funds request "{req_id}". Pick one from the list.', 'warning')
         return redirect(url_for('fr.home'))
     items = Approvals().items(r) if r['status'] == 'Submitted' else []
     return render_template('fr.html', **_ctx(view='detail', r=r, today=date.today().isoformat(), items=items, ready=FL.ready(items),

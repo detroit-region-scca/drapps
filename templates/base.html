@@ -160,7 +160,7 @@
 </nav>
 {% endif %}
 <main class="container pb-5" style="max-width: {{ self.width() }};">
-    {% if years is defined and years and year is defined and request.endpoint != 'home' %}
+    {% if years is defined and years and year is defined and request.endpoint != 'home' and not year_inline %}
     {# One year picker, at the top of every page that is organized by year. #}
     {% set keep = request.args.items()|selectattr(0, 'in', ['status', 'program'])|list %}
     <form method="get" action="{{ request.path }}" class="year-bar no-print">

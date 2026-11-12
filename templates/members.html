@@ -81,10 +81,7 @@
 
 {# ================================================================== Members (keeper) #}
 {% if view == 'home' %}
-<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-    <h1 class="page-title mb-0">Members</h1>
-    <a class="btn btn-accent" href="{{ url_for('members.enter') }}">Add points</a>
-</div>
+<h1 class="visually-hidden">Members</h1>{# the tab names the page; Add points is the Points tab #}
 <div class="row g-3 mb-3">
     <div class="col-6 col-lg-3"><div class="card stat p-3 h-100"><div class="label">Worker points</div><div class="value">{{ '{:,.1f}'.format(total) }}</div><div class="label">{{ money(total * point_value) }}</div></div></div>
     <div class="col-6 col-lg-3"><a class="card stat p-3 h-100 text-decoration-none" href="{{ url_for('members.quickbooks') }}"><div class="label">QuickBooks</div>
@@ -95,7 +92,7 @@
     <div class="col-6 col-lg-3"><a class="card stat p-3 h-100 text-decoration-none" href="#lapsed" onclick="var d=document.getElementById('lapsed'); if(d) d.open=true"><div class="label">Not current members</div>
         <div class="value {{ 'text-warning' if lapsed }}">{{ lapsed|length }}</div><div class="label">with {{ '{:,.1f}'.format(lapsed|sum(attribute='points')) }} points</div></a></div>
 </div>
-<form id="loadlist" method="post" action="{{ url_for('members.upload') }}" enctype="multipart/form-data" class="card card-body mb-3"{{ '' if request.args.get('load') else ' hidden' }}><input type="hidden" name="back" value="{{ url_for('members.home') }}">
+<form id="loadlist" method="post" action="{{ url_for('members.upload') }}" enctype="multipart/form-data" class="card card-body mb-3"{{ '' if request.args.get('load') else ' hidden' }}><input type="hidden" name="back" value="{{ request.args.get('back') if (request.args.get('back') or '').startswith('/members') else url_for('members.home') }}">
     <div class="d-flex flex-wrap gap-2 align-items-center">
         <span class="small">Download the Member List from <a href="{{ scca_reports }}">my.scca.com › Region Reporting</a>, then:</span>
         <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" aria-label="Member List file" required><button class="btn btn-sm btn-accent">Load list</button>
@@ -192,7 +189,7 @@
 
 {# ================================================================== Enter points #}
 {% elif view == 'enter' %}
-<h1 class="page-title">Points</h1>
+<h1 class="visually-hidden">Points</h1>
 {{ points_switch('add') }}
 <p class="text-muted">Who worked an event, and their points. Enter them within 30 days of the event.</p>
 <div class="row g-4"><div class="col-lg-8">
@@ -335,7 +332,7 @@
 
 {# ================================================================== Use points #}
 {% elif view == 'use' %}
-<h1 class="page-title">Points</h1>
+<h1 class="visually-hidden">Points</h1>
 {{ points_switch('use') }}
 <p class="text-muted">Take points off a member's balance for a renewal, an event entry, the banquet or merchandise.</p>
 <div class="row g-4"><div class="col-lg-8">
@@ -369,7 +366,7 @@
 
 {# ================================================================== Auto add #}
 {% elif view == 'auto' %}
-<h1 class="page-title">Points</h1>
+<h1 class="visually-hidden">Points</h1>
 {{ points_switch('auto') }}
 <p class="text-muted">People who get points every month for a volunteer job. Their points are added on the 1st of each month.</p>
 <div class="row g-4"><div class="col-lg-8">
@@ -404,7 +401,7 @@
 
 {# ================================================================== QuickBooks #}
 {% elif view == 'quickbooks' %}
-<h1 class="page-title">QuickBooks</h1>
+<h1 class="visually-hidden">QuickBooks</h1>
 <p class="text-muted mb-3">Worker points {{ money(total) }}{% if reserve %} · QuickBooks reserve {{ money(reserve.amount) }} (sync of {{ (reserve.as_of or '')|nice_date }}) ·
     {% if diff|abs < 0.005 %}<span class="text-success">ties</span>{% else %}<span class="text-warning">{{ money(diff) }} off</span>{% endif %}{% endif %}</p>
 {% if unexplained is not none and unexplained|abs >= 0.005 %}<div class="alert alert-warning small">{{ money(unexplained) }} of the difference is not explained by the entries below: something was entered in QuickBooks without a points entry, or a points entry was marked as entered by mistake.</div>{% endif %}
@@ -446,19 +443,18 @@
         <span class="btn btn-sm btn-outline-secondary disabled text-body fw-semibold" style="min-width:9rem">{{ month_label }}</span>
         <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('members.milestones', month=next_month) }}" aria-label="Next month">›</a></div>
 </div>
-<form method="post" action="{{ url_for('members.upload') }}" enctype="multipart/form-data" class="card card-body mb-3">
-    <input type="hidden" name="back" value="{{ url_for('members.milestones', month=month) }}">
+<div class="card card-body mb-3">{# the member list is loaded in one place, on Members; it comes back here #}
     <div class="fw-semibold mb-1">Each month: load the SCCA member list</div>
     <ol class="small mb-2 ps-3">
         <li>Sign in at <a href="{{ scca_reports }}" target="_blank">my.scca.com › Region Reporting</a> and download the <b>Member List</b> (an .xlsx file).</li>
-        <li>Choose the file below and click <b>Load list</b>. New members and anniversaries are worked out for you.</li>
+        <li>Click <b>Load the member list</b>, choose the file and click <b>Load list</b>. You come back here with new members and anniversaries worked out.</li>
         <li>Check the month below, fix names under <b>Edit names by hand</b> if needed, and click <b>Save for the website</b>.</li>
         <li>Click <b>Review and publish</b>: the website has the month's post ready as a draft. Look it over and click Publish there.</li>
     </ol>
     <div class="d-flex flex-wrap gap-2 align-items-center">
-        <input type="file" name="report" accept=".xlsx" class="form-control form-control-sm" style="max-width:20rem" aria-label="Member List file" required><button class="btn btn-sm btn-accent">Load list</button>
+        <a class="btn btn-sm btn-accent" href="{{ url_for('members.home', load=1, back=url_for('members.milestones', month=month)) }}#loadlist">Load the member list</a>
         <a class="small ms-auto" href="{{ list_url }}">{{ drive_icon }}past lists</a></div>
-</form>
+</div>
 {% macro groups(g) %}<div class="row g-3">{% for y in (g.keys()|reject('equalto', 0)|sort(reverse=true)|list) + ([0] if 0 in g else []) %}
     <div class="col-6 col-md-4"><div class="small fw-semibold text-muted text-uppercase">{{ 'New members' if y == 0 else y ~ ' years' }}</div>
     <ul class="list-unstyled mb-0">{% for n in g[y] %}<li>{{ n }}</li>{% endfor %}</ul></div>{% endfor %}</div>{% endmacro %}

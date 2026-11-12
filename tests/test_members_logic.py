@@ -145,3 +145,28 @@ def test_pick_id_accepts_name_first_old_form_and_full_name():
 
 def test_use_points_refuses_junk():
     assert L.use_entry({'member': '1', 'points': 5}, 'nan', 'Renewal', date(2026, 9, 1))[0] is None
+
+
+def test_members_list_has_no_add_points_button_and_awards_load_the_list_on_members():
+    import os
+    os.environ.setdefault('STORAGE_BACKEND', 'files')
+    from flask import Flask, render_template
+    import members
+    import app as real
+    app = Flask('t', template_folder=os.path.join(os.path.dirname(__file__), '..', 'templates'))
+    app.secret_key = 'x'
+    app.register_blueprint(members.bp)
+    app.jinja_env.filters.update({k: v for k, v in real.app.jinja_env.filters.items() if k not in app.jinja_env.filters})
+    for ep in ('home', 'logout', 'audit'):
+        app.add_url_rule('/' + ep, ep, lambda: '')
+    from datetime import date
+    base = dict(title='t', keeper=True, point_value=5, today_=date(2026, 11, 2), structure=[], members=[], events=[], form={}, grid=[],
+                total=0, reserve=None, open_value=0, pending=[], lapsed=[], latest_list=None, list_url='', sheet_url='', scca_reports='')
+    with app.test_request_context('/members/?load=1&back=/members/milestones?month=2026-11'):
+        home = render_template('members.html', **dict(base, view='home'))
+        assert '>Add points</a>' not in home.split('<main')[-1].split('memberTable')[0]
+        assert 'name="back" value="/members/milestones?month=2026-11"' in home
+        aw = render_template('members.html', **dict(base, view='milestones', month='2026-11', proposed={}, published={}, differs=False, years=[0, 5], public_url=''))
+        assert 'members.upload' not in aw and 'name="report"' not in aw and 'load=1' in aw
+    with app.test_request_context('/members/?load=1&back=https://evil.example'):
+        assert 'value="https://evil.example"' not in render_template('members.html', **dict(base, view='home'))

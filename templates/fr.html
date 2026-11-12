@@ -4,12 +4,16 @@
 {% block app_name %}Money{% endblock %}
 {% block page_title %}{{ {'list': 'Funds requests', 'new': 'New funds request', 'in_list': 'Money received', 'in_new': 'Report money received'}[view] if view in ('list', 'new', 'in_list', 'in_new') else (r.id if r else 'Approval') }}{% endblock %}
 {% block nav %}
+    {# Two places; their New buttons are on each list. A form or a single record keeps its list's tab lit. #}
     {% set money_in = request.endpoint.startswith('fr.in_') %}
-    {{ tab('fr.home', 'Funds requests', not money_in and request.endpoint != 'fr.new') }}
-    {{ tab('fr.in_list', 'Money received', money_in and request.endpoint != 'fr.in_new') }}
-    {{ tab('fr.new', 'New request') }}
-    {{ tab('fr.in_new', 'Report money received') }}
+    {{ tab('fr.home', 'Funds requests', not money_in) }}
+    {{ tab('fr.in_list', 'Money received', money_in) }}
 {% endblock %}
+{% macro year_pick(endpoint) %}<form method="get" action="{{ url_for(endpoint) }}" class="d-flex align-items-center gap-2 m-0 no-print">
+            <input type="hidden" name="status" value="{{ status }}"><label for="year-pick" class="small text-muted m-0">Year</label>
+            <select id="year-pick" name="year" class="form-select form-select-sm fw-bold" style="width:auto" onchange="this.form.submit()">{% for y in years|map('string')|list|sort|reverse %}<option {% if y == year|string %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
+            <noscript><button class="btn btn-sm btn-outline-secondary">Show</button></noscript></form>{% endmacro %}
+{% set year_inline = true %}{# the year picker sits in the filter row on the lists, not on a row of its own #}
 {% macro in_badge(s) %}<span class="badge rounded-pill {{ 'text-bg-success' if s == 'Deposited' else 'text-bg-warning' }}">{{ 'Not deposited' if s == 'Received' else s }}</span>{% endmacro %}
 {% macro status_badge(s) %}<span class="badge rounded-pill {{ {'Submitted': 'text-bg-warning', 'Paid': 'text-bg-success', 'Rejected': 'text-bg-danger'}.get(s, 'text-bg-secondary') }}">{{ 'Open' if s == 'Submitted' else s }}</span>{% endmacro %}
 {% block style %}
@@ -30,7 +34,7 @@
             <a class="btn btn-sm btn-outline-light{% if status == s %} active{% endif %}" href="{{ url_for('fr.home', status=s, year=year) }}">{{ label }}{% if s in counts %} <span class="text-muted">{{ counts[s] }}</span>{% endif %}</a>
             {% endfor %}
         </div>
-        <a class="btn btn-sm btn-accent" href="{{ url_for('fr.new') }}">New funds request</a>
+        <div class="d-flex align-items-center gap-3 ms-auto">{{ year_pick('fr.home') }}<a class="btn btn-sm btn-accent" href="{{ url_for('fr.new') }}">New funds request</a></div>
     </div>
     {% if counts.Submitted %}<p class="text-muted">{{ counts.Submitted }} not paid yet, {{ money(open_total) }} in all{% if n_ready %}: {{ n_ready }} ready to pay{% endif %}{% if counts.Submitted - n_ready > 0 %}, {{ counts.Submitted - n_ready }} waiting on an approval{% endif %}.</p>{% endif %}
     <div class="card"><div class="card-body p-0 table-responsive">
@@ -44,7 +48,7 @@
                 <td data-label="For">{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}{{ r.program }}{% endif %} <span class="small text-muted">{{ r.event_code }}</span></td>
                 <td data-label="Status">{% if r.status == 'Submitted' %}{% if r.waiting %}<span class="badge rounded-pill text-bg-warning">Needs approval</span><div class="small text-muted">{{ r.waiting|join(', ') }}</div>{% elif r.method == 'Region credit card' %}<span class="badge rounded-pill text-bg-info" title="Already paid on the region card">Card, ready to record</span>{% else %}<span class="badge rounded-pill text-bg-info">Ready to pay</span>{% endif %}{% else %}{{ status_badge(r.status) }}{% endif %}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
                 <td class="num pe-3" data-label="Amount">{{ money(r.net) }}</td></tr>
-            {% else %}<tr><td colspan="6" class="text-muted fw-normal ps-3">Nothing here.</td></tr>{% endfor %}
+            {% else %}<tr><td colspan="6" class="text-muted fw-normal ps-3">{{ 'No open requests. Every request is paid.' if status == 'Submitted' else 'Nothing here.' }}</td></tr>{% endfor %}
             </tbody>
         </table>
     </div></div>
@@ -224,7 +228,7 @@
             <a class="btn btn-sm btn-outline-light{% if status == s %} active{% endif %}" href="{{ url_for('fr.in_list', status=s, year=year) }}">{{ label }}{% if s in counts %} <span class="text-muted">{{ counts[s] }}</span>{% endif %}</a>
             {% endfor %}
         </div>
-        <a class="btn btn-sm btn-accent" href="{{ url_for('fr.in_new') }}">Report money received</a>
+        <div class="d-flex align-items-center gap-3 ms-auto">{{ year_pick('fr.in_list') }}<a class="btn btn-sm btn-accent" href="{{ url_for('fr.in_new') }}">Report money received</a></div>
     </div>
     {% if counts.Received %}<p class="text-muted">{{ counts.Received }} not deposited yet, {{ money(open_total) }} in all{% if open_cash %}, {{ money(open_cash) }} of it cash{% endif %}.</p>{% endif %}
     <div class="card"><div class="card-body p-0 table-responsive">
@@ -238,7 +242,7 @@
                 <td data-label="Held by">{{ r.held_by }}</td>
                 <td data-label="Status">{{ in_badge(r.status) }}{% if r.single and r.status == 'Received' %}<div class="small text-warning-emphasis">Counted by one person</div>{% endif %}{% if r.deposit_ref %}<div class="small text-muted">{{ r.deposit_ref }}</div>{% endif %}</td>
                 <td class="num pe-3" data-label="Amount">{{ money(r.total) }}{% if r.cash and r.checks %}<div class="small text-muted">cash {{ money(r.cash) }}</div>{% endif %}</td></tr>
-            {% else %}<tr><td colspan="6" class="text-muted fw-normal ps-3">Nothing here.</td></tr>{% endfor %}
+            {% else %}<tr><td colspan="6" class="text-muted fw-normal ps-3">{{ 'Nothing waiting to be deposited.' if status == 'Received' else 'Nothing here.' }}</td></tr>{% endfor %}
             </tbody>
         </table>
     </div></div>

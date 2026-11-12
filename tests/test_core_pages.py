@@ -142,3 +142,21 @@ def test_home_grays_out_tiles_outside_the_role(app_):
     # a director has no Treasurer or Admin powers: the tiles show, grayed out and not links
     assert html.count('app-tile off') >= 2 and 'Not part of your role' in html
     assert 'href="/admin' not in html
+
+
+
+def test_money_tabs_are_the_two_lists_and_the_year_sits_in_the_filter_row(app_):
+    from flask import render_template
+    base = dict(title='t', reqs=[], reps=[], counts={'Submitted': 0, 'Paid': 3}, year=2026, years=[2025, 2026], open_total=0, n_ready=0, open_cash=0)
+    with app_.test_request_context('/funds/'):
+        from flask import request
+        request.url_rule = app_.url_map.bind('x').match('/funds/', return_rule=True)[0]
+        html = render_template('fr.html', view='list', status='Submitted', **base)
+    assert '>New request<' not in html and '>Report money received</a></li>' not in html
+    assert html.count('id="year-pick"') == 1 and 'class="year-bar' not in html
+    assert 'No open requests. Every request is paid.' in html
+    with app_.test_request_context('/funds/in'):
+        from flask import request
+        request.url_rule = app_.url_map.bind('x').match('/funds/in', return_rule=True)[0]
+        html = render_template('fr.html', view='in_list', status='Received', **base)
+    assert 'Nothing waiting to be deposited.' in html and html.count('id="year-pick"') == 1
