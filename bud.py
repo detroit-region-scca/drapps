@@ -15,7 +15,7 @@ import fr_store as F
 import officials as O
 import plan_store as P
 from officer import current as officer_current, officer_required
-from utils import load_events, load_programs, local_path, log_audit_event, login_required, request_qbo_refresh, to_number
+from utils import load_events, load_programs, local_path, log_audit_event, login_required, request_qbo_refresh, send_mail, to_number
 
 bp = Blueprint('bud', __name__, url_prefix='/events')
 
@@ -573,6 +573,44 @@ def budget_vote_lines(year, codes):
     return lines, rows
 
 
+def approved_email(codes, approved, how):
+    """[(to, subject, body)]: one email per program telling its director (the role's group address) that the board
+    approved these budgets, so whoever turned them in hears it."""
+    from app import nice_date
+    by = {}
+    for c in codes:
+        if (b := B.get(c)):
+            by.setdefault(b.get('program', ''), []).append(b)
+    out = []
+    for prog, buds in by.items():
+        name, to = O.director(prog)
+        if not to:
+            continue
+        what = f'{len(buds)} budgets' if len(buds) > 1 else 'the budget'
+        lines = []
+        for b in buds:
+            when = '' if str(b.get('date', ''))[:4] in b['event_name'] and b['event_code'][:1] != '#' else f", {nice_date(b.get('date', ''))}"
+            lines.append(f"- {b['event_name']} ({b['event_code']}){when}\n  {url_for('bud.detail', code=b['event_code'], _external=True)}")
+        subject = (f"Budget approved: {buds[0]['event_name']}" if len(buds) == 1 else
+                   f"{len(buds)} budgets approved: " + ', '.join(b['event_name'] for b in buds))
+        body = '\n'.join([f"Hi{(' ' + name.split()[0]) if name else ''},", '',
+                           f"The board approved {what} on {nice_date(approved)}{f' ({how})' if how else ''}:", '', *lines, '',
+                           'Funds requests for it can go ahead. If the budget changes, it goes back to the board.', '',
+                           'Detroit Region SCCA'])
+        out.append((to, subject, body))
+    return out
+
+
+def tell_approved(codes, approved, how):
+    """Email each program's director about budgets the board just approved. A mail problem never undoes the approval."""
+    try:
+        for to, subject, body in approved_email(codes, approved, how):
+            send_mail(subject, body, to)
+    except Exception:
+        import logging
+        logging.exception('Could not email the budget approval')
+
+
 def record_budgets(year, picked, approved, how):
     """Record the board's approval of these budgets (event codes, and 'OPS' for Operations). Returns how many."""
     who = officer_current()['name']
@@ -583,6 +621,7 @@ def record_budgets(year, picked, approved, how):
         B.set_approved(codes, approved, rec)
     for c in codes:
         log_audit_event('BUDGET_APPROVED', who, {'event_code': c, 'approved': approved, 'how': how})
+    tell_approved(codes, approved, how)
     if ops:
         P.set_approved(year, 'OPS', approved, rec)
         log_audit_event('PLAN_APPROVED', who, {'year': year, 'program': 'OPS', 'approved': approved, 'how': how})
@@ -642,6 +681,8 @@ def approve(code):
     how = _how_vote(request.form) if approved else ''
     B.set_approved(code, approved, f"{who} ({how})" if how else who)
     log_audit_event('BUDGET_APPROVED' if approved else 'BUDGET_UNAPPROVED', who, {'event_code': code, 'approved': approved, 'how': how})
+    if approved:
+        tell_approved([code], approved, how)
     from app import nice_date
     flash(f'Board approval recorded: {nice_date(approved)}.' if approved else 'Board approval cleared.', 'success')
     return redirect(url_for('bud.detail', code=code))

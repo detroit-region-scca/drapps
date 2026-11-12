@@ -88,3 +88,23 @@ def test_records_follow_their_events_program(monkeypatch):
     monkeypatch.setattr(recode.C, 'invalidate', lambda sid: None)
     assert recode.follow_program('#DR99L', 'SS') == {'Requests': 1}
     assert tabs['Requests'].updates == [{'range': 'F2', 'values': [['SS']]}] and tabs['Budgets'].updates == []
+
+
+def test_the_director_hears_when_the_board_approves_their_budgets(monkeypatch):
+    import bud
+    import officials
+    buds = {'RY-2027': {'event_code': 'RY-2027', 'event_name': 'Road Rally program budget 2027', 'program': 'RY', 'date': '2027-01-01'},
+            '#DRA9S': {'event_code': '#DRA9S', 'event_name': 'Winter Rally', 'program': 'RY', 'date': '2027-02-20'},
+            '#AX1': {'event_code': '#AX1', 'event_name': 'Skool', 'program': 'AX', 'date': '2027-05-29'}}
+    monkeypatch.setattr(bud.B, 'get', buds.get)
+    monkeypatch.setattr(officials, 'director', lambda p: {'RY': ('Pat Rally', 'rally@example.org')}.get(p, ('', '')))
+    sent = []
+    monkeypatch.setattr(bud, 'send_mail', lambda s, b, to: sent.append((to, s, b)))
+    from app import app
+    with app.test_request_context('/'):
+        bud.tell_approved(['RY-2027', '#DRA9S', '#AX1'], '2026-11-11', 'board meeting, 7-0')
+    assert len(sent) == 1                                    # no group for AX: nobody to tell
+    to, subject, body = sent[0]
+    assert to == 'rally@example.org' and subject.startswith('2 budgets approved')
+    assert 'Hi Pat,' in body and 'approved 2 budgets on Nov 11, 2026 (board meeting, 7-0)' in body
+    assert '- Winter Rally (#DRA9S), Feb 20, 2027' in body and '- Road Rally program budget 2027 (RY-2027)\n' in body
