@@ -160,3 +160,18 @@ def test_money_tabs_are_the_two_lists_and_the_year_sits_in_the_filter_row(app_):
         request.url_rule = app_.url_map.bind('x').match('/funds/in', return_rule=True)[0]
         html = render_template('fr.html', view='in_list', status='Received', **base)
     assert 'Nothing waiting to be deposited.' in html and html.count('id="year-pick"') == 1
+
+
+def test_invoices_have_one_tab_and_the_year_beside_the_button(app_):
+    from flask import render_template, request
+    with app_.test_request_context('/invoices/'):
+        request.url_rule = app_.url_map.bind('x').match('/invoices/', return_rule=True)[0]
+        html = render_template('inv.html', view='list', rows=[], year=2026, years=[2025, 2026], today='2026-11-11', open_total=0, overdue=[], programs={}, title='t')
+    from flask import url_for
+    with app_.test_request_context('/'):
+        new = url_for('inv.new')
+    assert html.count(f'href="{new}"') == 1                                         # the button
+    import pathlib
+    src = (pathlib.Path(__file__).parent.parent / 'templates' / 'inv.html').read_text()
+    assert "tab('inv.new'" not in src and "tab('inv.home', 'Invoices', true)" in src  # one tab, lit on every Invoices page
+    assert html.count('id="year-pick"') == 1 and 'class="year-bar' not in html and '>New invoice</a>' in html
