@@ -2,4 +2,4 @@
 {% from '_ui.html' import tab with context %}
     {{ tab('board.home', 'Waiting for the board') }}
     {{ tab('board.decisions_page', 'Decisions') }}
-    {% if me and 'minutes' in (me.perms or []) %}{{ tab('minutes.home', 'Minutes') }}{% endif %}
+    {{ tab('minutes.home', 'Minutes') }}

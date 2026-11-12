@@ -88,3 +88,20 @@ def test_store_refuses_to_publish_a_file_outside_the_drafts_folder(monkeypatch):
 def test_minutes_month_comes_from_the_file_name():
     assert L.month_of('2026-11 Board Minutes.pdf') == '2026-11' and L.month_of('2026-03 Board Minutes (special meeting).pdf') == '2026-03'
     assert L.month_of('2026 Budgets approved by email.pdf') is None and L.month_of('notes.pdf') is None
+
+
+def test_every_director_reads_the_minutes_but_only_officers_change_them(site, monkeypatch):
+    c, calls, minutes = site
+    import auth
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Dan Director', 'level': 'officer', 'roles': ['Director at Large'],
+                                                   'perms': set()} if e else None)
+    monkeypatch.setattr(minutes.S, 'published', lambda y: [])
+    monkeypatch.setattr(minutes.S, 'public_folder_url', lambda: '')
+    monkeypatch.setattr(minutes.S, 'private_folder_url', lambda: '')
+    r = c.get('/minutes/')
+    page = r.get_data(as_text=True)
+    assert r.status_code == 200 and '2026-11 Board Minutes (draft).pdf' in page
+    assert 'name="file"' not in page and 'Approved: publish' not in page
+    c.post('/minutes/publish', data={'id': 'draft-1'})
+    c.post('/minutes/publish', data={'id': 'draft-1', 'action': 'delete'})
+    assert calls == [] and 'Secretary and the other officers' in _flashes(c)

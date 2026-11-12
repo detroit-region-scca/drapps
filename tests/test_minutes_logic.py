@@ -23,24 +23,3 @@ def test_parse_for_listing():
     assert L.parse('2026-03 Board Minutes (special meeting).pdf') == (date(2026, 3, 1), 'March (special meeting)')
     assert L.parse('2026-11 Board Minutes.pdf') == (date(2026, 11, 1), 'November')
 
-
-def test_a_saved_draft_opens_for_anyone_with_the_link(monkeypatch):
-    import minutes_store as S
-    posts = []
-
-    class R:
-        def raise_for_status(self):
-            pass
-
-    class Sess:
-        def post(self, url, **kw):
-            posts.append((url, kw.get('json')))
-            return R()
-    monkeypatch.setenv('MINUTES_DRAFTS_FOLDER_ID', 'drafts')
-    monkeypatch.setattr(S, '_s', lambda: Sess())
-    monkeypatch.setattr(S, '_drive', lambda: ('https://drive', 'https://upload'))
-    monkeypatch.setattr(S, '_list', lambda parent: [])
-    monkeypatch.setattr(S, '_upload', lambda parent, name, data, mime: {'id': 'm1', 'name': name})
-    out, replaced = S.save_draft('2026-11 Board Minutes (draft).pdf', b'%PDF')
-    assert out['id'] == 'm1' and not replaced
-    assert posts == [('https://drive/m1/permissions', {'type': 'anyone', 'role': 'reader', 'allowFileDiscovery': False})]

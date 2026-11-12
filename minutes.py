@@ -18,13 +18,21 @@ def _me():
     return user() or {}
 
 
-def _guard():
+def _can_edit():
+    return 'minutes' in (_me().get('perms') or ())
+
+
+def _guard(edit=False):
+    """Every board member reads the minutes and drafts; uploading, publishing and deleting need the minutes permission."""
     if not S.enabled():
         flash('Minutes isn\'t set up on this server yet. Ask admin@drscca.org.', 'warning')
         return redirect(url_for('home'))
-    if 'minutes' not in (_me().get('perms') or ()):
-        flash('Minutes are uploaded by the Secretary and the other officers.', 'warning')
+    if _me().get('level') == 'volunteer':
+        flash('The Board pages are for region officials.', 'warning')
         return redirect(url_for('home'))
+    if edit and not _can_edit():
+        flash('Minutes are uploaded and published by the Secretary and the other officers.', 'warning')
+        return redirect(url_for('minutes.home'))
     return None
 
 
@@ -35,7 +43,7 @@ def _who():
 @bp.route('/', methods=['GET', 'POST'])
 @login_required
 def home():
-    if (g := _guard()):
+    if (g := _guard(edit=request.method == 'POST')):
         return g
     if request.method == 'POST':
         f = request.form
@@ -80,14 +88,14 @@ def home():
             d, label = L.parse(fl['name'])
             pub.append(dict(fl, when=d, label=label, year=y))
     pub.sort(key=lambda x: (x['when'] or date.min), reverse=True)
-    return render_template('minutes.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Minutes", page_title='Minutes', kinds=L.KINDS,
+    return render_template('minutes.html', title=f"{os.environ.get('SCCA_REGION_NAME', 'SCCA')} Minutes", page_title='Minutes', kinds=L.KINDS, can_edit=_can_edit(),
                            drafts=S.drafts(), published=pub, public_url=S.public_folder_url(), private_url=S.private_folder_url())
 
 
 @bp.route('/publish', methods=['POST'])
 @login_required
 def publish():
-    if (g := _guard()):
+    if (g := _guard(edit=True)):
         return g
     fid = request.form.get('id', '')
     if not fid:

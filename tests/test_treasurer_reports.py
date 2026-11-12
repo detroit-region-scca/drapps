@@ -148,31 +148,3 @@ def test_housekeeping_notes_are_read_back_from_the_deck(monkeypatch):
     monkeypatch.setattr(T, '_export', lambda fid, mime: b'no notes here')
     assert T.notes_from('x') == []
 
-
-def test_a_saved_pdf_opens_for_anyone_with_the_link(monkeypatch):
-    calls = []
-
-    class R:
-        def __init__(self, j=None):
-            self.j = j or {}
-
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return self.j
-
-    class S:
-        def patch(self, url, **kw):
-            calls.append(('patch', url))
-            return R({'id': 'pdf1', 'webViewLink': 'x'})
-
-        def post(self, url, **kw):
-            calls.append(('post', url, kw.get('json')))
-            return R({'id': 'pdf1'})
-    monkeypatch.setattr(T, '_session', lambda: S())
-    monkeypatch.setattr(T, 'reports', lambda: {'2026-11': {'deck': {'id': 'd1'}, 'pdf': {'id': 'pdf1'}}})
-    monkeypatch.setattr(T, '_export', lambda fid, mime: b'%PDF')
-    assert T.save_pdf('2026-11')['id'] == 'pdf1'
-    share = [c for c in calls if c[0] == 'post' and c[1].endswith('/pdf1/permissions')]
-    assert share and share[0][2] == {'type': 'anyone', 'role': 'reader', 'allowFileDiscovery': False}

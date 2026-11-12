@@ -6,7 +6,6 @@ starts with the previous report's Housekeeping notes to edit. The treasurer edit
 updates the PDF from it. Bank balances are never in it (the region does not state its balances in the report)."""
 import io
 import json
-import logging
 import re
 from datetime import date
 
@@ -15,7 +14,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 from utils import log_audit_event, login_required
 
 bp = Blueprint('treports', __name__, url_prefix='/treasurer/reports')
-FOLDER = "Treasurer's reports"
+FOLDER = "Treasurer's reports"     # shared "anyone with the link can view" in Drive, so decks and PDFs open without sign-in
 NAME = re.compile(r"^(\d{4}-\d{2}) Treasurer's report(\.pdf)?$")
 SLIDES = 'application/vnd.google-apps.presentation'
 PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
@@ -94,20 +93,7 @@ def save_pdf(month):
                    timeout=110)
     r.raise_for_status()
     f = r.json()
-    share(f['id'])
     return f
-
-
-def share(file_id):
-    """Anyone with the link can view the PDF (not find it by search), so a board member without a Google account
-    for their own address can open it. The deck stays in the shared drive only. A failure is logged, not raised: the
-    PDF is saved either way."""
-    from storage import DRIVE
-    try:
-        _session().post(f"{DRIVE}/{file_id}/permissions", params={'supportsAllDrives': 'true'},
-                        json={'type': 'anyone', 'role': 'reader', 'allowFileDiscovery': False}, timeout=30).raise_for_status()
-    except Exception:
-        logging.exception("Could not share the treasurer's report PDF by link")
 
 
 def notes_from(deck_id):

@@ -629,14 +629,4 @@ def decisions_page():
     meetings = [d['date'] for d in days if any(i['how'] == 'board meeting' for i in d['items']) or d['minutes']]
     last = max(meetings) if meetings else ''
     since = [i for d in days if d['date'] > last for i in d['items'] if i['how'] == 'email vote']
-    return render_template('board.html', **_ctx(view='decisions', page_title=f'Decisions {year}', days=days, year=year, years=_years(), since=since, last=last,
-                                                draft_minutes=_draft_minutes()))
-
-
-def _draft_minutes():
-    """Minutes waiting for the board's approval, for every director to read before the meeting."""
-    try:
-        import minutes_store as MS
-        return MS.drafts() if MS.enabled() else []
-    except Exception:
-        return []
+    return render_template('board.html', **_ctx(view='decisions', page_title=f'Decisions {year}', days=days, year=year, years=_years(), since=since, last=last))

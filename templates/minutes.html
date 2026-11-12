@@ -3,7 +3,7 @@
 {% block nav %}{% include '_board_nav.html' %}{% endblock %}
 {% block content %}
 <h1 class="page-title">Board minutes</h1>
-<p class="text-muted">Upload the minutes as a Word document or PDF. The app names the file, makes the PDF and puts it in the right place: approved minutes go on <a href="https://drscca.org/region/minutes-of-bod-meetings/">drscca.org</a> (within the hour), drafts wait until the board approves them.</p>
+{% if can_edit %}<p class="text-muted">Upload the minutes as a Word document or PDF. The app names the file, makes the PDF and puts it in the right place: approved minutes go on <a href="https://drscca.org/region/minutes-of-bod-meetings/">drscca.org</a> (within the hour), drafts wait until the board approves them.</p>
 <div class="row g-4">
 <div class="col-lg-7">
 <form method="post" enctype="multipart/form-data" class="card p-3">
@@ -28,15 +28,16 @@
     </div>
 </div>
 </div>
+{% else %}<p class="text-muted">Draft minutes wait here until the board approves them; approved minutes are on <a href="https://drscca.org/region/minutes-of-bod-meetings/">drscca.org</a>. The Secretary and the other officers upload and publish them.</p>{% endif %}
 
 {% if drafts %}
 <h2 class="h6 mt-4">Drafts waiting for approval</h2>
 <div class="card"><div class="card-body p-0"><table class="table table-sm mb-0">
     <thead class="visually-hidden"><tr><th>Draft</th><th>Publish or delete</th></tr></thead>
     <tbody>{% for d in drafts %}<tr><td class="ps-3"><a href="{{ d.webViewLink }}" target="_blank" rel="noopener">{{ drive_icon }}{{ d.name }}</a></td>
-        <td class="text-end pe-3 text-nowrap"><form method="post" action="{{ url_for('minutes.publish') }}" class="m-0 d-inline-flex gap-2"><input type="hidden" name="id" value="{{ d.id }}">
+        <td class="text-end pe-3 text-nowrap">{% if can_edit %}<form method="post" action="{{ url_for('minutes.publish') }}" class="m-0 d-inline-flex gap-2"><input type="hidden" name="id" value="{{ d.id }}">
             <button class="btn btn-sm btn-accent" name="action" value="publish" onclick="return confirm('Publish these minutes on drscca.org?')">Approved: publish</button>
-            <button class="btn btn-sm btn-outline-light" name="action" value="delete" onclick="return confirm('Delete this draft?')">Delete</button></form></td></tr>{% endfor %}</tbody>
+            <button class="btn btn-sm btn-outline-light" name="action" value="delete" onclick="return confirm('Delete this draft?')">Delete</button></form>{% endif %}</td></tr>{% endfor %}</tbody>
 </table></div></div>
 {% endif %}
 
