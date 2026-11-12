@@ -2,6 +2,7 @@
 website folder (by year) that drscca.org lists, and drafts in the DRSCCA Apps drive (MINUTES_DRAFTS_FOLDER_ID), where
 the app may delete them. The app's service account can add files to the two Board Minutes folders but not delete."""
 import json
+import logging
 import os
 
 import minutes_logic as L
@@ -121,9 +122,21 @@ def published(year):
 
 def save_draft(name, pdf):
     hit = [f for f in _list(os.environ['MINUTES_DRAFTS_FOLDER_ID']) if f['name'] == name]
-    if hit:
-        return _replace_content(hit[0]['id'], pdf, L.PDF), True
-    return _upload(os.environ['MINUTES_DRAFTS_FOLDER_ID'], name, pdf, L.PDF), False
+    out, replaced = (_replace_content(hit[0]['id'], pdf, L.PDF), True) if hit else \
+        (_upload(os.environ['MINUTES_DRAFTS_FOLDER_ID'], name, pdf, L.PDF), False)
+    share(out['id'])
+    return out, replaced
+
+
+def share(file_id):
+    """Anyone with the link can read the draft: most directors sign in to Google with an address outside drscca.org.
+    It is not listed or searchable; the link is on the Board page and in the Secretary's email."""
+    DRIVE, _ = _drive()
+    try:
+        _s().post(f'{DRIVE}/{file_id}/permissions', params={'supportsAllDrives': 'true'},
+                  json={'type': 'anyone', 'role': 'reader', 'allowFileDiscovery': False}, timeout=30).raise_for_status()
+    except Exception:
+        logging.exception('Could not share the draft minutes by link')
 
 
 def drafts():

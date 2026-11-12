@@ -113,6 +113,10 @@
 {% elif view == 'decisions' %}
     <h1 class="page-title">Board decisions, {{ year }}</h1>
     <p class="text-muted">Every recorded vote, budgets and motions together, by date, with that meeting's minutes once they are posted.</p>
+    {% if draft_minutes %}
+    <div class="alert alert-secondary py-2">Draft minutes, waiting for the board's approval:
+        <ul class="mb-0">{% for m in draft_minutes %}<li><a href="{{ m.webViewLink }}" target="_blank" rel="noopener">{{ drive_icon }}{{ m.name }}</a></li>{% endfor %}</ul></div>
+    {% endif %}
     {% if since %}
     <div class="alert alert-info py-2">Email votes since the last board meeting{% if last %} ({{ (last or '')|nice_date }}){% endif %}, for the next meeting's minutes:
         <ul class="mb-0">{% for i in since %}<li>{{ i.what }}: {{ i.result }}{% if i.vote %} {{ i.vote }}{% endif %} by email</li>{% endfor %}</ul></div>
