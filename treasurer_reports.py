@@ -6,6 +6,7 @@ starts with the previous report's Housekeeping notes to edit. The treasurer edit
 updates the PDF from it. Bank balances are never in it (the region does not state its balances in the report)."""
 import io
 import json
+import logging
 import re
 from datetime import date
 
@@ -92,7 +93,21 @@ def save_pdf(month):
                    files={'metadata': ('metadata', json.dumps(meta), 'application/json'), 'file': ('report.pdf', body, 'application/pdf')},
                    timeout=110)
     r.raise_for_status()
-    return r.json()
+    f = r.json()
+    share(f['id'])
+    return f
+
+
+def share(file_id):
+    """Anyone with the link can view the PDF (not find it by search), so a board member without a Google account
+    for their own address can open it. The deck stays in the shared drive only. A failure is logged, not raised: the
+    PDF is saved either way."""
+    from storage import DRIVE
+    try:
+        _session().post(f"{DRIVE}/{file_id}/permissions", params={'supportsAllDrives': 'true'},
+                        json={'type': 'anyone', 'role': 'reader', 'allowFileDiscovery': False}, timeout=30).raise_for_status()
+    except Exception:
+        logging.exception("Could not share the treasurer's report PDF by link")
 
 
 def notes_from(deck_id):
