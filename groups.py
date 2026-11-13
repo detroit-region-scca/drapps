@@ -39,11 +39,15 @@ def home():
         doc = {'groups': [], 'updated': ''}
     names = {(o.get('email') or '').lower(): o.get('name') for o in officials.all() if o.get('name')}
     names.update({e: v.get('name') for e, v in auth.volunteers().items() if v.get('name') and e not in names})
+    show_email = (auth.user() or {}).get('level') != 'volunteer'
     rows = []
     for gr in doc.get('groups', []):
-        to = {names.get(m['email']) or m['email'] for m in gr.get('members', []) if m.get('role') != 'OWNER'}
+        # Each person who gets the group's mail: name (when the apps know it) and address. Volunteers see names only.
+        to = [{'name': names.get(m['email']) or '', 'email': m['email'] if show_email else ''}
+              for m in gr.get('members', []) if m.get('role') != 'OWNER']
+        to.sort(key=lambda p: ((p['name'] or p['email'] or '~').lower(), p['email']))
         local = gr['email'].split('@')[0]
-        rows.append(dict(gr, label=re.sub(r'^DRSCCA\s+', '', gr.get('name') or ''), to=sorted(to, key=str.lower),
+        rows.append(dict(gr, label=re.sub(r'^DRSCCA\s+', '', gr.get('name') or ''), to=to,
                          empty=EMPTY_NOTE.get(local, 'Nobody (the admin account only)')))
     refreshing = os.path.exists(GROUPS_REFRESH) and os.path.getmtime(GROUPS_REFRESH) > (
         os.path.getmtime(GROUPS_FILE) if os.path.exists(GROUPS_FILE) else 0)

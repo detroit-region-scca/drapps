@@ -34,6 +34,7 @@ def client(monkeypatch, tmp_path):
 def test_groups_table(client):
     html = client.get('/email-groups/').get_data(as_text=True)
     assert 'autocross@example.org' in html and 'Pat Director' in html and 'boss@example.org' not in html
+    assert 'href="mailto:pat@example.org"' in html                     # each person's own address, beside their name
     assert 'Also receives: old@example.org' in html and 'retired addresses' in html and 'Refresh from Google' in html
 
 
@@ -43,6 +44,7 @@ def test_a_volunteer_sees_the_list_and_can_refresh(client, tmp_path, monkeypatch
     client.store.update(perms={'invoices'}, level='volunteer')
     html = client.get('/email-groups/').get_data(as_text=True)
     assert 'autocross@example.org' in html and 'Refresh from Google' in html
+    assert 'Pat Director' in html and 'pat@example.org' not in html     # names only for volunteers
     client.post('/email-groups/refresh')
     assert (tmp_path / 'groups-refresh').exists()
 

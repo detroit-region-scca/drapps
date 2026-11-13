@@ -1,5 +1,9 @@
 {% extends 'base.html' %}
 {% block app_name %}Email groups{% endblock %}
+{% block style %}
+        .grp-people li { display: flex; flex-wrap: wrap; column-gap: .6rem; padding: .4rem 1rem; border-top: 1px solid var(--border); }
+        .grp-people li:first-child { border-top: 0; }
+{% endblock %}
 {% block content %}
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
         <h1 class="page-title">Email groups</h1>
@@ -8,13 +12,18 @@
     <p class="text-muted small">Every drscca.org email address. Each one forwards to the people listed, at their own email. Members are changed at admin.google.com.{% if updated %} As of {{ updated }}.{% endif %}</p>
     {% if refreshing %}<meta http-equiv="refresh" content="15">{% endif %}
     {% if not rows %}<div class="alert alert-warning py-2 small">The list is not available yet.</div>{% else %}
-    <div class="list-group">{% for r in rows %}
-        <div class="list-group-item py-2">
-            <div class="d-flex flex-wrap align-items-baseline column-gap-2">
-                <a class="fw-semibold" href="mailto:{{ r.email }}">{{ r.email }}</a><span class="small text-muted">{{ r.label }}</span>
+    <div class="row row-cols-1 row-cols-md-2 g-3">{% for r in rows %}
+        <div class="col"><div class="card h-100">
+            <div class="card-header bg-transparent py-2">
+                <a class="fw-semibold" href="mailto:{{ r.email }}">{{ r.email }}</a>
+                {% if r.label %}<div class="small text-muted">{{ r.label }}</div>{% endif %}
             </div>
-            <div class="mt-1">{% if r.to %}{{ r.to|join(', ') }}{% else %}<span class="text-muted">{{ r.empty }}</span>{% endif %}</div>
-            {% if r.aliases %}<div class="small text-muted mt-1 text-break">Also receives: {{ r.aliases|map('replace', '@drscca.org', '@')|join(', ') }}</div>{% endif %}
-        </div>{% endfor %}
+            {% if r.to %}
+            <ul class="list-unstyled mb-0 small grp-people">{% for p in r.to %}
+                <li>{% if p.name %}<span class="fw-semibold">{{ p.name }}</span>{% endif %}{% if p.email %}<a class="text-break{{ ' text-muted' if p.name }}" href="mailto:{{ p.email }}">{{ p.email }}</a>{% endif %}</li>{% endfor %}
+            </ul>
+            {% else %}<div class="card-body py-2 small text-muted">{{ r.empty }}</div>{% endif %}
+            {% if r.aliases %}<div class="card-footer bg-transparent small text-muted text-break py-2 mt-auto">Also receives: {{ r.aliases|map('replace', '@drscca.org', '@')|join(', ') }}</div>{% endif %}
+        </div></div>{% endfor %}
     </div>{% endif %}
 {% endblock %}
