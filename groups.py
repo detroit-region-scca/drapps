@@ -19,7 +19,8 @@ from utils import login_required
 bp = Blueprint('groups', __name__, url_prefix='/email-groups')
 GROUPS_FILE = os.path.join(utils.DATA_DIR, 'email-groups.json')
 GROUPS_REFRESH = os.path.join(utils.DATA_DIR, 'groups-refresh')
-EMPTY_NOTE = {'apps': 'Nobody: DR Apps sends from it', 'hassles': 'Nobody yet: subscribe on the Hassles page', 'legacy': 'The admin account: catches mail to retired addresses'}
+EMPTY_NOTE = {'apps': 'Nobody: DR Apps sends from it', 'hassles': 'Nobody yet: subscribe on the Hassles page',
+              'dmarc': 'Nobody: an archive of the daily email-security reports (read at groups.google.com)', 'legacy': 'The admin account: catches mail to retired addresses'}
 
 
 def _nice_time(iso):
