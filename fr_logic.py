@@ -19,7 +19,8 @@ Nobody approves money paid to themselves (paid_to, who_approves): when the direc
 reimbursement for themselves, the RE or ARE gives the director approval in their place. A director who files a request
 for their own program that pays someone else (a vendor's check, a region card charge) approves it as usual (user,
 2026-11-13). The second signer (over $2,500) stays stricter: whoever filed the request or is named on it at all
-cannot give it (on_request).
+cannot give it (on_request). A director who files a request for their own program that does not pay them approves it
+by filing (fr.self_approve): no link is sent, and their role group is told it is approved.
 """
 import re
 

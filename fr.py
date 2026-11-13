@@ -227,6 +227,42 @@ def board_motion(r, no_budget=True):
     return mid
 
 
+SELF_NOTE = 'filed it as the program director'
+
+
+def self_approve(rid, req=None):
+    """The program director filed this request for their own program (by the address they signed in with, never by
+    what was typed), and it does not pay them: filing it is the director's approval (user, 2026-11-13; Operations, whose
+    approver is the treasurer, the same). Recorded as the chair approval, and the director's role group is told by
+    email in place of an approval link. Every other check stays: the budget, the 10% overrun, the board and, over
+    $2,500, the second signer. Returns True when it was approved here."""
+    r = req or F.get(rid)          # the new request as filed, so the sheet is read only when the director filed it
+    if not r or r.get('status', 'Submitted') != 'Submitted':
+        return False
+    filer = (r.get('filed_email') or '').strip().lower()
+    name, group = O.director(r['program'])
+    if not filer or filer != O.director_email(r['program']) or FL.paid_to(r, name, [filer]):
+        return False
+    if not F.add_approval(rid, 'chair', name, date.today().isoformat(), SELF_NOTE, once=True):
+        return False
+    log_audit_event('FUNDS_APPROVED', name, {'id': rid, 'role': 'chair', 'note': SELF_NOTE})
+    r = F.get(rid)
+    items = Approvals().items(r)
+    still = FL.waiting_on(items)
+    program = load_programs().get(r['program'], 'Operations' if r['program'] == 'OPS' else r['program'])
+    link = url_for('fr.detail', req_id=rid, _external=True)
+    body = '\n'.join([
+        f"{rid} ({r['payee_name']}, ${r['net']:,.2f}, by {r['method'].lower()}) is approved.",
+        f"{name} filed it as the {program} director, so filing it counts as the director's approval: there is nothing to "
+        "approve by email.", '',
+        ('Still needed before the treasurer pays: ' + ', '.join(still) + '.') if still else
+        'Everything the region policy asks for is in, so the treasurer can pay it.', '',
+        link])
+    if group:
+        send_mail(f"Funds request {rid} approved: {r['payee_name']} ${r['net']:,.2f}", body, group)
+    return True
+
+
 def mark_ready(rid, r=None):
     """Record the day a request first has everything (see fr_logic.ready_on). Returns True when it was just marked."""
     r = r or F.get(rid)
@@ -373,8 +409,6 @@ def new():
            'notify': 'yes' if f.get('notify') else '',
            # Who filed it, from the sign-in and not from anything typed: this is what "my own request" goes by.
            'filed_email': (session.get('email') or '').strip().lower()}
-    # A director filing for their own program does not approve it by filing: nobody approves their own money, so the
-    # RE or ARE is asked in their place (approval_plan).
     rid, again = F.create_once(req, lines, receipts, f.get('token', ''))
     if again:      # a double click, the back button, or a retry after an error: that page already filed this request
         flash(f'{rid} was already submitted from that page, so no second request was made.', 'info')
@@ -382,9 +416,12 @@ def new():
     session['fr_submitter'] = sub
     n_files = sum(1 for r in receipts if r and r.filename)
     log_audit_event('FUNDS_REQUESTED', sub['name'], {'id': rid, 'payee': payee['name'], 'net': req['net'], 'event_code': req['event_code']})
+    # A director filing for their own program approves it by filing, unless it pays them (self_approve): done before
+    # the approvals are asked for, so no link goes to the director.
+    approved = self_approve(rid, req)
     notify(rid, req, lines, n_files)
     mark_ready(rid)
-    flash(f'Submitted {rid}. The treasurer has been emailed.', 'success')
+    flash(f'Submitted {rid}' + (', approved by you as the program director' if approved else '') + '. The treasurer has been emailed.', 'success')
     return redirect(url_for('fr.detail', req_id=rid))
 
 

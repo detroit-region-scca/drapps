@@ -164,16 +164,17 @@ def test_a_link_held_by_someone_else_approves(link):
     assert 'in place of the director' in link['approved'][1][2] and 'in place of' not in link['approved'][0][2]
 
 
-def test_a_director_filing_for_their_own_program_approves_nothing_by_filing(monkeypatch, officials):
+def test_filing_asks_self_approve_with_the_sign_in_not_what_was_typed(monkeypatch, officials):
     import auth
     from app import app
     from werkzeug.datastructures import MultiDict
-    made = []
+    made, asked = [], []
     monkeypatch.setattr(fr, '_guard', lambda: None)
     monkeypatch.setattr(fr, 'load_events', lambda: [])
     monkeypatch.setattr(fr, 'load_programs', lambda: {'RX': 'RallyCross'})
     monkeypatch.setattr(fr.F, 'create_once', lambda r, lines, receipts, token='': (made.append(r), ('FR-2026-007', False))[1])
-    monkeypatch.setattr(fr, 'notify', lambda *a: None)
+    monkeypatch.setattr(fr, 'self_approve', lambda rid, req=None: asked.append((rid, req['filed_email'])) or True)
+    monkeypatch.setattr(fr, 'notify', lambda *a: asked.append('notify'))
     monkeypatch.setattr(fr, 'mark_ready', lambda rid: False)
     monkeypatch.setattr(fr, 'log_audit_event', lambda *a, **k: None)
     monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Rae Director', 'level': 'official', 'roles': ['Director'],
@@ -187,7 +188,51 @@ def test_a_director_filing_for_their_own_program_approves_nothing_by_filing(monk
                       'line_cat': 'Supplies', 'line_amount': '80', 'advances': '0', 'token': 'page-1'})
     r = c.post('/funds/new', data=form)
     assert r.status_code == 302 and r.location.endswith('/funds/FR-2026-007'), (r.location, _in(c))
-    assert not made[0].get('approvals') and made[0]['filed_email'] == 'rae@example.org'     # the sign-in, not what was typed
+    assert made[0]['filed_email'] == 'rae@example.org'               # the sign-in, not what was typed
+    assert asked == [('FR-2026-007', 'rae@example.org'), 'notify']   # approved before anyone is asked, so no link goes out
+
+
+@pytest.fixture
+def selfapp(monkeypatch, officials):
+    """self_approve with the store and mail replaced."""
+    from app import app
+    state = {'approvals': [], 'mail': []}
+    monkeypatch.setattr(fr.F, 'add_approval', lambda rid, role, name, day, note='', once=False: state['approvals'].append((role, name, note)) or True)
+    monkeypatch.setattr(fr.F, 'get', lambda rid: dict(state['r'], approvals='chair|Rae Director|2026-11-13|x'))
+    monkeypatch.setattr(fr, 'send_mail', lambda subj, body, to=None, **k: state['mail'].append((subj, body, to)))
+    monkeypatch.setattr(fr, 'log_audit_event', lambda *a, **k: None)
+    monkeypatch.setattr(fr, 'load_programs', lambda: {'RX': 'RallyCross'})
+    monkeypatch.setattr(fr, 'Approvals', lambda: type('A', (), {'items': lambda self, r: [
+        {'key': 'chair', 'done': True}, {'key': 'second', 'done': state.get('second_done', True)}]})())
+    monkeypatch.setattr(fr.O, 'director', lambda p: ('Rae Director', 'rx-group@example.org'))
+    monkeypatch.setattr(fr.O, 'director_email', lambda p: 'rae@example.org')
+
+    def run(**kw):
+        state['r'] = req(**kw)
+        state['approvals'].clear(); state['mail'].clear()
+        with app.test_request_context('/'):
+            return fr.self_approve('FR-2026-001', state['r'])
+    state['run'] = run
+    return state
+
+
+def test_a_director_filing_a_vendor_or_card_request_approves_it_and_their_group_is_told(selfapp):
+    for m in ('Check to the payee', 'Region credit card'):
+        assert selfapp['run'](filed_email='rae@example.org', method=m)
+        assert selfapp['approvals'] == [('chair', 'Rae Director', fr.SELF_NOTE)]
+        subj, body, to = selfapp['mail'][0]
+        assert to == 'rx-group@example.org' and 'approved' in subj and 'nothing to approve by email' in body
+        assert 'the treasurer can pay it' in body
+    selfapp['second_done'] = False
+    selfapp['run'](filed_email='rae@example.org', method='Region credit card')
+    assert 'Still needed before the treasurer pays: second signer.' in selfapp['mail'][0][1]
+
+
+def test_no_self_approval_when_it_pays_the_director_or_someone_else_filed_it(selfapp):
+    assert not selfapp['run'](filed_email='rae@example.org', method='Reimburse me')       # paying themselves back
+    assert not selfapp['run'](filed_email='rae@example.org', payee_name='Rae Director')   # paid to them
+    assert not selfapp['run'](filed_email='sam@example.org', submitter_name='Rae Director', submitter_email='rae@example.org')   # typed, not signed in
+    assert not selfapp['approvals'] and not selfapp['mail']
 
 
 # ---------- B: whose request, whose invoice ----------
