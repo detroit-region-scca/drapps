@@ -90,6 +90,33 @@ def restic(*args):
     return run(['restic', '--host', 'drapps', *args])
 
 
+XATTR = re.compile(r'^error: NodeFromFileInfo: xattr\.list .*: input/output error$')
+
+
+def backup(args):
+    """restic backup. A Drive mount cannot list extended attributes, so restic reports each file with an xattr error
+    and ends with exit 3 ("some files could not be read") although every file's content was saved. Those lines alone
+    are not a failure; any other error is."""
+    cmd = ['restic', '--host', 'drapps', 'backup', *args]
+    print('+', ' '.join(cmd), flush=True)
+    p = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, env=dict(os.environ, **RCLONE_ENV))
+    xattr, other = 0, 0
+    for line in p.stderr:
+        line = line.rstrip('\n')
+        if XATTR.match(line):
+            xattr += 1
+            continue
+        if line.startswith('error:') or 'Fatal' in line:
+            other += 1
+        print(line, file=sys.stderr, flush=True)
+    rc = p.wait()
+    if xattr:
+        print(f'{xattr} files without extended attributes (normal for a Drive mount).', flush=True)
+    if rc == 0 or (rc == 3 and not other):
+        return
+    raise SystemExit(f'restic backup ended with exit {rc} and {other} errors (see above).')
+
+
 def main():
     for k in ('RESTIC_REPOSITORY', 'RESTIC_PASSWORD', 'GOOGLE_APPLICATION_CREDENTIALS'):
         if not os.environ.get(k):
@@ -110,8 +137,8 @@ def main():
             mounted.append(mnt)
             print(f"{d['name']}: {export_docs(d['id'], os.path.join(docs_dir, names[d['id']]))} Google files exported", flush=True)
         # Unchanged files are skipped by size and time; a mounted drive gives no stable inode or change time.
-        restic('backup', '--tag', 'nightly', '--ignore-inode', '--ignore-ctime', *sum((['--exclude', e] for e in EXCLUDE), []),
-               *mounted, docs_dir, APP_DATA)
+        backup(['--tag', 'nightly', '--ignore-inode', '--ignore-ctime', *sum((['--exclude', e] for e in EXCLUDE), []),
+                *mounted, docs_dir, APP_DATA])
     finally:
         for mnt in mounted:
             subprocess.run(['fusermount3', '-u', mnt], check=False)
