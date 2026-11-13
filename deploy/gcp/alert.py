@@ -24,7 +24,8 @@ WHAT = {
     'drscca-site-backup.service': ('weekly drscca.org website copy', 'Nothing is down; this week\'s copy of the website\'s content was not saved. The earlier copies are still in the region drive.'),
     'drscca-officials.service': ('officials-list update', 'Either a change made in the app was not applied to officials.json, or it was applied and its readable copy in Drive was not updated; the log lines below say which.'),
     'drscca-groups.service': ('email groups refresh', 'The Email groups page could not read the groups from Google.'),
-    'drscca-offsite-backup.service': ('off-site copy', 'Last night\'s copy of the shared drives and app files to Cloud Storage did not finish. Earlier copies are still there; the log lines below say where it stopped.'),
+    'drscca-offsite-backup.service': ('off-site copy', 'Part of last night\'s copy to Cloud Storage did not finish; the parts that did are saved. The log lines below name each part that failed.'),
+    'drscca-offsite-check.service': ('off-site copy check', 'No complete off-site copy has finished in the last 36 hours. Look at drscca-offsite-backup\'s last run.'),
     'drscca-hassles-subscribe.service': ('Hassles subscribe', 'A Subscribe or Unsubscribe on the Hassles page may not have reached hassles@drscca.org; the log lines below say which address.'),
 }
 

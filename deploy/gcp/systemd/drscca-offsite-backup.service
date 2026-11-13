@@ -1,13 +1,13 @@
 [Unit]
 OnFailure=drscca-alert@%n.service
-Description=DRSCCA apps: nightly off-site copy of the shared drives and app files (restic to Cloud Storage)
+Description=DRSCCA apps: nightly off-site copy (shared drives, app files, QuickBooks, website media, admin@ mail) to Cloud Storage
 [Service]
 Type=oneshot
 # The first copy takes hours; later nights only send what changed.
 TimeoutStartSec=12h
 WorkingDirectory=/opt/drscca/app
-EnvironmentFile=/opt/drscca/data/secrets/offsite-backup.env
 Environment=WORKSPACE_SA=/opt/drscca/data/secrets/workspace-sa.json
+Environment=HOME=/root
 # A small server that also runs the apps: this job yields to them.
 Nice=15
 IOSchedulingClass=idle

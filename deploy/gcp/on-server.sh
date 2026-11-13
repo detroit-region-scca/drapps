@@ -166,10 +166,11 @@ step "fail2ban, backup tools, apt settings, time zone"
 if ! command -v fail2ban-client >/dev/null; then
 	quiet apt-get install -y -qq fail2ban
 fi
-# The nightly off-site copy (drscca-offsite-backup): restic, and rclone with FUSE to read the shared drives.
-if ! command -v restic >/dev/null || ! command -v rclone >/dev/null || ! command -v fusermount3 >/dev/null; then
-	quiet apt-get install -y -qq restic rclone fuse3
+# The nightly off-site copy (drscca-offsite-backup) uses rclone; the QuickBooks sync leaves the books copy here.
+if ! command -v rclone >/dev/null; then
+	quiet apt-get install -y -qq rclone
 fi
+install -d -o drapps -g drapps -m 750 /var/lib/drscca-quickbooks
 install -m 644 "$SRC/fail2ban/livetiming-sftp.local" /etc/fail2ban/jail.d/livetiming-sftp.local
 systemctl reload-or-restart fail2ban
 install -m 644 "$SRC/apt/52drscca-upgrades" /etc/apt/apt.conf.d/52drscca-upgrades

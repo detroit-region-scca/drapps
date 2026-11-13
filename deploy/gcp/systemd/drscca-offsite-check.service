@@ -1,0 +1,9 @@
+[Unit]
+OnFailure=drscca-alert@%n.service
+Description=DRSCCA apps: check the off-site copy finished in the last 36 hours
+[Service]
+Type=oneshot
+TimeoutStartSec=5min
+WorkingDirectory=/opt/drscca/app
+Environment=WORKSPACE_SA=/opt/drscca/data/secrets/workspace-sa.json
+ExecStart=/opt/drscca/venv/bin/python deploy/gcp/offsite_backup.py --check

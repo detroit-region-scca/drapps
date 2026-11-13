@@ -302,12 +302,29 @@ def _save(done):
     os.replace(tmpf, ATTACHED)
 
 
+BOOKS_DIR = os.environ.get('QBO_BOOKS_DIR') or '/var/lib/drscca-quickbooks'
+
+
+def books_copy():
+    """A full read-only copy of the books (tools/qbo_books.mjs) for the off-site backup. Returns what failed."""
+    try:
+        r = subprocess.run(['node', os.path.join(HERE, 'qbo_books.mjs')], check=True, capture_output=True, text=True,
+                           env=dict(os.environ, QBO_BOOKS_DIR=BOOKS_DIR), timeout=900)
+        res = json.loads(r.stdout.strip().splitlines()[-1])
+    except Exception as e:          # the sync itself is done; this part fails on its own
+        return [f'QuickBooks books copy: {e}']
+    print(f"QuickBooks books copy: {len(res['ok'])} types saved to {res['dir']}" + (f"; could not read {res['failed']}" if res['failed'] else ''))
+    return [f"QuickBooks books copy is missing {', '.join(res['missing'])}"] if res['missing'] else []
+
+
 def run():
     """One sync at a time (the nightly timer and the Refresh button can meet), then note when it finished."""
     from datetime import datetime
     from filelock import FileLock
     with FileLock(os.path.join(ROOT, 'data', 'qbo-sync.lock')):
         failed = main()
+        if not DRY and not MANUAL:
+            failed = list(failed or []) + books_copy()
     if not DRY:
         tmp = os.path.join(ROOT, 'data', 'qbo-last-run.json.tmp')
         with open(tmp, 'w') as f:
