@@ -23,33 +23,34 @@
         /* Bootstrap's yellow is unreadable on white: a dark amber that passes contrast (about 5:1). */
         .text-warning, a.text-warning { color: #8a5a00 !important; }
 
-        .app-bar { background: #fff; border-bottom: 3px solid var(--red); }
-        .site-brand { display: inline-flex; align-items: center; gap: .6rem; color: var(--text); margin-right: 1rem; }
+        /* The header: the part of the app you are in, in its own color (its home-page tile's), with its places in view. */
+        .app-bar { background: #fff; border-bottom: 4px solid var(--section, var(--red)); }
+        .app-bar-row { display: flex; flex-wrap: wrap; align-items: center; column-gap: 1.25rem; padding-top: .5rem; padding-bottom: .5rem; }
+        .site-brand { display: inline-flex; align-items: center; gap: .6rem; color: var(--text); }
         .site-brand img { height: 40px; width: auto; }
-        .site-brand .site-name { display: block; font-weight: 700; font-size: 1.1rem; line-height: 1.1; white-space: nowrap; color: var(--text); text-decoration: none; }
-        .site-brand .app-line { white-space: nowrap; font-weight: 500; font-size: .85rem; color: var(--muted); }
+        .site-brand .site-name { display: block; font-weight: 500; font-size: .8rem; line-height: 1.2; white-space: nowrap; color: var(--muted); text-decoration: none; }
+        .site-brand .app-name { display: flex; align-items: center; gap: .4rem; font-weight: 700; font-size: 1.4rem; line-height: 1.2; white-space: nowrap; color: var(--text); }
+        .site-brand .app-name svg { width: 24px; height: 24px; flex: none; }
+        .app-nav { flex: 1 1 auto; min-width: 0; }
+        @media (min-width: 992px) { .app-bar { position: sticky; top: 0; z-index: 1020; } }   /* pinned only where it is one short row */
+        .app-nav .navbar-nav { flex-direction: row; flex-wrap: nowrap; align-items: center; gap: .15rem; overflow-x: auto; scrollbar-width: none; }
+        .app-nav .navbar-nav::-webkit-scrollbar { display: none; }
+        @media (max-width: 991.98px) {
+            .app-nav { flex-basis: 100%; margin-top: .5rem; border-top: 1px solid var(--border); padding-top: .35rem; }
+            .app-nav .navbar-nav { flex-wrap: wrap; overflow-x: visible; }   /* every place in view: wrap, never hide */
+        }
         .year-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; margin-bottom: 1rem; }
         .year-bar .yb-label { font-size: .9rem; color: var(--muted); margin: 0; }
         .year-bar select { width: auto; min-width: 7rem; font-weight: 700; font-size: 1.05rem; padding-top: .3rem; padding-bottom: .3rem; cursor: pointer; }
-        .app-bar .apps-btn { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); text-decoration: none;
-                             padding: .3rem .55rem; border: 1px solid var(--border); border-radius: 6px; margin-right: .75rem; font-size: .9rem; }
+        .app-bar .apps-btn { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); text-decoration: none; white-space: nowrap;
+                             padding: .3rem .55rem; border: 1px solid var(--border); border-radius: 6px; margin-right: .5rem; font-size: .9rem; }
         .app-bar .apps-btn:hover { color: var(--text); border-color: var(--muted); }
         .app-bar .apps-btn svg { width: 16px; height: 16px; }
-        .app-bar .nav-link { color: var(--text); font-weight: 600; border-radius: 6px; padding: .4rem .7rem !important; }
-        .app-bar .nav-link:hover { color: var(--red); }
-        .app-bar .nav-link, .app-bar .btn-logout { white-space: nowrap; }
-        @media (min-width: 1200px) { .app-bar .nav-link { padding: .4rem .6rem !important; } }
-        .app-bar .nav-link.active { color: var(--red); box-shadow: inset 0 -2px 0 var(--red); border-radius: 0; }
-        .app-bar .btn-logout { color: var(--muted); }
-        @media (max-width: 1199.98px) {
-            .app-bar .navbar-collapse { border-top: 1px solid var(--border, #ddd); margin-top: .6rem; padding: .75rem 0 .5rem; }
-            .app-bar .navbar-collapse .apps-btn { margin: 0 0 .5rem !important; padding: .5rem .8rem; font-size: 1rem; }
-            .app-bar .navbar-collapse .nav-link { padding: .55rem 0 !important; }
-            .app-bar .navbar-collapse .nav-link.active { box-shadow: inset 3px 0 0 var(--red); padding-left: .75rem !important; }
-            .app-bar .navbar-collapse .btn-logout { padding: .45rem 0; }
-            .app-bar .navbar-collapse .nav-user { border-top: 1px solid var(--border, #ddd); margin-top: .5rem; padding-top: .75rem; }
-        }
-        .app-bar .btn-logout:hover { color: var(--red); }
+        .app-bar .nav-link { color: var(--text); font-weight: 600; white-space: nowrap; padding: .5rem .65rem !important; }
+        .app-bar .nav-link:hover { color: var(--text); box-shadow: inset 0 -3px 0 var(--border); }
+        .app-bar .nav-link.active { color: var(--text); box-shadow: inset 0 -3px 0 var(--section, var(--red)); border-radius: 0; }
+        .site-top-btn { font-size: .8rem; color: var(--muted); text-decoration: none; vertical-align: baseline; }
+        .site-top-btn:hover { color: #d2232a; }
 
         .card { background: var(--surface); border-color: var(--border); border-radius: 8px; color: var(--text); }
         .stat .label { color: var(--muted); font-size: .85rem; }
@@ -112,10 +113,9 @@
         @media (max-width: 575.98px) {
             .btn-sm { min-height: 2.5rem; padding-top: .45rem !important; padding-bottom: .45rem !important; }
             .form-control-sm, .form-select-sm { min-height: 2.5rem; font-size: 1rem; }
-            .site-brand .site-name { font-size: 1rem; }
-            .site-brand .app-line { white-space: normal; }
+            .site-brand .app-name { font-size: 1.2rem; }
         }
-        .site-top { font-size: .8rem; padding: .3rem 0 0; background: var(--bg, #fff); }
+        .site-top { font-size: .8rem; padding: .3rem 0; border-bottom: 1px solid var(--border); background: var(--bg, #fff); }
         .site-top a { color: var(--muted, #555); text-decoration: none; }
         .site-top a:hover { color: #d2232a; }
         {% block style %}{% endblock %}
@@ -127,34 +127,23 @@
 </head>
 <body class="{% block body_class %}{% endblock %}">
 {% if session.get('authenticated') %}
-<div class="site-top no-print"><div class="container" style="max-width: {{ self.width() }};"><a href="https://drscca.org">‹ drscca.org</a></div></div>
-<nav class="navbar navbar-expand-xl app-bar sticky-top mb-4">
-    <div class="container" style="max-width: {% block width %}1200px{% endblock %};">
+{% set sec_name = self.app_name()|trim %}{% set sec = sections.get(sec_name) if sections is defined else none %}
+<div class="site-top no-print"><div class="container d-flex align-items-center gap-3" style="max-width: {{ self.width() }};">
+    <a href="https://drscca.org">‹ drscca.org</a>
+    <span class="ms-auto d-none d-sm-inline text-muted" title="{{ me.email if me }}">{{ session.get('who', '') }}</span>
+    {% if me and 'audit' in (me.perms or []) %}<a href="{{ url_for('audit_log') }}">Audit log</a>{% endif %}
+    <form action="{{ url_for('logout') }}" method="POST" class="m-0{% if not (me and 'audit' in (me.perms or [])) %} ms-auto ms-sm-0{% endif %}"><button type="submit" class="btn btn-link p-0 site-top-btn">Log out</button></form>
+</div></div>
+<nav class="app-bar mb-4" style="--section: {{ sec.color if sec else '#d2232a' }};">
+    <div class="container app-bar-row" style="max-width: {% block width %}1200px{% endblock %};">
         <div class="site-brand"><a href="{{ url_for('home') }}" class="brand-logo" aria-label="All apps"><img src="{{ url_for('static', filename='drscca-logo.png') }}" alt=""></a>
             <div><a href="{{ url_for('home') }}" class="site-name">Detroit Region SCCA</a>
-                <div class="app-line"><span class="app-name">{% block app_name %}{{ app_name or title }}{% endblock %}</span>
-                </div></div></div>
-        {% if request.endpoint == 'home' %}
-        {# The launcher has no sections, so no menu: just log out. #}
-        <span class="btn btn-logout ms-auto me-3 px-0 d-none d-md-inline-block" title="{{ me.email if me }}">{{ session.get('who', '') }}</span>
-        {% if me and 'audit' in (me.perms or []) %}<a class="btn btn-link btn-logout text-decoration-none me-3 px-0 d-none d-md-inline-block" href="{{ url_for('audit_log') }}">Audit log</a>{% endif %}
-        <form action="{{ url_for('logout') }}" method="POST" class="m-0 ms-auto ms-md-0">
-            <button type="submit" class="btn btn-link btn-logout text-decoration-none px-0">Log out</button>
-        </form>
-        {% else %}
-        <button class="navbar-toggler border-0 ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#appnav" aria-controls="appnav" aria-expanded="false" aria-label="Menu">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="appnav">
-            <ul class="navbar-nav me-auto gap-xl-1">
-                <li class="nav-item"><a class="apps-btn mt-1 mt-xl-0" href="{{ url_for('home') }}" title="All apps"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Apps</span></a></li>
-                {% block nav %}{% endblock %}</ul>
-            <span class="btn btn-logout nav-user px-xl-2 px-0 d-block d-xl-none d-xxl-block text-start" title="{{ me.email if me }}">{{ session.get('who', '') }}</span>
-            {% if me and 'audit' in (me.perms or []) %}<a class="btn btn-link btn-logout text-decoration-none px-xl-2 px-0 d-block text-start{% if request.endpoint == 'audit_log' %} fw-semibold{% endif %}" href="{{ url_for('audit_log') }}">Audit log</a>{% endif %}
-            <form action="{{ url_for('logout') }}" method="POST" class="m-0">
-                <button type="submit" class="btn btn-link btn-logout text-decoration-none px-xl-2 px-0">Log out</button>
-            </form>
-        </div>
+                <div class="app-name">{% if sec %}<svg viewBox="0 0 24 24" fill="none" stroke="{{ sec.color }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ sec.icon }}</svg>{% endif %}<span>{% block app_name %}{{ app_name or title }}{% endblock %}</span></div></div></div>
+        {% if request.endpoint != 'home' %}
+        {# The section's places, always in view: one row beside the name, or their own rows below it on a phone. #}
+        <div class="app-nav"><ul class="navbar-nav">
+            <li class="nav-item"><a class="apps-btn" href="{{ url_for('home') }}" title="All apps"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>All apps</span></a></li>
+            {% block nav %}{% endblock %}</ul></div>
         {% endif %}
     </div>
 </nav>

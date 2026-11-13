@@ -183,7 +183,8 @@ app.jinja_env.globals['shows'] = _shows
 
 @app.context_processor
 def _officials():
-    return {'officials': officials, 'me': auth.user()}
+    from sections import SECTIONS
+    return {'officials': officials, 'me': auth.user(), 'sections': SECTIONS}
 
 
 @app.route('/privacy')
