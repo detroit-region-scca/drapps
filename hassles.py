@@ -1,19 +1,60 @@
 """Hassles: anyone with the hassles_post permission (every role, volunteers too, by default) posts something that is a hassle, in the apps or in how the
 region does things. Everyone sees them all, gives a thumbs up to the ones that bother them too, and can reply. Whoever
 has the hassles permission (the officers by default) marks each Open, Planned, Fixed or Not doing, with a short note. admin@ is emailed about each new hassle and
-each reply. Stored in the Registry sheet (hassles_store)."""
+each reply. Anyone signed in can opt in to hassles@drscca.org, a Google Group that gets every new hassle and reply:
+the Subscribe button queues their own address (data/hassles-subscribe.json) and the server adds it to that one group
+(tools/hassles_subscribe.py, the only place the apps change a Google Group). Stored in the Registry sheet
+(hassles_store)."""
+import json
 import os
+from datetime import datetime
 
+from filelock import FileLock
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 
 import auth
 import hassles_store as S
+import utils
 from utils import log_audit_event, login_required, send_mail
 
 bp = Blueprint('hassles', __name__, url_prefix='/hassles')
 STATUSES = S.STATUSES
 CLOSED = ('Fixed', 'Not doing')
 ADMIN = os.environ.get('HASSLES_EMAIL', 'admin@drscca.org')      # told about each new hassle and reply
+GROUP = 'hassles@drscca.org'          # people who opted in; fixed here and in tools/hassles_subscribe.py
+SUBSCRIBE_QUEUE = os.path.join(utils.DATA_DIR, 'hassles-subscribe.json')
+GROUPS_FILE = os.path.join(utils.DATA_DIR, 'email-groups.json')
+
+
+def _read(path, empty):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return empty
+
+
+def subscription(email):
+    """'on', 'off', 'adding' or 'removing' for this address on hassles@ (a request still waiting wins)."""
+    email = (email or '').lower()
+    waiting = [c for c in _read(SUBSCRIBE_QUEUE, {}).get('changes', []) if c.get('email') == email]
+    if waiting:
+        return 'adding' if waiting[-1]['action'] == 'add' else 'removing'
+    for g in _read(GROUPS_FILE, {}).get('groups', []):
+        if g.get('email') == GROUP:
+            return 'on' if any(m.get('email') == email for m in g.get('members', [])) else 'off'
+    return 'off'
+
+
+def _queue(email, action):
+    with FileLock(SUBSCRIBE_QUEUE + '.lock'):
+        q = _read(SUBSCRIBE_QUEUE, {}) or {}
+        q.setdefault('changes', []).append({'email': email.lower(), 'action': action,
+                                            'at': datetime.now().astimezone().isoformat(timespec='seconds')})
+        tmp = SUBSCRIBE_QUEUE + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(q, f, indent=1)
+        os.replace(tmp, SUBSCRIBE_QUEUE)
 
 
 def _me():
@@ -36,12 +77,14 @@ def _back(hid=None):
     return redirect(url_for('hassles.home') + (f'#s{hid}' if hid else ''))
 
 
-def _tell_admin(subject, body, reply_to):
+def _tell(subject, body, reply_to, admin=True):
+    """admin@ (unless an admin wrote it) and everyone who subscribed, through hassles@."""
     try:
-        send_mail(subject, body, ADMIN, reply_to=reply_to or None)
+        send_mail(subject, body + '\n\nYou get these because you subscribed on the Hassles page. Unsubscribe there.',
+                  GROUP, cc=ADMIN if admin else None, reply_to=reply_to or None)
     except Exception:          # the post is saved either way; a mail problem must not lose it
         import logging
-        logging.exception('Hassles: could not email the admin')
+        logging.exception('Hassles: could not send the email')
 
 
 @bp.route('/')
@@ -55,7 +98,24 @@ def home():
     # Open ones first, most thumbs up first, then newest; finished ones at the bottom.
     items.sort(key=lambda s: (s['status'] in CLOSED, -len(s['votes']), -s['id']))
     return render_template('hassles.html', title='DR Apps hassles', page_title='Hassles', items=items,
-                           me=email, is_admin=is_admin, can_post=can_post, statuses=STATUSES, closed=CLOSED)
+                           me=email, is_admin=is_admin, can_post=can_post, statuses=STATUSES, closed=CLOSED,
+                           subscribed=subscription(email), group=GROUP)
+
+
+@bp.route('/subscribe', methods=['POST'])
+@login_required
+def subscribe():
+    """Opt in or out of hassles@. Only ever the signed-in person's own address, whatever the form sends."""
+    if (g := _guard()):
+        return g
+    email, name, _ = _me()
+    action = 'add' if request.form.get('action') == 'add' else 'remove'
+    if email and '@' in email:
+        _queue(email, action)
+        log_audit_event('HASSLES_SUBSCRIBED' if action == 'add' else 'HASSLES_UNSUBSCRIBED', name, {'email': email})
+        flash(f"You'll get an email for every new hassle and reply, at {email}." if action == 'add'
+              else 'You will no longer get emails about hassles.', 'success')
+    return _back()
 
 
 @bp.route('/new', methods=['POST'])
@@ -71,7 +131,7 @@ def new():
         return _back()
     hid = S.add(title, details, name, email)
     log_audit_event('HASSLE_ADDED', name, {'id': hid, 'title': title})
-    _tell_admin(f'New hassle: {title}', f"{name} posted a hassle in DR Apps:\n\n{title}\n\n" + (f"{details}\n\n" if details else '')
+    _tell(f'New hassle: {title}', f"{name} posted a hassle in DR Apps:\n\n{title}\n\n" + (f"{details}\n\n" if details else '')
                 + url_for('hassles.home', _external=True) + f'#s{hid}', email)
     flash('Thanks! It is on the list.', 'success')
     return _back(hid)
@@ -108,9 +168,8 @@ def reply(sid):
         return _back(sid)
     S.reply(sid, text, name, email)
     log_audit_event('HASSLE_REPLY', name, {'id': sid})
-    if not is_admin:
-        _tell_admin(f"Reply on hassle: {h['title']}", f"{name} replied:\n\n{text}\n\n"
-                    + url_for('hassles.home', _external=True) + f'#s{sid}', email)
+    _tell(f"Reply on hassle: {h['title']}", f"{name} replied:\n\n{text}\n\n"
+          + url_for('hassles.home', _external=True) + f'#s{sid}', email, admin=not is_admin)
     return _back(sid)
 
 

@@ -55,7 +55,7 @@ class FakeStore:
 
 
 @pytest.fixture()
-def box(monkeypatch):
+def box(monkeypatch, tmp_path):
     import auth
     import hassles
     people = {'pat@example.org': {'name': 'Pat', 'level': 'official', 'roles': ['Director'], 'perms': {'events', 'hassles_post'}},
@@ -65,7 +65,9 @@ def box(monkeypatch):
     store, sent = FakeStore(), []
     monkeypatch.setattr(hassles, 'S', store)
     monkeypatch.setattr(hassles, 'log_audit_event', lambda *a, **k: None)
-    monkeypatch.setattr(hassles, 'send_mail', lambda subject, body, to, **k: sent.append((subject, body, to)))
+    monkeypatch.setattr(hassles, 'send_mail', lambda subject, body, to, **k: sent.append((subject, body, to, k.get('cc'))))
+    monkeypatch.setattr(hassles, 'SUBSCRIBE_QUEUE', str(tmp_path / 'hassles-subscribe.json'))
+    monkeypatch.setattr(hassles, 'GROUPS_FILE', str(tmp_path / 'email-groups.json'))
     from app import app
     app.config['TESTING'] = True
 
@@ -82,7 +84,7 @@ def test_post_vote_and_status(box):
     pat, vic, ada = as_('pat@example.org'), as_('vic@example.org'), as_('ada@example.org')
     pat.post('/hassles/new', data={'title': 'Dark mode', 'details': 'Easier at night'})
     vic.post('/hassles/new', data={'title': 'Event map'})
-    assert sent[0][0] == 'New hassle: Dark mode' and 'Pat posted' in sent[0][1] and sent[0][2] == 'admin@drscca.org'
+    assert sent[0][0] == 'New hassle: Dark mode' and 'Pat posted' in sent[0][1] and sent[0][2] == 'hassles@drscca.org' and sent[0][3] == 'admin@drscca.org'
     pat.post('/hassles/1/vote')                      # not on your own
     vic.post('/hassles/1/vote')                      # a volunteer can vote
     ada.post('/hassles/1/vote')
@@ -103,7 +105,8 @@ def test_anyone_can_reply_and_delete_their_own_reply(box):
     vic.post('/hassles/1/reply', data={'text': 'Me too, my phone is blinding'})
     ada.post('/hassles/1/reply', data={'text': 'On the list'})
     assert [r['by'] for r in S.get(1)['replies']] == ['Vic', 'Ada']
-    assert sent[-1][0] == 'Reply on hassle: Dark mode' and 'Vic replied' in sent[-1][1]      # the admin's own reply sends nothing
+    assert sent[-2][0] == 'Reply on hassle: Dark mode' and 'Vic replied' in sent[-2][1] and sent[-2][3] == 'admin@drscca.org'
+    assert 'Ada replied' in sent[-1][1] and sent[-1][2] == 'hassles@drscca.org' and sent[-1][3] is None   # subscribers, not admin@
     page = pat.get('/hassles/').get_data(as_text=True)
     assert 'my phone is blinding' in page and '2 replies' in page
     r = S.get(1)['replies'][0]
@@ -153,3 +156,47 @@ def test_the_permission_switches_hassles_off(box):
     assert vic.get('/hassles/').status_code == 302                      # a volunteer without it can't open it
     pat.post('/hassles/1/delete')
     assert S.hassles() == []                                             # your own post can always be deleted
+
+
+def test_subscribe_queues_only_your_own_address(box, tmp_path):
+    import json
+    import hassles
+    as_, S, sent = box
+    vic = as_('vic@example.org')
+    assert 'Subscribe</button>' in vic.get('/hassles/').get_data(as_text=True)
+    vic.post('/hassles/subscribe', data={'action': 'add', 'email': 'someone-else@example.org'})
+    q = json.load(open(tmp_path / 'hassles-subscribe.json'))['changes']
+    assert [(c['email'], c['action']) for c in q] == [('vic@example.org', 'add')]
+    assert 'Unsubscribe</button>' in vic.get('/hassles/').get_data(as_text=True)      # waiting: shown as on
+    (tmp_path / 'hassles-subscribe.json').write_text('{"changes": []}')
+    (tmp_path / 'email-groups.json').write_text(json.dumps({'groups': [{'email': 'hassles@drscca.org', 'members': [
+        {'email': 'vic@example.org', 'role': 'MEMBER'}]}]}))
+    assert hassles.subscription('vic@example.org') == 'on' and hassles.subscription('pat@example.org') == 'off'
+    vic.post('/hassles/subscribe', data={'action': 'remove'})
+    assert hassles.subscription('vic@example.org') == 'removing'
+
+
+def test_the_server_job_changes_only_plain_members_of_hassles(monkeypatch):
+    import sys
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tools'))
+    import hassles_subscribe as H
+    calls = []
+
+    class R:
+        def __init__(self, out=''):
+            self.returncode, self.stdout, self.stderr = 0, out, ''
+
+    def gam(*a):
+        calls.append(a)
+        if a[0] == 'print':
+            return R('group,email,role\nhassles@drscca.org,admin@drscca.org,OWNER\nhassles@drscca.org,old@example.org,MEMBER\n')
+        return R()
+    monkeypatch.setattr(H, 'gam', gam)
+    out = H.apply([{'email': 'New@Example.org', 'action': 'add'}, {'email': 'old@example.org', 'action': 'remove'},
+                   {'email': 'admin@drscca.org', 'action': 'remove'}, {'email': 'x@y.org, z@w.org', 'action': 'add'},
+                   {'email': 'flip@example.org', 'action': 'add'}, {'email': 'flip@example.org', 'action': 'remove'}])
+    writes = [a for a in calls if a[0] == 'update']
+    assert writes == [('update', 'group', 'hassles@drscca.org', 'add', 'member', 'allmail', 'user', 'new@example.org'),
+                      ('update', 'group', 'hassles@drscca.org', 'delete', 'user', 'old@example.org')]
+    assert any('left admin@drscca.org' in line for line in out)

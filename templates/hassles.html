@@ -16,6 +16,15 @@
     <h1 class="page-title">Hassles</h1>
     <p class="text-muted">Something a hassle? In the apps or in how the region does things. Everyone who signs in can see the list.
         Every one gets looked at. Give a thumbs up to the ones that bother you too.</p>
+    <form method="post" action="{{ url_for('hassles.subscribe') }}" class="d-flex flex-wrap align-items-center gap-2 small mb-3">
+        {% if subscribed in ('on', 'adding') %}
+        <span>You get an email for every new hassle and reply{% if subscribed == 'adding' %} (starting in a minute){% endif %}.</span>
+        <button class="btn btn-sm btn-outline-light" name="action" value="remove">Unsubscribe</button>
+        {% else %}
+        <span class="text-muted">Want an email for every new hassle and reply?</span>
+        <button class="btn btn-sm btn-outline-light" name="action" value="add">Subscribe</button>
+        {% endif %}
+    </form>
 
     {% if can_post %}
     <form method="post" action="{{ url_for('hassles.new') }}" class="card p-3 mb-4">

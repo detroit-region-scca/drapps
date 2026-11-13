@@ -1,0 +1,6 @@
+[Unit]
+Description=DRSCCA apps: Subscribe or Unsubscribe pressed on the Hassles page
+[Path]
+PathChanged=/opt/drscca/app/data/hassles-subscribe.json
+[Install]
+WantedBy=paths.target

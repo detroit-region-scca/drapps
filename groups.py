@@ -1,7 +1,8 @@
 """Email groups: every drscca.org address and who it reaches, for anyone signed in.
 
 Every night at 2:15 (drscca-groups.timer), and when anyone signed in presses Refresh (drscca-groups.path), the
-server reads the groups from Google (tools/groups_pull.py) into data/email-groups.json. Google is the only place the groups live; the apps never change them.
+server reads the groups from Google (tools/groups_pull.py) into data/email-groups.json. Google is the only place the groups live; the apps never change them, with one exception: Subscribe on the Hassles page
+adds or removes the signed-in person on hassles@drscca.org (tools/hassles_subscribe.py).
 """
 import json
 import os
@@ -18,7 +19,7 @@ from utils import login_required
 bp = Blueprint('groups', __name__, url_prefix='/email-groups')
 GROUPS_FILE = os.path.join(utils.DATA_DIR, 'email-groups.json')
 GROUPS_REFRESH = os.path.join(utils.DATA_DIR, 'groups-refresh')
-EMPTY_NOTE = {'apps': 'Nobody: DR Apps sends from it', 'legacy': 'The admin account: catches mail to retired addresses'}
+EMPTY_NOTE = {'apps': 'Nobody: DR Apps sends from it', 'hassles': 'Nobody yet: subscribe on the Hassles page', 'legacy': 'The admin account: catches mail to retired addresses'}
 
 
 def _nice_time(iso):

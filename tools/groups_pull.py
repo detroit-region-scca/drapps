@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read every drscca.org Google Group (address, name, other addresses, members) and save it for the Email groups
-page (data/email-groups.json). Read only: the apps never change the groups; members are changed at
-admin.google.com. Run by drscca-groups.path when an admin presses Refresh on the Email groups page.
+page (data/email-groups.json). Read only: members are changed at admin.google.com. The one exception is
+hassles@drscca.org, where tools/hassles_subscribe.py applies Subscribe and Unsubscribe from the Hassles page. Run by drscca-groups.path when an admin presses Refresh on the Email groups page.
 """
 import csv
 import io

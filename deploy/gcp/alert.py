@@ -24,6 +24,7 @@ WHAT = {
     'drscca-site-backup.service': ('weekly drscca.org website copy', 'Nothing is down; this week\'s copy of the website\'s content was not saved. The earlier copies are still in the region drive.'),
     'drscca-officials.service': ('officials-list update', 'Either a change made in the app was not applied to officials.json, or it was applied and its readable copy in Drive was not updated; the log lines below say which.'),
     'drscca-groups.service': ('email groups refresh', 'The Email groups page could not read the groups from Google.'),
+    'drscca-hassles-subscribe.service': ('Hassles subscribe', 'A Subscribe or Unsubscribe on the Hassles page may not have reached hassles@drscca.org; the log lines below say which address.'),
 }
 
 
