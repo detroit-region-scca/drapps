@@ -246,21 +246,35 @@ def self_approve(rid, req=None):
     if not F.add_approval(rid, 'chair', name, date.today().isoformat(), SELF_NOTE, once=True):
         return False
     log_audit_event('FUNDS_APPROVED', name, {'id': rid, 'role': 'chair', 'note': SELF_NOTE})
-    r = F.get(rid)
-    items = Approvals().items(r)
-    still = FL.waiting_on(items)
-    program = load_programs().get(r['program'], 'Operations' if r['program'] == 'OPS' else r['program'])
-    link = url_for('fr.detail', req_id=rid, _external=True)
-    body = '\n'.join([
-        f"{rid} ({r['payee_name']}, ${r['net']:,.2f}, by {r['method'].lower()}) is approved.",
-        f"{name} filed it as the {program} director, so filing it counts as the director's approval: there is nothing to "
-        "approve by email.", '',
-        ('Still needed before the treasurer pays: ' + ', '.join(still) + '.') if still else
-        'Everything the region policy asks for is in, so the treasurer can pay it.', '',
-        link])
-    if group:
-        send_mail(f"Funds request {rid} approved: {r['payee_name']} ${r['net']:,.2f}", body, group)
+    tell_director(F.get(rid))
     return True
+
+
+def self_filed(r):
+    """The director approval came from the director filing it (self_approve)."""
+    return any(a['role'] == 'chair' and a.get('note') == SELF_NOTE for a in FL.parse(r.get('approvals')))
+
+
+def tell_director(r):
+    """Tell the director's role group where their own request stands. It is "approved" only when nothing is missing;
+    otherwise it says their director approval is in and what is still needed (user, 2026-11-13)."""
+    name, group = O.director(r['program'])
+    if not group:
+        return
+    still = FL.waiting_on(Approvals().items(r))
+    program = load_programs().get(r['program'], 'Operations' if r['program'] == 'OPS' else r['program'])
+    what = f"{r['id']} ({r['payee_name']}, ${r['net']:,.2f}, by {r['method'].lower()})"
+    link = url_for('fr.detail', req_id=r['id'], _external=True)
+    if still:
+        subj = f"Funds request {r['id']} is waiting on {', '.join(still)}"
+        body = (f"{what} is not approved yet. {name} filed it as the {program} director, so the director approval is in "
+                f"(there is nothing to approve by email).\n\nStill needed before it is approved: {', '.join(still)}. "
+                f"You will get another email when it is.\n\n{link}")
+    else:
+        subj = f"Funds request {r['id']} approved: {r['payee_name']} ${r['net']:,.2f}"
+        body = (f"{what} is approved: everything the region policy asks for is in, so the treasurer can pay it. "
+                f"{name} filed it as the {program} director, which counts as the director approval.\n\n{link}")
+    send_mail(subj, body, group)
 
 
 def mark_ready(rid, r=None):
@@ -278,7 +292,8 @@ def announce_ready(rids):
     for rid in rids:
         r = F.get(rid)
         if r and r['status'] == 'Submitted' and FL.ready(a.items(r)):
-            mark_ready(rid, r)
+            if mark_ready(rid, r) and self_filed(r):
+                tell_director(r)
             send_mail(f"Funds request {rid} is ready to pay: {r['payee_name']} ${r['net']:,.2f}",
                       f"The board's approval is recorded. Everything the policy asks for is in.\n\n"
                       f"{url_for('fr.detail', req_id=rid, _external=True)}")
@@ -421,7 +436,7 @@ def new():
     approved = self_approve(rid, req)
     notify(rid, req, lines, n_files)
     mark_ready(rid)
-    flash(f'Submitted {rid}' + (', approved by you as the program director' if approved else '') + '. The treasurer has been emailed.', 'success')
+    flash(f'Submitted {rid}' + (', with your director approval' if approved else '') + '. The treasurer has been emailed.', 'success')
     return redirect(url_for('fr.detail', req_id=rid))
 
 
@@ -448,7 +463,8 @@ def _approved(rid, role, who, note=''):
     log_audit_event('FUNDS_APPROVED', who, {'id': rid, 'role': role, 'note': note})
     r = F.get(rid)
     if FL.ready(Approvals().items(r)):
-        mark_ready(rid, r)
+        if mark_ready(rid, r) and self_filed(r):
+            tell_director(r)
         send_mail(f"Funds request {rid} is ready to pay: {r['payee_name']} ${r['net']:,.2f}",
                   f"{FL.ROLES[role]} approval from {who}. Everything the policy asks for is in.\n\n"
                   f"{request.url_root.rstrip('/')}{url_for('fr.detail', req_id=rid)}")
@@ -477,6 +493,15 @@ def receipts(req_id):
     n = F.add_receipts(req_id, request.files.getlist('receipts'))
     if n:
         log_audit_event('FUNDS_RECEIPTS', session.get('who') or 'Unknown', {'id': req_id, 'files': n})
+        # The receipt may have been the last thing missing: tell the treasurer, and the director when they filed it.
+        F.refresh()
+        r = F.get(req_id)
+        if r and r['status'] == 'Submitted' and FL.ready(Approvals().items(r)) and mark_ready(req_id, r):
+            send_mail(f"Funds request {req_id} is ready to pay: {r['payee_name']} ${r['net']:,.2f}",
+                      f"The receipt is now attached. Everything the policy asks for is in.\n\n"
+                      f"{url_for('fr.detail', req_id=req_id, _external=True)}")
+            if self_filed(r):
+                tell_director(r)
     flash(f'Added {n} file(s).' if n else 'Choose a file first.', 'success' if n else 'warning')
     return redirect(url_for('fr.detail', req_id=req_id))
 

@@ -218,14 +218,19 @@ def selfapp(monkeypatch, officials):
 
 def test_a_director_filing_a_vendor_or_card_request_approves_it_and_their_group_is_told(selfapp):
     for m in ('Check to the payee', 'Region credit card'):
+        selfapp['second_done'] = True
         assert selfapp['run'](filed_email='rae@example.org', method=m)
         assert selfapp['approvals'] == [('chair', 'Rae Director', fr.SELF_NOTE)]
         subj, body, to = selfapp['mail'][0]
-        assert to == 'rx-group@example.org' and 'approved' in subj and 'nothing to approve by email' in body
-        assert 'the treasurer can pay it' in body
+        assert to == 'rx-group@example.org' and 'approved' in subj and 'the treasurer can pay it' in body
+
+
+def test_it_is_not_called_approved_while_anything_is_still_needed(selfapp):
     selfapp['second_done'] = False
     selfapp['run'](filed_email='rae@example.org', method='Region credit card')
-    assert 'Still needed before the treasurer pays: second signer.' in selfapp['mail'][0][1]
+    subj, body, to = selfapp['mail'][0]
+    assert 'approved' not in subj and 'waiting on second signer' in subj
+    assert 'is not approved yet' in body and 'Still needed before it is approved: second signer.' in body
 
 
 def test_no_self_approval_when_it_pays_the_director_or_someone_else_filed_it(selfapp):
