@@ -150,6 +150,7 @@ sends nothing, and if the email itself cannot be sent the only trace is on the s
 | Software updates | Sundays 04:30 | `drscca-update.timer` | `deploy/gcp/update.sh`: newest Caddy, nginx and SFTP images; drapps rebuilt on the newest Python base image, tested inside the new image, started, and rolled back to the previous image if it does not start; newest GAM and Python libraries for the host jobs. The libraries inside the drapps image change only when the Python base image or `requirements.txt` changed, because Docker reuses that build step otherwise |
 | System updates | daily | `unattended-upgrades` | Debian, Docker, Node and Google packages; reboots at 04:00 only when an update needs it |
 | Secrets copy | Sundays 05:00 | `drscca-secrets-backup.timer` | Updates "drapps server secrets (weekly).tar.gz" in the admin-only Account Recovery folder (Drive keeps earlier versions). Fails, after saving, if anyone but admin@ can open the file |
+| Off-site copy | 03:30 nightly | `drscca-offsite-backup.timer` | `deploy/gcp/offsite_backup.py`: every shared drive and `app/data` to the Cloud Storage bucket with restic (see Backups) |
 | Website copy | Sundays 05:15 | `drscca-site-backup.timer` | drscca.org is on WordPress.com Premium (no do-it-yourself backups), so `deploy/gcp/site_backup.py` saves every published page, post, category, tag, the media list and the home page as JSON to "Website Archive/Weekly site backups" in the region drive; keeps 8 |
 
 **Outside the server:** Google Cloud uptime checks look at drapps.drscca.org and livetiming.drscca.org every 5
@@ -160,7 +161,7 @@ console > Monitoring > Uptime checks and Alerting). These keep working even if t
 (`sudo fail2ban-client status livetiming-sftp`; to lift a ban, `sudo fail2ban-client set livetiming-sftp unbanip
 <address>`). Container logs are capped at 3 x 10 MB each.
 
-Check them: `systemctl list-timers 'drscca-*'` (six timers: qbo, backup, state-backup, update, secrets-backup,
+Check them: `systemctl list-timers 'drscca-*'` (seven timers: qbo, backup, state-backup, offsite-backup, update, secrets-backup,
 site-backup) and `systemctl status 'drscca-*.path'` (three: officials, qbo-refresh, groups). Jobs that failed:
 `systemctl --failed`.
 
@@ -211,7 +212,7 @@ under a file lock on a fresh read, so two people sending the same names for an e
 | Restart the app | `sudo docker compose restart drapps` |
 | Caddy (HTTPS, certificates) | `sudo docker logs --since 1h caddy` |
 | Live timing uploads and pages | `sudo journalctl CONTAINER_NAME=livetiming-sftp --since today` (the SFTP container logs to the journal), `sudo docker logs --since 1h livetiming-web` |
-| A job's last run | `sudo journalctl -u drscca-qbo -n 50`. The jobs: `drscca-qbo` (nightly sync), `drscca-qbo-refresh` (Sync now), `drscca-backup` (sheets), `drscca-state-backup` (app files to Drive), `drscca-secrets-backup`, `drscca-site-backup`, `drscca-officials`, `drscca-groups` (Email groups, nightly and Refresh), `drscca-hassles-subscribe` (Hassles Subscribe), `drscca-update` (weekly update) |
+| A job's last run | `sudo journalctl -u drscca-qbo -n 50`. The jobs: `drscca-qbo` (nightly sync), `drscca-qbo-refresh` (Sync now), `drscca-backup` (sheets), `drscca-state-backup` (app files to Drive), `drscca-secrets-backup`, `drscca-site-backup`, `drscca-offsite-backup` (off-site copy), `drscca-officials`, `drscca-groups` (Email groups, nightly and Refresh), `drscca-hassles-subscribe` (Hassles Subscribe), `drscca-update` (weekly update) |
 | Alert emails that were sent or failed | `sudo journalctl -u 'drscca-alert@*' -n 30` |
 | System updates | `/var/log/unattended-upgrades/unattended-upgrades.log` |
 | Blocked live timing addresses | `sudo fail2ban-client status livetiming-sftp` |
@@ -235,6 +236,7 @@ admin@drscca.org.
 | drscca.org database, once | `drscca.org WordPress.com database 2026-11-09 (before Premium downgrade).sql.gz` | One time, the last full export | Account Recovery folder (holds user emails and password hashes) |
 | The old website (IONOS, to 2026) | Full archive | One time | DRSCCA Region drive > Website Archive |
 | The app's code | This repository | Every change | GitHub, detroit-region-scca/drapps |
+| Every shared drive (DRSCCA Apps, DRSCCA Region, and any new one), their Google Docs/Sheets/Slides as Office files, and `app/data` | restic snapshots (`deploy/gcp/offsite_backup.py`), deduplicated and encrypted | Nightly 03:30; 14 daily, 8 weekly, 24 monthly; anything deleted stays restorable 90 days (bucket soft delete) | Cloud Storage bucket `drscca-org-backups`, project drscca-automation (outside Drive) |
 
 **The two copies in the Account Recovery folder** (secrets, app state) hold keys, names, email addresses and
 working links, so they go only to that folder. Each run removes the "anyone at drscca.org" permission Workspace
@@ -243,6 +245,27 @@ and the job fails, so an email goes out naming who else can open it. Either fix 
 those people are meant to have access, list them in `BACKUP_READERS` in `drapps.env` (comma separated, admin@
 included). The folder and the region drive are `ACCOUNT_RECOVERY_FOLDER_ID` and `REGION_DRIVE_ID` in
 `drapps.env`; without them the backup jobs stop with a message saying which one is missing (and the alert email goes out).
+
+**The off-site copy.** Everything else here lives in Google Drive or on the server, so a wiped shared drive or a
+lost admin@ account would take the copies with it. The nightly `drscca-offsite-backup` job mounts each shared drive
+read-only (rclone), exports its Google Docs, Sheets and Slides as Word, Excel and PowerPoint files, and backs those
+up with `app/data` (not `app/data/backups`) to the bucket with restic. Only changed files are sent, so a night is
+small. On Sundays it also drops snapshots past the keep rule and checks the repository. Settings and the restic
+password are in `data/secrets/offsite-backup.env`, which the weekly secrets copy carries to Account Recovery:
+**without that password the snapshots cannot be read**. It writes as the region's automation account
+(`workspace-sa.json`); the organization policy forbids new service account keys, so no separate key exists. The
+bucket's 90-day soft delete means even a deliberate delete can be undone in that time (Cloud console > Cloud
+Storage > the bucket > Soft-deleted objects); only a project owner can shorten it. About 17 GB in November 2026,
+well under $1 a month.
+
+To look or restore, on the server:
+
+    sudo bash -c 'set -a; . /opt/drscca/data/secrets/offsite-backup.env; restic snapshots'
+    sudo bash -c 'set -a; . /opt/drscca/data/secrets/offsite-backup.env; restic restore latest --target /var/tmp/restore --include "/var/lib/drscca-offsite/drives/DRSCCA Region/Some folder"'
+
+Then upload what you need back to Drive. Without the server: install restic anywhere, sign in to Google Cloud as
+a project owner (`gcloud auth application-default login`), set `RESTIC_REPOSITORY=gs:drscca-org-backups:/restic`
+and the password from the secrets copy, and run the same commands.
 
 **Restoring the app's own files.** Download `drapps app state (nightly).tar.gz` (for an older night: right
 click > File information > Manage versions), unpack it, and copy the files you need into

@@ -1,0 +1,16 @@
+[Unit]
+OnFailure=drscca-alert@%n.service
+Description=DRSCCA apps: nightly off-site copy of the shared drives and app files (restic to Cloud Storage)
+[Service]
+Type=oneshot
+# The first copy takes hours; later nights only send what changed.
+TimeoutStartSec=12h
+WorkingDirectory=/opt/drscca/app
+EnvironmentFile=/opt/drscca/data/secrets/offsite-backup.env
+Environment=WORKSPACE_SA=/opt/drscca/data/secrets/workspace-sa.json
+# A small server that also runs the apps: this job yields to them.
+Nice=15
+IOSchedulingClass=idle
+CPUWeight=20
+MemoryHigh=350M
+ExecStart=/opt/drscca/venv/bin/python deploy/gcp/offsite_backup.py
