@@ -15,9 +15,11 @@ as passed: once the treasurer enters the bill in QuickBooks, the sync adds it to
 request would otherwise be counted twice (FR-2026-113: $9,600 in QuickBooks plus the same $9,600 still open).
 
 Approvals come from an emailed link sent to the official's address in the read-only officials list (fr.py).
-Nobody approves their own money: whoever filed a request, or is named on it as submitter or payee, cannot give its
-director or second signer approval (on_request, who_approves). When that is the director, the RE or ARE approves in
-their place; a director filing for their own program no longer approves it by filing.
+Nobody approves money paid to themselves (paid_to, who_approves): when the director is the payee, or files a
+reimbursement for themselves, the RE or ARE gives the director approval in their place. A director who files a request
+for their own program that pays someone else (a vendor's check, a region card charge) approves it as usual (user,
+2026-11-13). The second signer (over $2,500) stays stricter: whoever filed the request or is named on it at all
+cannot give it (on_request).
 """
 import re
 
@@ -85,19 +87,30 @@ def on_request(r, name='', emails=()):
     return bool(me) and any(_words(n) == me for n in names)
 
 
+def paid_to(r, name='', emails=()):
+    """True when this person gets the money: they are the payee, or the request reimburses its submitter and they
+    filed it or submitted it. Same matching as on_request."""
+    mine = {(e or '').strip().lower() for e in emails} - {''}
+    me = _words(name)
+    if (r.get('payee_email') or '').strip().lower() in mine or (me and _words(r.get('payee_name')) == me):
+        return True
+    return r.get('method') == 'Reimburse me' and on_request(r, name, emails)
+
+
 def who_approves(r, director, signers):
-    """Who may give each approval, leaving out anyone who is the payee or submitter (on_request).
+    """Who may give each approval: the director unless the money is paid to them (paid_to); the RE and ARE unless
+    they are on the request at all (on_request).
     director: {'name', 'mail', 'emails'} or None; signers: the RE and ARE, the same shape (mail: where their link goes,
     emails: every address that is theirs). Returns {'chair': [...], 'second': [...], 'stand_in': bool, 'note': {key: text}}.
-    stand_in: the director is on the request, so the RE or ARE gives the director approval. note: a plain line for an
+    stand_in: the money is paid to the director, so the RE or ARE gives the director approval. note: a plain line for an
     approval that works differently here, or that nobody can give."""
     free = [s for s in signers if not on_request(r, s['name'], s.get('emails', ()))]
     out = {'chair': [director] if director and director.get('mail') else [], 'second': free, 'stand_in': False, 'note': {}}
     both = 'the RE and the ARE are both the payee or submitter of this request, so neither can approve it. Someone else has to file it'
-    if director and on_request(r, director['name'], director.get('emails', ())):
+    if director and paid_to(r, director['name'], director.get('emails', ())):
         out['chair'], out['stand_in'] = free, True
-        out['note']['chair'] = ('the director is the payee or submitter, so the RE or ARE approves instead' if free else
-                                both if signers else 'the director is the payee or submitter and no RE or ARE is in the officials list')
+        out['note']['chair'] = ('the money is paid to the director, so the RE or ARE approves instead' if free else
+                                both if signers else 'the money is paid to the director and no RE or ARE is in the officials list')
     if signers and not free:
         out['note']['second'] = both
     elif len(free) < len(signers):

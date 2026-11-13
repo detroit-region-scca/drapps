@@ -375,12 +375,14 @@ def approve_funds(req_id):
     if not r:
         return _err('Funds request not found.', 404)
     me = g.api_user['email']
-    if FL.on_request(r, g.api_user['name'], [me]):
-        return _err(f'You are the payee or the submitter of {req_id}, so you cannot approve it. Someone else has to.', 403)
+    if role == 'chair' and FL.paid_to(r, g.api_user['name'], [me]):
+        return _err(f'This money is paid to you, so you cannot approve {req_id}. Someone else has to.', 403)
+    if role == 'second' and FL.on_request(r, g.api_user['name'], [me]):
+        return _err(f'You are the payee or the submitter of {req_id}, so you cannot sign it second. Someone else has to.', 403)
     signer = any(o.get('role') in ('RE', 'ARE') and (o.get('email') or '').strip().lower() == me for o in O.all())
     if role == 'chair' and fr.approval_plan(r)['stand_in']:
         if not signer:
-            return _err('The director is the payee or submitter of this request, so only the RE or ARE can approve it as chair.', 403)
+            return _err('This money is paid to the director, so only the RE or ARE can approve it as chair.', 403)
     elif role == 'chair' and me != O.director_email(r['program']):
         return _err(f"Only the {r['program']} program director can approve this as chair.", 403)
     if role == 'second' and not signer:

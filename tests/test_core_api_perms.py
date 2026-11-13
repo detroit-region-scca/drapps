@@ -9,7 +9,7 @@ OFFICIALS = [
 ]
 REQS = [
     {'id': 'FR-1', 'status': 'Submitted', 'program': 'RX', 'event_code': '', 'submitted': '2026-10-01', 'net': 50.0,
-     'submitter_email': 'rx@example.org', 'entered_by': 'Rae Director', 'approvals': ''},
+     'submitter_email': 'rx@example.org', 'entered_by': 'Rae Director', 'approvals': '', 'method': 'Reimburse me'},
     {'id': 'FR-2', 'status': 'Submitted', 'program': 'AX', 'event_code': '', 'submitted': '2026-10-02', 'net': 75.0,
      'submitter_email': 'someone@example.org', 'entered_by': 'Sam Other', 'approvals': ''},
     {'id': 'FR-3', 'status': 'Submitted', 'program': 'RX', 'event_code': '', 'submitted': '2026-10-03', 'net': 20.0,
@@ -99,8 +99,8 @@ def test_chair_approval_only_from_that_programs_director(client):
 
 
 def test_nobody_approves_their_own_request_by_api(client):
-    r = client.post('/api/v1/funds/FR-1/approve', json={'role': 'chair'}, headers=key('rx@example.org'))     # the director filed FR-1
-    assert r.status_code == 403 and 'payee or the submitter' in r.json['error'] and not client.sent
+    r = client.post('/api/v1/funds/FR-1/approve', json={'role': 'chair'}, headers=key('rx@example.org'))     # the director filed FR-1 to be paid back
+    assert r.status_code == 403 and 'paid to you' in r.json['error'] and not client.sent
     r = client.post('/api/v1/funds/FR-1/approve', json={'role': 'chair'}, headers=key('treasurer@example.org'))
     assert r.status_code == 403 and not client.sent
     r = client.post('/api/v1/funds/FR-1/approve', json={'role': 'chair'}, headers=key('re@example.org'))     # the RE stands in

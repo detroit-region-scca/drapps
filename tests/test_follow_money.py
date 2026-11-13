@@ -38,10 +38,19 @@ def test_the_usual_approvers_when_nobody_is_on_the_request():
     assert plan['chair'] == [RAE] and plan['second'] == [REMY, ALEX] and not plan['stand_in'] and not plan['note']
 
 
-def test_a_director_on_the_request_is_replaced_by_the_re_or_are():
-    for r in (req(filed_email='rae@example.org'), req(payee_name='Rae Director'), req(submitter_email='rx-group@example.org')):
+def test_a_director_paid_by_the_request_is_replaced_by_the_re_or_are():
+    for r in (req(filed_email='rae@example.org', method='Reimburse me'), req(payee_name='Rae Director'),
+              req(submitter_email='rx-group@example.org', method='Reimburse me'), req(payee_email='rae@example.org')):
         plan = FL.who_approves(r, RAE, [REMY, ALEX])
         assert plan['stand_in'] and plan['chair'] == [REMY, ALEX] and 'RE or ARE approves instead' in plan['note']['chair']
+
+
+def test_a_director_who_filed_a_vendor_or_card_request_approves_it():
+    for m in ('Check to the payee', 'Region credit card'):
+        plan = FL.who_approves(req(filed_email='rae@example.org', submitter_name='Rae Director', method=m), RAE, [REMY, ALEX])
+        assert plan['chair'] == [RAE] and not plan['stand_in'] and 'chair' not in plan['note']
+    # the second signer stays strict: filing it is enough to be left out
+    assert FL.who_approves(req(filed_email='are@example.org', method='Region credit card'), RAE, [REMY, ALEX])['second'] == [REMY]
 
 
 def test_the_re_as_payee_leaves_the_are_and_the_reverse():
@@ -59,7 +68,7 @@ def test_both_signers_on_the_request_is_said_plainly():
                         {'key': 'second', 'label': 'Second signer', 'done': False, 'by': ''}], plan)
     assert items[0]['label'] == 'Approved by the program director' and 'neither can approve it' in items[1]['label']
     # the director too: nobody is left for the director approval either
-    plan = FL.who_approves(dict(r, submitter_name='Rae Director'), RAE, [REMY, ALEX])
+    plan = FL.who_approves(dict(r, submitter_name='Rae Director', method='Reimburse me'), RAE, [REMY, ALEX])
     assert plan['chair'] == [] and 'neither can approve it' in plan['note']['chair']
 
 
@@ -106,7 +115,7 @@ def test_the_re_who_is_the_payee_gets_no_second_signer_link(asking):
 
 
 def test_a_director_who_filed_it_is_not_asked_and_the_re_and_are_are(asking):
-    asking['r'] = req(filed_email='rae@example.org', submitter_name='Rae Director', net=300.0)
+    asking['r'] = req(filed_email='rae@example.org', submitter_name='Rae Director', net=300.0, method='Reimburse me')
     sent = asking['ask']()
     assert 'rae@example.org' not in sent and sent[:2] == ['re@example.org', 'are@example.org']
     assert 'asked of the RE or ARE instead' in asking['mail'][0][1]
@@ -114,7 +123,8 @@ def test_a_director_who_filed_it_is_not_asked_and_the_re_and_are_are(asking):
 
 def test_the_page_names_who_approves_and_drops_the_no_director_line_when_the_label_says_why(officials):
     assert fr.approvers(req())['chair'] == ['Rae Director']
-    assert fr.approvers(req(filed_email='rae@example.org'))['chair'] == ['Remy Exec', 'Alex Assistant']
+    assert fr.approvers(req(filed_email='rae@example.org', method='Reimburse me'))['chair'] == ['Remy Exec', 'Alex Assistant']
+    assert fr.approvers(req(filed_email='rae@example.org', method='Region credit card'))['chair'] == ['Rae Director']
     assert fr.approvers(req(payee_name='Remy Exec'))['second'] == ['Alex Assistant']
     assert 'second' not in fr.approvers(req(payee_name='Remy Exec', filed_email='are@example.org'))
 
@@ -140,15 +150,15 @@ def link(monkeypatch, officials):
 
 def test_a_link_held_by_the_payee_or_submitter_approves_nothing(link):
     link['r'] = req(payee_name='Remy Exec')
-    assert 'you cannot approve it' in link['post']('second', 'Remy Exec', 're@example.org') and not link['approved']
-    link['r'] = req(filed_email='rae@example.org')            # an old link, sent before the director was known to be on it
-    assert 'you cannot approve it' in link['post']('chair', 'Rae Director', 'rx-group@example.org') and not link['approved']
+    assert 'cannot sign it second' in link['post']('second', 'Remy Exec', 're@example.org') and not link['approved']
+    link['r'] = req(filed_email='rae@example.org', method='Reimburse me')     # an old link, sent before the director was known to be paid by it
+    assert 'paid to you' in link['post']('chair', 'Rae Director', 'rx-group@example.org') and not link['approved']
 
 
 def test_a_link_held_by_someone_else_approves(link):
     link['r'] = req(payee_name='Remy Exec')
     assert 'Approved.' in link['post']('second', 'Alex Assistant', 'are@example.org')
-    link['r'] = req(filed_email='rae@example.org')
+    link['r'] = req(filed_email='rae@example.org', method='Reimburse me')
     link['post']('chair', 'Remy Exec', 're@example.org')
     assert [a[:2] for a in link['approved']] == [('second', 'Alex Assistant'), ('chair', 'Remy Exec')]
     assert 'in place of the director' in link['approved'][1][2] and 'in place of' not in link['approved'][0][2]

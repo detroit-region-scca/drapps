@@ -172,8 +172,8 @@ def directors():
 def ask_approvals(rid, roles=None):
     """Ask whoever still has to approve. The program director, and the RE and ARE as second signers over the limit,
     get an emailed link (at their address in the read-only officials list; approving is only possible from these
-    links). Nobody is asked to approve a request they are the payee or submitter of: the RE or ARE is asked in the
-    director's place, and only the other of the RE and ARE as second signer (approval_plan). When the budget does not cover the request, it goes on the Board page as a motion instead: only a vote
+    links). Nobody is asked to approve money paid to themselves: the RE or ARE is asked in the director's place, and only
+    the other of the RE and ARE as second signer when one of them is on the request (approval_plan). When the budget does not cover the request, it goes on the Board page as a motion instead: only a vote
     the board has taken, recorded there, counts. Returns who was asked (addresses, and "the board (motion ...)")."""
     r = F.get(rid)
     if not r or r['status'] != 'Submitted':
@@ -185,8 +185,8 @@ def ask_approvals(rid, roles=None):
     plan = approval_plan(r)
     to = [(role, x['name'], x['mail']) for role in ('chair', 'second') if role in missing for x in plan[role]]
     why = {'chair': 'Region policy asks the program director to approve each expense before the treasurer pays.' if not plan['stand_in'] else
-                    'Region policy asks the program director to approve each expense before the treasurer pays. The director is the '
-                    'payee or submitter of this one, so the approval is asked of the RE or ARE instead.',
+                    'Region policy asks the program director to approve each expense before the treasurer pays. This one pays the '
+                    'director, so the approval is asked of the RE or ARE instead.',
            'second': f'It is over ${FL.SECOND_SIGNER_LIMIT:,.0f}, so the bylaws ask the RE or ARE to approve it as second signer.'}
     from app import nice_date
     for role, name, mail in to:
@@ -474,9 +474,11 @@ def approve_link(token):
            "Board approval is no longer confirmed from an email. The board votes on it (Board page, Request email vote), "
            "and the RE, ARE, secretary or treasurer records the result there." if t['role'] == 'board' else
            f"Already approved by {done['name']} on {nice_date(done['date'])}." if done else
-           # Nobody approves their own money, whoever the link was sent to and whenever.
-           f"You are the payee or the submitter of {r['id']}, so you cannot approve it. Someone else has to."
-           if FL.on_request(r, t.get('name'), [t.get('email')] + _own_emails(t.get('name'))) else
+           # Nobody approves money paid to themselves, whoever the link was sent to and whenever. The second signer may
+           # not be on the request at all (fr_logic).
+           (f"This money is paid to you, so you cannot approve {r['id']}. Someone else has to." if t['role'] == 'chair' else
+            f"You are the payee or the submitter of {r['id']}, so you cannot sign it second. Someone else has to.")
+           if (FL.paid_to if t['role'] == 'chair' else FL.on_request)(r, t.get('name'), [t.get('email')] + _own_emails(t.get('name'))) else
            # Standing in for the director and signing second are two signatures: two people, when two can sign.
            f"You already gave the other approval on {r['id']}. The other of the RE and ARE gives this one."
            if _signed_other(r, t) else '')
@@ -498,7 +500,7 @@ def approve_link(token):
         else:
             note = f"by email link ({t['email']})"
             if t['role'] == 'chair' and approval_plan(r)['stand_in']:
-                note += ', in place of the director, who is the payee or submitter'
+                note += ', in place of the director, who is paid by it'
             _approved(r['id'], t['role'], who, note)
             msg = 'Approved. Thank you; the treasurer has it from here.'
     return render_template('fr.html', **_ctx(view='link', r=r, role=FL.ROLES[t['role']], role_key=t['role'], name=t['name'], msg=msg))
