@@ -97,7 +97,8 @@ def listing(path):
 
 def one_drive(d):
     name = folder_name(d['name'])
-    team = ['--drive-team-drive', d['id']]
+    # Shortcuts whose target is gone or not shared cannot be read; they hold no data, so they are skipped.
+    team = ['--drive-team-drive', d['id'], '--drive-skip-dangling-shortcuts']
     # Uploaded files, compared by checksum; a night that would remove many of them stops here instead.
     sync('gd:', f'drives/{name}', *team, '--drive-skip-gdocs', '--checksum', '--max-delete', str(MAX_DELETE))
     # Google files exported (their export has no checksum or size: compared by modified time).
