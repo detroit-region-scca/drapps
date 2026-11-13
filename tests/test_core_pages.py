@@ -175,3 +175,11 @@ def test_invoices_have_one_tab_and_the_year_beside_the_button(app_):
     src = (pathlib.Path(__file__).parent.parent / 'templates' / 'inv.html').read_text()
     assert "tab('inv.new'" not in src and "tab('inv.home', 'Invoices', true)" in src  # one tab, lit on every Invoices page
     assert html.count('id="year-pick"') == 1 and 'class="year-bar' not in html and '>New invoice</a>' in html
+
+
+def test_events_have_one_tab_and_add_event_is_the_lists_button():
+    import os
+    src = open(os.path.join(os.path.dirname(__file__), '..', 'templates', '_events_nav.html')).read()
+    assert "tab('bud.home', 'Events', true)" in src and "tab('index'" not in src
+    bud = open(os.path.join(os.path.dirname(__file__), '..', 'templates', 'bud.html')).read()
+    assert "url_for('index', program=only or none) }}\">Add event</a>" in bud

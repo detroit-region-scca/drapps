@@ -1,4 +1,3 @@
-{# The Events app's tabs, shared by the list, the event page and Add event. #}
+{# The Events app's tab, lit on the list, the event page and Add event (the list's Add event button opens that form). #}
 {% from '_ui.html' import tab with context %}
-    {{ tab('bud.home', 'Events', request.endpoint != 'index') }}
-    {{ tab('index', 'Add event') }}
+    {{ tab('bud.home', 'Events', true) }}
