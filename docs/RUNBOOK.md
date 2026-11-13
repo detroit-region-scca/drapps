@@ -140,7 +140,7 @@ sends nothing, and if the email itself cannot be sent the only trace is on the s
 
 | Job | When (Detroit time) | Unit | What it does |
 |---|---|---|---|
-| QuickBooks sync | 02:30 nightly | `drscca-qbo.timer` | Actuals, funds requests paid, bank balances, balance sheet, money owed, books check; attaches paid requests' receipts in QuickBooks (`data/qbo-attached.json` remembers which receipts went). On the 1st it also emails the treasurer the worker points journal entry and adds the month's automatic points. |
+| QuickBooks sync | 02:30 nightly | `drscca-qbo.timer` | Actuals, funds requests paid, bank balances, balance sheet, money owed, books check; attaches paid requests' receipts in QuickBooks (`data/qbo-attached.json` remembers which receipts went). On the 1st it also emails the treasurer the worker points journal entry and adds the month's automatic points. Then it saves the whole books as JSON in `/var/lib/drscca-quickbooks` for the off-site copy (`tools/qbo_books.mjs`, read only). |
 | Sync now | When the treasurer presses it | `drscca-qbo-refresh.path` | The same sync, on request |
 | Sheet backup | 02:45 nightly | `drscca-backup.timer` | `.xlsx` copies into `data/backups/`, each sheet by itself, and a dated copy of `records-edits.json` |
 | App state copy | 03:00 nightly | `drscca-state-backup.timer` | `deploy/gcp/secrets_backup.py --state` updates "drapps app state (nightly).tar.gz" in the admin-only Account Recovery folder: the files marked "Off-server copy" in the `data/` table |
@@ -150,7 +150,7 @@ sends nothing, and if the email itself cannot be sent the only trace is on the s
 | Software updates | Sundays 04:30 | `drscca-update.timer` | `deploy/gcp/update.sh`: newest Caddy, nginx and SFTP images; drapps rebuilt on the newest Python base image, tested inside the new image, started, and rolled back to the previous image if it does not start; newest GAM and Python libraries for the host jobs. The libraries inside the drapps image change only when the Python base image or `requirements.txt` changed, because Docker reuses that build step otherwise |
 | System updates | daily | `unattended-upgrades` | Debian, Docker, Node and Google packages; reboots at 04:00 only when an update needs it |
 | Secrets copy | Sundays 05:00 | `drscca-secrets-backup.timer` | Updates "drapps server secrets (weekly).tar.gz" in the admin-only Account Recovery folder (Drive keeps earlier versions). Fails, after saving, if anyone but admin@ can open the file |
-| Off-site copy | 03:30 nightly | `drscca-offsite-backup.timer` | `deploy/gcp/offsite_backup.py`: every shared drive and `app/data` to the Cloud Storage bucket with restic (see Backups) |
+| Off-site copy | 03:30 nightly, checked 12:00 | `drscca-offsite-backup.timer`, `drscca-offsite-check.timer` | `deploy/gcp/offsite_backup.py`: shared drives, app files, QuickBooks books, website media and admin@ mail to the Cloud Storage bucket with rclone (see Backups) |
 | Website copy | Sundays 05:15 | `drscca-site-backup.timer` | drscca.org is on WordPress.com Premium (no do-it-yourself backups), so `deploy/gcp/site_backup.py` saves every published page, post, category, tag, the media list and the home page as JSON to "Website Archive/Weekly site backups" in the region drive; keeps 8 |
 
 **Outside the server:** Google Cloud uptime checks look at drapps.drscca.org and livetiming.drscca.org every 5
@@ -161,7 +161,7 @@ console > Monitoring > Uptime checks and Alerting). These keep working even if t
 (`sudo fail2ban-client status livetiming-sftp`; to lift a ban, `sudo fail2ban-client set livetiming-sftp unbanip
 <address>`). Container logs are capped at 3 x 10 MB each.
 
-Check them: `systemctl list-timers 'drscca-*'` (seven timers: qbo, backup, state-backup, offsite-backup, update, secrets-backup,
+Check them: `systemctl list-timers 'drscca-*'` (eight timers: qbo, backup, state-backup, offsite-backup, offsite-check, update, secrets-backup,
 site-backup) and `systemctl status 'drscca-*.path'` (three: officials, qbo-refresh, groups). Jobs that failed:
 `systemctl --failed`.
 
@@ -236,7 +236,7 @@ admin@drscca.org.
 | drscca.org database, once | `drscca.org WordPress.com database 2026-11-09 (before Premium downgrade).sql.gz` | One time, the last full export | Account Recovery folder (holds user emails and password hashes) |
 | The old website (IONOS, to 2026) | Full archive | One time | DRSCCA Region drive > Website Archive |
 | The app's code | This repository | Every change | GitHub, detroit-region-scca/drapps |
-| Every shared drive (DRSCCA Apps, DRSCCA Region, and any new one), their Google Docs/Sheets/Slides as Office files, and `app/data` | restic snapshots (`deploy/gcp/offsite_backup.py`), deduplicated and encrypted | Nightly 03:30; 14 daily, 8 weekly, 24 monthly; anything deleted stays restorable 90 days (bucket soft delete) | Cloud Storage bucket `drscca-org-backups`, project drscca-automation (outside Drive) |
+| Everything off-site: every shared drive (and any new one), their Google Docs/Sheets/Slides as Office files, `app/data`, the QuickBooks books (every record type as JSON), every drscca.org media file, the admin@ mailbox | `deploy/gcp/offsite_backup.py` (rclone), checked against Drive by checksum every night | Nightly 03:30; changed or deleted files kept a year in `history/`; anything deleted from the bucket restorable 90 days (soft delete); checked daily at noon | Cloud Storage bucket `drscca-org-backups`, project drscca-automation (outside Drive) |
 
 **The two copies in the Account Recovery folder** (secrets, app state) hold keys, names, email addresses and
 working links, so they go only to that folder. Each run removes the "anyone at drscca.org" permission Workspace
@@ -246,26 +246,46 @@ those people are meant to have access, list them in `BACKUP_READERS` in `drapps.
 included). The folder and the region drive are `ACCOUNT_RECOVERY_FOLDER_ID` and `REGION_DRIVE_ID` in
 `drapps.env`; without them the backup jobs stop with a message saying which one is missing (and the alert email goes out).
 
-**The off-site copy.** Everything else here lives in Google Drive or on the server, so a wiped shared drive or a
-lost admin@ account would take the copies with it. The nightly `drscca-offsite-backup` job mounts each shared drive
-read-only (rclone), exports its Google Docs, Sheets and Slides as Word, Excel and PowerPoint files, and backs those
-up with `app/data` (not `app/data/backups`) to the bucket with restic. Only changed files are sent, so a night is
-small. On Sundays it also drops snapshots past the keep rule and checks the repository. Settings and the restic
-password are in `data/secrets/offsite-backup.env`, which the weekly secrets copy carries to Account Recovery:
-**without that password the snapshots cannot be read**. It writes as the region's automation account
-(`workspace-sa.json`); the organization policy forbids new service account keys, so no separate key exists. The
-bucket's 90-day soft delete means even a deliberate delete can be undone in that time (Cloud console > Cloud
-Storage > the bucket > Soft-deleted objects); only a project owner can shorten it. About 17 GB in November 2026,
-well under $1 a month.
+**The off-site copy.** Everything else here lives in Google Drive, Gmail, QuickBooks or WordPress.com, so a wiped
+or encrypted shared drive, or a stolen admin@ account, could take those copies with it. Every night at 03:30
+`drscca-offsite-backup` copies, into `current/` in the bucket:
 
-To look or restore, on the server:
+| `current/...` | What | How |
+|---|---|---|
+| `drives/<shared drive>/` | every uploaded file in every shared drive | compared by checksum, so unchanged files are never sent again; then checked file by file against Drive |
+| `google-files/<shared drive>/` | Google Docs, Sheets, Slides as Word, Excel, PowerPoint | by modified time |
+| `server/app-data/` | the app's own files (not the nightly sheet copies in `backups/`) | by checksum |
+| `quickbooks/` | every QuickBooks record type, all years, as JSON (`tools/qbo_books.mjs`, run at the end of the nightly sync into `/var/lib/drscca-quickbooks`) | by checksum |
+| `website-media/` | every file in drscca.org's media library, by its `/wp-content/uploads/` path | new files only, never removed |
+| `mail/admin/YYYY/MM/<id>.eml` | every admin@ message | new messages only, never removed |
+| `status.json` | when the last run finished and what failed | |
 
-    sudo bash -c 'set -a; . /opt/drscca/data/secrets/offsite-backup.env; restic snapshots'
-    sudo bash -c 'set -a; . /opt/drscca/data/secrets/offsite-backup.env; restic restore latest --target /var/tmp/restore --include "/var/lib/drscca-offsite/drives/DRSCCA Region/Some folder"'
+A file that changes or is deleted is never overwritten: its old copy moves to `history/<date>/<same path>` and is
+kept a year (bucket lifecycle rule). A night that would delete more than 300 files from one drive's copy stops that
+drive and fails, so a wiped or encrypted drive is not mirrored. Each part runs on its own and the job fails (email
+to admin@) naming the parts that failed. `drscca-offsite-check` at noon fails unless a complete run finished in the
+last 36 hours, which catches a copy that stopped running.
 
-Then upload what you need back to Drive. Without the server: install restic anywhere, sign in to Google Cloud as
-a project owner (`gcloud auth application-default login`), set `RESTIC_REPOSITORY=gs:drscca-org-backups:/restic`
-and the password from the secrets copy, and run the same commands.
+**Why it is safe from ransomware.** The bucket keeps anything deleted restorable for 90 days (soft delete), and a
+deleted or overwritten file already sits in `history/` for a year. The job writes as the region's automation
+account (`workspace-sa.json`), which can add and delete files in this one bucket but cannot change its settings, so
+a stolen server cannot turn soft delete or the lifecycle rule off. Only a project owner can, and the only owner is
+admin@. Keep admin@ and every Workspace super admin on 2-step verification: they are the one way to undo all of this.
+New service account keys are blocked by the organization policy, so no separate key exists.
+
+**What it does not cover.** Google Groups conversation archives (treasurer@ and the other shared inboxes) have no
+export API; members get each message in their own mail, and Google Takeout or Vault can export them by hand. Receipts
+attached in QuickBooks are not downloaded (the app keeps them in the Receipts folder, which is copied). WordPress
+drafts, theme and settings are not public, so neither the weekly website copy nor this one has them.
+
+**Restoring.** Find the file in the Cloud console (Cloud Storage > `drscca-org-backups` > `current/...`, or
+`history/<date>/...` for an older version) and download it, or on the server:
+
+    sudo env RCLONE_CONFIG_GCS_TYPE="google cloud storage" RCLONE_CONFIG_GCS_SERVICE_ACCOUNT_FILE=/opt/drscca/data/secrets/workspace-sa.json RCLONE_CONFIG_GCS_BUCKET_POLICY_ONLY=true rclone copy "gcs:drscca-org-backups/current/drives/DRSCCA Region/Some folder" /var/tmp/restore/
+
+then upload what you need back to Drive. Something deleted from the bucket itself: Cloud console > the bucket >
+Soft-deleted objects (within 90 days). The QuickBooks JSON is a record of the books, not a file QuickBooks can load
+back; it is there to rebuild or prove any entry. About 20 GB in November 2026, under $1 a month.
 
 **Restoring the app's own files.** Download `drapps app state (nightly).tar.gz` (for an older night: right
 click > File information > Manage versions), unpack it, and copy the files you need into
