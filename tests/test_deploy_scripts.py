@@ -245,4 +245,5 @@ def test_offsite_backup_names_and_the_one_harmless_warning():
     assert m.HARMLESS.match('error: incomplete metadata for /var/lib/drscca-offsite/drives/A/b.pdf: xattr.list /var/lib/drscca-offsite/drives/A/b.pdf: input/output error')
     assert m.HARMLESS.match('incomplete metadata for /x/b.pdf: xattr.list /x/b.pdf: input/output error')
     assert not m.HARMLESS.match('error: incomplete metadata for /x/b.pdf: lstat /x/b.pdf: input/output error')
+    assert m.SUMMARY == 'Warning: at least one source file could not be read'
     assert not m.HARMLESS.match('error: open /var/lib/drscca-offsite/drives/A/b.pdf: input/output error')
