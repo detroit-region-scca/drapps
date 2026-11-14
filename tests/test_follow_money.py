@@ -395,3 +395,41 @@ def test_a_late_receipt_that_completes_a_request_tells_the_treasurer_and_the_dir
     import io
     c.post('/funds/FR-2026-001/receipts', data={'receipts': (io.BytesIO(b'%PDF'), 'r.pdf')}, content_type='multipart/form-data')
     assert sent == ['Funds request FR-2026-001 is ready to pay: Example Rentals $3,000.00'] and told == ['FR-2026-001']
+
+
+@pytest.fixture
+def switcher(monkeypatch, officials):
+    import auth
+    from app import app
+    state = {'r': req(method='Region credit card', payee_name='Example Medals', payee_address=''), 'updates': [], 'perms': {'pay'}}
+    monkeypatch.setattr(fr, '_guard', lambda: None)
+    monkeypatch.setattr(fr.F, 'refresh', lambda: None)
+    monkeypatch.setattr(fr.F, 'get', lambda rid: dict(state['r']))
+    monkeypatch.setattr(fr.F, 'update', lambda rid, expect=None, **f: state['updates'].append(f) or True)
+    monkeypatch.setattr(fr, 'log_audit_event', lambda *a, **k: None)
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Tess Treasurer', 'level': 'officer', 'roles': ['Treasurer'],
+                                                   'perms': state['perms']} if e else None)
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s.update(authenticated=True, email='tess@example.org', who='Tess Treasurer')
+    state['post'] = lambda **form: c.post('/funds/FR-2026-001/method', data=form)
+    return state
+
+
+def test_an_officer_switches_a_card_request_to_a_check_with_an_address(switcher):
+    switcher['post'](method='check')                                   # no address: refused
+    assert switcher['updates'] == []
+    switcher['post'](method='check', payee_address='1 Main St, Town, MI')
+    u = switcher['updates'][0]
+    assert u['method'] == 'Check to the payee' and u['payee_address'] == '1 Main St, Town, MI'
+    assert 'changed from region credit card to check to the payee by Tess Treasurer' in u['notes']
+
+
+def test_no_switch_for_a_reimbursement_or_without_the_pay_permission(switcher):
+    switcher['r'] = req(method='Reimburse me')
+    switcher['post'](method='check', payee_address='x')
+    assert switcher['updates'] == []
+    switcher['r'] = req(method='Check to the payee')
+    switcher['perms'] = set()
+    switcher['post'](method='card')
+    assert switcher['updates'] == []

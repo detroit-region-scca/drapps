@@ -451,6 +451,7 @@ def detail(req_id):
         return redirect(url_for('fr.home'))
     items = Approvals().items(r) if r['status'] == 'Submitted' else []
     r['waiting'] = FL.waiting_on(items)      # the same status badge as the list
+    r['last_address'] = last_address(r) if r['status'] == 'Submitted' and not (r.get('payee_address') or '').strip() else ''
     return render_template('fr.html', **_ctx(view='detail', r=r, today=date.today().isoformat(), items=items, ready=FL.ready(items),
                                              can_delete=can_delete_request(r),
                                              approvals=FL.parse(r.get('approvals')), roles=FL.ROLES, approvers=approvers(r)))
@@ -576,6 +577,56 @@ def tell_submitter(req_id):
     msg = r and FL.closed_message(r, url_for('fr.detail', req_id=req_id, _external=True))
     if msg:
         send_mail(*msg, r['submitter_email'])
+
+
+SWITCHABLE = {'check': 'Check to the payee', 'card': 'Region credit card'}
+
+
+def last_address(r):
+    """The mailing address on this payee's most recent other request, for switching a request to a check."""
+    name = (r.get('payee_name') or '').strip().lower()
+    others = [x for x in F.requests() if x['id'] != r['id'] and (x.get('payee_name') or '').strip().lower() == name
+              and (x.get('payee_address') or '').strip()]
+    return max(others, key=lambda x: x['id'])['payee_address'].strip() if others else ''
+
+
+@bp.route('/<req_id>/method', methods=['POST'])
+@login_required
+@officer_required(perm='pay')
+def change_method(req_id):
+    """An officer switches an open request between a check to the payee and the region card (a vendor may take only
+    checks, say). Who gets paid and the amount do not change, so the approvals stand. Not to or from "Reimburse me":
+    that changes who is paid, so the request is rejected and filed again instead."""
+    if (g := _guard()):
+        return g
+    F.refresh()
+    r = F.get(req_id)
+    back = redirect(url_for('fr.detail', req_id=req_id))
+    to = request.form.get('method')
+    if not r or r['status'] != 'Submitted':
+        flash('Only an open request can change how it is paid.', 'warning')
+        return back
+    if r['method'] not in SWITCHABLE.values() or to not in SWITCHABLE:
+        flash('A reimbursement cannot be switched: reject it and file it again.', 'warning')
+        return back
+    new = SWITCHABLE[to]
+    if new == r['method']:
+        return back
+    addr = (request.form.get('payee_address') or '').strip()
+    if to == 'check' and not addr:
+        flash('A check needs the payee\'s mailing address.', 'danger')
+        return back
+    who = officer_current('pay')['name']
+    note = f"{date.today().isoformat()}: changed from {r['method'].lower()} to {new.lower()} by {who}."
+    fields = {'method': new, 'notes': (f"{r['notes']} {note}" if r.get('notes') else note)}
+    if to == 'check':
+        fields['payee_address'] = addr
+    if not F.update(req_id, expect='Submitted', **fields):
+        flash(f'{req_id} was just paid or rejected by someone else, so nothing was changed.', 'warning')
+        return back
+    log_audit_event('FUNDS_METHOD_CHANGED', who, {'id': req_id, 'from': r['method'], 'to': new})
+    flash(f'{req_id} will be paid by {new.lower()}.', 'success')
+    return back
 
 
 @bp.route('/<req_id>/close', methods=['POST'])
