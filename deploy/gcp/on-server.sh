@@ -184,7 +184,8 @@ step "Python libraries for the host jobs"
 if [ ! -x venv/bin/pip ]; then
 	python3 -m venv venv
 fi
-quiet venv/bin/pip install --quiet --disable-pip-version-check -r app/requirements.txt
+# gam7: the Email groups pull and Hassles subscribe use GAM from this venv (the weekly update keeps it current).
+quiet venv/bin/pip install --quiet --disable-pip-version-check gam7 -r app/requirements.txt
 
 step "the other containers"
 quiet docker compose up -d --no-build --remove-orphans
