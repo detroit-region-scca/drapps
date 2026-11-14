@@ -2,16 +2,12 @@
 drive. Run as root. With these and the repo, the server can be rebuilt from scratch.
 
     secrets_backup.py            weekly (drscca-secrets-backup.timer): the server's secrets
-    secrets_backup.py --state    nightly (drscca-state-backup.timer): the app's own files in app/data/
 
 Secrets: /opt/drscca/data/secrets (app settings, service account keys, QuickBooks token, officials list, GAM config)
 and the live timing logins and SFTP host keys, as "drapps server secrets (weekly).tar.gz".
 
-App state: the files in /opt/drscca/app/data that cannot be rebuilt from the Google Sheets (STATE below: the audit
-log, records corrections, short links for emailed votes and approvals, role settings, issued invoice numbers and
-so on), as "drapps app state (nightly).tar.gz". Caches, sign-in codes, lock files, the nightly .xlsx copies and
-records.db are left out. These files hold names, email addresses and working links, so they go to the same
-admin-only folder as the secrets and nowhere else.
+The app's own files in /opt/drscca/app/data are in the nightly off-site copy (restic, offsite_backup.py); the
+secrets are not, because the restic password is one of them.
 
 Each run updates the same Drive file, so Drive keeps the earlier versions (about 30 days of them). Workspace's
 default sharing adds an "anyone at drscca.org" permission to new files; it is removed every time. Then the script
@@ -36,23 +32,6 @@ READERS = {a.strip().lower() for a in (os.environ.get('BACKUP_READERS') or ADMIN
 SECRETS_NAME = 'drapps server secrets (weekly).tar.gz'
 SECRETS_PATHS = ['/opt/drscca/data/secrets', '/opt/drscca/data/livetiming/users.conf', '/opt/drscca/data/livetiming/keys']
 
-STATE_NAME = 'drapps app state (nightly).tar.gz'
-STATE_DIR = os.environ.get('APP_DATA_DIR') or '/opt/drscca/app/data'
-# Named one by one, so nothing unexpected ever leaves the server. A file that does not exist is skipped.
-STATE = [
-    'audit.ndjson',             # who did what
-    'events.ndjson',            # local mirror of the event registry
-    'records-edits.json',       # Records corrections: the only copy
-    'records-edits.applied',
-    'short_links.json',         # short links in vote and approval emails
-    'role-access.json',         # Admin > Roles
-    'invoices-issued.json',     # invoice numbers already given out
-    'points-saves.json',        # worker points review pages already saved
-    'qbo-attached.json',        # receipts already attached in QuickBooks
-    'programs.json',            # only used when the registry sheet is not
-    'officials-done.json',      # results of officials changes
-]
-
 API = 'https://www.googleapis.com/drive/v3/files'
 UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files'
 P = {'supportsAllDrives': 'true'}
@@ -65,11 +44,6 @@ def bundle(paths):
         for p in paths:
             t.add(p, arcname=p.lstrip('/'))
     return buf.getvalue()
-
-
-def state_paths(folder=None):
-    folder = folder or STATE_DIR
-    return [p for p in (os.path.join(folder, n) for n in STATE) if os.path.isfile(p)]
 
 
 def others(permissions, allowed=None):
@@ -136,14 +110,8 @@ def lock_down(s, fid):
 def main(argv):
     if not FOLDER:
         sys.exit('ACCOUNT_RECOVERY_FOLDER_ID is not set in drapps.env: no copy was made.')
-    if '--state' in argv[1:]:
-        name, paths = STATE_NAME, state_paths()
-        what = 'Nightly copy of the drapps app files that exist only on the server (audit log, records corrections, short links, role settings). See docs/RUNBOOK.md, "Backups".'
-        if not paths:
-            sys.exit(f'No app state files found in {STATE_DIR}: nothing was copied.')
-    else:
-        name, paths = SECRETS_NAME, SECRETS_PATHS
-        what = 'Weekly copy of the drapps server secrets. See docs/RUNBOOK.md, "The server itself is lost".'
+    name, paths = SECRETS_NAME, SECRETS_PATHS
+    what = 'Weekly copy of the drapps server secrets. See docs/RUNBOOK.md, "The server itself is lost".'
     body = bundle(paths)
     s = session()
     fid = upload(s, name, body, what)

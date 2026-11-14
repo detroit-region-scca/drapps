@@ -46,8 +46,8 @@ Or open the VM list in the Cloud console and press **SSH**.
 
 ### What is in `data/`
 
-This is `/opt/drscca/app/data/` on the server. "Off-server copy" means the file is in the nightly
-`drapps app state (nightly).tar.gz` in the admin-only Account Recovery folder (see "Backups").
+This is `/opt/drscca/app/data/` on the server. Everything in it except `backups/` is in the nightly off-site
+copy (restic; see "Backups"). "Off-server copy" below says so for the files that matter.
 
 | File | What it is | Off-server copy | If lost |
 |---|---|---|---|
@@ -143,7 +143,6 @@ sends nothing, and if the email itself cannot be sent the only trace is on the s
 | QuickBooks sync | 02:30 nightly | `drscca-qbo.timer` | Actuals, funds requests paid, bank balances, balance sheet, money owed, books check; attaches paid requests' receipts in QuickBooks (`data/qbo-attached.json` remembers which receipts went). On the 1st it also emails the treasurer the worker points journal entry and adds the month's automatic points. Then it saves the whole books as JSON in `/var/lib/drscca-quickbooks` for the off-site copy (`tools/qbo_books.mjs`, read only). |
 | Sync now | When the treasurer presses it | `drscca-qbo-refresh.path` | The same sync, on request |
 | Sheet backup | 02:45 nightly | `drscca-backup.timer` | `.xlsx` copies into `data/backups/`, each sheet by itself, and a dated copy of `records-edits.json` |
-| App state copy | 03:00 nightly | `drscca-state-backup.timer` | `deploy/gcp/secrets_backup.py --state` updates "drapps app state (nightly).tar.gz" in the admin-only Account Recovery folder: the files marked "Off-server copy" in the `data/` table |
 | Officials changes | When the admin saves a person in Admin > Users | `drscca-officials.path` | Updates `officials.json` (never the Google Groups), then its readable copy in Drive |
 | Email groups list | Nightly at 2:15, and when anyone presses Refresh on the Email groups page | `drscca-groups.timer`, `drscca-groups.path` | `tools/groups_pull.py` reads every drscca.org group with GAM (read only) into `data/email-groups.json` |
 | Hassles subscribers | When anyone presses Subscribe or Unsubscribe on the Hassles page | `drscca-hassles-subscribe.path` | `tools/hassles_subscribe.py` adds or removes that person, as a plain member, on hassles@drscca.org only (the one group the apps change), then re-reads the groups |
@@ -161,7 +160,7 @@ console > Monitoring > Uptime checks and Alerting). These keep working even if t
 (`sudo fail2ban-client status livetiming-sftp`; to lift a ban, `sudo fail2ban-client set livetiming-sftp unbanip
 <address>`). Container logs are capped at 3 x 10 MB each.
 
-Check them: `systemctl list-timers 'drscca-*'` (eight timers: qbo, backup, state-backup, offsite-backup, offsite-check, update, secrets-backup,
+Check them: `systemctl list-timers 'drscca-*'` (eight timers: groups, qbo, backup, offsite-backup, offsite-check, update, secrets-backup,
 site-backup) and `systemctl status 'drscca-*.path'` (three: officials, qbo-refresh, groups). Jobs that failed:
 `systemctl --failed`.
 
@@ -212,7 +211,7 @@ under a file lock on a fresh read, so two people sending the same names for an e
 | Restart the app | `sudo docker compose restart drapps` |
 | Caddy (HTTPS, certificates) | `sudo docker logs --since 1h caddy` |
 | Live timing uploads and pages | `sudo journalctl CONTAINER_NAME=livetiming-sftp --since today` (the SFTP container logs to the journal), `sudo docker logs --since 1h livetiming-web` |
-| A job's last run | `sudo journalctl -u drscca-qbo -n 50`. The jobs: `drscca-qbo` (nightly sync), `drscca-qbo-refresh` (Sync now), `drscca-backup` (sheets), `drscca-state-backup` (app files to Drive), `drscca-secrets-backup`, `drscca-site-backup`, `drscca-offsite-backup` (off-site copy), `drscca-officials`, `drscca-groups` (Email groups, nightly and Refresh), `drscca-hassles-subscribe` (Hassles Subscribe), `drscca-update` (weekly update) |
+| A job's last run | `sudo journalctl -u drscca-qbo -n 50`. The jobs: `drscca-qbo` (nightly sync), `drscca-qbo-refresh` (Sync now), `drscca-backup` (sheets), `drscca-secrets-backup`, `drscca-site-backup`, `drscca-offsite-backup` (off-site copy), `drscca-officials`, `drscca-groups` (Email groups, nightly and Refresh), `drscca-hassles-subscribe` (Hassles Subscribe), `drscca-update` (weekly update) |
 | Alert emails that were sent or failed | `sudo journalctl -u 'drscca-alert@*' -n 30` |
 | System updates | `/var/log/unattended-upgrades/unattended-upgrades.log` |
 | Blocked live timing addresses | `sudo fail2ban-client status livetiming-sftp` |
@@ -229,7 +228,6 @@ admin@drscca.org.
 |---|---|---|---|
 | The sheets (all region records) | Drive's own version history | Every edit | On each spreadsheet in the DRSCCA Apps drive |
 | The sheets | `.xlsx` copy of every sheet (`backup_sheets.py`) | Nightly 02:45, 60 days | `data/backups/` on the server |
-| The app's own files (audit log, Records corrections, short links, role settings, issued invoice numbers; see the `data/` table) | `drapps app state (nightly).tar.gz` (`secrets_backup.py --state`) | Nightly 03:00; Drive keeps earlier versions, about 30 days | Account Recovery folder, DRSCCA Region drive (admin only) |
 | The whole server | Disk snapshot (schedule `daily-7`) | Daily, 7 days | Cloud console > Compute Engine > Snapshots |
 | Server secrets and live timing logins | `drapps server secrets (weekly).tar.gz` (`secrets_backup.py`) | Sundays 05:00; Drive keeps earlier versions | Account Recovery folder, DRSCCA Region drive (admin only) |
 | drscca.org website content | `drscca.org site backup YYYY-MM-DD.tar.gz` (`site_backup.py`) | Sundays 05:15, newest 8 | DRSCCA Region drive > Website Archive > Weekly site backups |
@@ -238,8 +236,8 @@ admin@drscca.org.
 | The app's code | This repository | Every change | GitHub, detroit-region-scca/drapps |
 | Everything off-site: every shared drive (and any new one), Google Docs/Sheets/Slides as Office files, `app/data`, the QuickBooks books (JSON), drscca.org media, the admin@ mailbox | restic snapshots (`deploy/gcp/offsite_backup.py`), file counts proven against Drive nightly | Nightly 03:30; 14 daily, 8 weekly, 24 monthly; plus an append-only copy in a bucket locked for a year | Buckets `drscca-org-backups` and `drscca-org-vault`, project drscca-automation (outside Drive) |
 
-**The two copies in the Account Recovery folder** (secrets, app state) hold keys, names, email addresses and
-working links, so they go only to that folder. Each run removes the "anyone at drscca.org" permission Workspace
+**The secrets copy in the Account Recovery folder** holds keys, names, email addresses and working links, so it
+goes only to that folder. Each run removes the "anyone at drscca.org" permission Workspace
 adds to new files, then reads back who can open the file. If that is anyone but admin@, the copy is still saved
 and the job fails, so an email goes out naming who else can open it. Either fix the folder's sharing, or, if
 those people are meant to have access, list them in `BACKUP_READERS` in `drapps.env` (comma separated, admin@
@@ -298,10 +296,10 @@ the server: install restic anywhere, `gcloud auth application-default login` as 
 `RESTIC_REPOSITORY=gs:drscca-org-backups:/restic` and `RESTIC_PASSWORD`, and run the same commands. About 22 GB in
 November 2026, about $0.50 a month for both buckets.
 
-**Restoring the app's own files.** Download `drapps app state (nightly).tar.gz` (for an older night: right
-click > File information > Manage versions), unpack it, and copy the files you need into
-`/opt/drscca/app/data/` with `sudo install -o 1000 -g 1000 -m 644 <file> /opt/drscca/app/data/`. Then
-`sudo docker compose restart drapps`.
+**Restoring the app's own files.** From the off-site copy (restic), on the server:
+`sudo bash -c 'set -a; . /opt/drscca/data/secrets/offsite-backup.env; restic restore latest --target /var/tmp/restore --include /opt/drscca/app/data'`,
+then copy what you need into `/opt/drscca/app/data/` with `sudo install -o 1000 -g 1000 -m 644 <file> /opt/drscca/app/data/`
+and `sudo docker compose restart drapps`. `latest` can be any snapshot id from `restic snapshots`.
 
 **The website copy.** drscca.org is on WordPress.com Premium, which has no do-it-yourself backups or restores
 (Business has them). Every Sunday the server reads the site's public WordPress API and saves `pages.json`,
@@ -409,9 +407,10 @@ compare with the running server, or a disk made from a snapshot, before you rely
 7. **Live timing folders.** `sudo mkdir -p /opt/drscca/data/livetiming/www/autocross
    /opt/drscca/data/livetiming/www/rallycross`, each owned by the uid on its line in `users.conf`. They start
    empty; the next upload fills them.
-8. **The app's own files.** Download `drapps app state (nightly).tar.gz` from the same folder and unpack it at
-   `/` as root, then `sudo chown -R 1000:1000 /opt/drscca/app/data`. Copy in `records.db` (see "Records").
-   The nightly `.xlsx` copies in `backups/` are not in it; they start again from tonight.
+8. **The app's own files.** Install restic (`apt install restic`), put the secrets back (step above, which holds
+   `offsite-backup.env` with the restic password; or type it from the printed recovery sheet), then
+   `sudo bash -c 'set -a; . /opt/drscca/data/secrets/offsite-backup.env; restic restore latest --target / --include /opt/drscca/app/data'`
+   and `sudo chown -R 1000:1000 /opt/drscca/app/data`. Copy in `records.db` if it is missing (see "Records").
 9. **QuickBooks tools.** `/opt/drscca/qbo-mcp` (a Node program; the sync and `qbo-mcp.sh` run
    `/opt/drscca/qbo-mcp/dist/index.js`). It is not in this repo and not in the secrets copy: where it was
    installed from is *check on the server*. A disk made from a snapshot has it.

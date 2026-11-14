@@ -151,17 +151,6 @@ def test_one_bad_sheet_does_not_stop_the_others(tmp_path, monkeypatch):
 
 # --- secrets_backup.py ---
 
-def test_state_copy_takes_only_the_named_files(tmp_path):
-    S = _load('drscca_secrets_backup', os.path.join(GCP, 'secrets_backup.py'))
-    for name in ('audit.ndjson', 'short_links.json', 'auth_codes.json', 'sheet_cache.sqlite', 'audit.ndjson.lock'):
-        (tmp_path / name).write_text('x')
-    (tmp_path / 'backups').mkdir()
-    got = [os.path.basename(p) for p in S.state_paths(str(tmp_path))]
-    assert got == ['audit.ndjson', 'short_links.json']
-    for never in ('auth_codes.json', 'sheet_cache.sqlite', 'records.db', 'msr-cache.json'):
-        assert never not in S.STATE
-
-
 def test_backup_copy_must_be_readable_by_admin_only():
     S = _load('drscca_secrets_backup', os.path.join(GCP, 'secrets_backup.py'))
     admin = {'type': 'user', 'emailAddress': 'Admin@drscca.org', 'role': 'organizer'}
