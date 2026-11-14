@@ -256,7 +256,7 @@ encrypted) in the bucket `drscca-org-backups` (`restic/`), holding:
 | `/var/lib/drscca-offsite/drives/<shared drive>/` | every uploaded file in every shared drive (new ones found nightly) | read through a read-only rclone mount |
 | `/var/lib/drscca-offsite/google-files/<shared drive>/` | Google Docs, Sheets, Slides as Word, Excel, PowerPoint | exported nightly |
 | `/var/lib/drscca-offsite/website-media/` | every file in drscca.org's public media library | new files fetched, none removed |
-| `/var/lib/drscca-offsite/mail/admin/YYYY/MM/<id>.eml` | every admin@ message | new messages fetched, none removed |
+| `/var/lib/drscca-offsite/mail/admin/` | the admin@ mailbox: every message as `.eml` plus its Gmail labels (`msg-db.sqlite`) | Got Your Back (`/opt/drscca/gyb`), new messages only, none removed |
 | `/var/lib/drscca-quickbooks/` | every QuickBooks record type, all years, as JSON (`tools/qbo_books.mjs`, end of the nightly sync) | |
 | `/opt/drscca/app/data/` | the app's own files (not `backups/`) | |
 
@@ -286,7 +286,13 @@ settings, and media attached only to drafts or private pages (not public).
     sudo bash -c 'set -a; . /opt/drscca/data/secrets/offsite-backup.env; restic snapshots'
     sudo bash -c 'set -a; . /opt/drscca/data/secrets/offsite-backup.env; restic restore latest --target /var/tmp/restore --include "/var/lib/drscca-offsite/drives/DRSCCA Region/Some folder"'
 
-then upload what you need back to Drive (`latest` can be any snapshot id from the list). From the vault, add
+then upload what you need back to Drive (`latest` can be any snapshot id from the list). Mail goes back into Gmail, labels and
+all, with Got Your Back after restoring `/var/lib/drscca-offsite/mail/admin` from a snapshot:
+`sudo /opt/drscca/gyb/gyb --config-folder /opt/drscca/data/secrets/gyb --email admin@drscca.org --service-account
+--action restore --local-folder /var/tmp/restore/var/lib/drscca-offsite/mail/admin` (add `--email` of another
+mailbox to put it there instead). GYB needs four scopes on the automation account's domain-wide delegation
+(`mail.google.com`, `apps.groups.migration`, `drive.appdata`, `userinfo.email`); `gyb --action check-service-account`
+lists them. Never use GYB's own "authorize" link: it would replace the account's other scopes. From the vault, add
 `-r gs:drscca-org-vault:/restic --no-lock` (the vault refuses the lock files restic would otherwise write). Without
 the server: install restic anywhere, `gcloud auth application-default login` as a project owner, set
 `RESTIC_REPOSITORY=gs:drscca-org-backups:/restic` and `RESTIC_PASSWORD`, and run the same commands. About 22 GB in

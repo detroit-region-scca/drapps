@@ -7,7 +7,8 @@ What goes into each snapshot:
                                   shared drive is found nightly, so a new one is included without a change here)
     google-files/<shared drive>/  its Google Docs, Sheets and Slides as Word, Excel and PowerPoint files
     website-media/                every image and file uploaded to drscca.org (added, never removed)
-    mail/admin/YYYY/MM/<id>.eml   every message in the admin@drscca.org mailbox (added, never removed)
+    mail/admin/                   the admin@drscca.org mailbox: every message as .eml plus its labels, by Got Your Back
+                                  (added, never removed; restorable into Gmail with gyb --action restore)
     /var/lib/drscca-quickbooks    the books, every QuickBooks record type as JSON (tools/qbo_books.mjs, nightly sync)
     /opt/drscca/app/data          the app's own files (not its nightly sheet copies in backups/)
 
@@ -24,7 +25,6 @@ Settings in data/secrets/offsite-backup.env (RESTIC_REPOSITORY, RESTIC_PASSWORD,
 GOOGLE_PROJECT_ID). Without RESTIC_PASSWORD the backups cannot be read: it is also in the Account Recovery copy and
 the hand-over notes. Restore and checks: docs/RUNBOOK.md, "Off-site copy".
 """
-import base64
 import json
 import os
 import re
@@ -42,6 +42,8 @@ VAULT = os.environ.get('OFFSITE_VAULT') or 'drscca-org-vault'
 APP_DATA = os.environ.get('APP_DATA_DIR') or '/opt/drscca/app/data'
 BOOKS = os.environ.get('QBO_BOOKS_DIR') or '/var/lib/drscca-quickbooks'
 WORK = os.environ.get('OFFSITE_WORK') or '/var/lib/drscca-offsite'
+GYB = os.environ.get('GYB') or '/opt/drscca/gyb/gyb'
+GYB_CONFIG = os.environ.get('GYB_CONFIG') or '/opt/drscca/data/secrets/gyb'
 SITE = 'https://drscca.org'
 UPLOADS = f'{SITE}/wp-content/uploads/'
 EXPORT = 'docx,xlsx,pptx,svg'
@@ -161,32 +163,18 @@ def website_media():
 
 
 def mail():
-    """Every message in admin@'s mailbox as an .eml file; a message deleted from Gmail stays in the backup."""
-    # The scope admin@'s delegation allows (it does not list gmail.readonly). This only ever reads.
-    gm = google('https://mail.google.com/')
+    """admin@'s whole mailbox with Got Your Back (GYB, /opt/drscca/gyb): every message as .eml, with its Gmail labels
+    in GYB's database (msg-db.sqlite), so mail can be put back into Gmail with gyb --action restore. Only new messages
+    are fetched; a message deleted from Gmail stays. GYB signs in as admin@ through the automation account's
+    domain-wide delegation (its config folder data/secrets/gyb holds a link to workspace-sa.json)."""
     base = os.path.join(WORK, 'mail', 'admin')
-    have = {f[:-4] for _, _, files in os.walk(base) for f in files if f.endswith('.eml')}
-    ids, tok = [], None
-    while True:
-        r = gm.get('https://gmail.googleapis.com/gmail/v1/users/me/messages',
-                   params=dict(maxResults=500, includeSpamTrash='false', **({'pageToken': tok} if tok else {})))
-        r.raise_for_status()
-        ids += [m['id'] for m in r.json().get('messages', [])]
-        tok = r.json().get('nextPageToken')
-        if not tok:
-            break
-    new = [i for i in ids if i not in have]
-    for i in new:
-        r = gm.get(f'https://gmail.googleapis.com/gmail/v1/users/me/messages/{i}', params={'format': 'raw'})
-        r.raise_for_status()
-        m = r.json()
-        when = datetime.fromtimestamp(int(m.get('internalDate', 0)) / 1000)
-        dest = os.path.join(base, f'{when:%Y}', f'{when:%m}', f'{i}.eml')
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        with open(dest + '.part', 'wb') as f:
-            f.write(base64.urlsafe_b64decode(m['raw']))
-        os.replace(dest + '.part', dest)
-    return f'mail: {len(new)} new of {len(ids)} messages'
+    os.makedirs(base, exist_ok=True)
+    run([GYB, '--config-folder', GYB_CONFIG, '--email', ADMIN, '--service-account', '--action', 'backup',
+         '--local-folder', base], capture=True)
+    n = sum(1 for _, _, files in os.walk(base) for f in files if f.endswith('.eml'))
+    if not os.path.exists(os.path.join(base, 'msg-db.sqlite')) or n < 100:
+        raise RuntimeError(f'Got Your Back left {n} messages and no label database in {base}; not trusting that.')
+    return f'mail: {n} messages (Got Your Back)'
 
 
 def books_fresh():

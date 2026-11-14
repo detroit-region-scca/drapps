@@ -171,6 +171,19 @@ fi
 if ! command -v restic >/dev/null || ! command -v rclone >/dev/null || ! command -v fusermount3 >/dev/null; then
 	quiet apt-get install -y -qq restic rclone fuse3
 fi
+# Got Your Back (admin@'s mailbox for the off-site copy): this release only, checked against its published checksum.
+GYB_VERSION=1.97
+GYB_SHA256=112270a87200313fc0a73f3a89e9b53e1d610dba07d0b7b0a061673200911878
+if ! /opt/drscca/gyb/gyb --version 2>/dev/null | grep -q "Got Your Back $GYB_VERSION"; then
+	t=$(mktemp -d)
+	curl -fsSL -o "$t/gyb.tar.xz" "https://github.com/GAM-team/got-your-back/releases/download/v$GYB_VERSION/gyb-$GYB_VERSION-linux-x86_64-glibc2.35.tar.xz"
+	echo "$GYB_SHA256  $t/gyb.tar.xz" | sha256sum -c --quiet -
+	rm -rf /opt/drscca/gyb && mkdir -p /opt/drscca/gyb && tar -xJf "$t/gyb.tar.xz" -C /opt/drscca/gyb --strip-components=1
+	rm -rf "$t"
+fi
+install -d -m 700 data/secrets/gyb
+ln -sfn "$ROOT/data/secrets/workspace-sa.json" data/secrets/gyb/oauth2service.json
+touch data/secrets/gyb/noupdatecheck.txt data/secrets/gyb/nobrowser.txt
 install -d -o drapps -g drapps -m 750 /var/lib/drscca-quickbooks
 install -m 644 "$SRC/fail2ban/livetiming-sftp.local" /etc/fail2ban/jail.d/livetiming-sftp.local
 systemctl reload-or-restart fail2ban
