@@ -433,3 +433,12 @@ def test_no_switch_for_a_reimbursement_or_without_the_pay_permission(switcher):
     switcher['perms'] = set()
     switcher['post'](method='card')
     assert switcher['updates'] == []
+
+
+def test_the_address_comes_from_the_same_payee_under_a_longer_name(monkeypatch):
+    monkeypatch.setattr(fr.F, 'requests', lambda: [
+        {'id': 'FR-2026-010', 'payee_name': 'Maxwell Medals', 'payee_address': '1 Old St'},
+        {'id': 'FR-2026-020', 'payee_name': 'Maxwell Medals', 'payee_address': '2 Business Dr'},
+        {'id': 'FR-2026-030', 'payee_name': 'Max', 'payee_address': 'not this'}])
+    assert fr.last_address({'id': 'FR-2026-115', 'payee_name': 'Maxwell Medals & Awards'}) == '2 Business Dr'
+    assert fr.last_address({'id': 'FR-2026-116', 'payee_name': 'Someone Else'}) == ''

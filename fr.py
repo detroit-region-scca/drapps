@@ -6,6 +6,7 @@ addresses come only from the read-only officials directory (officials.py).
 """
 import auth
 import os
+import re
 import secrets
 from datetime import date
 
@@ -584,8 +585,14 @@ SWITCHABLE = {'check': 'Check to the payee', 'card': 'Region credit card'}
 
 def last_address(r):
     """The mailing address on this payee's most recent other request, for switching a request to a check."""
-    name = (r.get('payee_name') or '').strip().lower()
-    others = [x for x in F.requests() if x['id'] != r['id'] and (x.get('payee_name') or '').strip().lower() == name
+    def plain(n):
+        return ' '.join(re.findall(r'[a-z0-9]+', (n or '').lower()))
+    name = plain(r.get('payee_name'))
+
+    def same(other):          # "Maxwell Medals" and "Maxwell Medals & Awards" are one payee
+        o = plain(other)
+        return len(min(o, name, key=len)) >= 6 and (o.startswith(name) or name.startswith(o))
+    others = [x for x in F.requests() if x['id'] != r['id'] and same(x.get('payee_name'))
               and (x.get('payee_address') or '').strip()]
     return max(others, key=lambda x: x['id'])['payee_address'].strip() if others else ''
 
