@@ -1,6 +1,6 @@
 #!/bin/bash
 # Weekly (drscca-update.timer, Sundays 4:30 am): newest Caddy, nginx and SFTP images; drapps rebuilt on the newest
-# Python base image; newest GAM and Python libraries for the host jobs; then old images cleared. Debian, Docker and
+# Python base image; newest GAM, Got Your Back and Python libraries for the host jobs; then old images cleared. Debian, Docker and
 # Node packages are updated daily by unattended-upgrades instead.
 #
 # The rebuilt drapps image is tested before it replaces the running one (deploy/gcp/lib.sh): if the tests fail the
@@ -44,6 +44,8 @@ clean_up
 if [ -z "$problem" ]; then
 	# Host jobs. Skipped after a failure above: the same new library versions are the likely cause.
 	"$ROOT/venv/bin/pip" install --quiet --upgrade pip gam7 -r "$ROOT/app/requirements.txt"
+	# Got Your Back's newest release, only after its checksum and its own check pass (lib.sh install_gyb).
+	install_gyb || problem='Got Your Back could not be updated; the installed copy still works'
 fi
 docker compose ps --format '{{.Name}} {{.Status}}'
 

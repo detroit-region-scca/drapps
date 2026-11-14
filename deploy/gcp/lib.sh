@@ -162,3 +162,40 @@ clean_up() {
 	docker image prune -f >/dev/null || true
 	docker builder prune -f --filter until=168h >/dev/null 2>&1 || true
 }
+
+# Got Your Back (admin@'s mailbox for the off-site copy), kept at its newest release. GitHub publishes a sha256 for
+# every release file; the download must match it or nothing changes. The new copy is unpacked beside the running one,
+# must report its version and pass its own check against admin@ (the delegation scopes), and only then replaces it.
+# Returns 1 (the caller says so) when a newer release could not be installed; the installed copy keeps working.
+GYB_DIR=$ROOT/gyb
+GYB_CONFIG=$ROOT/data/secrets/gyb
+install_gyb() {
+	local info ver url sha have t
+	install -d -m 700 "$GYB_CONFIG"
+	ln -sfn "$ROOT/data/secrets/workspace-sa.json" "$GYB_CONFIG/oauth2service.json"
+	touch "$GYB_CONFIG/noupdatecheck.txt" "$GYB_CONFIG/nobrowser.txt"
+	info=$(curl -fsSL https://api.github.com/repos/GAM-team/got-your-back/releases/latest | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+a = next(a for a in d["assets"] if a["name"].endswith("-linux-x86_64-glibc2.35.tar.xz"))
+print(d["tag_name"].lstrip("v"), a["browser_download_url"], (a.get("digest") or "").removeprefix("sha256:"))') || return 1
+	read -r ver url sha <<<"$info"
+	have=$("$GYB_DIR/gyb" --version 2>/dev/null | head -1 | awk '{print $NF}')
+	[ "$have" = "$ver" ] && return 0
+	[ -n "$sha" ] || { say "Got Your Back $ver: GitHub gave no checksum, not installed."; return 1; }
+	t=$(mktemp -d)
+	if curl -fsSL -o "$t/gyb.tar.xz" "$url" && echo "$sha  $t/gyb.tar.xz" | sha256sum -c --quiet - \
+		&& mkdir "$t/new" && tar -xJf "$t/gyb.tar.xz" -C "$t/new" --strip-components=1 \
+		&& "$t/new/gyb" --version | grep -q "Got Your Back $ver" \
+		&& "$t/new/gyb" --config-folder "$GYB_CONFIG" --email admin@drscca.org --action check-service-account | grep -q 'All scopes passed'; then
+		rm -rf "$GYB_DIR.previous"
+		[ -d "$GYB_DIR" ] && mv "$GYB_DIR" "$GYB_DIR.previous"
+		mv "$t/new" "$GYB_DIR"
+		rm -rf "$t"
+		say "Got Your Back ${have:-none} -> $ver."
+		return 0
+	fi
+	rm -rf "$t"
+	say "Got Your Back $ver did not download, verify or pass its check; ${have:-nothing} stays installed."
+	return 1
+}
