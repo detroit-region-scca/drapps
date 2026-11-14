@@ -1,7 +1,0 @@
-[Unit]
-Description=DRSCCA apps: daily check that the off-site copy is current
-[Timer]
-OnCalendar=*-*-* 12:00 America/Detroit
-Persistent=true
-[Install]
-WantedBy=timers.target

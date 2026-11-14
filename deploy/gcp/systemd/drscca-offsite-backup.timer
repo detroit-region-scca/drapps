@@ -1,7 +1,0 @@
-[Unit]
-Description=DRSCCA apps: nightly off-site copy
-[Timer]
-OnCalendar=*-*-* 03:30 America/Detroit
-Persistent=true
-[Install]
-WantedBy=timers.target
