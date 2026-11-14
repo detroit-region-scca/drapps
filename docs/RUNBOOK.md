@@ -148,7 +148,6 @@ sends nothing, and if the email itself cannot be sent the only trace is on the s
 | Hassles subscribers | When anyone presses Subscribe or Unsubscribe on the Hassles page | `drscca-hassles-subscribe.path` | `tools/hassles_subscribe.py` adds or removes that person, as a plain member, on hassles@drscca.org only (the one group the apps change), then re-reads the groups |
 | Software updates | Sundays 04:30 | `drscca-update.timer` | `deploy/gcp/update.sh`: newest Caddy, nginx and SFTP images; drapps rebuilt on the newest Python base image, tested inside the new image, started, and rolled back to the previous image if it does not start; newest GAM, Got Your Back (only once its GitHub checksum and its own check against admin@ pass; otherwise the installed copy stays and the update reports it) and Python libraries for the host jobs. The libraries inside the drapps image change only when the Python base image or `requirements.txt` changed, because Docker reuses that build step otherwise |
 | System updates | daily | `unattended-upgrades` | Debian, Docker, Node and Google packages; reboots at 04:00 only when an update needs it |
-| Secrets copy | Sundays 05:00 | `drscca-secrets-backup.timer` | Updates "drapps server secrets (weekly).tar.gz" in the admin-only Account Recovery folder (Drive keeps earlier versions). Fails, after saving, if anyone but admin@ can open the file |
 | Off-site copy | 03:30 nightly, checked 12:00 | `drscca-offsite-backup.timer`, `drscca-offsite-check.timer` | `deploy/gcp/offsite_backup.py`: restic snapshot of the shared drives, app files, QuickBooks books, website media and admin@ mail, then the new files into the locked vault (see Backups) |
 | Website copy | Sundays 05:15 | `drscca-site-backup.timer` | drscca.org is on WordPress.com Premium (no do-it-yourself backups), so `deploy/gcp/site_backup.py` saves every published page, post, category, tag, the media list and the home page as JSON to "Website Archive/Weekly site backups" in the region drive; keeps 8 |
 
@@ -160,8 +159,8 @@ console > Monitoring > Uptime checks and Alerting). These keep working even if t
 (`sudo fail2ban-client status livetiming-sftp`; to lift a ban, `sudo fail2ban-client set livetiming-sftp unbanip
 <address>`). Container logs are capped at 3 x 10 MB each.
 
-Check them: `systemctl list-timers 'drscca-*'` (eight timers: groups, qbo, backup, offsite-backup, offsite-check, update, secrets-backup,
-site-backup) and `systemctl status 'drscca-*.path'` (three: officials, qbo-refresh, groups). Jobs that failed:
+Check them: `systemctl list-timers 'drscca-*'` (seven timers: groups, qbo, backup, offsite-backup, offsite-check, update,
+site-backup) and `systemctl status 'drscca-*.path'` (four: officials, qbo-refresh, groups, hassles-subscribe). Jobs that failed:
 `systemctl --failed`.
 
 ## Live timing
@@ -211,7 +210,7 @@ under a file lock on a fresh read, so two people sending the same names for an e
 | Restart the app | `sudo docker compose restart drapps` |
 | Caddy (HTTPS, certificates) | `sudo docker logs --since 1h caddy` |
 | Live timing uploads and pages | `sudo journalctl CONTAINER_NAME=livetiming-sftp --since today` (the SFTP container logs to the journal), `sudo docker logs --since 1h livetiming-web` |
-| A job's last run | `sudo journalctl -u drscca-qbo -n 50`. The jobs: `drscca-qbo` (nightly sync), `drscca-qbo-refresh` (Sync now), `drscca-backup` (sheets), `drscca-secrets-backup`, `drscca-site-backup`, `drscca-offsite-backup` (off-site copy), `drscca-officials`, `drscca-groups` (Email groups, nightly and Refresh), `drscca-hassles-subscribe` (Hassles Subscribe), `drscca-update` (weekly update) |
+| A job's last run | `sudo journalctl -u drscca-qbo -n 50`. The jobs: `drscca-qbo` (nightly sync), `drscca-qbo-refresh` (Sync now), `drscca-backup` (sheets), `drscca-site-backup`, `drscca-offsite-backup` (off-site copy), `drscca-officials`, `drscca-groups` (Email groups, nightly and Refresh), `drscca-hassles-subscribe` (Hassles Subscribe), `drscca-update` (weekly update) |
 | Alert emails that were sent or failed | `sudo journalctl -u 'drscca-alert@*' -n 30` |
 | System updates | `/var/log/unattended-upgrades/unattended-upgrades.log` |
 | Blocked live timing addresses | `sudo fail2ban-client status livetiming-sftp` |
@@ -229,20 +228,15 @@ admin@drscca.org.
 | The sheets (all region records) | Drive's own version history | Every edit | On each spreadsheet in the DRSCCA Apps drive |
 | The sheets | `.xlsx` copy of every sheet (`backup_sheets.py`) | Nightly 02:45, 60 days | `data/backups/` on the server |
 | The whole server | Disk snapshot (schedule `daily-7`) | Daily, 7 days | Cloud console > Compute Engine > Snapshots |
-| Server secrets and live timing logins | `drapps server secrets (weekly).tar.gz` (`secrets_backup.py`) | Sundays 05:00; Drive keeps earlier versions | Account Recovery folder, DRSCCA Region drive (admin only) |
 | drscca.org website content | `drscca.org site backup YYYY-MM-DD.tar.gz` (`site_backup.py`) | Sundays 05:15, newest 8 | DRSCCA Region drive > Website Archive > Weekly site backups |
 | drscca.org database, once | `drscca.org WordPress.com database 2026-11-09 (before Premium downgrade).sql.gz` | One time, the last full export | Account Recovery folder (holds user emails and password hashes) |
 | The old website (IONOS, to 2026) | Full archive | One time | DRSCCA Region drive > Website Archive |
 | The app's code | This repository | Every change | GitHub, detroit-region-scca/drapps |
 | Everything off-site: every shared drive (and any new one), Google Docs/Sheets/Slides as Office files, `app/data`, the QuickBooks books (JSON), drscca.org media, the admin@ mailbox | restic snapshots (`deploy/gcp/offsite_backup.py`), file counts proven against Drive nightly | Nightly 03:30; 14 daily, 8 weekly, 24 monthly; plus an append-only copy in a bucket locked for a year | Buckets `drscca-org-backups` and `drscca-org-vault`, project drscca-automation (outside Drive) |
 
-**The secrets copy in the Account Recovery folder** holds keys, names, email addresses and working links, so it
-goes only to that folder. Each run removes the "anyone at drscca.org" permission Workspace
-adds to new files, then reads back who can open the file. If that is anyone but admin@, the copy is still saved
-and the job fails, so an email goes out naming who else can open it. Either fix the folder's sharing, or, if
-those people are meant to have access, list them in `BACKUP_READERS` in `drapps.env` (comma separated, admin@
-included). The folder and the region drive are `ACCOUNT_RECOVERY_FOLDER_ID` and `REGION_DRIVE_ID` in
-`drapps.env`; without them the backup jobs stop with a message saying which one is missing (and the alert email goes out).
+**The Account Recovery folder** (admin only, region shared drive) holds the printed recovery sheet as a PDF and
+the account code files it is made from. No backup job writes there: the server's secrets are in the restic
+off-site copy (below), readable only with the restic password on the recovery sheet.
 
 **The off-site copy.** Everything else here lives in Google Drive, Gmail, QuickBooks or WordPress.com, so a wiped
 or encrypted shared drive, or a stolen admin@ account, could take those copies with it. Every night at 03:30
@@ -273,8 +267,9 @@ bucket also keeps anything deleted restorable for 90 days. The job writes as the
 (`workspace-sa.json`), which cannot change either bucket's settings. Keep admin@ and every Workspace super admin on
 2-step verification: they are the way to everything else.
 
-**The password.** `RESTIC_PASSWORD` in `data/secrets/offsite-backup.env` (root only). The weekly secrets copy carries
-it to Account Recovery, and it is in the hand-over notes. **Without it no snapshot can be read.**
+**The password.** `RESTIC_PASSWORD` in `data/secrets/offsite-backup.env` (root only), and on the printed recovery
+sheet (PDF in Account Recovery, paper with the region papers). **Without it no snapshot can be read**, and the
+server's own secrets are only in the snapshots, so keep the paper copy.
 
 **What it does not cover.** Google Groups conversation archives (no export API; Google Takeout by hand). Receipts
 attached in QuickBooks (the app keeps them in the Receipts folder, which is backed up). WordPress drafts, theme and
@@ -399,12 +394,15 @@ compare with the running server, or a disk made from a snapshot, before you rely
 5. **The code.** `sudo mkdir -p /opt/drscca && sudo git clone https://github.com/detroit-region-scca/drapps
    /opt/drscca/app` (root owns the clone; the deploy runs git with sudo). Then
    `sudo install -d -o 1000 -g 1000 /opt/drscca/app/data`.
-6. **Secrets.** Download `drapps server secrets (weekly).tar.gz` from the Account Recovery folder and unpack it
-   at `/` as root: it restores `/opt/drscca/data/secrets/` (settings, keys, `officials.json`, the GAM config in
-   `gam/`), and the live timing logins and host keys in `/opt/drscca/data/livetiming/`. Unpacked as root with
-   `tar -xpzf`, every file keeps the owner and permissions it had. `secrets/qbo/` must belong to drapps (the
-   deploy sets that).
-   `drapps.env` holds the settings: `.env.example` in this repo lists every key and what it is for.
+6. **Secrets.** From the off-site copy: on the new server `sudo apt install restic`, then as root
+   `export RESTIC_REPOSITORY=gs:drscca-org-backups:/restic RESTIC_PASSWORD='<from the recovery sheet>'` and
+   `GOOGLE_APPLICATION_CREDENTIALS` pointing at a key for the region's automation account, or run
+   `gcloud auth application-default login` as admin@ first (if the main bucket is gone, use
+   `gs:drscca-org-vault:/restic` and add `--no-lock`). Then
+   `restic restore latest --target / --include /opt/drscca/data/secrets --include /opt/drscca/data/livetiming`:
+   it restores `/opt/drscca/data/secrets/` (settings, keys, `officials.json`, the GAM and GYB config,
+   `offsite-backup.env`) and the live timing logins and host keys, with their owners and permissions.
+   `secrets/qbo/` must belong to drapps (the deploy sets that).
 7. **Live timing folders.** `sudo mkdir -p /opt/drscca/data/livetiming/www/autocross
    /opt/drscca/data/livetiming/www/rallycross`, each owned by the uid on its line in `users.conf`. They start
    empty; the next upload fills them.
@@ -413,7 +411,7 @@ compare with the running server, or a disk made from a snapshot, before you rely
    `sudo bash -c 'set -a; . /opt/drscca/data/secrets/offsite-backup.env; restic restore latest --target / --include /opt/drscca/app/data'`
    and `sudo chown -R 1000:1000 /opt/drscca/app/data`. Copy in `records.db` if it is missing (see "Records").
 9. **QuickBooks tools.** `/opt/drscca/qbo-mcp` (a Node program; the sync and `qbo-mcp.sh` run
-   `/opt/drscca/qbo-mcp/dist/index.js`). It is not in this repo and not in the secrets copy: where it was
+   `/opt/drscca/qbo-mcp/dist/index.js`). It is not in this repo and not in the backed-up secrets: where it was
    installed from is *check on the server*. A disk made from a snapshot has it.
 10. **Deploy.** From your computer: `deploy/gcp/deploy.sh`. It builds and starts the app, starts Caddy and live
     timing, creates `/opt/drscca/venv` with the Python libraries, and installs and turns on every job. Then
@@ -432,8 +430,8 @@ compare with the running server, or a disk made from a snapshot, before you rely
 
 ## Secrets
 
-All on the server in `/opt/drscca/data/secrets/` (root only), never in git. A copy of anything you cannot
-recreate belongs in the admin-only Account Recovery folder in the region shared drive.
+All on the server in `/opt/drscca/data/secrets/` (root only), never in git. Each night's restic snapshot (and the
+locked vault) holds a copy; the restic password that unlocks it is on the printed recovery sheet.
 
 | Secret | File | How to replace |
 |---|---|---|

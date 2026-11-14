@@ -104,7 +104,7 @@ command is gunicorn, the production server.
 - `templates/`: one Jinja template per app. `tools/`: host jobs. `backup_sheets.py`: the nightly sheet copies.
 - `deploy/gcp/`: the server setup. `deploy.sh` (run on your computer) and `on-server.sh` (its half on the
   server), `lib.sh` (build, test, start, roll back; shared with the weekly `update.sh`), `systemd/` (the job
-  units), `alert.py` (the "a job failed" email), `secrets_backup.py` and `site_backup.py` (copies to Drive).
+  units), `alert.py` (the "a job failed" email), `offsite_backup.py` (the nightly restic off-site copy, secrets included) and `site_backup.py` (website copy to Drive).
 
 ## API and MCP server
 

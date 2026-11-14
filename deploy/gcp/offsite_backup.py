@@ -26,8 +26,8 @@ is an append-only, deduplicated copy of the repository; restore from it with res
 
 Each part runs on its own; the job ends with an error (so admin@ is emailed) naming every part that failed.
 Settings in data/secrets/offsite-backup.env (RESTIC_REPOSITORY, RESTIC_PASSWORD, GOOGLE_APPLICATION_CREDENTIALS,
-GOOGLE_PROJECT_ID). Without RESTIC_PASSWORD the backups cannot be read: it is also in the Account Recovery copy and
-the hand-over notes. Restore and checks: docs/RUNBOOK.md, "Off-site copy".
+GOOGLE_PROJECT_ID). Without RESTIC_PASSWORD the backups cannot be read: it is also on the printed recovery sheet
+(and its PDF in Account Recovery), never only on this server. Restore and checks: docs/RUNBOOK.md, "Off-site copy".
 """
 import json
 import os
@@ -283,9 +283,10 @@ def snapshot_counts(mounts):
 
 
 def vault():
-    """Copy the restic files not yet in the vault (inside Cloud Storage; restic never changes a file once written,
-    so --immutable turns a changed file into an error instead of a silent overwrite). Lock files are left out."""
-    run(['rclone', 'copy', f'gcs:{BUCKET}/restic', f'gcs:{VAULT}/restic', '--immutable', '--exclude', 'locks/**',
+    """Copy the restic files not yet in the vault (inside Cloud Storage). restic never changes a file once written and
+    the vault's lock forbids overwriting, so only missing files are copied (--ignore-existing; a copy carries its own
+    timestamp, which --immutable would mistake for a change). Lock files are left out."""
+    run(['rclone', 'copy', f'gcs:{BUCKET}/restic', f'gcs:{VAULT}/restic', '--ignore-existing', '--exclude', 'locks/**',
          '--gcs-storage-class', 'ARCHIVE', '--fast-list', '--log-level', 'NOTICE', '--stats', '0', '--retries', '5'])
     return 'vault: new restic files copied (kept a year, locked)'
 

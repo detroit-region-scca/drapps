@@ -149,19 +149,6 @@ def test_one_bad_sheet_does_not_stop_the_others(tmp_path, monkeypatch):
     assert [n.split('-', 3)[3] for n in saved] == ['first.xlsx', 'last.xlsx', 'records-edits.json']
 
 
-# --- secrets_backup.py ---
-
-def test_backup_copy_must_be_readable_by_admin_only():
-    S = _load('drscca_secrets_backup', os.path.join(GCP, 'secrets_backup.py'))
-    admin = {'type': 'user', 'emailAddress': 'Admin@drscca.org', 'role': 'organizer'}
-    allowed = {'admin@drscca.org'}
-    assert S.others([admin], allowed) == []
-    assert S.others([admin, {'type': 'domain', 'domain': 'drscca.org'}], allowed) == ['drscca.org']
-    assert S.others([admin, {'type': 'anyone'}], allowed) == ['anyone']
-    assert S.others([admin, {'type': 'user', 'emailAddress': 'someone@example.org'}], allowed) == ['someone@example.org']
-    assert S.others([admin, {'type': 'group', 'emailAddress': 'board@example.org'}], allowed) == ['board@example.org']
-
-
 # --- Caddyfile, compose, Dockerfile ---
 
 def test_every_site_sends_the_security_headers():
