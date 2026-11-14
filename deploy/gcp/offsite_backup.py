@@ -13,6 +13,7 @@ What goes into each snapshot:
                                   (added, never removed; restorable into Gmail with gyb --action restore)
     /var/lib/drscca-quickbooks    the books, every QuickBooks record type as JSON (tools/qbo_books.mjs, nightly sync)
     /opt/drscca/app/data          the app's own files (not its nightly sheet copies in backups/)
+    /opt/drscca/data/secrets ...  the server's secrets and the live timing logins and host keys (SECRETS below)
 
 Snapshots kept: 14 daily, 8 weekly, 24 monthly (Sundays: forget, prune, check). Proof, not trust: after each backup
 the number of files restic saved for each shared drive must equal the number of distinct names Drive lists (the rest
@@ -44,6 +45,10 @@ BUCKET = os.environ.get('OFFSITE_BUCKET') or 'drscca-org-backups'
 VAULT = os.environ.get('OFFSITE_VAULT') or 'drscca-org-vault'
 APP_DATA = os.environ.get('APP_DATA_DIR') or '/opt/drscca/app/data'
 BOOKS = os.environ.get('QBO_BOOKS_DIR') or '/var/lib/drscca-quickbooks'
+# The server's secrets (app settings, service account keys, QuickBooks token, officials list, GYB and GAM config,
+# this job's own settings) and the live timing logins and SFTP host keys: what a rebuilt server needs. Only readable
+# with the restic password, which is kept off the server (the printed recovery sheet).
+SECRETS = ['/opt/drscca/data/secrets', '/opt/drscca/data/livetiming/users.conf', '/opt/drscca/data/livetiming/keys']
 WORK = os.environ.get('OFFSITE_WORK') or '/var/lib/drscca-offsite'
 GYB = os.environ.get('GYB') or '/opt/drscca/gyb/gyb'
 GYB_CONFIG = os.environ.get('GYB_CONFIG') or '/opt/drscca/data/secrets/gyb'
@@ -353,7 +358,7 @@ def main():
         part('admin@ mail', mail)
         part('QuickBooks', books_fresh)
         paths = [*mounts, os.path.join(WORK, 'google-files'), os.path.join(WORK, 'duplicates'), os.path.join(WORK, 'website-media'),
-                 os.path.join(WORK, 'mail'), BOOKS, APP_DATA]
+                 os.path.join(WORK, 'mail'), BOOKS, APP_DATA, *SECRETS]
         if part('restic backup', lambda: backup([p for p in paths if os.path.exists(p)])):
             got = snapshot_counts(mounts)
             short = [f'{os.path.basename(m)}: {got[m]} of {expected[m]}' for m in mounts if got[m] != expected[m]]
