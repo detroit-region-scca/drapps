@@ -145,7 +145,7 @@
                 <div class="text-muted">Submitted {{ (r.submitted or '')|nice_date }} by {{ r.submitter_name }}</div>
                 <div class="mt-1">{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}Program {{ r.program }}{% endif %} <span class="text-muted">{{ r.event_code }}</span></div>
             </div>
-            <div class="text-end stat"><div class="value">{{ money(r.net) }}</div><div class="label">{{ r.method }}</div></div>
+            <div class="text-md-end stat"><div class="value">{{ money(r.net) }}</div><div class="label">{{ r.method }}</div></div>
         </div>
     </div>
     <div class="row g-3 mb-3">
@@ -157,9 +157,9 @@
             <div class="text-muted small"><a href="mailto:{{ r.submitter_email }}">{{ r.submitter_email }}</a> {{ r.submitter_phone }}</div></div></div>
     </div>
     <div class="card mb-3"><div class="card-body p-0 table-responsive">
-        <table class="table mb-0">
+        <table class="table mb-0 stack">
             <thead><tr><th class="ps-3">Date</th><th>Description</th><th>Category</th><th class="num pe-3">Amount</th></tr></thead>
-            <tbody>{% for ln in r.lines %}<tr><td class="ps-3 text-nowrap">{{ (ln.date or '')|nice_date }}</td><td>{{ ln.description }}</td><td>{{ ln.category }}</td><td class="num pe-3">{{ money(ln.amount) }}</td></tr>{% endfor %}
+            <tbody>{% for ln in r.lines %}<tr><td class="ps-3 text-nowrap" data-label="Date">{{ (ln.date or '')|nice_date }}</td><td data-label="Description">{{ ln.description }}</td><td data-label="Category">{{ ln.category }}</td><td class="num pe-3" data-label="Amount">{{ money(ln.amount) }}</td></tr>{% endfor %}
             <tr><td class="ps-3" colspan="3">Total{% if r.advances %}, less {{ money(r.advances) }} paid in advance{% endif %}</td><td class="num pe-3 fw-semibold">{{ money(r.net) }}</td></tr></tbody>
         </table>
     </div></div>
@@ -214,7 +214,7 @@
         {% if r.status == 'Paid' %}<div>Paid {{ (r.paid_date or '')|nice_date }} · {{ r.paid_ref }} · {{ money(r.paid_amount) }} · recorded by {{ r.closed_by }}</div>
         {% else %}<div>Rejected by {{ r.closed_by }}: {{ r.closed_note }}</div>{% endif %}
         {% if r.status == 'Paid' and r.closed_note %}<div class="text-muted small">{{ r.closed_note }}</div>{% endif %}
-        {% for a in approvals %}<div class="text-muted small">{{ roles[a.role] }}: {{ a.name }}, {{ (a.date or '')|nice_date }}{% if a.note %} ({{ a.note }}){% endif %}</div>{% endfor %}
+        {% for a in approvals %}<div class="text-muted small">{{ roles[a.role] }}: {{ a.name }}, {{ (a.date or '')|nice_date }}{% if a.note %} · {{ a.note }}{% endif %}</div>{% endfor %}
         {% if officer %}<form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="mt-2 no-print"><input type="hidden" name="action" value="reopen"><button class="btn btn-sm btn-outline-secondary" onclick="return confirm({{ ('Reopen ' ~ r.id ~ '?')|tojson|forceescape }})">Reopen</button></form>{% endif %}
     </div>
     {% endif %}
@@ -317,13 +317,13 @@
                 <div class="text-muted">Received {{ (r.received or '')|nice_date }}, reported {{ (r.reported or '')|nice_date }} by {{ r.reported_by }}</div>
                 <div class="mt-1">{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}Program {{ r.program }}{% endif %} <span class="text-muted">{{ r.event_code }}</span></div>
             </div>
-            <div class="text-end stat"><div class="value">{{ money(r.total) }}</div><div class="label">{% if r.cash %}cash {{ money(r.cash) }}{% endif %}{% if r.cash and r.checks %} · {% endif %}{% if r.checks %}checks {{ money(r.checks) }}{% endif %}</div></div>
+            <div class="text-md-end stat"><div class="value">{{ money(r.total) }}</div><div class="label">{% if r.cash %}cash {{ money(r.cash) }}{% endif %}{% if r.cash and r.checks %} · {% endif %}{% if r.checks %}checks {{ money(r.checks) }}{% endif %}</div></div>
         </div>
     </div>
     <div class="card mb-3"><div class="card-body p-0 table-responsive">
-        <table class="table mb-0">
+        <table class="table mb-0 stack">
             <thead><tr><th class="ps-3">What for</th><th>Kind</th><th>Form</th><th class="num pe-3">Amount</th></tr></thead>
-            <tbody>{% for ln in r.lines %}<tr><td class="ps-3">{{ ln.description }}</td><td>{{ ln.category }}</td><td>{{ ln.form }}{% if ln.check_number %} #{{ ln.check_number }}{% endif %}</td><td class="num pe-3">{{ money(ln.amount) }}</td></tr>{% endfor %}
+            <tbody>{% for ln in r.lines %}<tr><td class="ps-3" data-label="What for">{{ ln.description }}</td><td data-label="Kind">{{ ln.category }}</td><td data-label="Form">{{ ln.form }}{% if ln.check_number %} #{{ ln.check_number }}{% endif %}</td><td class="num pe-3" data-label="Amount">{{ money(ln.amount) }}</td></tr>{% endfor %}
             <tr><td class="ps-3" colspan="3">Total</td><td class="num pe-3 fw-semibold">{{ money(r.total) }}</td></tr></tbody>
         </table>
     </div></div>
