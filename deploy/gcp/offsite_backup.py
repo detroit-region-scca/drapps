@@ -17,7 +17,8 @@ deleted, by anyone, restorable for 90 days, and nothing on this server can chang
 Each part runs on its own: one that fails does not stop the others, and the job ends with an error (so admin@ is
 emailed) naming each part that failed. A night that would delete more than MAX_DELETE files from one drive's copy
 stops that drive instead (a wiped or encrypted drive should not be mirrored). After copying, every shared drive is
-checked file by file (by checksum) against its copy.
+checked file by file (by checksum) against its copy. Once a month, after a complete night, everything in current/
+is also copied to the vault bucket (OFFSITE_VAULT) under <YYYY-MM>/, where a locked retention policy keeps it a year.
 """
 import base64
 import json
@@ -31,6 +32,9 @@ from datetime import date, datetime
 SA = os.environ.get('WORKSPACE_SA') or '/opt/drscca/data/secrets/workspace-sa.json'
 ADMIN = 'admin@drscca.org'
 BUCKET = os.environ.get('OFFSITE_BUCKET') or 'drscca-org-backups'
+# Monthly locked copies: a bucket with a locked 1-year retention policy, so nobody (admin@ included) can delete or
+# change a month's copy for a year; its lifecycle rule removes each one after that (12 months kept).
+VAULT = os.environ.get('OFFSITE_VAULT') or 'drscca-org-vault'
 APP_DATA = os.environ.get('APP_DATA_DIR') or '/opt/drscca/app/data'
 BOOKS = os.environ.get('QBO_BOOKS_DIR') or '/var/lib/drscca-quickbooks'
 SITE = 'https://drscca.org'
@@ -199,6 +203,25 @@ def mail():
     return f'mail: {len(new)} new of {len(ids)} messages'
 
 
+def vault():
+    """Once a month, after a complete night: copy everything in current/ to the vault as <YYYY-MM>/. The copy runs
+    inside Cloud Storage (nothing passes through this server) and ends with <YYYY-MM>/status.json, which marks the
+    month done; a month whose copy did not finish is tried again the next night."""
+    month = date.today().strftime('%Y-%m')
+    gs = google('https://www.googleapis.com/auth/devstorage.read_only')
+    done = gs.get(f'https://storage.googleapis.com/storage/v1/b/{VAULT}/o/{month}%2Fstatus.json')
+    if done.status_code == 200:
+        return f'vault: {month} already copied'
+    run(['rclone', 'copy', f'gcs:{BUCKET}/current', f'gcs:{VAULT}/{month}', '--gcs-storage-class', 'ARCHIVE',
+         '--fast-list', '--log-level', 'NOTICE', '--stats', '0', '--retries', '5', '--transfers', '16', '--checkers', '16'])
+    w = google('https://www.googleapis.com/auth/devstorage.read_write')
+    w.post(f'https://storage.googleapis.com/upload/storage/v1/b/{VAULT}/o',
+           params={'uploadType': 'media', 'name': f'{month}/status.json', 'ifGenerationMatch': '0'},
+           data=json.dumps({'copied': datetime.now().astimezone().isoformat(timespec='seconds'), 'from': f'gs://{BUCKET}/current'}),
+           headers={'Content-Type': 'application/json'}).raise_for_status()
+    return f'vault: {month} copied and locked for a year'
+
+
 def status(results, failed):
     """current/status.json: when the last run ended and what it did (read by people and the staleness alert)."""
     gs = google('https://www.googleapis.com/auth/devstorage.read_write')
@@ -223,6 +246,11 @@ def check(hours=36):
         raise SystemExit(f"The off-site copy last finished {age:.0f} hours ago ({doc['finished']}): check drscca-offsite-backup.")
     if not doc.get('ok'):
         raise SystemExit('The last off-site copy did not complete: ' + '; '.join(doc.get('failed') or []))
+    month = date.today().strftime('%Y-%m')
+    v = google('https://www.googleapis.com/auth/devstorage.read_only').get(
+        f'https://storage.googleapis.com/storage/v1/b/{VAULT}/o/{month}%2Fstatus.json')
+    if v.status_code != 200 and date.today().day >= 3:
+        raise SystemExit(f'No locked vault copy for {month} yet (gs://{VAULT}/{month}/): check drscca-offsite-backup.')
     print(f"Off-site copy OK, finished {doc['finished']}: " + '; '.join(doc.get('done') or []))
 
 
@@ -241,6 +269,13 @@ def main():
             print('OK', results[-1], flush=True)
         except Exception as e:
             failed.append(f'{label}: {e}')
+            print('FAILED', failed[-1], file=sys.stderr, flush=True)
+    if not failed:          # only a complete night goes into the vault
+        try:
+            results.append(vault())
+            print('OK', results[-1], flush=True)
+        except Exception as e:
+            failed.append(f'vault copy: {e}')
             print('FAILED', failed[-1], file=sys.stderr, flush=True)
     status(results, failed)
     if failed:

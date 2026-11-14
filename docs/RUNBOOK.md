@@ -260,6 +260,13 @@ or encrypted shared drive, or a stolen admin@ account, could take those copies w
 | `mail/admin/YYYY/MM/<id>.eml` | every admin@ message | new messages only, never removed |
 | `status.json` | when the last run finished and what failed | |
 
+**The locked vault.** Once a month, after a complete night, everything in `current/` is copied (inside Cloud Storage)
+to the bucket `drscca-org-vault` as `<YYYY-MM>/`, in Archive storage. That bucket has a **locked** 1-year retention
+policy: nobody, admin@ and Google support included, can delete or change a month's copy until it is a year old, and the
+policy itself cannot be shortened or removed. A lifecycle rule deletes each month after 370 days, so 12 months are kept
+(about $1 a month). The noon check fails from the 3rd of a month that has no vault copy yet. To restore from it, download
+from the Cloud console like the nightly copy (Archive storage costs a little more to read).
+
 A file that changes or is deleted is never overwritten: its old copy moves to `history/<date>/<same path>` and is
 kept a year (bucket lifecycle rule). A night that would delete more than 300 files from one drive's copy stops that
 drive and fails, so a wiped or encrypted drive is not mirrored. Each part runs on its own and the job fails (email
