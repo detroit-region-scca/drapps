@@ -225,7 +225,7 @@
     <h2 class="h6 text-muted">Funds requests {{ 'not tied to an event' if e.program_budget else 'for this event' }}</h2>
     <div class="card"><div class="card-body p-0 table-responsive"><table class="table mb-0">
         <thead class="visually-hidden"><tr><th>Request</th><th>Pay to</th><th>Status</th><th>Amount</th></tr></thead>
-        <tbody>{% for r in funds %}<tr><td class="ps-3"><a href="{{ url_for('fr.detail', req_id=r.id) }}">{{ r.id }}</a></td><td>{{ r.payee_name }}</td><td>{{ request_badge(r, under=false) }}</td><td class="num pe-3">{{ money(r.net) }}</td></tr>{% endfor %}
+        <tbody>{% for r in funds %}<tr><td class="ps-3"><a href="{{ url_for('fr.detail', req_id=r.id) }}">{{ r.id }}</a></td><td>{{ r.payee_name }}</td><td>{{ request_badge(r) }}</td><td class="num pe-3">{{ money(r.net) }}</td></tr>{% endfor %}
         <tr><td class="ps-3 text-muted" colspan="3">Total requested</td><td class="num pe-3">{{ money(funds|sum(attribute='net')) }}</td></tr></tbody>
     </table></div></div>
     <p class="form-text">Card charges and MSR fees are not funds requests, so spending in QuickBooks can be higher than this.</p>

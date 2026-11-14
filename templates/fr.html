@@ -45,7 +45,7 @@
                 <td class="text-nowrap" data-label="Submitted">{{ (r.submitted or '')|nice_date }}<div class="small text-muted">{{ r.submitter_name }}</div></td>
                 <td data-label="Pay to">{{ r.payee_name }}<div class="small text-muted">{{ r.method }}</div></td>
                 <td data-label="For">{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}{{ r.program }}{% endif %} <span class="small text-muted">{{ r.event_code }}</span></td>
-                <td data-label="Status">{{ request_badge(r) }}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
+                <td data-label="Status">{{ request_badge(r) }}</td>
                 <td class="num pe-3" data-label="Amount">{{ money(r.net) }}</td></tr>
             {% else %}<tr><td colspan="6" class="text-muted fw-normal ps-3">{{ 'No open requests. Every request is paid.' if status == 'Submitted' else 'Nothing here.' }}</td></tr>{% endfor %}
             </tbody>

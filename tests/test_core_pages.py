@@ -189,10 +189,11 @@ def test_a_funds_request_shows_one_status_everywhere(app_):
     with app_.test_request_context('/'):
         m = app_.jinja_env.get_template('_ui.html').module
         card = {'status': 'Submitted', 'waiting': [], 'method': 'Region credit card'}
-        assert 'Card, ready to record' in str(m.request_badge(card))
+        assert 'Ready to pay' in str(m.request_badge(card)) and 'Ready to pay' in str(m.request_badge(dict(card, method='Check to the payee')))
         assert 'Needs approval' in str(m.request_badge(dict(card, waiting=['second signer'])))
         assert 'second signer' not in str(m.request_badge(dict(card, waiting=['second signer']), under=False))
-        assert 'Paid' in str(m.request_badge({'status': 'Paid'}))
+        paid = str(m.request_badge({'status': 'Paid', 'paid_ref': 'Check 6081'}))
+        assert 'Paid' in paid and 'Check 6081' in paid
     import os
     here = os.path.join(os.path.dirname(__file__), '..', 'templates')
     for t in ('fr.html', 'bud.html'):
