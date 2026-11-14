@@ -225,9 +225,15 @@ def _funds(code):
     reqs = [r for r in F.requests() if r['status'] != 'Rejected']
     if auth.limited('funds'):
         reqs = [r for r in reqs if auth.owns_request(r)]
-    if (pg := program_of(code)):
-        return [r for r in reqs if not r['event_code'] and r['program'] == pg[0] and r['submitted'][:4] == pg[1]]
-    return [r for r in reqs if r['event_code'] == code]
+    pg = program_of(code)
+    reqs = ([r for r in reqs if not r['event_code'] and r['program'] == pg[0] and r['submitted'][:4] == pg[1]] if pg else
+            [r for r in reqs if r['event_code'] == code])
+    if any(r['status'] == 'Submitted' for r in reqs):       # the same status badge as the Money pages
+        import fr
+        import fr_logic as FL
+        a = fr.Approvals()
+        reqs = [dict(r, waiting=FL.waiting_on(a.items(r))) if r['status'] == 'Submitted' else r for r in reqs]
+    return reqs
 
 
 def plan_name(item):

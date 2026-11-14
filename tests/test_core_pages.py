@@ -183,3 +183,17 @@ def test_events_have_one_tab_and_add_event_is_the_lists_button():
     assert "tab('bud.home', 'Events', true)" in src and "tab('index'" not in src
     bud = open(os.path.join(os.path.dirname(__file__), '..', 'templates', 'bud.html')).read()
     assert "url_for('index', program=only or none) }}\">Add event</a>" in bud
+
+
+def test_a_funds_request_shows_one_status_everywhere(app_):
+    with app_.test_request_context('/'):
+        m = app_.jinja_env.get_template('_ui.html').module
+        card = {'status': 'Submitted', 'waiting': [], 'method': 'Region credit card'}
+        assert 'Card, ready to record' in str(m.request_badge(card))
+        assert 'Needs approval' in str(m.request_badge(dict(card, waiting=['second signer'])))
+        assert 'second signer' not in str(m.request_badge(dict(card, waiting=['second signer']), under=False))
+        assert 'Paid' in str(m.request_badge({'status': 'Paid'}))
+    import os
+    here = os.path.join(os.path.dirname(__file__), '..', 'templates')
+    for t in ('fr.html', 'bud.html'):
+        assert "'Open' if" not in open(os.path.join(here, t)).read()

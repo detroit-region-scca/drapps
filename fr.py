@@ -450,6 +450,7 @@ def detail(req_id):
         flash(f'There is no funds request "{req_id}". Pick one from the list.', 'warning')
         return redirect(url_for('fr.home'))
     items = Approvals().items(r) if r['status'] == 'Submitted' else []
+    r['waiting'] = FL.waiting_on(items)      # the same status badge as the list
     return render_template('fr.html', **_ctx(view='detail', r=r, today=date.today().isoformat(), items=items, ready=FL.ready(items),
                                              can_delete=can_delete_request(r),
                                              approvals=FL.parse(r.get('approvals')), roles=FL.ROLES, approvers=approvers(r)))

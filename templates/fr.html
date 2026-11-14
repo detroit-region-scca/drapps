@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from '_ui.html' import tab, money with context %}
+{% from '_ui.html' import tab, money, status_badge, request_badge with context %}
 {% block body_class %}app-fr{% endblock %}
 {% block app_name %}Money{% endblock %}
 {% block page_title %}{{ {'list': 'Funds requests', 'new': 'New funds request', 'in_list': 'Money received', 'in_new': 'Report money received'}[view] if view in ('list', 'new', 'in_list', 'in_new') else (r.id if r else 'Approval') }}{% endblock %}
@@ -15,7 +15,6 @@
             <noscript><button class="btn btn-sm btn-outline-secondary">Show</button></noscript></form>{% endmacro %}
 {% set year_inline = true %}{# the year picker sits in the filter row on the lists, not on a row of its own #}
 {% macro in_badge(s) %}<span class="badge rounded-pill {{ 'text-bg-success' if s == 'Deposited' else 'text-bg-warning' }}">{{ 'Not deposited' if s == 'Received' else s }}</span>{% endmacro %}
-{% macro status_badge(s) %}<span class="badge rounded-pill {{ {'Submitted': 'text-bg-warning', 'Paid': 'text-bg-success', 'Rejected': 'text-bg-danger'}.get(s, 'text-bg-secondary') }}">{{ 'Open' if s == 'Submitted' else s }}</span>{% endmacro %}
 {% block style %}
         body.app-fr { --accent: #177a50; }   /* 5.3:1 on white: it marks the picked filter and payment method */
         .method-opt { border: 1px solid var(--border); border-radius: 10px; padding: .75rem 1rem; cursor: pointer; height: 100%; }
@@ -46,7 +45,7 @@
                 <td class="text-nowrap" data-label="Submitted">{{ (r.submitted or '')|nice_date }}<div class="small text-muted">{{ r.submitter_name }}</div></td>
                 <td data-label="Pay to">{{ r.payee_name }}<div class="small text-muted">{{ r.method }}</div></td>
                 <td data-label="For">{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}{{ r.program }}{% endif %} <span class="small text-muted">{{ r.event_code }}</span></td>
-                <td data-label="Status">{% if r.status == 'Submitted' %}{% if r.waiting %}<span class="badge rounded-pill text-bg-warning">Needs approval</span><div class="small text-muted">{{ r.waiting|join(', ') }}</div>{% elif r.method == 'Region credit card' %}<span class="badge rounded-pill text-bg-info" title="Already paid on the region card">Card, ready to record</span>{% else %}<span class="badge rounded-pill text-bg-info">Ready to pay</span>{% endif %}{% else %}{{ status_badge(r.status) }}{% endif %}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
+                <td data-label="Status">{{ request_badge(r) }}{% if r.paid_ref %}<div class="small text-muted">{{ r.paid_ref }}</div>{% endif %}</td>
                 <td class="num pe-3" data-label="Amount">{{ money(r.net) }}</td></tr>
             {% else %}<tr><td colspan="6" class="text-muted fw-normal ps-3">{{ 'No open requests. Every request is paid.' if status == 'Submitted' else 'Nothing here.' }}</td></tr>{% endfor %}
             </tbody>
@@ -142,7 +141,7 @@
     <div class="card p-3 mb-3">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
             <div>
-                <h1 class="page-title m-0">{{ r.id }} {{ status_badge(r.status) }}</h1>
+                <h1 class="page-title m-0">{{ r.id }} {{ request_badge(r, under=false) }}</h1>
                 <div class="text-muted">Submitted {{ (r.submitted or '')|nice_date }} by {{ r.submitter_name }}</div>
                 <div class="mt-1">{% if r.event_code %}<a href="{{ url_for('bud.detail', code=r.event_code) }}">{{ r.event_name or r.event_code }}</a>{% else %}Program {{ r.program }}{% endif %} <span class="text-muted">{{ r.event_code }}</span></div>
             </div>
