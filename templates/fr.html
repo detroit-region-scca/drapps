@@ -186,7 +186,7 @@
         {% if ready %}Every approval is in.{% else %}Waiting on the approvals above.{% endif %} The treasurer, secretary, RE or ARE marks it paid or rejects it.</div>
     {% else %}
     <div class="row g-3 no-print">
-        <div class="col-lg-8">{% if not ready %}<div class="card p-3 h-100 text-muted"><div class="section-label">Mark paid</div>Waiting on the approvals above. Region policy: no payment until they are in.</div>{% else %}<form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">
+        <div class="col-lg-8"><div class="card p-3 h-100">{% if not ready %}<div class="text-muted"><div class="section-label">Mark paid</div>Waiting on the approvals above. Region policy: no payment until they are in.</div>{% else %}<form method="post" action="{{ url_for('fr.close', req_id=r.id) }}">
             <input type="hidden" name="action" value="paid">
             <div class="section-label">Mark paid</div>
             <div class="row g-2">
@@ -201,8 +201,8 @@
             <div class="form-text">{% if card %}Paid on the region card: record it with the charge date. {% endif %}This only records the payment here, as {{ officer.name }}. Book it in QuickBooks to the event's project yourself, as usual.</div>
         </form>{% endif %}
         {% if r.method in ('Check to the payee', 'Region credit card') %}
-        <details class="mt-2 small"><summary class="text-muted">Change how it's paid (now: {{ r.method|lower }})</summary>
-            <form method="post" action="{{ url_for('fr.change_method', req_id=r.id) }}" class="card p-3 mt-2">
+        <details class="mt-3 pt-2 border-top small"><summary class="text-muted">Change how it's paid (now: {{ r.method|lower }})</summary>
+            <form method="post" action="{{ url_for('fr.change_method', req_id=r.id) }}" class="mt-2">
                 {% set to = 'card' if r.method == 'Check to the payee' else 'check' %}
                 <input type="hidden" name="method" value="{{ to }}">
                 {% if to == 'check' %}
@@ -214,7 +214,7 @@
                 <div class="form-text">Who is paid and the amount stay the same, so the approvals stand. The change is noted on the request.</div>
             </form>
         </details>
-        {% endif %}</div>
+        {% endif %}</div></div>
         <div class="col-lg-4"><form method="post" action="{{ url_for('fr.close', req_id=r.id) }}" class="card p-3 h-100">
             <input type="hidden" name="action" value="reject">
             <div class="section-label">Reject</div>
