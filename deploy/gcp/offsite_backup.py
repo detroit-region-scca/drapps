@@ -24,6 +24,7 @@ import json
 import os
 import subprocess
 import sys
+import urllib.parse
 import urllib.request
 from datetime import date, datetime
 
@@ -43,7 +44,6 @@ RCLONE_ENV = {
     'RCLONE_CONFIG_GD_SERVICE_ACCOUNT_FILE': SA, 'RCLONE_CONFIG_GD_IMPERSONATE': ADMIN,
     'RCLONE_CONFIG_GCS_TYPE': 'google cloud storage', 'RCLONE_CONFIG_GCS_SERVICE_ACCOUNT_FILE': SA,
     'RCLONE_CONFIG_GCS_BUCKET_POLICY_ONLY': 'true',
-    'RCLONE_CONFIG_WEB_TYPE': 'http', 'RCLONE_CONFIG_WEB_URL': UPLOADS,
 }
 COMMON = ['--fast-list', '--log-level', 'NOTICE', '--stats', '0', '--retries', '5', '--low-level-retries', '20']
 
@@ -152,17 +152,27 @@ def website_media():
     if len(want) < 100:
         raise RuntimeError(f'Only {len(want)} media files listed by drscca.org; not trusting that.')
     new = sorted(want - listing('website-media'))
-    if new:
-        lst = os.path.join(WORK, 'website-media.txt')
-        with open(lst, 'w') as f:
-            f.write(''.join(p + '\n' for p in new))
-        run(['rclone', 'copy', 'web:', dest('website-media'), '--files-from-raw', lst, *COMMON])
+    gs = google('https://www.googleapis.com/auth/devstorage.read_write')
+    failed = []
+    for path in new:
+        try:
+            req = urllib.request.Request(UPLOADS + urllib.parse.quote(path), headers={'User-Agent': 'DRSCCA backup'})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                data, kind = r.read(), r.headers.get('Content-Type') or 'application/octet-stream'
+            gs.post(f'https://storage.googleapis.com/upload/storage/v1/b/{BUCKET}/o',
+                    params={'uploadType': 'media', 'name': f'current/website-media/{path}'},
+                    data=data, headers={'Content-Type': kind}).raise_for_status()
+        except Exception as e:          # one missing file must not stop the rest; it is tried again tomorrow
+            failed.append(f'{path}: {e}')
+    if failed:
+        raise RuntimeError(f'{len(failed)} of {len(new)} new media files could not be copied, first: {failed[0]}')
     return f'website media: {len(new)} new of {len(want)}'
 
 
 def mail():
     """Every message in admin@'s mailbox as an .eml file; a message deleted from Gmail stays in the copy."""
-    gm = google('https://www.googleapis.com/auth/gmail.readonly')
+    # The scope admin@'s delegation allows (it does not list gmail.readonly). This only ever reads.
+    gm = google('https://mail.google.com/')
     gs = google('https://www.googleapis.com/auth/devstorage.read_write')
     have = {p.rsplit('/', 1)[-1][:-4] for p in listing('mail/admin') if p.endswith('.eml')}
     ids, tok = [], None
