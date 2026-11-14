@@ -166,9 +166,10 @@ step "fail2ban, backup tools, apt settings, time zone"
 if ! command -v fail2ban-client >/dev/null; then
 	quiet apt-get install -y -qq fail2ban
 fi
-# The nightly off-site copy (drscca-offsite-backup) uses rclone; the QuickBooks sync leaves the books copy here.
-if ! command -v rclone >/dev/null; then
-	quiet apt-get install -y -qq rclone
+# The nightly off-site copy (drscca-offsite-backup): restic (0.17.1 or newer, Debian 13), and rclone with FUSE to
+# read the shared drives. The QuickBooks sync leaves the books copy in /var/lib/drscca-quickbooks.
+if ! command -v restic >/dev/null || ! command -v rclone >/dev/null || ! command -v fusermount3 >/dev/null; then
+	quiet apt-get install -y -qq restic rclone fuse3
 fi
 install -d -o drapps -g drapps -m 750 /var/lib/drscca-quickbooks
 install -m 644 "$SRC/fail2ban/livetiming-sftp.local" /etc/fail2ban/jail.d/livetiming-sftp.local

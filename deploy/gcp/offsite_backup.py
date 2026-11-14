@@ -1,30 +1,36 @@
 #!/usr/bin/env python3
-"""Nightly off-site copy of everything the region keeps, outside Google Drive (drscca-offsite-backup.timer).
+"""Nightly off-site copy of everything the region keeps, outside Google Drive (drscca-offsite-backup.timer), with
+restic: deduplicated, compressed, encrypted snapshots in a Cloud Storage bucket in the region's Google Cloud project.
 
-Into the Cloud Storage bucket (OFFSITE_BUCKET, in the region's Google Cloud project), under current/:
-    drives/<shared drive>/        every file in every shared drive (each found nightly, so new ones are included)
+What goes into each snapshot:
+    drives/<shared drive>/        every file in every shared drive, read through a read-only rclone mount (each
+                                  shared drive is found nightly, so a new one is included without a change here)
     google-files/<shared drive>/  its Google Docs, Sheets and Slides as Word, Excel and PowerPoint files
-    server/app-data/              the app's own files (app/data, without its nightly sheet copies)
-    quickbooks/                   the books, every type as JSON (written by tools/qbo_books.mjs in the nightly sync)
     website-media/                every image and file uploaded to drscca.org (added, never removed)
-    mail/admin/                   every message in the admin@drscca.org mailbox as .eml (added, never removed)
+    mail/admin/YYYY/MM/<id>.eml   every message in the admin@drscca.org mailbox (added, never removed)
+    /var/lib/drscca-quickbooks    the books, every QuickBooks record type as JSON (tools/qbo_books.mjs, nightly sync)
+    /opt/drscca/app/data          the app's own files (not its nightly sheet copies in backups/)
 
-Only new or changed files are sent: rclone compares Drive's and the bucket's checksums, so an unchanged file is never
-downloaded again. A file that changed or was deleted is not overwritten: its old copy moves to history/<date>/ with
-the same path and stays a year (the bucket's lifecycle rule). On top of that the bucket's soft delete keeps anything
-deleted, by anyone, restorable for 90 days, and nothing on this server can change those bucket settings.
+Snapshots kept: 14 daily, 8 weekly, 24 monthly (Sundays: forget, prune, check). Proof, not trust: after each backup
+the number of files restic saved for each shared drive must equal the number Drive lists, or the night fails.
 
-Each part runs on its own: one that fails does not stop the others, and the job ends with an error (so admin@ is
-emailed) naming each part that failed. A night that would delete more than MAX_DELETE files from one drive's copy
-stops that drive instead (a wiped or encrypted drive should not be mirrored). After copying, every shared drive is
-checked file by file (by checksum) against its copy. Once a month, after a complete night, everything in current/
-is also copied to the vault bucket (OFFSITE_VAULT) under <YYYY-MM>/, where a locked retention policy keeps it a year.
+Ransom protection: the bucket keeps anything deleted restorable for 90 days (soft delete), and every night the new
+restic files are also copied into the vault bucket (OFFSITE_VAULT), whose locked retention policy keeps each file a
+year and lets nobody (admin@ included) delete or change it. restic never changes a file once written, so the vault
+is an append-only, deduplicated copy of the repository; restore from it with restic --no-lock.
+
+Each part runs on its own; the job ends with an error (so admin@ is emailed) naming every part that failed.
+Settings in data/secrets/offsite-backup.env (RESTIC_REPOSITORY, RESTIC_PASSWORD, GOOGLE_APPLICATION_CREDENTIALS,
+GOOGLE_PROJECT_ID). Without RESTIC_PASSWORD the backups cannot be read: it is also in the Account Recovery copy and
+the hand-over notes. Restore and checks: docs/RUNBOOK.md, "Off-site copy".
 """
 import base64
 import json
 import os
+import re
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 from datetime import date, datetime
@@ -32,42 +38,34 @@ from datetime import date, datetime
 SA = os.environ.get('WORKSPACE_SA') or '/opt/drscca/data/secrets/workspace-sa.json'
 ADMIN = 'admin@drscca.org'
 BUCKET = os.environ.get('OFFSITE_BUCKET') or 'drscca-org-backups'
-# Monthly locked copies: a bucket with a locked 1-year retention policy, so nobody (admin@ included) can delete or
-# change a month's copy for a year; its lifecycle rule removes each one after that (12 months kept).
 VAULT = os.environ.get('OFFSITE_VAULT') or 'drscca-org-vault'
 APP_DATA = os.environ.get('APP_DATA_DIR') or '/opt/drscca/app/data'
 BOOKS = os.environ.get('QBO_BOOKS_DIR') or '/var/lib/drscca-quickbooks'
+WORK = os.environ.get('OFFSITE_WORK') or '/var/lib/drscca-offsite'
 SITE = 'https://drscca.org'
 UPLOADS = f'{SITE}/wp-content/uploads/'
-WORK = os.environ.get('OFFSITE_WORK') or '/var/lib/drscca-offsite'
-MAX_DELETE = int(os.environ.get('OFFSITE_MAX_DELETE') or 300)
 EXPORT = 'docx,xlsx,pptx,svg'
-TODAY = date.today().isoformat()
+KEEP = ['--keep-daily', '14', '--keep-weekly', '8', '--keep-monthly', '24']
+EXCLUDE = [f'{APP_DATA}/backups', '*.lock', '*.tmp', '*.part']
 RCLONE_ENV = {
     'RCLONE_CONFIG_GD_TYPE': 'drive', 'RCLONE_CONFIG_GD_SCOPE': 'drive.readonly',
     'RCLONE_CONFIG_GD_SERVICE_ACCOUNT_FILE': SA, 'RCLONE_CONFIG_GD_IMPERSONATE': ADMIN,
     'RCLONE_CONFIG_GCS_TYPE': 'google cloud storage', 'RCLONE_CONFIG_GCS_SERVICE_ACCOUNT_FILE': SA,
     'RCLONE_CONFIG_GCS_BUCKET_POLICY_ONLY': 'true',
 }
-COMMON = ['--fast-list', '--log-level', 'NOTICE', '--stats', '0', '--retries', '5', '--low-level-retries', '20']
+DRIVE_FLAGS = ['--drive-skip-gdocs', '--drive-skip-dangling-shortcuts']
+# restic 0.17.1+ keeps a file whose extended attributes cannot be read (a Drive mount has none to give) and warns
+# "incomplete metadata"; that alone, with exit code 3, is a complete backup. Any other warning or error is not.
+HARMLESS = re.compile(r'^incomplete metadata for .*$')
+
+
+def env():
+    return dict(os.environ, **RCLONE_ENV, RESTIC_CACHE_DIR=os.path.join(WORK, 'restic-cache'), GOGC='50')
 
 
 def run(cmd, capture=False):
     print('+', ' '.join(cmd), flush=True)
-    return subprocess.run(cmd, check=True, text=True, capture_output=capture, env=dict(os.environ, **RCLONE_ENV))
-
-
-def dest(path):
-    return f'gcs:{BUCKET}/current/{path}'
-
-
-def history(path):
-    return f'gcs:{BUCKET}/history/{TODAY}/{path}'
-
-
-def sync(src, path, *extra):
-    """src to current/<path>; what it replaces or removes moves to history/<today>/<path>."""
-    run(['rclone', 'sync', src, dest(path), '--backup-dir', history(path), *COMMON, *extra])
+    return subprocess.run(cmd, check=True, text=True, capture_output=capture, env=env())
 
 
 def google(scope):
@@ -75,6 +73,10 @@ def google(scope):
     from google.oauth2 import service_account
     sub = {} if 'devstorage' in scope else {'subject': ADMIN}
     return AuthorizedSession(service_account.Credentials.from_service_account_file(SA, scopes=[scope], **sub))
+
+
+def folder_name(name):
+    return re.sub(r'[^\w .()-]', '_', name).strip() or 'drive'
 
 
 def shared_drives():
@@ -88,97 +90,82 @@ def shared_drives():
             return out
 
 
-def folder_name(name):
-    import re
-    return re.sub(r'[^\w .()-]', '_', name).strip() or 'drive'
+# ---------- gathering: what restic reads ----------
+
+def mount(drive_id, path):
+    os.makedirs(path, exist_ok=True)
+    if os.path.ismount(path):
+        subprocess.run(['fusermount3', '-u', path], check=False)
+    run(['rclone', 'mount', 'gd:', path, '--drive-team-drive', drive_id, '--read-only', *DRIVE_FLAGS,
+         '--vfs-cache-mode', 'off', '--dir-cache-time', '6h', '--attr-timeout', '6h', '--poll-interval', '0', '--daemon'])
+    for _ in range(60):
+        if os.path.ismount(path):
+            return
+        time.sleep(1)
+    raise RuntimeError(f'The shared drive did not mount at {path}.')
 
 
-def listing(path):
-    """Names under current/<path>, relative to it."""
-    out = run(['rclone', 'lsf', '-R', '--files-only', '--fast-list', dest(path)], capture=True).stdout
-    return {line for line in out.splitlines() if line}
+def drive_files(drive_id):
+    """How many uploaded files Drive lists in this shared drive (what the snapshot must hold)."""
+    out = run(['rclone', 'lsf', '-R', '--files-only', '--fast-list', '--drive-team-drive', drive_id, *DRIVE_FLAGS, 'gd:'],
+              capture=True).stdout
+    return sum(1 for line in out.splitlines() if line)
 
 
-def one_drive(d):
-    name = folder_name(d['name'])
-    # Shortcuts whose target is gone or not shared cannot be read; they hold no data, so they are skipped.
-    team = ['--drive-team-drive', d['id'], '--drive-skip-dangling-shortcuts']
-    # Uploaded files, compared by checksum; a night that would remove many of them stops here instead.
-    sync('gd:', f'drives/{name}', *team, '--drive-skip-gdocs', '--checksum', '--max-delete', str(MAX_DELETE))
-    # Google files exported (their export has no checksum or size: compared by modified time).
-    docs = json.loads(run(['rclone', 'lsjson', '-R', '--files-only', *team, '--drive-export-formats', EXPORT, 'gd:'],
-                          capture=True).stdout or '[]')
+def export_docs(drive_id, path):
+    """The drive's Google Docs, Sheets and Slides (the files rclone lists with no size) as Office files."""
+    listing = json.loads(run(['rclone', 'lsjson', '-R', '--files-only', '--drive-team-drive', drive_id,
+                              '--drive-skip-dangling-shortcuts', '--drive-export-formats', EXPORT, 'gd:'], capture=True).stdout or '[]')
     lst = os.path.join(WORK, 'google-files.txt')
     with open(lst, 'w') as f:
-        f.write(''.join(x['Path'] + '\n' for x in docs if x.get('Size', 0) < 0))
-    sync('gd:', f'google-files/{name}', *team, '--drive-export-formats', EXPORT, '--files-from-raw', lst,
-         '--ignore-size', '--delete-excluded')
-    # Proof, not trust: every uploaded file in the drive must be in the copy with the same checksum.
-    run(['rclone', 'check', 'gd:', dest(f'drives/{name}'), *team, '--drive-skip-gdocs', '--one-way', '--checksum',
-         '--fast-list', '--log-level', 'NOTICE'])
-    return f"{d['name']}: copied and checked"
-
-
-def app_data():
-    sync(APP_DATA, 'server/app-data', '--checksum', '--exclude', 'backups/**', '--exclude', '*.lock', '--exclude', '*.tmp')
-    return 'app files copied'
-
-
-def quickbooks():
-    if not os.path.isdir(BOOKS) or not os.listdir(BOOKS):
-        raise RuntimeError(f'No QuickBooks copy in {BOOKS}: the nightly sync writes it (tools/qbo_books.mjs).')
-    newest = max(os.path.getmtime(os.path.join(BOOKS, f)) for f in os.listdir(BOOKS))
-    if (datetime.now().timestamp() - newest) > 3 * 86400:
-        raise RuntimeError(f'The QuickBooks copy in {BOOKS} is more than 3 days old: check drscca-qbo.')
-    sync(BOOKS, 'quickbooks', '--checksum')
-    return 'QuickBooks books copied'
+        f.write(''.join(x['Path'] + '\n' for x in listing if x.get('Size', 0) < 0))
+    os.makedirs(path, exist_ok=True)
+    run(['rclone', 'sync', 'gd:', path, '--drive-team-drive', drive_id, '--drive-skip-dangling-shortcuts',
+         '--drive-export-formats', EXPORT, '--files-from-raw', lst, '--ignore-size', '--delete-excluded',
+         '--log-level', 'NOTICE', '--stats', '0'])
 
 
 def website_media():
-    """Every file in the site's media library, by its address under /wp-content/uploads/. Only new ones are fetched."""
-    want, page = set(), 1
+    """Every file in the site's public media library, by its address under /wp-content/uploads/; only new ones are
+    downloaded, and nothing is ever removed (a file deleted from the site stays in the backup)."""
+    base, want, page = os.path.join(WORK, 'website-media'), set(), 1
     while True:
         req = urllib.request.Request(f'{SITE}/wp-json/wp/v2/media?per_page=100&page={page}&_fields=source_url',
                                      headers={'User-Agent': 'DRSCCA backup'})
-        try:
-            with urllib.request.urlopen(req, timeout=60) as r:
-                pages = int(r.headers.get('X-WP-TotalPages') or 1)
-                items = json.load(r)
-        except urllib.error.HTTPError as e:
-            if e.code == 400 and page > 1:      # past the last page
-                break
-            raise
-        want |= {m['source_url'].split('/wp-content/uploads/', 1)[1] for m in items
-                 if '/wp-content/uploads/' in (m.get('source_url') or '')}
+        with urllib.request.urlopen(req, timeout=60) as r:
+            pages = int(r.headers.get('X-WP-TotalPages') or 1)
+            want |= {m['source_url'].split('/wp-content/uploads/', 1)[1] for m in json.load(r)
+                     if '/wp-content/uploads/' in (m.get('source_url') or '')}
         if page >= pages:
             break
         page += 1
     if len(want) < 100:
         raise RuntimeError(f'Only {len(want)} media files listed by drscca.org; not trusting that.')
-    new = sorted(want - listing('website-media'))
-    gs = google('https://www.googleapis.com/auth/devstorage.read_write')
+    new = [p for p in sorted(want) if not os.path.exists(os.path.join(base, p))]
     failed = []
-    for path in new:
+    for p in new:
         try:
-            req = urllib.request.Request(UPLOADS + urllib.parse.quote(path), headers={'User-Agent': 'DRSCCA backup'})
+            req = urllib.request.Request(UPLOADS + urllib.parse.quote(p), headers={'User-Agent': 'DRSCCA backup'})
             with urllib.request.urlopen(req, timeout=120) as r:
-                data, kind = r.read(), r.headers.get('Content-Type') or 'application/octet-stream'
-            gs.post(f'https://storage.googleapis.com/upload/storage/v1/b/{BUCKET}/o',
-                    params={'uploadType': 'media', 'name': f'current/website-media/{path}'},
-                    data=data, headers={'Content-Type': kind}).raise_for_status()
+                data = r.read()
+            dest = os.path.join(base, p)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with open(dest + '.part', 'wb') as f:
+                f.write(data)
+            os.replace(dest + '.part', dest)
         except Exception as e:          # one missing file must not stop the rest; it is tried again tomorrow
-            failed.append(f'{path}: {e}')
+            failed.append(f'{p}: {e}')
     if failed:
-        raise RuntimeError(f'{len(failed)} of {len(new)} new media files could not be copied, first: {failed[0]}')
+        raise RuntimeError(f'{len(failed)} of {len(new)} new media files could not be fetched, first: {failed[0]}')
     return f'website media: {len(new)} new of {len(want)}'
 
 
 def mail():
-    """Every message in admin@'s mailbox as an .eml file; a message deleted from Gmail stays in the copy."""
+    """Every message in admin@'s mailbox as an .eml file; a message deleted from Gmail stays in the backup."""
     # The scope admin@'s delegation allows (it does not list gmail.readonly). This only ever reads.
     gm = google('https://mail.google.com/')
-    gs = google('https://www.googleapis.com/auth/devstorage.read_write')
-    have = {p.rsplit('/', 1)[-1][:-4] for p in listing('mail/admin') if p.endswith('.eml')}
+    base = os.path.join(WORK, 'mail', 'admin')
+    have = {f[:-4] for _, _, files in os.walk(base) for f in files if f.endswith('.eml')}
     ids, tok = [], None
     while True:
         r = gm.get('https://gmail.googleapis.com/gmail/v1/users/me/messages',
@@ -194,51 +181,91 @@ def mail():
         r.raise_for_status()
         m = r.json()
         when = datetime.fromtimestamp(int(m.get('internalDate', 0)) / 1000)
-        name = f"current/mail/admin/{when:%Y/%m}/{i}.eml"
-        u = gs.post(f'https://storage.googleapis.com/upload/storage/v1/b/{BUCKET}/o',
-                    params={'uploadType': 'media', 'name': name, 'ifGenerationMatch': '0'},
-                    data=base64.urlsafe_b64decode(m['raw']), headers={'Content-Type': 'message/rfc822'})
-        if u.status_code not in (200, 412):          # 412: already there
-            u.raise_for_status()
+        dest = os.path.join(base, f'{when:%Y}', f'{when:%m}', f'{i}.eml')
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest + '.part', 'wb') as f:
+            f.write(base64.urlsafe_b64decode(m['raw']))
+        os.replace(dest + '.part', dest)
     return f'mail: {len(new)} new of {len(ids)} messages'
 
 
+def books_fresh():
+    if not os.path.isdir(BOOKS) or not os.listdir(BOOKS):
+        raise RuntimeError(f'No QuickBooks copy in {BOOKS}: the nightly sync writes it (tools/qbo_books.mjs).')
+    newest = max(os.path.getmtime(os.path.join(BOOKS, f)) for f in os.listdir(BOOKS))
+    if (time.time() - newest) > 3 * 86400:
+        raise RuntimeError(f'The QuickBooks copy in {BOOKS} is more than 3 days old: check drscca-qbo.')
+    return 'QuickBooks books current'
+
+
+# ---------- restic ----------
+
+def restic(*args, capture=False):
+    return run(['restic', '--host', 'drapps', *args], capture=capture)
+
+
+def backup(paths):
+    """restic backup; exit 3 with only "incomplete metadata" warnings (the Drive mount) is complete."""
+    cmd = ['restic', '--host', 'drapps', 'backup', '--tag', 'nightly', '--ignore-inode', '--ignore-ctime',
+           *sum((['--exclude', e] for e in EXCLUDE), []), *paths]
+    print('+', ' '.join(cmd), flush=True)
+    p = subprocess.Popen(cmd, stderr=subprocess.PIPE, text=True, env=env())
+    harmless, other = 0, []
+    for line in p.stderr:
+        line = line.rstrip('\n')
+        if HARMLESS.match(line):
+            harmless += 1
+            continue
+        if line.lower().startswith(('error', 'fatal', 'warning')):
+            other.append(line)
+        print(line, file=sys.stderr, flush=True)
+    rc = p.wait()
+    if rc == 0 or (rc == 3 and not other):
+        return f'snapshot saved ({harmless} files without extended attributes, normal for a Drive mount)'
+    raise RuntimeError(f'restic backup ended with exit {rc}: ' + '; '.join(other[:3]))
+
+
+def snapshot_counts(mounts):
+    """{mount path: files in the latest snapshot under it}."""
+    out = restic('ls', '--json', 'latest', capture=True).stdout
+    counts = {m: 0 for m in mounts}
+    for line in out.splitlines():
+        try:
+            n = json.loads(line)
+        except ValueError:
+            continue
+        if n.get('type') == 'file':
+            for m in mounts:
+                if n.get('path', '').startswith(m.rstrip('/') + '/'):
+                    counts[m] += 1
+    return counts
+
+
 def vault():
-    """Once a month, after a complete night: copy everything in current/ to the vault as <YYYY-MM>/. The copy runs
-    inside Cloud Storage (nothing passes through this server) and ends with <YYYY-MM>/status.json, which marks the
-    month done; a month whose copy did not finish is tried again the next night."""
-    month = date.today().strftime('%Y-%m')
-    gs = google('https://www.googleapis.com/auth/devstorage.read_only')
-    done = gs.get(f'https://storage.googleapis.com/storage/v1/b/{VAULT}/o/{month}%2Fstatus.json')
-    if done.status_code == 200:
-        return f'vault: {month} already copied'
-    run(['rclone', 'copy', f'gcs:{BUCKET}/current', f'gcs:{VAULT}/{month}', '--gcs-storage-class', 'ARCHIVE',
-         '--fast-list', '--log-level', 'NOTICE', '--stats', '0', '--retries', '5', '--transfers', '16', '--checkers', '16'])
-    w = google('https://www.googleapis.com/auth/devstorage.read_write')
-    w.post(f'https://storage.googleapis.com/upload/storage/v1/b/{VAULT}/o',
-           params={'uploadType': 'media', 'name': f'{month}/status.json', 'ifGenerationMatch': '0'},
-           data=json.dumps({'copied': datetime.now().astimezone().isoformat(timespec='seconds'), 'from': f'gs://{BUCKET}/current'}),
-           headers={'Content-Type': 'application/json'}).raise_for_status()
-    return f'vault: {month} copied and locked for a year'
+    """Copy the restic files not yet in the vault (inside Cloud Storage; restic never changes a file once written,
+    so --immutable turns a changed file into an error instead of a silent overwrite). Lock files are left out."""
+    run(['rclone', 'copy', f'gcs:{BUCKET}/restic', f'gcs:{VAULT}/restic', '--immutable', '--exclude', 'locks/**',
+         '--gcs-storage-class', 'ARCHIVE', '--fast-list', '--log-level', 'NOTICE', '--stats', '0', '--retries', '5'])
+    return 'vault: new restic files copied (kept a year, locked)'
 
 
 def status(results, failed):
-    """current/status.json: when the last run ended and what it did (read by people and the staleness alert)."""
+    """status.json beside the repository: when the last run ended and what it did (people, and the noon check)."""
     gs = google('https://www.googleapis.com/auth/devstorage.read_write')
     doc = {'finished': datetime.now().astimezone().isoformat(timespec='seconds'), 'ok': not failed,
            'done': results, 'failed': failed}
     gs.post(f'https://storage.googleapis.com/upload/storage/v1/b/{BUCKET}/o',
-            params={'uploadType': 'media', 'name': 'current/status.json'},
+            params={'uploadType': 'media', 'name': 'status.json'},
             data=json.dumps(doc, indent=1), headers={'Content-Type': 'application/json'}).raise_for_status()
 
 
 def check(hours=36):
-    """--check (drscca-offsite-check.timer): fail, so admin@ is emailed, unless a complete copy finished in the last
-    36 hours. Catches a copy that stopped running, which its own failure email cannot."""
+    """--check (drscca-offsite-check.timer): fail, so admin@ is emailed, unless a complete night finished in the last
+    36 hours. Catches a backup that stopped running, which its own failure email cannot."""
     r = google('https://www.googleapis.com/auth/devstorage.read_only').get(
-        f'https://storage.googleapis.com/storage/v1/b/{BUCKET}/o/current%2Fstatus.json', params={'alt': 'media'})
+        f'https://storage.googleapis.com/storage/v1/b/{BUCKET}/o/status.json', params={'alt': 'media'})
     if r.status_code == 404:
-        raise SystemExit('The off-site copy has never finished (no current/status.json in the bucket).')
+        raise SystemExit('The off-site copy has never finished (no status.json in the bucket).')
     r.raise_for_status()
     doc = r.json()
     age = (datetime.now().astimezone() - datetime.fromisoformat(doc['finished'])).total_seconds() / 3600
@@ -246,37 +273,65 @@ def check(hours=36):
         raise SystemExit(f"The off-site copy last finished {age:.0f} hours ago ({doc['finished']}): check drscca-offsite-backup.")
     if not doc.get('ok'):
         raise SystemExit('The last off-site copy did not complete: ' + '; '.join(doc.get('failed') or []))
-    month = date.today().strftime('%Y-%m')
-    v = google('https://www.googleapis.com/auth/devstorage.read_only').get(
-        f'https://storage.googleapis.com/storage/v1/b/{VAULT}/o/{month}%2Fstatus.json')
-    if v.status_code != 200 and date.today().day >= 3:
-        raise SystemExit(f'No locked vault copy for {month} yet (gs://{VAULT}/{month}/): check drscca-offsite-backup.')
     print(f"Off-site copy OK, finished {doc['finished']}: " + '; '.join(doc.get('done') or []))
 
 
 def main():
     if '--check' in sys.argv:
         return check()
+    for k in ('RESTIC_REPOSITORY', 'RESTIC_PASSWORD', 'GOOGLE_APPLICATION_CREDENTIALS'):
+        if not os.environ.get(k):
+            raise SystemExit(f'{k} is not set (data/secrets/offsite-backup.env).')
     os.makedirs(WORK, exist_ok=True)
-    parts = [(f"shared drive {d['name']}", (lambda d=d: one_drive(d))) for d in shared_drives()]
-    if not parts:
-        raise SystemExit('No shared drives were found; nothing was copied.')
-    parts += [('app files', app_data), ('QuickBooks', quickbooks), ('website media', website_media), ('admin@ mail', mail)]
     results, failed = [], []
-    for label, fn in parts:
+
+    def part(label, fn):
         try:
             results.append(fn())
             print('OK', results[-1], flush=True)
+            return True
         except Exception as e:
             failed.append(f'{label}: {e}')
             print('FAILED', failed[-1], file=sys.stderr, flush=True)
-    if not failed:          # only a complete night goes into the vault
-        try:
-            results.append(vault())
-            print('OK', results[-1], flush=True)
-        except Exception as e:
-            failed.append(f'vault copy: {e}')
-            print('FAILED', failed[-1], file=sys.stderr, flush=True)
+            return False
+
+    def one_drive(d, mnt, name):
+        mount(d['id'], mnt)
+        expected[mnt] = drive_files(d['id'])
+        export_docs(d['id'], os.path.join(WORK, 'google-files', name))
+        return f"{d['name']}: mounted, {expected[mnt]} files in Drive"
+
+    drives = shared_drives()
+    if not drives:
+        raise SystemExit('No shared drives were found; nothing was backed up.')
+    mounts, expected = [], {}
+    try:
+        for d in drives:
+            name = folder_name(d['name'])
+            mnt = os.path.join(WORK, 'drives', name)
+            if part(f"shared drive {d['name']}", lambda d=d, mnt=mnt, name=name: one_drive(d, mnt, name)):
+                mounts.append(mnt)
+        part('website media', website_media)
+        part('admin@ mail', mail)
+        part('QuickBooks', books_fresh)
+        paths = [*mounts, os.path.join(WORK, 'google-files'), os.path.join(WORK, 'website-media'),
+                 os.path.join(WORK, 'mail'), BOOKS, APP_DATA]
+        if part('restic backup', lambda: backup([p for p in paths if os.path.exists(p)])):
+            got = snapshot_counts(mounts)
+            short = [f'{os.path.basename(m)}: {got[m]} of {expected[m]}' for m in mounts if got[m] != expected[m]]
+            if short:
+                failed.append('snapshot is missing files: ' + '; '.join(short))
+                print('FAILED', failed[-1], file=sys.stderr, flush=True)
+            else:
+                results.append('proof: ' + ', '.join(f'{os.path.basename(m)} {got[m]} files' for m in mounts))
+    finally:
+        for m in mounts:
+            subprocess.run(['fusermount3', '-u', m], check=False)
+    if date.today().weekday() == 6:          # Sundays: drop old snapshots, prune, and check the repository
+        part('restic forget and prune', lambda: (restic('forget', '--tag', 'nightly', '--prune', *KEEP), 'old snapshots pruned')[1])
+        part('restic check', lambda: (restic('check', '--read-data-subset', '2%'), 'repository checked')[1])
+    if not failed:
+        part('vault copy', vault)
     status(results, failed)
     if failed:
         raise SystemExit('Parts of the off-site copy failed:\n' + '\n'.join(failed))

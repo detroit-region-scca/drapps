@@ -246,11 +246,12 @@ def test_deploy_turns_on_every_timer_and_path_and_removes_only_its_own_old_units
     assert [c for c in again if c.startswith('enable')] == [c for c in calls if c.startswith('enable')]
 
 
-def test_offsite_backup_names_and_paths():
+def test_offsite_backup_names_and_the_one_harmless_warning():
     import importlib.util
     import os
     spec = importlib.util.spec_from_file_location('offsite', os.path.join(os.path.dirname(__file__), '..', 'deploy', 'gcp', 'offsite_backup.py'))
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     assert m.folder_name('DRSCCA Apps') == 'DRSCCA Apps' and m.folder_name('a/b:c') == 'a_b_c'
-    assert m.dest('drives/A') == f'gcs:{m.BUCKET}/current/drives/A' and m.history('drives/A').startswith(f'gcs:{m.BUCKET}/history/')
+    assert m.HARMLESS.match('incomplete metadata for /var/lib/drscca-offsite/drives/A/b.pdf: listxattr: input/output error')
+    assert not m.HARMLESS.match('error: open /var/lib/drscca-offsite/drives/A/b.pdf: input/output error')
