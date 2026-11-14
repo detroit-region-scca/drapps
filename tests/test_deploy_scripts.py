@@ -247,3 +247,14 @@ def test_offsite_backup_names_and_the_one_harmless_warning():
     assert not m.HARMLESS.match('error: incomplete metadata for /x/b.pdf: lstat /x/b.pdf: input/output error')
     assert m.SUMMARY == 'Warning: at least one source file could not be read'
     assert not m.HARMLESS.match('error: open /var/lib/drscca-offsite/drives/A/b.pdf: input/output error')
+
+
+def test_offsite_backup_finds_files_that_share_a_name():
+    import importlib.util
+    import os
+    spec = importlib.util.spec_from_file_location('offsite', os.path.join(os.path.dirname(__file__), '..', 'deploy', 'gcp', 'offsite_backup.py'))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    listing = [{'Path': 'a/x.pdf', 'ID': '1'}, {'Path': 'a/x.pdf', 'ID': '2'}, {'Path': 'a/y.pdf', 'ID': '3'}, {'Path': 'b/x.pdf', 'ID': '4'}]
+    dupes, distinct = m.dup_groups(listing)
+    assert sorted(f['ID'] for f in dupes) == ['1', '2'] and distinct == 3      # the mount shows 3 files; 2 saved by id

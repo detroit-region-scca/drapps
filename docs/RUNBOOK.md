@@ -252,6 +252,7 @@ encrypted) in the bucket `drscca-org-backups` (`restic/`), holding:
 | In the snapshot | What | How |
 |---|---|---|
 | `/var/lib/drscca-offsite/drives/<shared drive>/` | every uploaded file in every shared drive (new ones found nightly) | read through a read-only rclone mount |
+| `/var/lib/drscca-offsite/duplicates/<shared drive>/` | every file that shares its name with another in the same folder (the mount shows only one), as `<name> [<Drive id>]` | downloaded by id; the proof counts distinct names |
 | `/var/lib/drscca-offsite/google-files/<shared drive>/` | Google Docs, Sheets, Slides as Word, Excel, PowerPoint | exported nightly |
 | `/var/lib/drscca-offsite/website-media/` | every file in drscca.org's public media library | new files fetched, none removed |
 | `/var/lib/drscca-offsite/mail/admin/` | the admin@ mailbox: every message as `.eml` plus its Gmail labels (`msg-db.sqlite`) | Got Your Back (`/opt/drscca/gyb`), new messages only, none removed |

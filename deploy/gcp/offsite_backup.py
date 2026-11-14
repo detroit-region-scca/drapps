@@ -5,6 +5,8 @@ restic: deduplicated, compressed, encrypted snapshots in a Cloud Storage bucket 
 What goes into each snapshot:
     drives/<shared drive>/        every file in every shared drive, read through a read-only rclone mount (each
                                   shared drive is found nightly, so a new one is included without a change here)
+    duplicates/<shared drive>/    every file that shares its name with another in the same folder (the mount shows
+                                  only one of them), downloaded by its Drive id
     google-files/<shared drive>/  its Google Docs, Sheets and Slides as Word, Excel and PowerPoint files
     website-media/                every image and file uploaded to drscca.org (added, never removed)
     mail/admin/                   the admin@drscca.org mailbox: every message as .eml plus its labels, by Got Your Back
@@ -13,7 +15,8 @@ What goes into each snapshot:
     /opt/drscca/app/data          the app's own files (not its nightly sheet copies in backups/)
 
 Snapshots kept: 14 daily, 8 weekly, 24 monthly (Sundays: forget, prune, check). Proof, not trust: after each backup
-the number of files restic saved for each shared drive must equal the number Drive lists, or the night fails.
+the number of files restic saved for each shared drive must equal the number of distinct names Drive lists (the rest
+are in duplicates/), or the night fails.
 
 Ransom protection: the bucket keeps anything deleted restorable for 90 days (soft delete), and every night the new
 restic files are also copied into the vault bucket (OFFSITE_VAULT), whose locked retention policy keeps each file a
@@ -108,11 +111,53 @@ def mount(drive_id, path):
     raise RuntimeError(f'The shared drive did not mount at {path}.')
 
 
-def drive_files(drive_id):
-    """How many uploaded files Drive lists in this shared drive (what the snapshot must hold)."""
-    out = run(['rclone', 'lsf', '-R', '--files-only', '--fast-list', '--drive-team-drive', drive_id, *DRIVE_FLAGS, 'gd:'],
-              capture=True).stdout
-    return sum(1 for line in out.splitlines() if line)
+def drive_listing(drive_id):
+    """[{'Path', 'ID', ...}] of every uploaded file in this shared drive."""
+    return json.loads(run(['rclone', 'lsjson', '-R', '--files-only', '--fast-list', '--drive-team-drive', drive_id,
+                           *DRIVE_FLAGS, 'gd:'], capture=True).stdout or '[]')
+
+
+def dup_groups(listing):
+    """(files that share their folder and name with another file, number of distinct names)."""
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for f in listing:
+        groups[f['Path']].append(f)
+    return [f for fs in groups.values() if len(fs) > 1 for f in fs], len(groups)
+
+
+def duplicates(listing, path):
+    """Drive lets two files have the same name in the same folder; the mount shows only one of them. Every file in
+    such a group is downloaded here by its Drive id ('<folder>/<name> [<id>]'), so none is left out; one changed since
+    the last night is downloaded again. Returns (how many such files, distinct names in the drive)."""
+    dupes, distinct = dup_groups(listing)
+    index_file = path.rstrip('/') + '.json'           # {saved path: Drive modified time}, beside the folder
+    try:
+        with open(index_file) as f:
+            index = json.load(f)
+    except (OSError, ValueError):
+        index = {}
+    s = google('https://www.googleapis.com/auth/drive.readonly')
+    want = {}
+    for f in dupes:
+        folder, name = os.path.split(f['Path'])
+        dest = os.path.join(path, folder, f"{name} [{f['ID']}]")
+        want[dest] = f.get('ModTime', '')
+        if os.path.exists(dest) and index.get(dest) == want[dest]:
+            continue
+        r = s.get(f"https://www.googleapis.com/drive/v3/files/{f['ID']}", params={'alt': 'media', 'supportsAllDrives': 'true'})
+        r.raise_for_status()
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest + '.part', 'wb') as out:
+            out.write(r.content)
+        os.replace(dest + '.part', dest)
+    for root, _, files in os.walk(path):              # a copy whose twin is gone: the mount has it now
+        for n in files:
+            if os.path.join(root, n) not in want:
+                os.remove(os.path.join(root, n))
+    with open(index_file, 'w') as f:
+        json.dump(want, f)
+    return len(dupes), distinct
 
 
 def export_docs(drive_id, path):
@@ -288,9 +333,11 @@ def main():
 
     def one_drive(d, mnt, name):
         mount(d['id'], mnt)
-        expected[mnt] = drive_files(d['id'])
+        listing = drive_listing(d['id'])
+        n_dupes, expected[mnt] = duplicates(listing, os.path.join(WORK, 'duplicates', name))
         export_docs(d['id'], os.path.join(WORK, 'google-files', name))
-        return f"{d['name']}: mounted, {expected[mnt]} files in Drive"
+        return (f"{d['name']}: {len(listing)} files in Drive" +
+                (f", {n_dupes} of them sharing a name with another file in the same folder (each saved by its id)" if n_dupes else ''))
 
     drives = shared_drives()
     if not drives:
@@ -305,7 +352,7 @@ def main():
         part('website media', website_media)
         part('admin@ mail', mail)
         part('QuickBooks', books_fresh)
-        paths = [*mounts, os.path.join(WORK, 'google-files'), os.path.join(WORK, 'website-media'),
+        paths = [*mounts, os.path.join(WORK, 'google-files'), os.path.join(WORK, 'duplicates'), os.path.join(WORK, 'website-media'),
                  os.path.join(WORK, 'mail'), BOOKS, APP_DATA]
         if part('restic backup', lambda: backup([p for p in paths if os.path.exists(p)])):
             got = snapshot_counts(mounts)
