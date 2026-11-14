@@ -208,7 +208,7 @@
                 {% if to == 'check' %}
                 <label class="form-label small" for="chAddr">Payee's mailing address, for the check</label>
                 <textarea name="payee_address" id="chAddr" class="form-control mb-2" rows="2" required>{{ r.payee_address or r.last_address }}</textarea>
-                {% if r.last_address and not r.payee_address %}<div class="form-text mb-2">From {{ r.payee_name }}'s last request. Check it is still right.</div>{% endif %}
+                {% if r.last_address and not r.payee_address %}<div class="form-text mb-2">From this payee's last request. Check it is still right.</div>{% endif %}
                 {% endif %}
                 <div><button class="btn btn-sm btn-outline-secondary">{{ 'Pay by check instead' if to == 'check' else 'Pay on the region card instead' }}</button></div>
                 <div class="form-text">Who is paid and the amount stay the same, so the approvals stand. The change is noted on the request.</div>
