@@ -370,3 +370,28 @@ def test_an_official_signs_in_during_the_outage_and_a_wrong_code_still_counts(si
     assert not _in(c)[0] and auth._codes(lambda codes, now: codes['treasurer@example.org']['tries']) == 1
     c.post('/signin/code', data={'email': 'treasurer@example.org', 'code': code})
     assert _in(c)[0]
+
+
+def test_a_late_receipt_that_completes_a_request_tells_the_treasurer_and_the_director(monkeypatch, officials):
+    import auth
+    from app import app
+    sent, told = [], []
+    r = req(filed_email='rae@example.org', method='Region credit card',
+            approvals='chair|Rae Director|2026-11-13|' + fr.SELF_NOTE)
+    monkeypatch.setattr(fr, '_guard', lambda: None)
+    monkeypatch.setattr(fr.F, 'refresh', lambda: None)
+    monkeypatch.setattr(fr.F, 'get', lambda rid: dict(r))
+    monkeypatch.setattr(fr.F, 'add_receipts', lambda rid, files: 1)
+    monkeypatch.setattr(fr, 'log_audit_event', lambda *a, **k: None)
+    monkeypatch.setattr(fr, 'Approvals', lambda: type('A', (), {'items': lambda self, x: [{'key': 'receipt', 'done': True}]})())
+    monkeypatch.setattr(fr, 'mark_ready', lambda rid, x=None: True)
+    monkeypatch.setattr(fr, 'send_mail', lambda subj, body, to=None, **k: sent.append(subj))
+    monkeypatch.setattr(fr, 'tell_director', lambda x: told.append(x['id']))
+    monkeypatch.setattr(auth, 'lookup', lambda e: {'email': e, 'name': 'Rae Director', 'level': 'official', 'roles': ['Director'],
+                                                   'perms': {'funds'}} if e else None)
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s.update(authenticated=True, email='rae@example.org', who='Rae Director')
+    import io
+    c.post('/funds/FR-2026-001/receipts', data={'receipts': (io.BytesIO(b'%PDF'), 'r.pdf')}, content_type='multipart/form-data')
+    assert sent == ['Funds request FR-2026-001 is ready to pay: Example Rentals $3,000.00'] and told == ['FR-2026-001']
