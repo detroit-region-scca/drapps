@@ -58,7 +58,7 @@ RCLONE_ENV = {
 DRIVE_FLAGS = ['--drive-skip-gdocs', '--drive-skip-dangling-shortcuts']
 # restic 0.17.1+ keeps a file whose extended attributes cannot be read (a Drive mount has none to give) and warns
 # "incomplete metadata"; that alone, with exit code 3, is a complete backup. Any other warning or error is not.
-HARMLESS = re.compile(r'^incomplete metadata for .*$')
+HARMLESS = re.compile(r'^(error: )?incomplete metadata for .*: xattr\.list .*$')      # restic 0.18 prefixes it with "error: "
 
 
 def env():

@@ -242,5 +242,7 @@ def test_offsite_backup_names_and_the_one_harmless_warning():
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     assert m.folder_name('DRSCCA Apps') == 'DRSCCA Apps' and m.folder_name('a/b:c') == 'a_b_c'
-    assert m.HARMLESS.match('incomplete metadata for /var/lib/drscca-offsite/drives/A/b.pdf: listxattr: input/output error')
+    assert m.HARMLESS.match('error: incomplete metadata for /var/lib/drscca-offsite/drives/A/b.pdf: xattr.list /var/lib/drscca-offsite/drives/A/b.pdf: input/output error')
+    assert m.HARMLESS.match('incomplete metadata for /x/b.pdf: xattr.list /x/b.pdf: input/output error')
+    assert not m.HARMLESS.match('error: incomplete metadata for /x/b.pdf: lstat /x/b.pdf: input/output error')
     assert not m.HARMLESS.match('error: open /var/lib/drscca-offsite/drives/A/b.pdf: input/output error')
